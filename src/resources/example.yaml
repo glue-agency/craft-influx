@@ -1,0 +1,100 @@
+# Example feed: drop into <craft>/config/influx/news.yaml
+#
+# The filename (without extension) becomes the feed handle if no `handle` key
+# is set. Everything else is opt-in.
+
+handle: news
+name: News from remote API
+
+# Which Craft element type to hydrate. The plugin ships a target for
+# craft\elements\Entry; third-party targets (Calendar Event, Commerce Product,
+# ...) register additional FQCNs.
+elementType: craft\elements\Entry
+
+# Forwarded to the target. EntryTarget understands section, type, author.
+elementCriteria:
+  section: news
+  type: article
+  # author: editor@example.com
+
+# List-payload endpoint, no per-site override. Use $ENV_VARS to keep secrets
+# out of git.
+endpoint: $REMOTE_NEWS_FEED_URL
+
+# Optional per-language endpoints. When set, the feed runs once per site
+# handle and writes to that site's row on the matched element. The element is
+# matched once across sites by the `match` config below, so all languages land
+# on the same canonical element.
+siteEndpoints:
+  default: $REMOTE_NEWS_FEED_URL
+  nl: $REMOTE_NEWS_FEED_URL_NL
+
+# Per-resource endpoint used by the "Sync from remote" button on the entry
+# edit page. `{id}` is replaced with the match value; `{site}` (optional)
+# with the site handle.
+itemEndpoint: 'https://api.example.com/news/{id}'
+
+# Auth and any other headers. Values run through App::parseEnv so $-vars are
+# resolved from .env at fetch-time.
+headers:
+  Authorization: 'Bearer $REMOTE_NEWS_TOKEN'
+  Accept: 'application/json'
+
+# Where the list of items lives in the JSON response. Hash dot-path; omit if
+# the response is itself a JSON array.
+rootNode: data.items
+
+# Cursor-style pagination. Hash dot-path to the next-page URL.
+paginatorNode: links.next
+
+# How to recognise the same item across runs. `attribute` is the handle on
+# the element (a plain-text field you control); `source` is the JSON path on
+# the remote item.
+match:
+  attribute: importId
+  source: id
+
+# What to map onto the element. Keys are element field/attribute handles.
+# Each mapping picks a registered type and a node path. See README for the
+# full list of built-in types.
+mappings:
+  title:
+    type: PlainText
+    node: title.rendered
+    options:
+      trim: true
+      maxLength: 200
+  slug:
+    type: PlainText
+    node: slug
+  importId:
+    type: PlainText
+    node: id
+
+# What this feed is allowed to do. Subset of:
+#   create, update, disable, delete, delete-for-site
+# Defaults: [create, update].
+processing:
+  - create
+  - update
+
+# Named "sync from X ago" presets. Run via `./craft influx/sync news --ago=hour`
+# or from the CP. `since` is anything DateTime::modify accepts. `queryParam`
+# is the GET param the remote API uses to filter.
+ago:
+  hour:
+    since: '-1 hour'
+    queryParam: modified_since
+  day:
+    since: '-1 day'
+    queryParam: modified_since
+
+# Per-element manual-sync cooldown, in seconds. Omit to fall back to plugin
+# settings.
+itemCooldown: 30
+
+# Paginated processing batch size. Omit for the default.
+batchSize: 100
+
+# Take a DB backup before running this feed.
+backup: false
