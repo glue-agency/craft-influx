@@ -55,4 +55,22 @@ interface ElementTargetInterface
     public function delete(ElementInterface $element): bool;
 
     public function deleteForSite(ElementInterface $element, int $siteId): bool;
+
+    /**
+     * Fields the link can map to. Drives the per-field mapping UI on the
+     * CP edit screen. Each field is reported as:
+     *
+     *   [
+     *     'handle' => 'title',
+     *     'name'   => 'Title',
+     *     'native' => true,
+     *     'defaultType' => 'text' | 'user',    // type of fallback input
+     *   ]
+     *
+     * Targets that don't have a meaningful field surface for a given link
+     * (e.g. the link is missing a section/type) may return an empty list.
+     *
+     * @return list<array{handle: string, name: string, native: bool, defaultType: string}>
+     */
+    public function getMappableFields(Link $link): array;
 }

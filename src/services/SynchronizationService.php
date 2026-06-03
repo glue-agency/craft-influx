@@ -226,6 +226,13 @@ class SynchronizationService extends Component
                 continue;
             }
 
+            // The `author` field on Entry is set by EntryTarget::buildNew()
+            // from `mappings.author.default`. Skip the generic mapping path
+            // so we don't assign a user id as a plain string.
+            if ($targetField === 'author' && $link->elementType === \craft\elements\Entry::class) {
+                continue;
+            }
+
             $mapping = $mappingsService->get($config['type']);
 
             if (!$changed && $mapping->hasChanged($element, $targetField, $item, $config, $link)) {

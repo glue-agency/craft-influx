@@ -28,4 +28,9 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     {
         return Craft::$app->getElements()->deleteElementForSite($element, $siteId);
     }
+
+    public function getMappableFields(Link $link): array
+    {
+        return [];
+    }
 }

@@ -45,14 +45,18 @@
                 </td>
             </tr>
             <tr>
-                <th>{{ "Headers"|t("influx") }}</th>
+                <th>{{ "Authentication"|t("influx") }}</th>
                 <td>
-                    {% if link.headers is empty %}
+                    {% if link.auth is empty or link.auth.type is not defined %}
                         <span class="light">{{ "none"|t("influx") }}</span>
                     {% else %}
-                        {% for name, value in link.headers %}
-                            <div><code>{{ name }}</code>: <code>{{ value }}</code></div>
-                        {% endfor %}
+                        <code>{{ link.auth.type }}</code>
+                        {% if link.auth.header is defined %}
+                            — <code>{{ link.auth.header }}</code>
+                        {% elseif link.auth.param is defined %}
+                            — <code>?{{ link.auth.param }}=</code>
+                        {% endif %}
+                        — <span class="light">{{ "token hidden"|t("influx") }}</span>
                     {% endif %}
                 </td>
             </tr>

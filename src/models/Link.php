@@ -56,10 +56,15 @@ class Link extends Model
     public array $siteEndpoints = [];
 
     /**
-     * HTTP headers, with values resolved through App::parseEnv so secrets can
-     * live in .env (e.g. ['Authorization' => '$INFLUX_TOKEN']).
+     * Authentication configuration. Stored shape:
+     *
+     *   ['type' => 'bearer',      'token' => '$INFLUX_TOKEN']
+     *   ['type' => 'custom',      'token' => '$INFLUX_TOKEN', 'header' => 'X-API-Key']
+     *   ['type' => 'querystring', 'token' => '$INFLUX_TOKEN', 'param'  => 'api_key']
+     *
+     * Empty array means no auth.
      */
-    public array $headers = [];
+    public array $auth = [];
 
     /**
      * Where the iterable list of items lives within the JSON response (Hash
@@ -122,6 +127,7 @@ class Link extends Model
             [['itemCooldown', 'batchSize'], 'integer', 'min' => 0],
             [['match'], 'validateMatch'],
             [['mappings'], 'validateMappings'],
+            [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => ['create', 'update', 'disable', 'delete', 'delete-for-site']]],
         ]);
     }
@@ -129,8 +135,21 @@ class Link extends Model
     public function validateMatch(string $attribute): void
     {
         $value = $this->$attribute;
-        if (!is_array($value) || empty($value['attribute']) || empty($value['source'])) {
-            $this->addError($attribute, 'Match must declare both an `attribute` and a `source`.');
+        if (!is_array($value) || empty($value['attribute'])) {
+            $this->addError($attribute, 'Match must declare an `attribute`.');
+            return;
+        }
+
+        // The match value is read from `match.source` if set, otherwise from
+        // the node configured on the mapped field. So either an explicit
+        // source or a node-bearing mapping for the match field is required.
+        $explicitSource = !empty($value['source']);
+        $mappedNode = $this->mappings[$value['attribute']]['node'] ?? null;
+        if (!$explicitSource && !$mappedNode) {
+            $this->addError(
+                $attribute,
+                "Match attribute '{$value['attribute']}' needs either an explicit Match source or a configured mapping with a source node.",
+            );
         }
     }
 
@@ -140,6 +159,32 @@ class Link extends Model
             if (!is_array($config) || empty($config['type'])) {
                 $this->addError($attribute, "Mapping for '{$handle}' is missing a `type`.");
             }
+        }
+    }
+
+    public function validateAuth(string $attribute): void
+    {
+        $value = $this->$attribute;
+        if (empty($value)) {
+            return;
+        }
+
+        $type = $value['type'] ?? null;
+        if (!in_array($type, ['bearer', 'custom', 'querystring'], true)) {
+            $this->addError($attribute, 'Auth type must be bearer, custom, or querystring.');
+            return;
+        }
+
+        if (empty($value['token'])) {
+            $this->addError($attribute, 'Auth requires a token.');
+        }
+
+        if ($type === 'custom' && empty($value['header'])) {
+            $this->addError($attribute, 'Custom auth requires a header name.');
+        }
+
+        if ($type === 'querystring' && empty($value['param'])) {
+            $this->addError($attribute, 'Querystring auth requires a parameter name.');
         }
     }
 
@@ -167,7 +212,7 @@ class Link extends Model
             'endpoint'        => $this->endpoint,
             'itemEndpoint'    => $this->itemEndpoint,
             'siteEndpoints'   => $this->siteEndpoints,
-            'headers'         => $this->headers,
+            'auth'            => $this->auth,
             'rootNode'        => $this->rootNode,
             'paginatorNode'   => $this->paginatorNode,
             'match'           => $this->match,
@@ -190,19 +235,39 @@ class Link extends Model
         });
     }
 
-    public function resolvedHeaders(): array
+    /**
+     * Mutates the given header / query arrays to add this link's auth
+     * credentials. Auth tokens are resolved through `$ENV` at call time so
+     * secrets stay out of Project Config.
+     */
+    public function applyAuth(array &$headers, array &$query): void
     {
-        $resolved = [];
-        foreach ($this->headers as $name => $value) {
-            $resolved[$name] = App::parseEnv($value);
+        if (empty($this->auth) || empty($this->auth['type']) || empty($this->auth['token'])) {
+            return;
         }
-        return $resolved;
-    }
 
-    public function endpointForSite(string $siteHandle): ?string
-    {
-        $endpoint = $this->siteEndpoints[$siteHandle] ?? $this->endpoint;
-        return $endpoint ? App::parseEnv($endpoint) : null;
+        $token = App::parseEnv($this->auth['token']);
+        if ($token === null || $token === '') {
+            return;
+        }
+
+        switch ($this->auth['type']) {
+            case 'bearer':
+                $headers['Authorization'] = 'Bearer ' . $token;
+                break;
+            case 'custom':
+                $name = trim((string)($this->auth['header'] ?? ''));
+                if ($name !== '') {
+                    $headers[$name] = $token;
+                }
+                break;
+            case 'querystring':
+                $param = trim((string)($this->auth['param'] ?? ''));
+                if ($param !== '') {
+                    $query[$param] = $token;
+                }
+                break;
+        }
     }
 
     public function siteHandles(): array
@@ -212,7 +277,14 @@ class Link extends Model
 
     public function matchValue(array $item): mixed
     {
+        // Prefer an explicit override; otherwise read from the node configured
+        // on the mapped match field. The save validator guarantees one of the
+        // two exists, so a saved link always yields a path here.
         $path = $this->match['source'] ?? null;
+        if (!$path) {
+            $attr = $this->matchAttribute();
+            $path = $attr ? ($this->mappings[$attr]['node'] ?? null) : null;
+        }
         return $path ? Hash::get($item, $path) : null;
     }
 

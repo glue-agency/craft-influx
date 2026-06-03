@@ -98,27 +98,51 @@ class LinksController extends Controller
             $title = Craft::t('influx', 'New link');
         }
 
+        $sectionEntryTypes = $this->sectionEntryTypes();
+        $mappableFields    = $this->mappableFieldsForLink($link);
+        $matchFieldOptions = $this->matchFieldOptions($mappableFields);
+
         $variables = [
             'link'   => $link,
             'isNew'  => $isNew,
             'readOnly' => $this->readOnly,
             'elementTypeOptions' => $this->elementTypeOptions(),
             'sectionOptions'     => $this->sectionOptions(),
+            'sectionEntryTypes'  => $sectionEntryTypes,
             'mappingTypeOptions' => $this->mappingTypeOptions(),
             'siteOptions'        => $this->siteOptions(),
             'processingOptions'  => $this->processingOptions(),
+            'authTypeOptions'    => $this->authTypeOptions(),
+            'mappableFields'     => $mappableFields,
+            'matchFieldOptions'  => $matchFieldOptions,
+            'userOptions'        => $this->userOptions(),
         ];
 
         $response = $this->asCpScreen()
             ->title($title)
             ->addCrumb(Craft::t('influx', 'Influx'), 'influx')
             ->addCrumb(Craft::t('influx', 'Links'), 'influx/links')
+            ->tabs([
+                'general'        => ['label' => Craft::t('influx', 'General'),        'url' => '#general'],
+                'pagination'     => ['label' => Craft::t('influx', 'Pagination'),     'url' => '#pagination'],
+                'mapping'        => ['label' => Craft::t('influx', 'Mapping'),        'url' => '#mapping'],
+                'authentication' => ['label' => Craft::t('influx', 'Authentication'), 'url' => '#authentication'],
+                'settings'       => ['label' => Craft::t('influx', 'Settings'),       'url' => '#settings'],
+            ])
             ->contentTemplate('influx/links/_edit', $variables);
 
         if (!$this->readOnly) {
             $response
                 ->action('influx/links/save')
                 ->redirectUrl('influx/links')
+                ->additionalButtonsHtml(
+                    '<div class="flex flex-nowrap" style="align-items: center; gap: 7px;">'
+                    . '<button type="button" class="btn" data-icon="download" id="influx-fetch-sample">'
+                    . Craft::t('influx', 'Fetch sample')
+                    . '</button>'
+                    . '<span id="influx-fetch-status" class="light" aria-live="polite"></span>'
+                    . '</div>'
+                )
                 ->addAltAction(Craft::t('app', 'Save and continue editing'), [
                     'redirect'    => 'influx/links/{handle}/edit',
                     'shortcut'    => true,
@@ -166,7 +190,7 @@ class LinksController extends Controller
             fn($v) => $v !== '' && $v !== null,
         );
 
-        $link->headers       = $this->keyValueTable($request->getBodyParam('headers') ?: []);
+        $link->auth          = $this->authFromPost($request->getBodyParam('auth') ?: []);
         $link->siteEndpoints = $this->keyValueTable($request->getBodyParam('siteEndpoints') ?: []);
 
         $link->match = array_filter([
@@ -174,7 +198,7 @@ class LinksController extends Controller
             'source'    => $request->getBodyParam('match.source') ?: null,
         ]);
 
-        $link->mappings = $this->mappingsFromTable($request->getBodyParam('mappings') ?: []);
+        $link->mappings = $this->mappingsFromPost($request->getBodyParam('mappings') ?: []);
         $link->ago      = $this->agoFromTable($request->getBodyParam('ago') ?: []);
 
         $link->processing = array_values(array_filter($request->getBodyParam('processing') ?: []));
@@ -232,6 +256,41 @@ class LinksController extends Controller
         return $this->redirect("influx/links/{$link->handle}/edit");
     }
 
+    /**
+     * Inspect the configured endpoint and return rootNode / paginatorNode /
+     * mapping suggestions for the CP "Fetch sample" button.
+     */
+    public function actionFetchSample(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+
+        $link = new Link([
+            'handle'      => 'sample',
+            'name'        => 'sample',
+            'elementType' => 'sample',
+            'endpoint'    => $this->emptyToNull($request->getBodyParam('endpoint')),
+            'auth'        => $this->authFromPost($request->getBodyParam('auth') ?: []),
+        ]);
+
+        if (!$link->endpoint) {
+            return $this->asFailure(Craft::t('influx', 'Set a list endpoint first.'));
+        }
+
+        try {
+            $report = Influx::getInstance()->data->inspect($link);
+        } catch (\Throwable $e) {
+            return $this->asFailure($e->getMessage());
+        }
+
+        return $this->asJson([
+            'success' => true,
+            'report'  => $report,
+        ]);
+    }
+
     // -- helpers --------------------------------------------------------
 
     private function emptyToNull(mixed $value): ?string
@@ -256,32 +315,43 @@ class LinksController extends Controller
         return $out;
     }
 
-    private function mappingsFromTable(array $rows): array
+    /**
+     * The new mapping UI posts one entry per field:
+     *
+     *   mappings[fieldHandle][node] = 'remote.path' | ''
+     *   mappings[fieldHandle][type] = 'PlainText'           // hidden, optional
+     *
+     * Empty nodes are dropped so the saved Project Config only contains
+     * fields the user actually wired up.
+     */
+    private function mappingsFromPost(array $rows): array
     {
         $out = [];
-        foreach ($rows as $row) {
-            $field = trim((string)($row['field'] ?? ''));
-            $type  = trim((string)($row['type'] ?? ''));
-            $node  = trim((string)($row['node'] ?? ''));
+        foreach ($rows as $fieldHandle => $row) {
+            if (!is_string($fieldHandle) || !is_array($row)) {
+                continue;
+            }
+            $node = trim((string)($row['node'] ?? ''));
+            $default = $row['default'] ?? null;
+            if (is_array($default)) {
+                $filtered = array_values(array_filter($default, fn($v) => $v !== '' && $v !== null));
+                $default  = (string)($filtered[0] ?? '');
+            }
+            $default = is_string($default) ? trim($default) : '';
 
-            if ($field === '' || $type === '') {
+            if ($node === '' && $default === '') {
                 continue;
             }
 
+            $type = trim((string)($row['type'] ?? '')) ?: 'PlainText';
             $entry = ['type' => $type];
             if ($node !== '') {
                 $entry['node'] = $node;
             }
-
-            $options = trim((string)($row['options'] ?? ''));
-            if ($options !== '') {
-                $decoded = json_decode($options, true);
-                if (is_array($decoded)) {
-                    $entry['options'] = $decoded;
-                }
+            if ($default !== '') {
+                $entry['default'] = $default;
             }
-
-            $out[$field] = $entry;
+            $out[$fieldHandle] = $entry;
         }
         return $out;
     }
@@ -332,6 +402,73 @@ class LinksController extends Controller
         return $options;
     }
 
+    /**
+     * Map of sectionHandle => [entryTypeHandle => entryTypeName] used by the
+     * Entry-type dropdown which depends on the currently-selected section.
+     */
+    /**
+     * Resolve the mappable fields for the current link by asking its target
+     * adapter. Returns an empty list when no target handles the link yet
+     * (e.g. fresh link with no element type selected).
+     */
+    private function mappableFieldsForLink(Link $link): array
+    {
+        if (!$link->elementType) {
+            return [];
+        }
+        $target = Influx::getInstance()->targets->forLink($link);
+        if (!$target) {
+            return [];
+        }
+        return $target->getMappableFields($link);
+    }
+
+    /**
+     * Build the options for the Match-attribute dropdown. Driven by the
+     * target adapter's mappable fields so the user can only pair the match
+     * key with a real field on the element.
+     */
+    private function matchFieldOptions(array $mappableFields): array
+    {
+        $options = ['' => Craft::t('influx', '— Select a field —')];
+        foreach ($mappableFields as $f) {
+            $options[$f['handle']] = $f['name'] . ' (' . $f['handle'] . ')';
+        }
+        return $options;
+    }
+
+    /**
+     * Active users, formatted for a Selectize dropdown. Used as default-
+     * value source for `author` and similar user fields.
+     */
+    private function userOptions(): array
+    {
+        $options = ['' => Craft::t('influx', '— None —')];
+        $users = \craft\elements\User::find()
+            ->status(null)
+            ->orderBy(['fullName' => SORT_ASC, 'username' => SORT_ASC])
+            ->limit(null)
+            ->all();
+        foreach ($users as $u) {
+            $label = $u->getName() ?: $u->username ?: $u->email;
+            $options[(string)$u->id] = "{$label} ({$u->username})";
+        }
+        return $options;
+    }
+
+    private function sectionEntryTypes(): array
+    {
+        $out = [];
+        foreach (Craft::$app->getEntries()->getAllSections() as $section) {
+            $types = [];
+            foreach ($section->getEntryTypes() as $type) {
+                $types[$type->handle] = $type->name;
+            }
+            $out[$section->handle] = $types;
+        }
+        return $out;
+    }
+
     private function mappingTypeOptions(): array
     {
         $options = [];
@@ -348,6 +485,44 @@ class LinksController extends Controller
             $options[$site->handle] = $site->name;
         }
         return $options;
+    }
+
+    private function authTypeOptions(): array
+    {
+        return [
+            ''            => Craft::t('influx', 'None'),
+            'bearer'      => Craft::t('influx', 'Bearer token'),
+            'custom'      => Craft::t('influx', 'Custom header'),
+            'querystring' => Craft::t('influx', 'Query string parameter'),
+        ];
+    }
+
+    private function authFromPost(array $raw): array
+    {
+        $type = trim((string)($raw['type'] ?? ''));
+        $token = trim((string)($raw['token'] ?? ''));
+
+        if ($type === '' || $token === '') {
+            return [];
+        }
+
+        $auth = ['type' => $type, 'token' => $token];
+
+        if ($type === 'custom') {
+            $header = trim((string)($raw['header'] ?? ''));
+            if ($header !== '') {
+                $auth['header'] = $header;
+            }
+        }
+
+        if ($type === 'querystring') {
+            $param = trim((string)($raw['param'] ?? ''));
+            if ($param !== '') {
+                $auth['param'] = $param;
+            }
+        }
+
+        return $auth;
     }
 
     private function processingOptions(): array

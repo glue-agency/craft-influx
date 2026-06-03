@@ -119,10 +119,11 @@ class EntryTarget extends AbstractElementTarget
         $entry->sectionId = $section->id;
         $entry->typeId = $entryType->id;
 
-        if (isset($link->elementCriteria['author'])) {
-            $author = is_numeric($link->elementCriteria['author'])
-                ? Craft::$app->getUsers()->getUserById((int)$link->elementCriteria['author'])
-                : Craft::$app->getUsers()->getUserByUsernameOrEmail($link->elementCriteria['author']);
+        $defaultAuthorId = $link->mappings['author']['default'] ?? null;
+        if ($defaultAuthorId) {
+            $author = is_numeric($defaultAuthorId)
+                ? Craft::$app->getUsers()->getUserById((int)$defaultAuthorId)
+                : Craft::$app->getUsers()->getUserByUsernameOrEmail((string)$defaultAuthorId);
             if ($author) {
                 $entry->setAuthorIds([$author->id]);
             }
@@ -133,5 +134,59 @@ class EntryTarget extends AbstractElementTarget
         }
 
         return $entry;
+    }
+
+    public function getMappableFields(Link $link): array
+    {
+        $fields = [
+            ['handle' => 'title',      'name' => Craft::t('app', 'Title'),       'native' => true, 'defaultType' => 'text'],
+            ['handle' => 'slug',       'name' => Craft::t('app', 'Slug'),        'native' => true, 'defaultType' => 'text'],
+            ['handle' => 'enabled',    'name' => Craft::t('app', 'Enabled'),     'native' => true, 'defaultType' => 'text'],
+            ['handle' => 'postDate',   'name' => Craft::t('app', 'Post Date'),   'native' => true, 'defaultType' => 'text'],
+            ['handle' => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'), 'native' => true, 'defaultType' => 'text'],
+            ['handle' => 'author',     'name' => Craft::t('app', 'Author'),      'native' => true, 'defaultType' => 'user'],
+        ];
+
+        $sectionHandle = $link->elementCriteria['section'] ?? null;
+        $typeHandle    = $link->elementCriteria['type'] ?? null;
+        if (!$sectionHandle) {
+            return $fields;
+        }
+
+        $section = Craft::$app->getEntries()->getSectionByHandle($sectionHandle);
+        if (!$section) {
+            return $fields;
+        }
+
+        $entryTypes = $section->getEntryTypes();
+        $entryType = null;
+        if ($typeHandle) {
+            foreach ($entryTypes as $candidate) {
+                if ($candidate->handle === $typeHandle) {
+                    $entryType = $candidate;
+                    break;
+                }
+            }
+        }
+        $entryType ??= $entryTypes[0] ?? null;
+        if (!$entryType) {
+            return $fields;
+        }
+
+        $layout = $entryType->getFieldLayout();
+        if (!$layout) {
+            return $fields;
+        }
+
+        foreach ($layout->getCustomFields() as $field) {
+            $fields[] = [
+                'handle'      => $field->handle,
+                'name'        => $field->name,
+                'native'      => false,
+                'defaultType' => 'text',
+            ];
+        }
+
+        return $fields;
     }
 }

@@ -2,319 +2,790 @@
 
 {% import "_includes/forms.twig" as forms %}
 
+<style>
+    .btn.influx-fetch-success { color: #008549 !important; }
+    .btn.influx-fetch-success::before { color: #008549 !important; }
+    .btn.influx-fetch-error   { color: #cf1124 !important; }
+    .btn.influx-fetch-error::before   { color: #cf1124 !important; }
+</style>
+
 {% if not readOnly %}
     {% if link.uid %}{{ hiddenInput('uid', link.uid) }}{% endif %}
 {% endif %}
 
-{# --- Identification ----------------------------------------------------- #}
+{# =====================================================================
+   General
+   ===================================================================== #}
+<div id="general">
+    {{ forms.textField({
+        first: true,
+        label: 'Name'|t('influx'),
+        instructions: 'What this link will be called in the control panel.'|t('influx'),
+        id: 'name',
+        name: 'name',
+        value: link.name,
+        errors: link.getErrors('name'),
+        autofocus: true,
+        required: true,
+        disabled: readOnly,
+    }) }}
 
-{{ forms.textField({
-    first: true,
-    label: 'Name'|t('influx'),
-    instructions: 'What this link will be called in the control panel.'|t('influx'),
-    id: 'name',
-    name: 'name',
-    value: link.name,
-    errors: link.getErrors('name'),
-    autofocus: true,
-    required: true,
-    disabled: readOnly,
-}) }}
+    {{ forms.textField({
+        label: 'Handle'|t('influx'),
+        instructions: 'Identifier used in console commands and event keys.'|t('influx'),
+        id: 'handle',
+        name: 'handle',
+        class: 'code',
+        autocorrect: false,
+        autocapitalize: false,
+        value: link.handle,
+        errors: link.getErrors('handle'),
+        required: true,
+        disabled: readOnly,
+    }) }}
 
-{{ forms.textField({
-    label: 'Handle'|t('influx'),
-    instructions: 'Identifier used in console commands and event keys.'|t('influx'),
-    id: 'handle',
-    name: 'handle',
-    class: 'code',
-    autocorrect: false,
-    autocapitalize: false,
-    value: link.handle,
-    errors: link.getErrors('handle'),
-    required: true,
-    disabled: readOnly,
-}) }}
+    <hr>
+    <h2>{{ 'Element criteria'|t('influx') }}</h2>
 
-{{ forms.selectField({
-    label: 'Element type'|t('influx'),
-    instructions: 'Which kind of element this link hydrates. Only registered targets are listed.'|t('influx'),
-    id: 'elementType',
-    name: 'elementType',
-    options: elementTypeOptions,
-    value: link.elementType,
-    errors: link.getErrors('elementType'),
-    required: true,
-    disabled: readOnly,
-}) }}
+    {{ forms.selectField({
+        label: 'Element type'|t('influx'),
+        instructions: 'Which kind of element this link hydrates. Only registered targets are listed.'|t('influx'),
+        id: 'elementType',
+        name: 'elementType',
+        options: elementTypeOptions,
+        value: link.elementType,
+        errors: link.getErrors('elementType'),
+        required: true,
+        disabled: readOnly,
+    }) }}
 
-{# --- Element criteria --------------------------------------------------- #}
+    {{ forms.selectField({
+        label: 'Section'|t('influx'),
+        id: 'elementCriteria-section',
+        name: 'elementCriteria[section]',
+        options: sectionOptions,
+        value: link.elementCriteria.section ?? '',
+        disabled: readOnly,
+    }) }}
 
-<h2>{{ 'Element criteria'|t('influx') }}</h2>
-<p class="light">
-    {{ 'Forwarded to the target adapter. EntryTarget understands'|t('influx') }}
-    <code>section</code>, <code>type</code>, <code>author</code>.
-</p>
+    {% set initialTypeOptions = [{value: '', label: '— Select —'|t('influx')}] %}
+    {% set currentSection = link.elementCriteria.section ?? '' %}
+    {% if currentSection and sectionEntryTypes[currentSection] is defined %}
+        {% for handle, name in sectionEntryTypes[currentSection] %}
+            {% set initialTypeOptions = initialTypeOptions|merge([{value: handle, label: name}]) %}
+        {% endfor %}
+    {% endif %}
 
-{{ forms.selectField({
-    label: 'Section'|t('influx'),
-    instructions: 'Required when targeting Entry.'|t('influx'),
-    id: 'elementCriteria-section',
-    name: 'elementCriteria[section]',
-    options: sectionOptions,
-    value: link.elementCriteria.section ?? '',
-    disabled: readOnly,
-}) }}
+    {{ forms.selectField({
+        label: 'Entry type'|t('influx'),
+        instructions: 'Defaults to the first entry type attached to the section.'|t('influx'),
+        id: 'elementCriteria-type',
+        name: 'elementCriteria[type]',
+        options: initialTypeOptions,
+        value: link.elementCriteria.type ?? '',
+        disabled: readOnly,
+    }) }}
 
-{{ forms.textField({
-    label: 'Entry type handle'|t('influx'),
-    instructions: 'Optional. Defaults to the first entry type attached to the section.'|t('influx'),
-    id: 'elementCriteria-type',
-    name: 'elementCriteria[type]',
-    class: 'code',
-    value: link.elementCriteria.type ?? '',
-    disabled: readOnly,
-}) }}
+    <h2>{{ 'Endpoints'|t('influx') }}</h2>
 
-{{ forms.textField({
-    label: 'Default author'|t('influx'),
-    instructions: 'Optional. User id, username, or email.'|t('influx'),
-    id: 'elementCriteria-author',
-    name: 'elementCriteria[author]',
-    value: link.elementCriteria.author ?? '',
-    disabled: readOnly,
-}) }}
+    {{ forms.textField({
+        label: 'List endpoint'|t('influx'),
+        instructions: 'JSON URL returning the iterable list payload. Supports $ENV variables.'|t('influx'),
+        id: 'endpoint',
+        name: 'endpoint',
+        value: link.endpoint,
+        errors: link.getErrors('endpoint'),
+        disabled: readOnly,
+    }) }}
 
-{# --- Endpoints ---------------------------------------------------------- #}
+    {{ forms.textField({
+        label: 'Per-item endpoint'|t('influx'),
+        instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
+        id: 'itemEndpoint',
+        name: 'itemEndpoint',
+        value: link.itemEndpoint,
+        disabled: readOnly,
+    }) }}
 
-<h2>{{ 'Endpoints'|t('influx') }}</h2>
+    {% set siteEndpointRows = [] %}
+    {% for handle, url in link.siteEndpoints %}
+        {% set siteEndpointRows = siteEndpointRows|merge([{key: handle, value: url}]) %}
+    {% endfor %}
 
-{{ forms.textField({
-    label: 'List endpoint'|t('influx'),
-    instructions: 'JSON URL returning the iterable list payload. Supports $ENV variables.'|t('influx'),
-    id: 'endpoint',
-    name: 'endpoint',
-    value: link.endpoint,
-    errors: link.getErrors('endpoint'),
-    disabled: readOnly,
-}) }}
+    {{ forms.editableTableField({
+        label: 'Per-site endpoints'|t('influx'),
+        instructions: 'Optional. When set, the link runs once per listed site and writes localized data to the same canonical element.'|t('influx'),
+        id: 'siteEndpoints',
+        name: 'siteEndpoints',
+        cols: {
+            key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
+            value: { heading: 'Endpoint URL'|t('influx'), type: 'singleline', code: true },
+        },
+        rows: siteEndpointRows,
+        addRowLabel: 'Add a site endpoint'|t('influx'),
+        allowAdd: not readOnly,
+        allowDelete: not readOnly,
+        allowReorder: not readOnly,
+        static: readOnly,
+    }) }}
 
-{{ forms.textField({
-    label: 'Per-item endpoint'|t('influx'),
-    instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
-    id: 'itemEndpoint',
-    name: 'itemEndpoint',
-    value: link.itemEndpoint,
-    disabled: readOnly,
-}) }}
+    <h2>{{ 'Processing actions'|t('influx') }}</h2>
 
-{% set siteEndpointRows = [] %}
-{% for handle, url in link.siteEndpoints %}
-    {% set siteEndpointRows = siteEndpointRows|merge([{key: handle, value: url}]) %}
-{% endfor %}
+    {{ forms.checkboxGroupField({
+        label: 'Allowed actions'|t('influx'),
+        instructions: 'What the sync engine is allowed to do.'|t('influx'),
+        id: 'processing',
+        name: 'processing',
+        options: processingOptions,
+        values: link.processing,
+        disabled: readOnly,
+    }) }}
+</div>
 
-{{ forms.editableTableField({
-    label: 'Per-site endpoints'|t('influx'),
-    instructions: 'Optional. When set, the link runs once per listed site and writes localized data to the same canonical element.'|t('influx'),
-    id: 'siteEndpoints',
-    name: 'siteEndpoints',
-    cols: {
-        key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
-        value: { heading: 'Endpoint URL'|t('influx'), type: 'singleline', code: true },
-    },
-    rows: siteEndpointRows,
-    addRowLabel: 'Add a site endpoint'|t('influx'),
-    allowAdd: not readOnly,
-    allowDelete: not readOnly,
-    allowReorder: not readOnly,
-    static: readOnly,
-}) }}
+{# =====================================================================
+   Pagination
+   ===================================================================== #}
+<div id="pagination" class="hidden">
+    <h2>{{ 'Response shape'|t('influx') }}</h2>
 
-{# --- Auth headers ------------------------------------------------------- #}
+    <p class="light">{{ 'Use the “Fetch sample” button to populate the dropdowns below from a live response.'|t('influx') }}</p>
 
-{% set headerRows = [] %}
-{% for h, v in link.headers %}
-    {% set headerRows = headerRows|merge([{key: h, value: v}]) %}
-{% endfor %}
+    {% set rootOptions = [{value: '', label: '(response root)'|t('influx')}] %}
+    {% if link.rootNode %}
+        {% set rootOptions = rootOptions|merge([{value: link.rootNode, label: link.rootNode}]) %}
+    {% endif %}
 
-{{ forms.editableTableField({
-    label: 'Headers'|t('influx'),
-    instructions: '<code>$VAR</code> values resolve from <code>.env</code> at fetch time.'|t('influx')|raw,
-    id: 'headers',
-    name: 'headers',
-    cols: {
-        key:   { heading: 'Name'|t('influx'), type: 'singleline', code: true },
-        value: { heading: 'Value'|t('influx'), type: 'singleline', code: true },
-    },
-    rows: headerRows,
-    addRowLabel: 'Add a header'|t('influx'),
-    allowAdd: not readOnly,
-    allowDelete: not readOnly,
-    allowReorder: not readOnly,
-    static: readOnly,
-}) }}
+    {{ forms.selectField({
+        label: 'Root node'|t('influx'),
+        instructions: 'Dot-path to the iterable list inside the response. Leave blank if the response itself is a JSON array.'|t('influx'),
+        id: 'rootNode',
+        name: 'rootNode',
+        options: rootOptions,
+        value: link.rootNode ?? '',
+        disabled: readOnly,
+    }) }}
 
-{# --- Response shape ----------------------------------------------------- #}
+    {% set paginatorOptions = [{value: '', label: '(none — single-page response)'|t('influx')}] %}
+    {% if link.paginatorNode %}
+        {% set paginatorOptions = paginatorOptions|merge([{value: link.paginatorNode, label: link.paginatorNode}]) %}
+    {% endif %}
 
-<h2>{{ 'Response shape'|t('influx') }}</h2>
+    {{ forms.selectField({
+        label: 'Paginator node'|t('influx'),
+        instructions: 'Dot-path to the next-page URL for cursor pagination. Leave blank if the response is single-page.'|t('influx'),
+        id: 'paginatorNode',
+        name: 'paginatorNode',
+        options: paginatorOptions,
+        value: link.paginatorNode ?? '',
+        disabled: readOnly,
+    }) }}
 
-{{ forms.textField({
-    label: 'Root node'|t('influx'),
-    instructions: 'Dot-path to the iterable list inside the response. Leave blank if the response is itself a JSON array.'|t('influx'),
-    id: 'rootNode',
-    name: 'rootNode',
-    class: 'code',
-    value: link.rootNode,
-    disabled: readOnly,
-}) }}
+    <h2>{{ 'Sliding-window presets'|t('influx') }}</h2>
 
-{{ forms.textField({
-    label: 'Paginator node'|t('influx'),
-    instructions: 'Dot-path to the next-page URL for cursor pagination. Leave blank if the response is single-page.'|t('influx'),
-    id: 'paginatorNode',
-    name: 'paginatorNode',
-    class: 'code',
-    value: link.paginatorNode,
-    disabled: readOnly,
-}) }}
+    {% set agoRows = [] %}
+    {% for key, preset in link.ago %}
+        {% set agoRows = agoRows|merge([{
+            key:        key,
+            since:      preset.since ?? '',
+            queryParam: preset.queryParam ?? '',
+            format:     preset.format ?? '',
+        }]) %}
+    {% endfor %}
 
-{# --- Match -------------------------------------------------------------- #}
+    {{ forms.editableTableField({
+        label: '"Sync from X ago" presets'|t('influx'),
+        instructions: 'Each preset becomes a button on the link page and a <code>--ago=KEY</code> option on the console command. <code>since</code> is anything PHP <code>DateTime::modify</code> accepts.'|t('influx')|raw,
+        id: 'ago',
+        name: 'ago',
+        cols: {
+            key:        { heading: 'Key'|t('influx'),         type: 'singleline', code: true },
+            since:      { heading: 'Since'|t('influx'),        type: 'singleline', code: true },
+            queryParam: { heading: 'Query param'|t('influx'),  type: 'singleline', code: true },
+            format:     { heading: 'Date format'|t('influx'),  type: 'singleline', code: true, info: 'Optional; defaults to ATOM.'|t('influx') },
+        },
+        rows: agoRows,
+        addRowLabel: 'Add a preset'|t('influx'),
+        allowAdd: not readOnly,
+        allowDelete: not readOnly,
+        allowReorder: not readOnly,
+        static: readOnly,
+    }) }}
+</div>
 
-<h2>{{ 'Match key'|t('influx') }}</h2>
-<p class="light">{{ 'How Influx pairs a remote item with an existing element across sites.'|t('influx') }}</p>
+{# =====================================================================
+   Mapping
+   ===================================================================== #}
+<div id="mapping" class="hidden">
+    {% if mappableFields is empty %}
+        <p class="light">
+            {{ 'Pick an element type (and a section, for entries) above, then save to see the destination fields here.'|t('influx') }}
+        </p>
+    {% else %}
+        <p class="light">
+            {{ 'For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use “Fetch sample” to populate the node dropdowns from a live response.'|t('influx') }}
+        </p>
 
-{{ forms.textField({
-    label: 'Match attribute'|t('influx'),
-    instructions: 'Element field handle used as the unique key (typically a custom plain-text field like <code>importId</code>).'|t('influx')|raw,
-    id: 'match-attribute',
-    name: 'match[attribute]',
-    class: 'code',
-    value: link.match.attribute ?? '',
-    errors: link.getErrors('match'),
-    required: true,
-    disabled: readOnly,
-}) }}
+        {% set nativeFields = mappableFields|filter(f => f.native) %}
+        {% set customFields = mappableFields|filter(f => not f.native) %}
 
-{{ forms.textField({
-    label: 'Match source'|t('influx'),
-    instructions: 'Dot-path into the JSON item that yields the match value.'|t('influx'),
-    id: 'match-source',
-    name: 'match[source]',
-    class: 'code',
-    value: link.match.source ?? '',
-    required: true,
-    disabled: readOnly,
-}) }}
+        <style>
+            .influx-mapping-list { margin-top: 12px; }
+            .influx-mapping-group { margin-bottom: 18px; border: 1px solid rgba(0,0,0,.1); border-radius: 5px; overflow: hidden; background: #fff; }
+            .influx-mapping-group-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f3f5f7; border-bottom: 1px solid rgba(0,0,0,.08); font-weight: 600; }
+            .influx-mapping-group-header .count { background: rgba(0,0,0,.08); border-radius: 9px; padding: 1px 7px; font-size: 11px; font-weight: 600; color: #444; }
+            .influx-mapping-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr); gap: 12px; align-items: center; padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,.05); }
+            .influx-mapping-row:last-child { border-bottom: none; }
+            .influx-mapping-row .meta { line-height: 1.2; }
+            .influx-mapping-row .meta .name { font-weight: 600; }
+            .influx-mapping-row .meta .handle { display: block; font-size: 11px; }
+            .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
+            .influx-auto-badge { display: none; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: #fff7d6; color: #8a6d00; border: 1px solid #f0d97a; font-size: 10px; font-weight: 600; vertical-align: middle; }
+            .influx-mapping-row[data-auto="true"] .influx-auto-badge { display: inline-block; }
+            .influx-mapping-headings { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr); gap: 12px; padding: 6px 12px; font-size: 11px; font-weight: 600; color: #777; text-transform: uppercase; letter-spacing: .04em; }
+        </style>
 
-{# --- Mappings ----------------------------------------------------------- #}
+        <div id="influx-mappings" class="influx-mapping-list">
+            {% for group in [
+                {label: 'Native fields'|t('influx'), fields: nativeFields},
+                {label: 'Custom fields'|t('influx'), fields: customFields},
+            ] %}
+                {% if group.fields|length %}
+                    <div class="influx-mapping-group">
+                        <div class="influx-mapping-group-header">
+                            <span>{{ group.label }}</span>
+                            <span class="count">{{ group.fields|length }}</span>
+                        </div>
+                        <div class="influx-mapping-headings">
+                            <div>{{ 'Field'|t('influx') }}</div>
+                            <div>{{ 'Source node'|t('influx') }}</div>
+                            <div>{{ 'Default value'|t('influx') }}</div>
+                        </div>
+                        {% for f in group.fields %}
+                            {% set savedNode    = link.mappings[f.handle].node ?? '' %}
+                            {% set savedType    = link.mappings[f.handle].type ?? 'PlainText' %}
+                            {% set savedDefault = link.mappings[f.handle].default ?? '' %}
 
-<h2>{{ 'Mappings'|t('influx') }}</h2>
+                            {% set rowOptions = [{value: '', label: '(no mapping)'|t('influx')}] %}
+                            {% if savedNode %}
+                                {% set rowOptions = rowOptions|merge([{value: savedNode, label: savedNode|replace({'.': ' → '})}]) %}
+                            {% endif %}
 
-{% set mappingRows = [] %}
-{% for handle, m in link.mappings %}
-    {% set mappingRows = mappingRows|merge([{
-        field:   handle,
-        type:    m.type ?? '',
-        node:    m.node ?? '',
-        options: m.options is defined ? (m.options|json_encode) : '',
-    }]) %}
-{% endfor %}
+                            <div class="influx-mapping-row"
+                                 data-field-handle="{{ f.handle }}"
+                                 data-auto="false"
+                                 data-needs-sample="true">
+                                <div class="meta">
+                                    <span class="name">{{ f.name }}</span>
+                                    <span class="influx-auto-badge"
+                                          title="{{ 'Filled in by Fetch sample. Pick a different node to override.'|t('influx') }}">
+                                        {{ 'auto'|t('influx') }}
+                                    </span>
+                                    <code class="handle light">{{ f.handle }}</code>
+                                </div>
+                                <div>
+                                    {{ hiddenInput("mappings[#{f.handle}][type]", savedType) }}
+                                    {{ forms.selectize({
+                                        id: "mapping-#{f.handle}",
+                                        name: "mappings[#{f.handle}][node]",
+                                        options: rowOptions,
+                                        value: savedNode,
+                                        disabled: readOnly,
+                                    }) }}
+                                </div>
+                                <div>
+                                    {% if f.defaultType == 'user' %}
+                                        {{ forms.selectize({
+                                            id: "mapping-#{f.handle}-default",
+                                            name: "mappings[#{f.handle}][default]",
+                                            options: userOptions,
+                                            value: savedDefault,
+                                            disabled: readOnly,
+                                        }) }}
+                                    {% else %}
+                                        {{ forms.text({
+                                            id: "mapping-#{f.handle}-default",
+                                            name: "mappings[#{f.handle}][default]",
+                                            value: savedDefault,
+                                            placeholder: '—',
+                                            disabled: readOnly,
+                                        }) }}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
 
-{{ forms.editableTableField({
-    label: 'Field mappings'|t('influx'),
-    instructions: 'Each row maps one node of the remote item onto one element attribute / custom field. <code>options</code> takes a JSON blob forwarded to the mapping class.'|t('influx')|raw,
-    id: 'mappings',
-    name: 'mappings',
-    cols: {
-        field:   { heading: 'Target field handle'|t('influx'), type: 'singleline', code: true },
-        type:    { heading: 'Type'|t('influx'),               type: 'select', options: mappingTypeOptions },
-        node:    { heading: 'Source node'|t('influx'),         type: 'singleline', code: true },
-        options: { heading: 'Options (JSON)'|t('influx'),      type: 'singleline', code: true },
-    },
-    rows: mappingRows,
-    addRowLabel: 'Add a mapping'|t('influx'),
-    allowAdd: not readOnly,
-    allowDelete: not readOnly,
-    allowReorder: not readOnly,
-    static: readOnly,
-}) }}
+        <h2 style="margin-top:24px;">{{ 'Match key'|t('influx') }}</h2>
+        <p class="light">
+            {{ 'How Influx pairs a remote item with an existing element across sites. The match value is read from the field’s configured source node above, so make sure that field has a mapping.'|t('influx') }}
+        </p>
 
-{# --- Processing actions ------------------------------------------------- #}
+        {{ forms.selectField({
+            label: 'Match attribute'|t('influx'),
+            instructions: 'The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.'|t('influx')|raw,
+            id: 'match-attribute',
+            name: 'match[attribute]',
+            options: matchFieldOptions,
+            value: link.match.attribute ?? '',
+            errors: link.getErrors('match'),
+            required: true,
+            disabled: readOnly,
+        }) }}
 
-<h2>{{ 'Processing actions'|t('influx') }}</h2>
+        {{ forms.textField({
+            label: 'Match source override'|t('influx'),
+            instructions: 'Optional. Dot-path into the JSON item to use as the match value, in case it differs from the source node configured for the match attribute above.'|t('influx'),
+            id: 'match-source',
+            name: 'match[source]',
+            class: 'code',
+            value: link.match.source ?? '',
+            disabled: readOnly,
+        }) }}
+    {% endif %}
+</div>
 
-{{ forms.checkboxGroupField({
-    label: 'Allowed actions'|t('influx'),
-    instructions: 'What the sync engine is allowed to do.'|t('influx'),
-    id: 'processing',
-    name: 'processing',
-    options: processingOptions,
-    values: link.processing,
-    disabled: readOnly,
-}) }}
+{# =====================================================================
+   Authentication
+   ===================================================================== #}
+<div id="authentication" class="hidden">
+    {{ forms.selectField({
+        label: 'Authentication type'|t('influx'),
+        instructions: 'How Influx should authenticate against the remote API. Token values support <code>$ENV</code> references so secrets never land in Project Config.'|t('influx')|raw,
+        id: 'auth-type',
+        name: 'auth[type]',
+        options: authTypeOptions,
+        value: link.auth.type ?? '',
+        toggle: true,
+        targetPrefix: 'auth-type-',
+        disabled: readOnly,
+    }) }}
 
-{# --- Ago presets -------------------------------------------------------- #}
+    {% tag 'div' with {
+        id: 'auth-type-bearer',
+        class: (link.auth.type ?? '') == 'bearer' ? null : 'hidden',
+    } %}
+        {{ forms.textField({
+            label: 'Token'|t('influx'),
+            instructions: 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'|t('influx')|raw,
+            id: 'auth-bearer-token',
+            name: 'auth[token]',
+            class: 'code',
+            value: (link.auth.type ?? '') == 'bearer' ? (link.auth.token ?? '') : '',
+            disabled: readOnly,
+        }) }}
+    {% endtag %}
 
-<h2>{{ 'Sliding-window presets'|t('influx') }}</h2>
+    {% tag 'div' with {
+        id: 'auth-type-custom',
+        class: (link.auth.type ?? '') == 'custom' ? null : 'hidden',
+    } %}
+        {{ forms.textField({
+            label: 'Header name'|t('influx'),
+            instructions: 'e.g. <code>X-API-Key</code>.'|t('influx')|raw,
+            id: 'auth-custom-header',
+            name: 'auth[header]',
+            class: 'code',
+            value: (link.auth.type ?? '') == 'custom' ? (link.auth.header ?? '') : '',
+            disabled: readOnly,
+        }) }}
+        {{ forms.textField({
+            label: 'Token'|t('influx'),
+            instructions: 'Used verbatim as the header value.'|t('influx'),
+            id: 'auth-custom-token',
+            name: 'auth[token]',
+            class: 'code',
+            value: (link.auth.type ?? '') == 'custom' ? (link.auth.token ?? '') : '',
+            disabled: readOnly,
+        }) }}
+    {% endtag %}
 
-{% set agoRows = [] %}
-{% for key, preset in link.ago %}
-    {% set agoRows = agoRows|merge([{
-        key:        key,
-        since:      preset.since ?? '',
-        queryParam: preset.queryParam ?? '',
-        format:     preset.format ?? '',
-    }]) %}
-{% endfor %}
+    {% tag 'div' with {
+        id: 'auth-type-querystring',
+        class: (link.auth.type ?? '') == 'querystring' ? null : 'hidden',
+    } %}
+        {{ forms.textField({
+            label: 'Parameter name'|t('influx'),
+            instructions: 'e.g. <code>api_key</code>.'|t('influx')|raw,
+            id: 'auth-querystring-param',
+            name: 'auth[param]',
+            class: 'code',
+            value: (link.auth.type ?? '') == 'querystring' ? (link.auth.param ?? '') : '',
+            disabled: readOnly,
+        }) }}
+        {{ forms.textField({
+            label: 'Token'|t('influx'),
+            instructions: 'Appended to every request as the parameter value.'|t('influx'),
+            id: 'auth-querystring-token',
+            name: 'auth[token]',
+            class: 'code',
+            value: (link.auth.type ?? '') == 'querystring' ? (link.auth.token ?? '') : '',
+            disabled: readOnly,
+        }) }}
+    {% endtag %}
+</div>
 
-{{ forms.editableTableField({
-    label: '"Sync from X ago" presets'|t('influx'),
-    instructions: 'Each preset becomes a button on the link page and a <code>--ago=KEY</code> option on the console command. <code>since</code> is anything PHP <code>DateTime::modify</code> accepts.'|t('influx')|raw,
-    id: 'ago',
-    name: 'ago',
-    cols: {
-        key:        { heading: 'Key'|t('influx'),         type: 'singleline', code: true },
-        since:      { heading: 'Since'|t('influx'),        type: 'singleline', code: true },
-        queryParam: { heading: 'Query param'|t('influx'),  type: 'singleline', code: true },
-        format:     { heading: 'Date format'|t('influx'),  type: 'singleline', code: true, info: 'Optional; defaults to ATOM.'|t('influx') },
-    },
-    rows: agoRows,
-    addRowLabel: 'Add a preset'|t('influx'),
-    allowAdd: not readOnly,
-    allowDelete: not readOnly,
-    allowReorder: not readOnly,
-    static: readOnly,
-}) }}
+{# =====================================================================
+   Settings
+   ===================================================================== #}
+<div id="settings" class="hidden">
+    {{ forms.textField({
+        label: 'Per-item cooldown (seconds)'|t('influx'),
+        instructions: 'Minimum interval between manual per-element syncs. Leave blank for the plugin default.'|t('influx'),
+        id: 'itemCooldown',
+        name: 'itemCooldown',
+        type: 'number',
+        size: 6,
+        value: link.itemCooldown,
+        disabled: readOnly,
+    }) }}
 
-{# --- Runtime settings --------------------------------------------------- #}
+    {{ forms.textField({
+        label: 'Batch size'|t('influx'),
+        instructions: 'Paginated processing batch size. Leave blank for the plugin default.'|t('influx'),
+        id: 'batchSize',
+        name: 'batchSize',
+        type: 'number',
+        size: 6,
+        value: link.batchSize,
+        disabled: readOnly,
+    }) }}
 
-<h2>{{ 'Runtime'|t('influx') }}</h2>
+    {{ forms.lightswitchField({
+        label: 'Take a DB backup before every run'|t('influx'),
+        instructions: 'Off by default. Mainly useful for destructive processing actions.'|t('influx'),
+        id: 'backup',
+        name: 'backup',
+        on: link.backup,
+        disabled: readOnly,
+    }) }}
+</div>
 
-{{ forms.textField({
-    label: 'Per-item cooldown (seconds)'|t('influx'),
-    instructions: 'Minimum interval between manual per-element syncs. Leave blank for the plugin default.'|t('influx'),
-    id: 'itemCooldown',
-    name: 'itemCooldown',
-    type: 'number',
-    size: 6,
-    value: link.itemCooldown,
-    disabled: readOnly,
-}) }}
+{% if not readOnly %}
+    {% set sectionId      = 'elementCriteria-section'|namespaceInputId %}
+    {% set typeId         = 'elementCriteria-type'|namespaceInputId %}
+    {% set endpointId     = 'endpoint'|namespaceInputId %}
+    {% set rootNodeId     = 'rootNode'|namespaceInputId %}
+    {% set paginatorId    = 'paginatorNode'|namespaceInputId %}
+    {% set mappingsId     = 'mappings'|namespaceInputId %}
+    {% set authTypeId     = 'auth-type'|namespaceInputId %}
+    {% set authBearerId   = 'auth-bearer-token'|namespaceInputId %}
+    {% set authCustomTId  = 'auth-custom-token'|namespaceInputId %}
+    {% set authCustomHId  = 'auth-custom-header'|namespaceInputId %}
+    {% set authQsTokenId  = 'auth-querystring-token'|namespaceInputId %}
+    {% set authQsParamId  = 'auth-querystring-param'|namespaceInputId %}
+    {% js %}
+        (() => {
+            // -- dependent entry-type dropdown -----------------------------
+            const sectionEntryTypes = {{ sectionEntryTypes|json_encode|raw }};
+            const $section = $('#{{ sectionId|e('js') }}');
+            const $type    = $('#{{ typeId|e('js') }}');
+            const placeholder = {{ '— Select —'|t('influx')|json_encode|raw }};
 
-{{ forms.textField({
-    label: 'Batch size'|t('influx'),
-    instructions: 'Paginated processing batch size. Leave blank for the plugin default.'|t('influx'),
-    id: 'batchSize',
-    name: 'batchSize',
-    type: 'number',
-    size: 6,
-    value: link.batchSize,
-    disabled: readOnly,
-}) }}
+            if ($section.length && $type.length) {
+                $section.on('change', () => {
+                    const types = sectionEntryTypes[$section.val()] || {};
+                    let html = '<option value="">' + placeholder + '</option>';
+                    Object.keys(types).forEach((h) => {
+                        html += '<option value="' + h + '">' + types[h] + '</option>';
+                    });
+                    $type.html(html);
+                });
+            }
 
-{{ forms.lightswitchField({
-    label: 'Take a DB backup before every run'|t('influx'),
-    id: 'backup',
-    name: 'backup',
-    on: link.backup,
-    disabled: readOnly,
-}) }}
+            // -- fetch sample ----------------------------------------------
+            const $btn = $('#influx-fetch-sample');
+            if (!$btn.length) return;
+
+            const $status      = $('#influx-fetch-status');
+            const $endpoint    = $('#{{ endpointId|e('js') }}');
+            const $rootNode    = $('#{{ rootNodeId|e('js') }}');
+            const $paginator   = $('#{{ paginatorId|e('js') }}');
+            const $mappingRows = $('#influx-mappings .influx-mapping-row');
+
+            const MAPPING_EMPTY_LABEL    = {{ '(no mapping)'|t('influx')|json_encode|raw }};
+            const ROOT_EMPTY_LABEL       = {{ '(response root)'|t('influx')|json_encode|raw }};
+            const PAGINATOR_EMPTY_LABEL  = {{ '(none — single-page response)'|t('influx')|json_encode|raw }};
+            const BTN_LABEL_DEFAULT      = {{ 'Fetch sample'|t('influx')|json_encode|raw }};
+            const BTN_LABEL_FETCHING     = {{ 'Fetching…'|t('influx')|json_encode|raw }};
+
+            // Selects whose options come from the remote sample. They start
+            // disabled and only get enabled after a successful fetch — so the
+            // user always picks from a current, verified node list.
+            const sampleDependentSelects = () => {
+                const list = [];
+                if ($rootNode.length)  list.push($rootNode[0]);
+                if ($paginator.length) list.push($paginator[0]);
+                $mappingRows.each(function () {
+                    const sel = this.querySelector('select[name$="[node]"]');
+                    if (sel) list.push(sel);
+                });
+                return list;
+            };
+
+            const toggleSampleSelects = (enabled) => {
+                sampleDependentSelects().forEach((sel) => {
+                    if (sel.selectize) {
+                        enabled ? sel.selectize.enable() : sel.selectize.disable();
+                    } else {
+                        sel.disabled = !enabled;
+                    }
+                });
+            };
+
+            // Lock down sample-dependent selects until Fetch sample succeeds.
+            toggleSampleSelects(false);
+
+            const setStatus = (klass, text) => {
+                $status
+                    .removeClass('light error success')
+                    .addClass(klass || 'light')
+                    .text(text || '');
+            };
+
+            const setButtonState = (state) => {
+                $btn
+                    .removeClass('loading influx-fetch-success influx-fetch-error')
+                    .prop('disabled', false);
+
+                switch (state) {
+                    case 'fetching':
+                        $btn.addClass('loading')
+                            .attr('data-icon', 'refresh')
+                            .prop('disabled', true)
+                            .text(BTN_LABEL_FETCHING);
+                        break;
+                    case 'success':
+                        $btn.addClass('influx-fetch-success')
+                            .attr('data-icon', 'check')
+                            .text(BTN_LABEL_DEFAULT);
+                        break;
+                    case 'error':
+                        $btn.addClass('influx-fetch-error')
+                            .attr('data-icon', 'remove')
+                            .text(BTN_LABEL_DEFAULT);
+                        break;
+                    default:
+                        $btn.attr('data-icon', 'download').text(BTN_LABEL_DEFAULT);
+                }
+            };
+
+            const repopulateSelect = ($select, candidates, suggested, emptyLabel) => {
+                if (!$select.length || !Array.isArray(candidates)) return;
+                const previous = $select.val();
+                const seen = new Set();
+                $select.empty();
+                $select.append($('<option/>', { value: '', text: emptyLabel }));
+                seen.add('');
+                candidates.forEach((c) => {
+                    if (typeof c !== 'string' || seen.has(c)) return;
+                    seen.add(c);
+                    $select.append($('<option/>', { value: c, text: c || emptyLabel }));
+                });
+                if (previous && !seen.has(previous)) {
+                    $select.append($('<option/>', { value: previous, text: previous }));
+                    seen.add(previous);
+                }
+                const target = (typeof suggested === 'string' && seen.has(suggested))
+                    ? suggested
+                    : (previous || '');
+                $select.val(target).trigger('change');
+            };
+
+            /**
+             * Replace the options on a per-field mapping <select> (and its
+             * Selectize wrapper, if any). Behaviour:
+             *   - If the field was already set, keep that value (never silently
+             *     overwrite a user's choice with a suggestion).
+             *   - Otherwise, if there's a suggestion, apply it and flag the
+             *     row as auto-matched so the badge shows.
+             *   - Values not in the new options are kept as extra options so
+             *     prior config never gets dropped.
+             *
+             * Returns true when the row was auto-filled.
+             */
+            const repopulateMappingRow = ($row, flatNodes, suggestedValue) => {
+                const $select = $row.find('select[name$="[node]"]');
+                if (!$select.length) return false;
+
+                const previous = $select.val() || '';
+                const selectize = $select[0].selectize;
+
+                const options = [{ value: '', text: MAPPING_EMPTY_LABEL }];
+                const seen = new Set(['']);
+
+                flatNodes.forEach((n) => {
+                    const v = (n && typeof n === 'object') ? n.value : n;
+                    const l = (n && typeof n === 'object') ? (n.label || v) : n;
+                    if (typeof v !== 'string' || seen.has(v)) return;
+                    seen.add(v);
+                    options.push({ value: v, text: l });
+                });
+
+                if (previous && !seen.has(previous)) {
+                    options.push({ value: previous, text: previous });
+                    seen.add(previous);
+                }
+
+                const hasSuggestion = (typeof suggestedValue === 'string') && seen.has(suggestedValue) && suggestedValue !== '';
+                const wasAuto = $row.attr('data-auto') === 'true';
+                // Auto-fill a fresh row, OR re-affirm an already-auto row
+                // if the same suggestion still applies. Never overwrite a
+                // value the user actually picked.
+                const isAuto = (previous === '' && hasSuggestion)
+                    || (wasAuto && hasSuggestion && suggestedValue === previous);
+                const target = (previous === '' && hasSuggestion) ? suggestedValue : previous;
+
+                // Silently rebuild options + set value; the change event we
+                // want to listen for is the user's, not ours.
+                $row.data('influx-programmatic', true);
+                try {
+                    if (selectize) {
+                        selectize.clearOptions(true);
+                        selectize.addOption(options);
+                        selectize.refreshOptions(false);
+                        selectize.setValue(target, true);
+                    } else {
+                        $select.empty();
+                        options.forEach((o) => $select.append($('<option/>', { value: o.value, text: o.text })));
+                        $select.val(target);
+                    }
+                } finally {
+                    $row.data('influx-programmatic', false);
+                }
+
+                setRowAuto($row, isAuto);
+                return isAuto;
+            };
+
+            const setRowAuto = ($row, isAuto) => {
+                $row.attr('data-auto', isAuto ? 'true' : 'false');
+                $row.find('.influx-auto-badge').toggle(isAuto);
+            };
+
+            // Any genuine user change on a mapping row clears the auto badge.
+            $('#influx-mappings').on('change', 'select[name$="[node]"]', function () {
+                const $row = $(this).closest('.influx-mapping-row');
+                if ($row.data('influx-programmatic')) return;
+                if ($row.attr('data-auto') === 'true') {
+                    setRowAuto($row, false);
+                }
+            });
+
+            /**
+             * Try to find a sensible default node for a given field handle
+             * based on the inspect report's mapping suggestions. Falls back
+             * to exact-name match in flatNodes, then to undefined (so the
+             * row's previously-saved value is preserved).
+             */
+            const suggestNodeForField = (fieldHandle, report) => {
+                const suggestions = report.mappingSuggestions || [];
+                const direct = suggestions.find((s) => s && s.field === fieldHandle);
+                if (direct && typeof direct.node === 'string') return direct.node;
+
+                const flat = report.flatNodes || [];
+                const exact = flat.find((n) => (n && (n.value === fieldHandle))
+                    || (typeof n === 'string' && n === fieldHandle));
+                if (exact) return (typeof exact === 'object' ? exact.value : exact);
+
+                return undefined;
+            };
+
+            // Reset the success/error icon back to default after a moment so
+            // the button is ready for the next attempt.
+            let resetTimer = null;
+            const scheduleReset = (delay) => {
+                clearTimeout(resetTimer);
+                resetTimer = setTimeout(() => setButtonState('idle'), delay);
+            };
+
+            $btn.on('click', () => {
+                clearTimeout(resetTimer);
+
+                if (!$endpoint.val()) {
+                    const msg = Craft.t('influx', 'Set a list endpoint first.');
+                    setStatus('error', msg);
+                    Craft.cp.displayError(msg);
+                    setButtonState('error');
+                    scheduleReset(2500);
+                    return;
+                }
+
+                const authType = $('#{{ authTypeId|e('js') }}').val() || '';
+                const tokenFor = {
+                    bearer:      $('#{{ authBearerId|e('js') }}'),
+                    custom:      $('#{{ authCustomTId|e('js') }}'),
+                    querystring: $('#{{ authQsTokenId|e('js') }}'),
+                };
+
+                const payload = {
+                    endpoint: $endpoint.val(),
+                    auth: {
+                        type:   authType,
+                        token:  (tokenFor[authType] && tokenFor[authType].val()) || '',
+                        header: $('#{{ authCustomHId|e('js') }}').val() || '',
+                        param:  $('#{{ authQsParamId|e('js') }}').val() || '',
+                    },
+                };
+
+                setButtonState('fetching');
+                setStatus('light', Craft.t('influx', 'Contacting endpoint…'));
+
+                Craft.sendActionRequest('POST', 'influx/links/fetch-sample', { data: payload })
+                    .then((response) => {
+                        const report = (response.data && response.data.report) || {};
+
+                        repopulateSelect($rootNode,
+                            report.rootNodeCandidates || [],
+                            report.rootNode,
+                            ROOT_EMPTY_LABEL);
+
+                        repopulateSelect($paginator,
+                            report.paginatorNodeCandidates || [],
+                            report.paginatorNode,
+                            PAGINATOR_EMPTY_LABEL);
+
+                        const flatNodes = report.flatNodes || [];
+                        let autoCount = 0;
+                        $mappingRows.each(function () {
+                            const $row = $(this);
+                            const handle = $row.data('field-handle');
+                            const suggested = suggestNodeForField(handle, report);
+                            if (repopulateMappingRow($row, flatNodes, suggested)) {
+                                autoCount += 1;
+                            }
+                        });
+
+                        // Selects can now safely be used — they hold a fresh
+                        // node list and the saved values, if any, are merged in.
+                        toggleSampleSelects(true);
+
+                        const nodeCount = flatNodes.length;
+                        const summary = Craft.t('influx',
+                            '{n} node{ns} available — merged with the existing selections. {a} field{as} auto-matched.',
+                            {
+                                n: nodeCount, ns: nodeCount === 1 ? '' : 's',
+                                a: autoCount, as: autoCount === 1 ? '' : 's',
+                            }
+                        );
+
+                        setStatus('success', summary);
+                        Craft.cp.displayNotice(summary);
+                        setButtonState('success');
+                        scheduleReset(4000);
+                    })
+                    .catch((e) => {
+                        const msg = (e && e.response && e.response.data && e.response.data.message)
+                            || (e && e.message)
+                            || Craft.t('influx', 'Fetch failed.');
+                        setStatus('error', msg);
+                        Craft.cp.displayError(msg);
+                        setButtonState('error');
+                        scheduleReset(4000);
+                    });
+            });
+        })();
+    {% endjs %}
+{% endif %}

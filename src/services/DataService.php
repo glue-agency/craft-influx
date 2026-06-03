@@ -30,15 +30,21 @@ class DataService extends Component
 
     public function fetch(Link $link, ?string $siteHandle = null, array $queryParams = []): array
     {
-        $url = $siteHandle
-            ? $link->endpointForSite($siteHandle)
-            : ($link->endpoint ? App::parseEnv($link->endpoint) : null);
+        $raw = $siteHandle
+            ? ($link->siteEndpoints[$siteHandle] ?? $link->endpoint)
+            : $link->endpoint;
 
-        if (!$url) {
+        if (!$raw) {
             throw new FeedFetchException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
         }
 
-        return $this->get($url, $link->resolvedHeaders(), $queryParams);
+        $url = $this->resolveUrl($raw, $link->handle);
+
+        $headers = [];
+        $query   = $queryParams;
+        $link->applyAuth($headers, $query);
+
+        return $this->get($url, $headers, $query);
     }
 
     public function fetchOne(Link $link, array $tokens, ?string $siteHandle = null): array
@@ -47,7 +53,7 @@ class DataService extends Component
             throw new FeedFetchException("Link '{$link->handle}' has no itemEndpoint configured.");
         }
 
-        $url = App::parseEnv($link->itemEndpoint);
+        $url = $this->resolveUrl($link->itemEndpoint, $link->handle);
 
         foreach ($tokens as $name => $value) {
             $url = str_replace('{' . $name . '}', rawurlencode((string)$value), $url);
@@ -57,12 +63,188 @@ class DataService extends Component
             $url = str_replace('{site}', rawurlencode($siteHandle), $url);
         }
 
-        return $this->get($url, $link->resolvedHeaders());
+        $headers = [];
+        $query   = [];
+        $link->applyAuth($headers, $query);
+
+        return $this->get($url, $headers, $query);
     }
 
-    public function fetchUrl(string $url, array $headers = []): array
+    public function fetchUrl(string $url, array $headers = [], array $query = []): array
     {
-        return $this->get($url, $headers);
+        return $this->get($url, $headers, $query);
+    }
+
+    /**
+     * Fetch the link's endpoint once and walk the resulting structure to
+     * suggest a rootNode, paginatorNode, and a starter set of PlainText
+     * mappings derived from the first item. Used by the "Fetch sample"
+     * button on the CP edit screen.
+     *
+     * @return array{
+     *   url: string,
+     *   rootNode: ?string,
+     *   rootNodeCandidates: string[],
+     *   paginatorNode: ?string,
+     *   paginatorNodeCandidates: string[],
+     *   sampleItem: ?array,
+     *   mappingSuggestions: list<array{field: string, type: string, node: string}>,
+     *   flatNodes: list<array{value: string, label: string}>,
+     * }
+     */
+    public function inspect(Link $link): array
+    {
+        $response = $this->fetch($link);
+
+        $rootCandidates = $this->findArrayPaths($response, '', 3);
+        $rootNode = $rootCandidates[0] ?? null;
+
+        $paginatorCandidates = $this->findPaginatorPaths($response);
+        $paginatorNode = $paginatorCandidates[0] ?? null;
+
+        $list = $rootNode === null
+            ? (is_array($response) ? array_values($response) : [])
+            : (is_array(Hash::get($response, $rootNode)) ? array_values(Hash::get($response, $rootNode)) : []);
+
+        $sampleItem = $list[0] ?? null;
+
+        $flatNodes = [];
+        $mappingSuggestions = [];
+        if (is_array($sampleItem)) {
+            foreach ($this->flattenLeafPaths($sampleItem, []) as $path) {
+                $flatNodes[] = ['value' => $path, 'label' => str_replace('.', ' → ', $path)];
+            }
+
+            foreach ($sampleItem as $key => $value) {
+                if (!is_string($key)) {
+                    continue;
+                }
+                if (is_scalar($value) || $value === null) {
+                    $mappingSuggestions[] = [
+                        'field' => $key,
+                        'type'  => 'PlainText',
+                        'node'  => $key,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'url'                     => App::parseEnv($link->endpoint ?? ''),
+            'rootNode'                => $rootNode,
+            'rootNodeCandidates'      => $rootCandidates,
+            'paginatorNode'           => $paginatorNode,
+            'paginatorNodeCandidates' => $paginatorCandidates,
+            'sampleItem'              => is_array($sampleItem) ? $sampleItem : null,
+            'mappingSuggestions'      => $mappingSuggestions,
+            'flatNodes'               => $flatNodes,
+        ];
+    }
+
+    /**
+     * Walk a sample item and return every leaf-path as a dot-separated string.
+     * Lists of objects expose only their first element's leaves (paths use
+     * the parent key, not the numeric index, to keep mappings stable).
+     *
+     * @return list<string>
+     */
+    private function flattenLeafPaths(mixed $value, array $prefix): array
+    {
+        if (!is_array($value)) {
+            return [$prefix ? implode('.', $prefix) : ''];
+        }
+
+        if (empty($value)) {
+            return [];
+        }
+
+        if (array_is_list($value)) {
+            return $this->flattenLeafPaths($value[0], $prefix);
+        }
+
+        $paths = [];
+        foreach ($value as $key => $child) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $childPrefix = array_merge($prefix, [$key]);
+            if (is_array($child) && !empty($child) && !array_is_list($child)) {
+                foreach ($this->flattenLeafPaths($child, $childPrefix) as $p) {
+                    $paths[] = $p;
+                }
+            } else {
+                $paths[] = implode('.', $childPrefix);
+            }
+        }
+        return $paths;
+    }
+
+    /**
+     * Walk a decoded JSON structure and collect dot-paths to lists-of-objects
+     * (i.e. probable rootNode locations). The empty path means the response
+     * itself is the list.
+     *
+     * @return string[]
+     */
+    private function findArrayPaths(mixed $value, string $prefix, int $depth): array
+    {
+        $paths = [];
+
+        if (!is_array($value)) {
+            return $paths;
+        }
+
+        if ($this->looksLikeListOfObjects($value)) {
+            $paths[] = $prefix;
+        }
+
+        if ($depth <= 0 || array_is_list($value)) {
+            return $paths;
+        }
+
+        foreach ($value as $key => $child) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $childPath = $prefix === '' ? $key : ($prefix . '.' . $key);
+            foreach ($this->findArrayPaths($child, $childPath, $depth - 1) as $p) {
+                $paths[] = $p;
+            }
+        }
+
+        return $paths;
+    }
+
+    private function looksLikeListOfObjects(array $value): bool
+    {
+        if (!array_is_list($value) || empty($value)) {
+            return false;
+        }
+        $first = $value[0];
+        return is_array($first) && !array_is_list($first);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function findPaginatorPaths(array $response): array
+    {
+        $candidates = [
+            'next', 'next_url', 'nextPageUrl',
+            'links.next', 'links.next_url',
+            'meta.next', 'meta.next_url', 'meta.next_page_url',
+            'paging.next', 'paging.next_url',
+            'pagination.next', 'pagination.next_url',
+        ];
+
+        $hits = [];
+        foreach ($candidates as $path) {
+            $value = Hash::get($response, $path);
+            if (is_string($value) && $value !== '') {
+                $hits[] = $path;
+            }
+        }
+        return $hits;
     }
 
     public function rootList(Link $link, array $response): array
@@ -74,6 +256,30 @@ class DataService extends Component
         $value = Hash::get($response, $link->rootNode);
 
         return is_array($value) ? array_values($value) : [];
+    }
+
+    /**
+     * Resolve `$ENV` references and `@alias` paths to a real URL. Throws a
+     * clear error if a reference can't be resolved, so we don't hand a
+     * literal `$VAR` / `@alias` string to cURL.
+     */
+    private function resolveUrl(string $raw, string $linkHandle): string
+    {
+        $resolved = App::parseEnv($raw);
+
+        if ($resolved === null) {
+            throw new FeedFetchException(
+                "Link '{$linkHandle}' endpoint '{$raw}' references an environment variable that isn't set."
+            );
+        }
+
+        if (!is_string($resolved) || str_starts_with($resolved, '@')) {
+            throw new FeedFetchException(
+                "Link '{$linkHandle}' endpoint '{$raw}' uses an alias that isn't registered in config/general.php → 'aliases'."
+            );
+        }
+
+        return $resolved;
     }
 
     private function get(string $url, array $headers = [], array $query = []): array
