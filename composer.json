@@ -1,13 +1,12 @@
 {
     "name": "tdm/craft-influx",
-    "description": "YAML-configured remote JSON feeds for Craft CMS. Hydrates existing element types (Entries, Calendar Events, etc.) from remote APIs.",
+    "description": "Connects Craft elements to external JSON APIs. Links are stored in Project Config.",
     "type": "craft-plugin",
     "license": "mit",
     "require": {
         "php": ">=8.2",
         "craftcms/cms": "^5.0",
-        "cakephp/utility": "^5.0",
-        "symfony/yaml": "^6.0||^7.0"
+        "cakephp/utility": "^5.0"
     },
     "autoload": {
         "psr-4": {

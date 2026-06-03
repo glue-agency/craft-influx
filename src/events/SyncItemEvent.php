@@ -4,7 +4,7 @@ namespace TDM\Influx\events;
 
 use craft\base\ElementInterface;
 use yii\base\Event;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
  * Fired around the processing of a single remote item.
@@ -20,7 +20,7 @@ use TDM\Influx\models\Feed;
  */
 class SyncItemEvent extends Event
 {
-    public Feed $feed;
+    public Link $link;
     public array $item = [];
     public ?ElementInterface $element = null;
     public ?string $siteHandle = null;

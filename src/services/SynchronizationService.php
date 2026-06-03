@@ -6,15 +6,15 @@ use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
-use TDM\Influx\events\SyncFeedEvent;
+use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
 use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
 use TDM\Influx\targets\ElementTargetInterface;
 
 /**
- * Owns the full sync lifecycle for a feed:
+ * Owns the full sync lifecycle for a link:
  *
  *   1. Pre-run hooks (event, optional backup).
  *   2. For each configured site (or the primary site if none configured),
@@ -28,44 +28,44 @@ use TDM\Influx\targets\ElementTargetInterface;
  */
 class SynchronizationService extends Component
 {
-    public const EVENT_BEFORE_SYNC_FEED = 'beforeSyncFeed';
-    public const EVENT_AFTER_SYNC_FEED = 'afterSyncFeed';
+    public const EVENT_BEFORE_SYNC_LINK = 'beforeSyncLink';
+    public const EVENT_AFTER_SYNC_LINK = 'afterSyncLink';
     public const EVENT_BEFORE_ITEM = 'beforeItem';
     public const EVENT_AFTER_ITEM_MAPPING = 'afterItemMapping';
     public const EVENT_AFTER_ITEM = 'afterItem';
 
     /**
-     * Run a full feed sync.
+     * Run a full link sync.
      *
-     * @param string|null $ago Key into $feed->ago presets, applied as a query param.
+     * @param string|null $ago Key into $link->ago presets, applied as a query param.
      * @param string $trigger One of: console, cp, queue, element
      */
-    public function syncFeed(
-        Feed $feed,
+    public function syncLink(
+        Link $link,
         ?string $ago = null,
         string $trigger = 'console',
     ): LogRecord {
         $plugin = Influx::getInstance();
 
-        $beforeEvent = new SyncFeedEvent(['feed' => $feed]);
-        $this->trigger(self::EVENT_BEFORE_SYNC_FEED, $beforeEvent);
+        $beforeEvent = new SyncLinkEvent(['link' => $link]);
+        $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
         if (!$beforeEvent->isValid) {
-            throw new InfluxException("Feed '{$feed->handle}' run cancelled by a beforeSyncFeed listener.");
+            throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        $plugin->backup->backupForFeed($feed);
+        $plugin->backup->backupForLink($link);
 
-        $log = $plugin->logs->start($feed, $trigger);
+        $log = $plugin->logs->start($link, $trigger);
 
-        $target = $this->resolveTarget($feed);
+        $target = $this->resolveTarget($link);
 
-        $queryParams = $this->agoQueryParams($feed, $ago);
+        $queryParams = $this->agoQueryParams($link, $ago);
 
         try {
-            $siteHandles = $feed->siteHandles() ?: [null];
+            $siteHandles = $link->siteHandles() ?: [null];
 
             foreach ($siteHandles as $siteHandle) {
-                $this->processSite($feed, $target, $siteHandle, $queryParams, $log);
+                $this->processSite($link, $target, $siteHandle, $queryParams, $log);
             }
 
             $plugin->logs->finish($log);
@@ -74,8 +74,8 @@ class SynchronizationService extends Component
             throw $e;
         }
 
-        $afterEvent = new SyncFeedEvent([
-            'feed'           => $feed,
+        $afterEvent = new SyncLinkEvent([
+            'link'           => $link,
             'itemsSeen'      => (int)$log->itemsSeen,
             'itemsCreated'   => (int)$log->itemsCreated,
             'itemsUpdated'   => (int)$log->itemsUpdated,
@@ -83,38 +83,38 @@ class SynchronizationService extends Component
             'itemsSkipped'   => (int)$log->itemsSkipped,
             'itemsDeleted'   => (int)$log->itemsDeleted,
         ]);
-        $this->trigger(self::EVENT_AFTER_SYNC_FEED, $afterEvent);
+        $this->trigger(self::EVENT_AFTER_SYNC_LINK, $afterEvent);
 
         return $log;
     }
 
     /**
-     * Sync a single existing element from its feed's itemEndpoint (the
+     * Sync a single existing element from its link's itemEndpoint (the
      * per-entry "Sync from remote" button).
      */
-    public function syncElement(Feed $feed, ElementInterface $element): LogRecord
+    public function syncElement(Link $link, ElementInterface $element): LogRecord
     {
         $plugin = Influx::getInstance();
-        $target = $this->resolveTarget($feed);
-        $matchAttr = $feed->matchAttribute()
-            ?? throw new InfluxException("Feed '{$feed->handle}' has no match attribute.");
+        $target = $this->resolveTarget($link);
+        $matchAttr = $link->matchAttribute()
+            ?? throw new InfluxException("Link '{$link->handle}' has no match attribute.");
 
         $matchValue = $element->$matchAttr;
         if (!$matchValue) {
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
-        $log = $plugin->logs->start($feed, 'element');
+        $log = $plugin->logs->start($link, 'element');
 
         try {
-            $siteHandles = $feed->siteHandles() ?: [null];
+            $siteHandles = $link->siteHandles() ?: [null];
 
             foreach ($siteHandles as $siteHandle) {
-                $item = $plugin->data->fetchOne($feed, ['id' => $matchValue], $siteHandle);
-                $this->processItem($feed, $target, $item, $siteHandle, $log);
+                $item = $plugin->data->fetchOne($link, ['id' => $matchValue], $siteHandle);
+                $this->processItem($link, $target, $item, $siteHandle, $log);
             }
 
-            $plugin->cooldown->mark($feed, $element);
+            $plugin->cooldown->mark($link, $element);
             $plugin->logs->finish($log);
         } catch (\Throwable $e) {
             $plugin->logs->fail($log, $e->getMessage());
@@ -124,48 +124,42 @@ class SynchronizationService extends Component
         return $log;
     }
 
-    /**
-     * Walk every page of a feed for a single site.
-     */
     private function processSite(
-        Feed $feed,
+        Link $link,
         ElementTargetInterface $target,
         ?string $siteHandle,
         array $queryParams,
         LogRecord $log,
     ): void {
         $plugin = Influx::getInstance();
-        $data = $plugin->data->fetch($feed, $siteHandle, $queryParams);
+        $data = $plugin->data->fetch($link, $siteHandle, $queryParams);
 
         while (true) {
-            foreach ($plugin->data->rootList($feed, $data) as $item) {
-                $this->processItem($feed, $target, $item, $siteHandle, $log);
+            foreach ($plugin->data->rootList($link, $data) as $item) {
+                $this->processItem($link, $target, $item, $siteHandle, $log);
             }
 
-            $nextUrl = $feed->paginatorNode
-                ? \Cake\Utility\Hash::get($data, $feed->paginatorNode)
+            $nextUrl = $link->paginatorNode
+                ? \Cake\Utility\Hash::get($data, $link->paginatorNode)
                 : null;
 
             if (!$nextUrl) {
                 break;
             }
 
-            $data = $plugin->data->fetchUrl($nextUrl, $feed->resolvedHeaders());
+            $data = $plugin->data->fetchUrl($nextUrl, $link->resolvedHeaders());
         }
     }
 
-    /**
-     * Process a single remote item: match-or-build, map, change-detect, save.
-     */
     private function processItem(
-        Feed $feed,
+        Link $link,
         ElementTargetInterface $target,
         array $item,
         ?string $siteHandle,
         LogRecord $log,
     ): void {
         $plugin = Influx::getInstance();
-        $matchValue = $feed->matchValue($item);
+        $matchValue = $link->matchValue($item);
 
         if ($matchValue === null) {
             $plugin->logs->recordItem(
@@ -173,7 +167,7 @@ class SynchronizationService extends Component
                 'skipped',
                 null,
                 null,
-                "Remote item has no value at match path '{$feed->match['source']}'.",
+                "Remote item has no value at match path '{$link->match['source']}'.",
                 $item,
             );
             return;
@@ -183,11 +177,11 @@ class SynchronizationService extends Component
             ? (Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id)
             : null;
 
-        $element = $target->findByMatchValue($feed, $matchValue, $siteId);
+        $element = $target->findByMatchValue($link, $matchValue, $siteId);
         $isNew = false;
 
         $beforeEvent = new SyncItemEvent([
-            'feed'       => $feed,
+            'link'       => $link,
             'item'       => $item,
             'element'    => $element,
             'siteHandle' => $siteHandle,
@@ -203,23 +197,20 @@ class SynchronizationService extends Component
         $element = $beforeEvent->element;
 
         if (!$element) {
-            if (!in_array('create', $feed->processing, true)) {
+            if (!in_array('create', $link->processing, true)) {
                 $plugin->logs->recordItem($log, 'skipped', null, (string)$matchValue, "No existing element and 'create' not enabled.");
                 return;
             }
-            $element = $target->buildNew($feed, $siteId);
-            // Stamp the match attribute on the new element so subsequent
-            // lookups find it. Custom fields go through setFieldValue;
-            // native attributes (rare for match) fall through.
-            $matchAttr = $feed->matchAttribute();
+            $element = $target->buildNew($link, $siteId);
+            $matchAttr = $link->matchAttribute();
             if ($element->hasAttribute($matchAttr) || property_exists($element, $matchAttr)) {
                 $element->$matchAttr = $matchValue;
             } else {
                 $element->setFieldValue($matchAttr, $matchValue);
             }
             $isNew = true;
-        } elseif (!in_array('update', $feed->processing, true)) {
-            $plugin->logs->recordItem($log, 'skipped', $element->id, (string)$matchValue, "'update' not enabled for this feed.");
+        } elseif (!in_array('update', $link->processing, true)) {
+            $plugin->logs->recordItem($log, 'skipped', $element->id, (string)$matchValue, "'update' not enabled for this link.");
             return;
         }
 
@@ -227,28 +218,25 @@ class SynchronizationService extends Component
             $element->siteId = $siteId;
         }
 
-        // Apply mappings, tracking whether any of them want to change the
-        // element. The save is gated on this so unchanged items skip the
-        // expensive content-version churn that Craft does on every save.
         $changed = $isNew;
         $mappingsService = $plugin->mapping;
 
-        foreach ($feed->mappings as $targetField => $config) {
+        foreach ($link->mappings as $targetField => $config) {
             if (!is_array($config) || !isset($config['type'])) {
                 continue;
             }
 
             $mapping = $mappingsService->get($config['type']);
 
-            if (!$changed && $mapping->hasChanged($element, $targetField, $item, $config, $feed)) {
+            if (!$changed && $mapping->hasChanged($element, $targetField, $item, $config, $link)) {
                 $changed = true;
             }
 
-            $mapping->apply($element, $targetField, $item, $config, $feed);
+            $mapping->apply($element, $targetField, $item, $config, $link);
         }
 
         $afterMappingEvent = new SyncItemEvent([
-            'feed'       => $feed,
+            'link'       => $link,
             'item'       => $item,
             'element'    => $element,
             'siteHandle' => $siteHandle,
@@ -258,7 +246,7 @@ class SynchronizationService extends Component
         if (!$changed) {
             $plugin->logs->recordItem($log, 'unchanged', $element->id, (string)$matchValue);
             $afterEvent = new SyncItemEvent([
-                'feed' => $feed, 'item' => $item, 'element' => $element,
+                'link' => $link, 'item' => $item, 'element' => $element,
                 'siteHandle' => $siteHandle, 'action' => 'unchanged',
             ]);
             $this->trigger(self::EVENT_AFTER_ITEM, $afterEvent);
@@ -277,28 +265,28 @@ class SynchronizationService extends Component
         );
 
         $afterEvent = new SyncItemEvent([
-            'feed' => $feed, 'item' => $item, 'element' => $element,
+            'link' => $link, 'item' => $item, 'element' => $element,
             'siteHandle' => $siteHandle, 'action' => $action,
         ]);
         $this->trigger(self::EVENT_AFTER_ITEM, $afterEvent);
     }
 
-    private function resolveTarget(Feed $feed): ElementTargetInterface
+    private function resolveTarget(Link $link): ElementTargetInterface
     {
-        $target = Influx::getInstance()->targets->forFeed($feed);
+        $target = Influx::getInstance()->targets->forLink($link);
         if (!$target) {
-            throw new InfluxException("No element target registered for '{$feed->elementType}'.");
+            throw new InfluxException("No element target registered for '{$link->elementType}'.");
         }
         return $target;
     }
 
-    private function agoQueryParams(Feed $feed, ?string $ago): array
+    private function agoQueryParams(Link $link, ?string $ago): array
     {
-        if (!$ago || !isset($feed->ago[$ago])) {
+        if (!$ago || !isset($link->ago[$ago])) {
             return [];
         }
 
-        $preset = $feed->ago[$ago];
+        $preset = $link->ago[$ago];
         if (!isset($preset['since'], $preset['queryParam'])) {
             return [];
         }

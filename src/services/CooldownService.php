@@ -6,22 +6,21 @@ use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
- * Per-element manual-sync rate limiter, backed by Craft's cache. Stores the
- * unix timestamp of the next allowed sync per (feed, element).
+ * Per-element manual-sync rate limiter, backed by Craft's cache.
  */
 class CooldownService extends Component
 {
-    private function key(Feed $feed, ElementInterface $element): string
+    private function key(Link $link, ElementInterface $element): string
     {
-        return "influx:cooldown:{$feed->handle}:{$element->id}";
+        return "influx:cooldown:{$link->handle}:{$element->id}";
     }
 
-    public function remaining(Feed $feed, ElementInterface $element): int
+    public function remaining(Link $link, ElementInterface $element): int
     {
-        $until = Craft::$app->getCache()->get($this->key($feed, $element));
+        $until = Craft::$app->getCache()->get($this->key($link, $element));
         if (!$until) {
             return 0;
         }
@@ -29,13 +28,13 @@ class CooldownService extends Component
         return max(0, $diff);
     }
 
-    public function mark(Feed $feed, ElementInterface $element): void
+    public function mark(Link $link, ElementInterface $element): void
     {
         $defaultCooldown = Influx::getInstance()->getSettings()->defaultItemCooldown;
-        $cooldown = $feed->effectiveItemCooldown($defaultCooldown);
+        $cooldown = $link->effectiveItemCooldown($defaultCooldown);
 
         Craft::$app->getCache()->set(
-            $this->key($feed, $element),
+            $this->key($link, $element),
             time() + $cooldown,
             $cooldown,
         );

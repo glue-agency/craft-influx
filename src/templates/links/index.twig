@@ -1,0 +1,102 @@
+{% extends "_layouts/cp" %}
+{% set title = "Links"|t("influx") %}
+{% set selectedSubnavItem = "links" %}
+
+{% import "_includes/forms" as forms %}
+
+{% block actionButton %}
+    {% if not readOnly %}
+        <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
+            {{ "New link"|t("influx") }}
+        </a>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if links is empty %}
+        <div class="zilch">
+            <p>{{ "No links yet."|t("influx") }}</p>
+            {% if not readOnly %}
+                <p>
+                    <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
+                        {{ "Create your first link"|t("influx") }}
+                    </a>
+                </p>
+            {% else %}
+                <p class="light">{{ "Administrative changes are disallowed in this environment."|t("influx") }}</p>
+            {% endif %}
+        </div>
+    {% else %}
+        <div id="content" class="content-pane">
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th>{{ "Name"|t("influx") }}</th>
+                        <th>{{ "Handle"|t("influx") }}</th>
+                        <th>{{ "Target"|t("influx") }}</th>
+                        <th>{{ "Sites"|t("influx") }}</th>
+                        <th>{{ "Last run"|t("influx") }}</th>
+                        <th></th>
+                        {% if not readOnly %}<th></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for link in links %}
+                        {% set lastRun = lastRuns[link.handle] ?? null %}
+                        <tr>
+                            <td>
+                                <a href="{{ cpUrl('influx/links/' ~ link.handle) }}">
+                                    <strong>{{ link.name }}</strong>
+                                </a>
+                            </td>
+                            <td><code>{{ link.handle }}</code></td>
+                            <td>
+                                <code>{{ link.elementType|replace({"craft\\elements\\": ""}) }}</code>
+                                {% if link.elementCriteria.section is defined %}
+                                    <span class="light">/ {{ link.elementCriteria.section }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% set sites = link.siteHandles() %}
+                                {% if sites is empty %}
+                                    <span class="light">{{ "primary"|t("influx") }}</span>
+                                {% else %}
+                                    {{ sites|join(", ") }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if lastRun %}
+                                    <span class="status {{ lastRun.status == "ok" ? "live" : (lastRun.status == "error" ? "expired" : "pending") }}"></span>
+                                    {{ lastRun.startedAt|datetime("short") }}
+                                    <span class="light">
+                                        ({{ lastRun.itemsCreated }}c / {{ lastRun.itemsUpdated }}u / {{ lastRun.itemsUnchanged }}=)
+                                    </span>
+                                {% else %}
+                                    <span class="light">{{ "never"|t("influx") }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="thin">
+                                <form method="post" accept-charset="UTF-8" class="inline-block">
+                                    {{ csrfInput() }}
+                                    {{ actionInput("influx/synchronization/link") }}
+                                    {{ hiddenInput("handle", link.handle) }}
+                                    <button type="submit" class="btn small" data-icon="refresh">
+                                        {{ "Sync"|t("influx") }}
+                                    </button>
+                                </form>
+                            </td>
+                            {% if not readOnly %}
+                                <td class="thin">
+                                    <a href="{{ cpUrl('influx/links/' ~ link.handle ~ '/edit') }}"
+                                       class="btn small"
+                                       data-icon="edit"
+                                       title="{{ 'Edit'|t('influx') }}"></a>
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}

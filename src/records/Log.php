@@ -7,7 +7,7 @@ use TDM\Influx\db\Table;
 
 /**
  * @property int $id
- * @property string $feedHandle
+ * @property string $linkHandle
  * @property string $trigger
  * @property ?string $siteHandle
  * @property string $status

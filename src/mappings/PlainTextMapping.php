@@ -3,7 +3,7 @@
 namespace TDM\Influx\mappings;
 
 use craft\base\ElementInterface;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
  * Maps a scalar JSON node onto a plain-text destination — either a native
@@ -26,7 +26,7 @@ class PlainTextMapping extends AbstractMapping
         string $targetFieldHandle,
         array $item,
         array $config,
-        Feed $feed,
+        Link $link,
     ): bool {
         $value = $this->resolve($item, $config);
 
@@ -44,7 +44,7 @@ class PlainTextMapping extends AbstractMapping
         string $targetFieldHandle,
         array $item,
         array $config,
-        Feed $feed,
+        Link $link,
     ): bool {
         $current = $this->currentValue($element, $targetFieldHandle);
         $incoming = $this->resolve($item, $config);

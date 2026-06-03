@@ -4,13 +4,13 @@ namespace TDM\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {
-    public function handles(Feed $feed): bool
+    public function handles(Link $link): bool
     {
-        return ltrim($feed->elementType, '\\') === ltrim(static::elementType(), '\\');
+        return ltrim($link->elementType, '\\') === ltrim(static::elementType(), '\\');
     }
 
     public function disable(ElementInterface $element): bool

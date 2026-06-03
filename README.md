@@ -1,25 +1,21 @@
 # Influx
 
-YAML-configured remote JSON feeds for Craft CMS. A lighter, file-config alternative to FeedMe that **hydrates existing element types** (Entries, Calendar Events, Commerce Products, ...) instead of owning its own element type.
+Connect Craft elements to external JSON APIs. A lighter, Project-Config-backed alternative to FeedMe that **hydrates existing element types** (Entries, Calendar Events, Commerce Products, …) instead of owning its own element type.
 
-## Why another feed plugin
+## Why another sync plugin
 
 FeedMe carries a lot of historical surface area (XML, CSV, complex UIs, project-config quirks). Influx makes a few opinionated cuts:
 
-- **YAML-only configuration.** Feeds live in `config/influx/*.yaml` and are version-controlled. No DB-backed configs, no Project Config writes, no per-environment drift.
+- **Project Config is the source of truth.** Links live under `influx.links.{uid}` and round-trip to YAML the same way sections, entry types, and volumes do — full diff, full deploy story, full `allowAdminChanges` gating.
 - **JSON only.** One transport, one parser.
 - **Hydrates, doesn't own.** Influx writes to whatever element type you point it at. Hooking it to Solspace Calendar's `Event` is a target adapter, not a fork.
 - **Change-detection before save.** Each mapping reports whether it would change anything; unchanged elements skip the save entirely.
 - **`.env`-backed auth headers** resolved at fetch-time.
-- **Per-language endpoints in a single feed.** One feed can fan out across Craft sites and write localized values onto the same canonical element.
-
-## Status
-
-First-cut vertical slice. Loads YAML, syncs JSON onto Entries, logs every item, exposes a console command and a per-entry "Sync from remote" button. **Not yet** implemented — see [Roadmap](#roadmap).
+- **Per-language endpoints in a single link.** One link can fan out across Craft sites and write localized values onto the same canonical element.
 
 ## Requirements
 
-- Craft CMS 5.0 or later
+- Craft CMS 5.0+
 - PHP 8.2+
 
 ## Installation
@@ -31,35 +27,16 @@ composer require tdm/craft-influx
 
 ## Quick start
 
-Create `config/influx/news.yaml`:
-
-```yaml
-handle: news
-name: News
-elementType: craft\elements\Entry
-elementCriteria:
-  section: news
-  type: article
-endpoint: $REMOTE_NEWS_URL
-headers:
-  Authorization: 'Bearer $REMOTE_NEWS_TOKEN'
-rootNode: data.items
-match:
-  attribute: importId
-  source: id
-mappings:
-  title:    { type: PlainText, node: title }
-  slug:     { type: PlainText, node: slug }
-  importId: { type: PlainText, node: id }
-```
-
-Then:
+1. Open `Influx → Links` in the CP and click **New link** (requires `allowAdminChanges`).
+2. Fill in the form. The shape mirrors Craft's own Sections / Entry Types editors.
+3. Save. The link is written to Project Config; commit the resulting YAML in `config/project/`.
+4. Trigger a sync from the link page, the entry edit page, or the CLI:
 
 ```bash
-./craft influx/sync news
+./craft influx/sync news               # one link by handle
+./craft influx/sync --all              # everything
+./craft influx/sync news --ago=hour    # use a named "ago" preset
 ```
-
-A worked-example YAML showing every option lives at [`src/resources/example.yaml`](src/resources/example.yaml).
 
 ## Concepts
 
@@ -68,7 +45,6 @@ A worked-example YAML showing every option lives at [`src/resources/example.yaml
 A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`). Third-party plugins register their own:
 
 ```php
-use TDM\Influx\Influx;
 use TDM\Influx\services\TargetsService;
 
 Event::on(
@@ -78,7 +54,7 @@ Event::on(
 );
 ```
 
-A target implements `ElementTargetInterface`: it knows how to find an existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable/delete/delete-for-site.
+A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable/delete/delete-for-site.
 
 ### Mappings
 
@@ -88,49 +64,38 @@ Built-in: `PlainText`. Add more by implementing `MappingInterface` and registeri
 
 ### Match
 
-Every feed needs a match config: `attribute` is the field/handle on the element used as a stable key (typically a custom plain-text field called `importId`), `source` is the path into the JSON item that provides the value. Influx looks up the existing element by this attribute across all sites — that's how multi-language feeds land on the same canonical entry.
+Every link needs a match config: `attribute` is the field/handle on the element used as a stable key (typically a custom plain-text field called `importId`), `source` is the path into the JSON item that provides the value. Influx looks up the existing element by this attribute across all sites — that's how multi-language links land on the same canonical entry.
 
 ### Multi-site
 
-Set `siteEndpoints` and the feed runs once per site. The element is matched once across all sites, so each site's data lands on the right localized row of the same element.
+Set per-site endpoints and the link runs once per site. The element is matched once across all sites, so each site's data lands on the right localized row of the same element.
 
 ### Events
 
 Hook into any stage:
 
-- `SynchronizationService::EVENT_BEFORE_SYNC_FEED` / `EVENT_AFTER_SYNC_FEED`
+- `LinksService::EVENT_BEFORE_SAVE_LINK` / `EVENT_AFTER_SAVE_LINK`
+- `LinksService::EVENT_BEFORE_DELETE_LINK` / `EVENT_AFTER_DELETE_LINK`
+- `SynchronizationService::EVENT_BEFORE_SYNC_LINK` / `EVENT_AFTER_SYNC_LINK`
 - `SynchronizationService::EVENT_BEFORE_ITEM` — set `$event->skip = true` or swap `$event->element` to redirect
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
 - `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `skipped` / `error`
 - `TargetsService::EVENT_REGISTER_TARGETS`
 - `MappingService::EVENT_REGISTER_MAPPINGS`
 
-## CLI
-
-```
-./craft influx/sync <handle[,handle,...]>     # one or more feeds
-./craft influx/sync --all                     # everything
-./craft influx/sync news --ago=hour           # apply a named "ago" preset
-```
-
 ## Design decisions
 
-- **YAML files, not Project Config.** Feed configs are intended for devs only. The CP shows a list, exposes "Duplicate" (writes a new YAML file the dev then commits), shows logs, and triggers runs — it never edits feed structure.
-- **One feed = one canonical element across all sites.** Multi-site feeds share the same match value across `siteEndpoints`; per-site Craft rows on that element receive site-localized data.
+- **Project Config, not custom YAML.** Earlier drafts wrote feed YAML to `config/influx/`. That worked but reinvented the wheel — Craft's Project Config already does YAML round-tripping, `allowAdminChanges` gating, change tracking, and deploy ergonomics. Influx uses it.
+- **One link = one canonical element across all sites.** Multi-site links share the same match value across per-site endpoints; per-site Craft rows on that element receive site-localized data.
 - **Change detection is mapping-driven.** Each mapping implements `hasChanged()` because a single `==` against the element value gives false-positives on relations, dates, matrix/super-table.
 
 ## Roadmap
 
-Not in the first cut, in roughly the order they'd be added:
-
 - [ ] Delete/disable/delete-for-site reconciliation for items that have left the remote feed.
 - [ ] Queue-job-based runs and batching (`batchSize` is honoured by config but the engine currently runs inline).
-- [ ] CP feeds list, view, and duplicate buttons (the controller skeleton exists; templates don't).
-- [ ] Logs UI (the data is in place, the templates aren't).
-- [ ] Webhook entry point for push-style feeds.
 - [ ] Mappings beyond `PlainText`: Number, Lightswitch, Date, Entries (relations), Categories, Tags, Assets, Matrix, SuperTable.
-- [ ] Solspace Calendar target adapter (and example tests).
-- [ ] Plain old assertion tests against a recorded fixture.
+- [ ] Webhook entry point for push-style links.
+- [ ] Solspace Calendar target adapter.
 
 ## License
 

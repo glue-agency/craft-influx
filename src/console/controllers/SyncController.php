@@ -8,12 +8,12 @@ use TDM\Influx\Influx;
 use yii\console\ExitCode;
 
 /**
- * `./craft influx/sync` — kick off feed runs from the CLI.
+ * `./craft influx/sync` — kick off link runs from the CLI.
  *
- *   ./craft influx/sync news                 # one feed
+ *   ./craft influx/sync news                 # one link
  *   ./craft influx/sync news,events          # multiple
  *   ./craft influx/sync --all                # everything
- *   ./craft influx/sync news --ago=hour      # use the "hour" preset from the feed YAML
+ *   ./craft influx/sync news --ago=hour      # use the "hour" preset from the link config
  */
 class SyncController extends Controller
 {
@@ -35,28 +35,28 @@ class SyncController extends Controller
         $plugin = Influx::getInstance();
 
         if ($this->all) {
-            $feeds = $plugin->feeds->all();
+            $links = $plugin->links->getAllLinks();
         } else {
             $handleList = array_filter(array_map('trim', explode(',', $handles)));
             if (!$handleList) {
-                $this->stderr("Pass one or more feed handles, or --all\n");
+                $this->stderr("Pass one or more link handles, or --all\n");
                 return ExitCode::USAGE;
             }
-            $feeds = [];
+            $links = [];
             foreach ($handleList as $handle) {
-                $feed = $plugin->feeds->getByHandle($handle);
-                if (!$feed) {
-                    $this->stderr("Feed '{$handle}' not found.\n");
+                $link = $plugin->links->getLinkByHandle($handle);
+                if (!$link) {
+                    $this->stderr("Link '{$handle}' not found.\n");
                     return ExitCode::DATAERR;
                 }
-                $feeds[$handle] = $feed;
+                $links[$handle] = $link;
             }
         }
 
-        foreach ($feeds as $feed) {
-            $this->stdout("→ Syncing '{$feed->handle}'\n");
+        foreach ($links as $link) {
+            $this->stdout("→ Syncing '{$link->handle}'\n");
             try {
-                $log = $plugin->synchronization->syncFeed($feed, $this->ago, 'console');
+                $log = $plugin->synchronization->syncLink($link, $this->ago, 'console');
                 $this->stdout(sprintf(
                     "  done. seen=%d created=%d updated=%d unchanged=%d skipped=%d\n",
                     $log->itemsSeen,

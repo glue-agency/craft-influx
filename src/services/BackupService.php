@@ -4,13 +4,10 @@ namespace TDM\Influx\services;
 
 use Craft;
 use craft\base\Component;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
- * Per-feed pre-run DB backup. Delegates to Craft's own backup machinery.
- *
- * Backups are off by default — only feeds with `backup: true` trigger one,
- * and only once per run regardless of how many sites the feed touches.
+ * Per-link pre-run DB backup. Delegates to Craft's own backup machinery.
  */
 class BackupService extends Component
 {
@@ -18,9 +15,9 @@ class BackupService extends Component
      * @return string|null Path to the backup file, or null if backup is off /
      *                     could not be taken.
      */
-    public function backupForFeed(Feed $feed): ?string
+    public function backupForLink(Link $link): ?string
     {
-        if (!$feed->backup) {
+        if (!$link->backup) {
             return null;
         }
 
@@ -28,8 +25,8 @@ class BackupService extends Component
             return Craft::$app->getDb()->backup();
         } catch (\Throwable $e) {
             Craft::error(
-                "Influx: backup for feed '{$feed->handle}' failed: " . $e->getMessage(),
-                __METHOD__
+                "Influx: backup for link '{$link->handle}' failed: " . $e->getMessage(),
+                __METHOD__,
             );
             return null;
         }

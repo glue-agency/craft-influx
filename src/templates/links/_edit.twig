@@ -1,0 +1,320 @@
+{% set readOnly = readOnly ?? false %}
+
+{% import "_includes/forms.twig" as forms %}
+
+{% if not readOnly %}
+    {% if link.uid %}{{ hiddenInput('uid', link.uid) }}{% endif %}
+{% endif %}
+
+{# --- Identification ----------------------------------------------------- #}
+
+{{ forms.textField({
+    first: true,
+    label: 'Name'|t('influx'),
+    instructions: 'What this link will be called in the control panel.'|t('influx'),
+    id: 'name',
+    name: 'name',
+    value: link.name,
+    errors: link.getErrors('name'),
+    autofocus: true,
+    required: true,
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Handle'|t('influx'),
+    instructions: 'Identifier used in console commands and event keys.'|t('influx'),
+    id: 'handle',
+    name: 'handle',
+    class: 'code',
+    autocorrect: false,
+    autocapitalize: false,
+    value: link.handle,
+    errors: link.getErrors('handle'),
+    required: true,
+    disabled: readOnly,
+}) }}
+
+{{ forms.selectField({
+    label: 'Element type'|t('influx'),
+    instructions: 'Which kind of element this link hydrates. Only registered targets are listed.'|t('influx'),
+    id: 'elementType',
+    name: 'elementType',
+    options: elementTypeOptions,
+    value: link.elementType,
+    errors: link.getErrors('elementType'),
+    required: true,
+    disabled: readOnly,
+}) }}
+
+{# --- Element criteria --------------------------------------------------- #}
+
+<h2>{{ 'Element criteria'|t('influx') }}</h2>
+<p class="light">
+    {{ 'Forwarded to the target adapter. EntryTarget understands'|t('influx') }}
+    <code>section</code>, <code>type</code>, <code>author</code>.
+</p>
+
+{{ forms.selectField({
+    label: 'Section'|t('influx'),
+    instructions: 'Required when targeting Entry.'|t('influx'),
+    id: 'elementCriteria-section',
+    name: 'elementCriteria[section]',
+    options: sectionOptions,
+    value: link.elementCriteria.section ?? '',
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Entry type handle'|t('influx'),
+    instructions: 'Optional. Defaults to the first entry type attached to the section.'|t('influx'),
+    id: 'elementCriteria-type',
+    name: 'elementCriteria[type]',
+    class: 'code',
+    value: link.elementCriteria.type ?? '',
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Default author'|t('influx'),
+    instructions: 'Optional. User id, username, or email.'|t('influx'),
+    id: 'elementCriteria-author',
+    name: 'elementCriteria[author]',
+    value: link.elementCriteria.author ?? '',
+    disabled: readOnly,
+}) }}
+
+{# --- Endpoints ---------------------------------------------------------- #}
+
+<h2>{{ 'Endpoints'|t('influx') }}</h2>
+
+{{ forms.textField({
+    label: 'List endpoint'|t('influx'),
+    instructions: 'JSON URL returning the iterable list payload. Supports $ENV variables.'|t('influx'),
+    id: 'endpoint',
+    name: 'endpoint',
+    value: link.endpoint,
+    errors: link.getErrors('endpoint'),
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Per-item endpoint'|t('influx'),
+    instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
+    id: 'itemEndpoint',
+    name: 'itemEndpoint',
+    value: link.itemEndpoint,
+    disabled: readOnly,
+}) }}
+
+{% set siteEndpointRows = [] %}
+{% for handle, url in link.siteEndpoints %}
+    {% set siteEndpointRows = siteEndpointRows|merge([{key: handle, value: url}]) %}
+{% endfor %}
+
+{{ forms.editableTableField({
+    label: 'Per-site endpoints'|t('influx'),
+    instructions: 'Optional. When set, the link runs once per listed site and writes localized data to the same canonical element.'|t('influx'),
+    id: 'siteEndpoints',
+    name: 'siteEndpoints',
+    cols: {
+        key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
+        value: { heading: 'Endpoint URL'|t('influx'), type: 'singleline', code: true },
+    },
+    rows: siteEndpointRows,
+    addRowLabel: 'Add a site endpoint'|t('influx'),
+    allowAdd: not readOnly,
+    allowDelete: not readOnly,
+    allowReorder: not readOnly,
+    static: readOnly,
+}) }}
+
+{# --- Auth headers ------------------------------------------------------- #}
+
+{% set headerRows = [] %}
+{% for h, v in link.headers %}
+    {% set headerRows = headerRows|merge([{key: h, value: v}]) %}
+{% endfor %}
+
+{{ forms.editableTableField({
+    label: 'Headers'|t('influx'),
+    instructions: '<code>$VAR</code> values resolve from <code>.env</code> at fetch time.'|t('influx')|raw,
+    id: 'headers',
+    name: 'headers',
+    cols: {
+        key:   { heading: 'Name'|t('influx'), type: 'singleline', code: true },
+        value: { heading: 'Value'|t('influx'), type: 'singleline', code: true },
+    },
+    rows: headerRows,
+    addRowLabel: 'Add a header'|t('influx'),
+    allowAdd: not readOnly,
+    allowDelete: not readOnly,
+    allowReorder: not readOnly,
+    static: readOnly,
+}) }}
+
+{# --- Response shape ----------------------------------------------------- #}
+
+<h2>{{ 'Response shape'|t('influx') }}</h2>
+
+{{ forms.textField({
+    label: 'Root node'|t('influx'),
+    instructions: 'Dot-path to the iterable list inside the response. Leave blank if the response is itself a JSON array.'|t('influx'),
+    id: 'rootNode',
+    name: 'rootNode',
+    class: 'code',
+    value: link.rootNode,
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Paginator node'|t('influx'),
+    instructions: 'Dot-path to the next-page URL for cursor pagination. Leave blank if the response is single-page.'|t('influx'),
+    id: 'paginatorNode',
+    name: 'paginatorNode',
+    class: 'code',
+    value: link.paginatorNode,
+    disabled: readOnly,
+}) }}
+
+{# --- Match -------------------------------------------------------------- #}
+
+<h2>{{ 'Match key'|t('influx') }}</h2>
+<p class="light">{{ 'How Influx pairs a remote item with an existing element across sites.'|t('influx') }}</p>
+
+{{ forms.textField({
+    label: 'Match attribute'|t('influx'),
+    instructions: 'Element field handle used as the unique key (typically a custom plain-text field like <code>importId</code>).'|t('influx')|raw,
+    id: 'match-attribute',
+    name: 'match[attribute]',
+    class: 'code',
+    value: link.match.attribute ?? '',
+    errors: link.getErrors('match'),
+    required: true,
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Match source'|t('influx'),
+    instructions: 'Dot-path into the JSON item that yields the match value.'|t('influx'),
+    id: 'match-source',
+    name: 'match[source]',
+    class: 'code',
+    value: link.match.source ?? '',
+    required: true,
+    disabled: readOnly,
+}) }}
+
+{# --- Mappings ----------------------------------------------------------- #}
+
+<h2>{{ 'Mappings'|t('influx') }}</h2>
+
+{% set mappingRows = [] %}
+{% for handle, m in link.mappings %}
+    {% set mappingRows = mappingRows|merge([{
+        field:   handle,
+        type:    m.type ?? '',
+        node:    m.node ?? '',
+        options: m.options is defined ? (m.options|json_encode) : '',
+    }]) %}
+{% endfor %}
+
+{{ forms.editableTableField({
+    label: 'Field mappings'|t('influx'),
+    instructions: 'Each row maps one node of the remote item onto one element attribute / custom field. <code>options</code> takes a JSON blob forwarded to the mapping class.'|t('influx')|raw,
+    id: 'mappings',
+    name: 'mappings',
+    cols: {
+        field:   { heading: 'Target field handle'|t('influx'), type: 'singleline', code: true },
+        type:    { heading: 'Type'|t('influx'),               type: 'select', options: mappingTypeOptions },
+        node:    { heading: 'Source node'|t('influx'),         type: 'singleline', code: true },
+        options: { heading: 'Options (JSON)'|t('influx'),      type: 'singleline', code: true },
+    },
+    rows: mappingRows,
+    addRowLabel: 'Add a mapping'|t('influx'),
+    allowAdd: not readOnly,
+    allowDelete: not readOnly,
+    allowReorder: not readOnly,
+    static: readOnly,
+}) }}
+
+{# --- Processing actions ------------------------------------------------- #}
+
+<h2>{{ 'Processing actions'|t('influx') }}</h2>
+
+{{ forms.checkboxGroupField({
+    label: 'Allowed actions'|t('influx'),
+    instructions: 'What the sync engine is allowed to do.'|t('influx'),
+    id: 'processing',
+    name: 'processing',
+    options: processingOptions,
+    values: link.processing,
+    disabled: readOnly,
+}) }}
+
+{# --- Ago presets -------------------------------------------------------- #}
+
+<h2>{{ 'Sliding-window presets'|t('influx') }}</h2>
+
+{% set agoRows = [] %}
+{% for key, preset in link.ago %}
+    {% set agoRows = agoRows|merge([{
+        key:        key,
+        since:      preset.since ?? '',
+        queryParam: preset.queryParam ?? '',
+        format:     preset.format ?? '',
+    }]) %}
+{% endfor %}
+
+{{ forms.editableTableField({
+    label: '"Sync from X ago" presets'|t('influx'),
+    instructions: 'Each preset becomes a button on the link page and a <code>--ago=KEY</code> option on the console command. <code>since</code> is anything PHP <code>DateTime::modify</code> accepts.'|t('influx')|raw,
+    id: 'ago',
+    name: 'ago',
+    cols: {
+        key:        { heading: 'Key'|t('influx'),         type: 'singleline', code: true },
+        since:      { heading: 'Since'|t('influx'),        type: 'singleline', code: true },
+        queryParam: { heading: 'Query param'|t('influx'),  type: 'singleline', code: true },
+        format:     { heading: 'Date format'|t('influx'),  type: 'singleline', code: true, info: 'Optional; defaults to ATOM.'|t('influx') },
+    },
+    rows: agoRows,
+    addRowLabel: 'Add a preset'|t('influx'),
+    allowAdd: not readOnly,
+    allowDelete: not readOnly,
+    allowReorder: not readOnly,
+    static: readOnly,
+}) }}
+
+{# --- Runtime settings --------------------------------------------------- #}
+
+<h2>{{ 'Runtime'|t('influx') }}</h2>
+
+{{ forms.textField({
+    label: 'Per-item cooldown (seconds)'|t('influx'),
+    instructions: 'Minimum interval between manual per-element syncs. Leave blank for the plugin default.'|t('influx'),
+    id: 'itemCooldown',
+    name: 'itemCooldown',
+    type: 'number',
+    size: 6,
+    value: link.itemCooldown,
+    disabled: readOnly,
+}) }}
+
+{{ forms.textField({
+    label: 'Batch size'|t('influx'),
+    instructions: 'Paginated processing batch size. Leave blank for the plugin default.'|t('influx'),
+    id: 'batchSize',
+    name: 'batchSize',
+    type: 'number',
+    size: 6,
+    value: link.batchSize,
+    disabled: readOnly,
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Take a DB backup before every run'|t('influx'),
+    id: 'backup',
+    name: 'backup',
+    on: link.backup,
+    disabled: readOnly,
+}) }}

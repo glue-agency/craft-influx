@@ -8,12 +8,11 @@ use craft\base\Component;
 use craft\helpers\App;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 use TDM\Influx\exceptions\FeedFetchException;
 
 /**
- * Fetches JSON from a feed endpoint. Only JSON is supported by design — the
- * whole point of moving off FeedMe is to drop XML/CSV/etc. complexity.
+ * Fetches JSON from a link's endpoint. JSON only by design.
  */
 class DataService extends Component
 {
@@ -29,71 +28,50 @@ class DataService extends Component
         parent::init();
     }
 
-    /**
-     * Fetch the list payload for a given site.
-     *
-     * @param Feed $feed
-     * @param string|null $siteHandle null = use the feed's default endpoint
-     * @param array $queryParams extra query string params (e.g. modified_since)
-     * @return array Decoded JSON response
-     */
-    public function fetch(Feed $feed, ?string $siteHandle = null, array $queryParams = []): array
+    public function fetch(Link $link, ?string $siteHandle = null, array $queryParams = []): array
     {
         $url = $siteHandle
-            ? $feed->endpointForSite($siteHandle)
-            : ($feed->endpoint ? App::parseEnv($feed->endpoint) : null);
+            ? $link->endpointForSite($siteHandle)
+            : ($link->endpoint ? App::parseEnv($link->endpoint) : null);
 
         if (!$url) {
-            throw new FeedFetchException("Feed '{$feed->handle}' has no endpoint for site '{$siteHandle}'.");
+            throw new FeedFetchException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
         }
 
-        return $this->get($url, $feed->resolvedHeaders(), $queryParams);
+        return $this->get($url, $link->resolvedHeaders(), $queryParams);
     }
 
-    /**
-     * Fetch a single remote resource using the feed's itemEndpoint pattern.
-     * `{id}` (and any other token in $tokens) is substituted into the URL.
-     */
-    public function fetchOne(Feed $feed, array $tokens, ?string $siteHandle = null): array
+    public function fetchOne(Link $link, array $tokens, ?string $siteHandle = null): array
     {
-        if (!$feed->itemEndpoint) {
-            throw new FeedFetchException("Feed '{$feed->handle}' has no itemEndpoint configured.");
+        if (!$link->itemEndpoint) {
+            throw new FeedFetchException("Link '{$link->handle}' has no itemEndpoint configured.");
         }
 
-        $url = App::parseEnv($feed->itemEndpoint);
+        $url = App::parseEnv($link->itemEndpoint);
 
         foreach ($tokens as $name => $value) {
             $url = str_replace('{' . $name . '}', rawurlencode((string)$value), $url);
         }
 
-        // If a site-specific base is configured, the itemEndpoint can still
-        // contain {site} for per-site differentiation.
         if ($siteHandle) {
             $url = str_replace('{site}', rawurlencode($siteHandle), $url);
         }
 
-        return $this->get($url, $feed->resolvedHeaders());
+        return $this->get($url, $link->resolvedHeaders());
     }
 
-    /**
-     * Pull a list payload from a follow-up URL (cursor pagination). The next
-     * URL typically already contains the pagination state.
-     */
     public function fetchUrl(string $url, array $headers = []): array
     {
         return $this->get($url, $headers);
     }
 
-    /**
-     * Read the root list out of a response according to the feed's rootNode.
-     */
-    public function rootList(Feed $feed, array $response): array
+    public function rootList(Link $link, array $response): array
     {
-        if (!$feed->rootNode) {
+        if (!$link->rootNode) {
             return is_array($response) ? array_values($response) : [];
         }
 
-        $value = Hash::get($response, $feed->rootNode);
+        $value = Hash::get($response, $link->rootNode);
 
         return is_array($value) ? array_values($value) : [];
     }
@@ -108,7 +86,7 @@ class DataService extends Component
         } catch (GuzzleException $e) {
             throw new FeedFetchException(
                 "GET {$url} failed: " . $e->getMessage(),
-                previous: $e
+                previous: $e,
             );
         }
 

@@ -6,7 +6,7 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\Entry;
 use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
  * Default target for craft\elements\Entry.
@@ -23,39 +23,37 @@ class EntryTarget extends AbstractElementTarget
         return Entry::class;
     }
 
-    public function claimsElement(Feed $feed, ElementInterface $element): bool
+    public function claimsElement(Link $link, ElementInterface $element): bool
     {
         if (!($element instanceof Entry)) {
             return false;
         }
 
-        if (!$this->handles($feed)) {
+        if (!$this->handles($link)) {
             return false;
         }
 
-        $sectionHandle = $feed->elementCriteria['section'] ?? null;
+        $sectionHandle = $link->elementCriteria['section'] ?? null;
         if ($sectionHandle && $element->getSection()?->handle !== $sectionHandle) {
             return false;
         }
 
-        $typeHandle = $feed->elementCriteria['type'] ?? null;
+        $typeHandle = $link->elementCriteria['type'] ?? null;
         if ($typeHandle && $element->getType()?->handle !== $typeHandle) {
             return false;
         }
 
-        $matchAttr = $feed->matchAttribute();
+        $matchAttr = $link->matchAttribute();
         if (!$matchAttr) {
             return false;
         }
 
-        // The element must already carry a match-attribute value to be
-        // considered claimed by this feed.
         return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
     }
 
-    public function findByMatchValue(Feed $feed, mixed $matchValue, ?int $siteId = null): ?Entry
+    public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?Entry
     {
-        $matchAttr = $feed->matchAttribute();
+        $matchAttr = $link->matchAttribute();
         if (!$matchAttr || $matchValue === null || $matchValue === '') {
             return null;
         }
@@ -64,11 +62,11 @@ class EntryTarget extends AbstractElementTarget
             ->status(null)
             ->{$matchAttr}($matchValue);
 
-        if (isset($feed->elementCriteria['section'])) {
-            $query->section($feed->elementCriteria['section']);
+        if (isset($link->elementCriteria['section'])) {
+            $query->section($link->elementCriteria['section']);
         }
-        if (isset($feed->elementCriteria['type'])) {
-            $query->type($feed->elementCriteria['type']);
+        if (isset($link->elementCriteria['type'])) {
+            $query->type($link->elementCriteria['type']);
         }
 
         if ($siteId) {
@@ -80,18 +78,18 @@ class EntryTarget extends AbstractElementTarget
         return $query->one();
     }
 
-    public function buildNew(Feed $feed, ?int $siteId = null): Entry
+    public function buildNew(Link $link, ?int $siteId = null): Entry
     {
-        $sectionHandle = $feed->elementCriteria['section']
+        $sectionHandle = $link->elementCriteria['section']
             ?? throw new InfluxException(
-                "Feed '{$feed->handle}' must declare elementCriteria.section for Entry targets."
+                "Link '{$link->handle}' must declare elementCriteria.section for Entry targets.",
             );
 
         // Craft 5: sections moved to the Entries service.
         $section = Craft::$app->getEntries()->getSectionByHandle($sectionHandle)
             ?? throw new InfluxException("Section '{$sectionHandle}' does not exist.");
 
-        $typeHandle = $feed->elementCriteria['type'] ?? null;
+        $typeHandle = $link->elementCriteria['type'] ?? null;
 
         // Craft 5: entry types are global. Resolve by handle, but make sure
         // the chosen type is actually attached to the configured section.
@@ -106,7 +104,7 @@ class EntryTarget extends AbstractElementTarget
             }
             if (!$entryType) {
                 throw new InfluxException(
-                    "Entry type '{$typeHandle}' is not attached to section '{$sectionHandle}'."
+                    "Entry type '{$typeHandle}' is not attached to section '{$sectionHandle}'.",
                 );
             }
         } else {
@@ -121,13 +119,11 @@ class EntryTarget extends AbstractElementTarget
         $entry->sectionId = $section->id;
         $entry->typeId = $entryType->id;
 
-        if (isset($feed->elementCriteria['author'])) {
-            $author = is_numeric($feed->elementCriteria['author'])
-                ? Craft::$app->getUsers()->getUserById((int)$feed->elementCriteria['author'])
-                : Craft::$app->getUsers()->getUserByUsernameOrEmail($feed->elementCriteria['author']);
+        if (isset($link->elementCriteria['author'])) {
+            $author = is_numeric($link->elementCriteria['author'])
+                ? Craft::$app->getUsers()->getUserById((int)$link->elementCriteria['author'])
+                : Craft::$app->getUsers()->getUserByUsernameOrEmail($link->elementCriteria['author']);
             if ($author) {
-                // Craft 5 supports multi-author entries; setAuthorIds is the
-                // canonical setter.
                 $entry->setAuthorIds([$author->id]);
             }
         }

@@ -11,7 +11,7 @@ class Install extends Migration
     {
         $this->createTable(Table::LOGS, [
             'id'           => $this->primaryKey(),
-            'feedHandle'   => $this->string(100)->notNull(),
+            'linkHandle'   => $this->string(100)->notNull(),
             'trigger'      => $this->string(30)->notNull(),    // console | cp | element | queue
             'siteHandle'   => $this->string(100)->null(),
             'status'       => $this->string(20)->notNull(),    // running | ok | error
@@ -29,7 +29,7 @@ class Install extends Migration
             'uid'          => $this->uid(),
         ]);
 
-        $this->createIndex(null, Table::LOGS, ['feedHandle']);
+        $this->createIndex(null, Table::LOGS, ['linkHandle']);
         $this->createIndex(null, Table::LOGS, ['startedAt']);
 
         $this->createTable(Table::LOG_ITEMS, [

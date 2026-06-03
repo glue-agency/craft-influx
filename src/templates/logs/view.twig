@@ -1,0 +1,93 @@
+{% extends "_layouts/cp" %}
+{% set title = "Run "|t("influx") ~ "#" ~ log.id %}
+{% set selectedSubnavItem = "logs" %}
+
+{% set crumbs = [
+    { label: "Influx"|t("influx"), url: cpUrl("influx") },
+    { label: "Logs"|t("influx"), url: cpUrl("influx/logs") },
+] %}
+
+{% block content %}
+    <table class="data fullwidth fixed-layout">
+        <tbody>
+            <tr><th>{{ "Link"|t("influx") }}</th><td><a href="{{ cpUrl("influx/links/" ~ log.linkHandle) }}"><code>{{ log.linkHandle }}</code></a></td></tr>
+            <tr><th>{{ "Trigger"|t("influx") }}</th><td>{{ log.trigger }}</td></tr>
+            <tr>
+                <th>{{ "Status"|t("influx") }}</th>
+                <td>
+                    <span class="status {{ log.status == "ok" ? "live" : (log.status == "error" ? "expired" : "pending") }}"></span>
+                    {{ log.status }}
+                </td>
+            </tr>
+            <tr><th>{{ "Started"|t("influx") }}</th><td>{{ log.startedAt|datetime }}</td></tr>
+            <tr><th>{{ "Finished"|t("influx") }}</th><td>{{ log.finishedAt ? log.finishedAt|datetime : "—" }}</td></tr>
+            {% if log.error %}
+                <tr><th>{{ "Error"|t("influx") }}</th><td><pre class="error">{{ log.error }}</pre></td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Counters"|t("influx") }}</h2>
+    <table class="data fullwidth fixed-layout">
+        <tbody>
+            <tr><th>{{ "Seen"|t("influx") }}</th><td>{{ log.itemsSeen }}</td></tr>
+            <tr><th>{{ "Created"|t("influx") }}</th><td>{{ log.itemsCreated }}</td></tr>
+            <tr><th>{{ "Updated"|t("influx") }}</th><td>{{ log.itemsUpdated }}</td></tr>
+            <tr><th>{{ "Unchanged"|t("influx") }}</th><td>{{ log.itemsUnchanged }}</td></tr>
+            <tr><th>{{ "Skipped"|t("influx") }}</th><td>{{ log.itemsSkipped }}</td></tr>
+            <tr><th>{{ "Deleted / disabled"|t("influx") }}</th><td>{{ log.itemsDeleted }}</td></tr>
+        </tbody>
+    </table>
+
+    <h2>{{ "Items"|t("influx") }}</h2>
+    {% if items is empty %}
+        <p class="light">{{ "No per-item rows."|t("influx") }}</p>
+    {% else %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>{{ "Action"|t("influx") }}</th>
+                    <th>{{ "Match value"|t("influx") }}</th>
+                    <th>{{ "Element"|t("influx") }}</th>
+                    <th>{{ "Message"|t("influx") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>
+                            {% set color = {
+                                "created":   "live",
+                                "updated":   "live",
+                                "unchanged": "pending",
+                                "skipped":   "pending",
+                                "disabled":  "expired",
+                                "deleted":   "expired",
+                                "deleted-for-site": "expired",
+                                "error":     "expired",
+                            }[item.action] ?? "pending" %}
+                            <span class="status {{ color }}"></span>
+                            <code>{{ item.action }}</code>
+                        </td>
+                        <td><code>{{ item.matchValue ?: "—" }}</code></td>
+                        <td>
+                            {% if item.elementId %}
+                                {% set el = craft.app.elements.getElementById(item.elementId) %}
+                                {% if el %}
+                                    <a href="{{ el.cpEditUrl }}">{{ el.title ?: ("#" ~ el.id) }}</a>
+                                {% else %}
+                                    <span class="light">#{{ item.elementId }} (gone)</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="light">—</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.message ?: "" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}

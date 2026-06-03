@@ -3,15 +3,15 @@
 namespace TDM\Influx\events;
 
 use yii\base\Event;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
- * Fired before and after a feed run. `isValid` on the before-event can be set
- * to false to cancel the run.
+ * Fired before and after a link run. `isValid` on the before-event can be
+ * set to false to cancel the run.
  */
-class SyncFeedEvent extends Event
+class SyncLinkEvent extends Event
 {
-    public Feed $feed;
+    public Link $link;
 
     /** @var string|null Optional site handle when the event fires per-site. */
     public ?string $siteHandle = null;

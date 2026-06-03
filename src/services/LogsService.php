@@ -4,21 +4,21 @@ namespace TDM\Influx\services;
 
 use craft\base\Component;
 use craft\helpers\Db;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
 use TDM\Influx\records\LogItem as LogItemRecord;
 
 /**
- * Thin wrapper around the log records. The sync engine opens a run with
- * start(), writes per-item rows via recordItem(), and closes the run with
- * finish() or fail().
+ * Thin wrapper around the log records. SynchronizationService opens a run
+ * with start(), writes per-item rows via recordItem(), and closes the run
+ * with finish() or fail().
  */
 class LogsService extends Component
 {
-    public function start(Feed $feed, string $trigger, ?string $siteHandle = null): LogRecord
+    public function start(Link $link, string $trigger, ?string $siteHandle = null): LogRecord
     {
         $log = new LogRecord();
-        $log->feedHandle = $feed->handle;
+        $log->linkHandle = $link->handle;
         $log->trigger = $trigger;
         $log->siteHandle = $siteHandle;
         $log->status = 'running';
@@ -45,7 +45,6 @@ class LogsService extends Component
         $item->payload = $payload !== null ? json_encode($payload) : null;
         $item->save(false);
 
-        // Roll up counters on the parent run for cheap dashboarding.
         $counterAttr = match ($action) {
             'created'   => 'itemsCreated',
             'updated'   => 'itemsUpdated',

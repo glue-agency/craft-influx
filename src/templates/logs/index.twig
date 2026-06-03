@@ -1,0 +1,82 @@
+{% extends "_layouts/cp" %}
+{% set title = "Logs"|t("influx") %}
+{% set selectedSubnavItem = "logs" %}
+
+{% block actionButton %}
+    <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
+        {{ csrfInput() }}
+        {{ actionInput("influx/logs/clear") }}
+        <button type="submit" class="btn" data-icon="trash">{{ "Clear all"|t("influx") }}</button>
+    </form>
+{% endblock %}
+
+{% block content %}
+    {% if logs is empty %}
+        <div class="zilch">
+            <p>{{ "No runs yet."|t("influx") }}</p>
+        </div>
+    {% else %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Started"|t("influx") }}</th>
+                    <th>{{ "Link"|t("influx") }}</th>
+                    <th>{{ "Trigger"|t("influx") }}</th>
+                    <th>{{ "Status"|t("influx") }}</th>
+                    <th>{{ "Seen"|t("influx") }}</th>
+                    <th>{{ "Created"|t("influx") }}</th>
+                    <th>{{ "Updated"|t("influx") }}</th>
+                    <th>{{ "Unchanged"|t("influx") }}</th>
+                    <th>{{ "Skipped"|t("influx") }}</th>
+                    <th>{{ "Duration"|t("influx") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                    <tr>
+                        <td>
+                            <a href="{{ cpUrl("influx/logs/" ~ log.id) }}">
+                                {{ log.startedAt|datetime("short") }}
+                            </a>
+                        </td>
+                        <td>
+                            <a href="{{ cpUrl("influx/links/" ~ log.linkHandle) }}">
+                                <code>{{ log.linkHandle }}</code>
+                            </a>
+                        </td>
+                        <td>{{ log.trigger }}</td>
+                        <td>
+                            <span class="status {{ log.status == "ok" ? "live" : (log.status == "error" ? "expired" : "pending") }}"></span>
+                            {{ log.status }}
+                        </td>
+                        <td>{{ log.itemsSeen }}</td>
+                        <td>{{ log.itemsCreated }}</td>
+                        <td>{{ log.itemsUpdated }}</td>
+                        <td>{{ log.itemsUnchanged }}</td>
+                        <td>{{ log.itemsSkipped }}</td>
+                        <td>
+                            {% if log.finishedAt %}
+                                {{ ((log.finishedAt|date_modify('+0 seconds')).timestamp - (log.startedAt|date_modify('+0 seconds')).timestamp) }}s
+                            {% else %}
+                                <span class="light">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% set totalPages = (total / perPage)|round(0, "ceil") %}
+        {% if totalPages > 1 %}
+            <nav class="pagination" style="margin-top: 14px;">
+                {% if page > 1 %}
+                    <a class="btn" href="?page={{ page - 1 }}">← {{ "Previous"|t("influx") }}</a>
+                {% endif %}
+                <span class="light">{{ "Page"|t("influx") }} {{ page }} / {{ totalPages }}</span>
+                {% if page < totalPages %}
+                    <a class="btn" href="?page={{ page + 1 }}">{{ "Next"|t("influx") }} →</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% endif %}
+{% endblock %}

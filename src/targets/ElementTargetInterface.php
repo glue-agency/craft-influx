@@ -3,7 +3,7 @@
 namespace TDM\Influx\targets;
 
 use craft\base\ElementInterface;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
  * Adapter that lets the sync engine talk to any element type. One
@@ -12,9 +12,9 @@ use TDM\Influx\models\Feed;
  * TargetsService::register().
  *
  * Each target owns three concerns:
- *   1. Decide whether it can handle a given feed (typically by FQCN match).
- *   2. Find an existing element for a feed item, or build a new one.
- *   3. Apply feed-level requirements (section/type/calendar/etc.) so a freshly
+ *   1. Decide whether it can handle a given link (typically by FQCN match).
+ *   2. Find an existing element for a link item, or build a new one.
+ *   3. Apply link-level requirements (section/type/calendar/etc.) so a freshly
  *      built element passes Craft's save-time validation.
  */
 interface ElementTargetInterface
@@ -25,47 +25,34 @@ interface ElementTargetInterface
     public static function elementType(): string;
 
     /**
-     * Is this target the right one for the given feed? Default impl in
-     * AbstractElementTarget matches on $feed->elementType.
+     * Is this target the right one for the given link?
      */
-    public function handles(Feed $feed): bool;
+    public function handles(Link $link): bool;
 
     /**
-     * Does this feed claim this element? Used by the "Sync from remote" button
-     * to decide whether to show, and by the per-element sync action to look up
-     * the right feed for an element. Usually: same elementType, same section,
-     * and the element has a match-attribute value.
+     * Does this link claim this element? Used by the "Sync from remote"
+     * button to decide whether to show, and by the per-element sync action
+     * to look up the right link for an element.
      */
-    public function claimsElement(Feed $feed, ElementInterface $element): bool;
+    public function claimsElement(Link $link, ElementInterface $element): bool;
 
     /**
-     * Find an existing element matching the given key value, or null. The
-     * implementation is expected to query *across sites* (status=null,
-     * site=*) — multi-site feeds rely on finding the same canonical element
-     * regardless of which site is being processed first.
+     * Find an existing element matching the given key value, or null.
+     * Implementations are expected to query across sites — multi-site links
+     * rely on finding the same canonical element regardless of which site is
+     * being processed first.
      */
-    public function findByMatchValue(Feed $feed, mixed $matchValue, ?int $siteId = null): ?ElementInterface;
+    public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface;
 
     /**
-     * Build a fresh element pre-populated with all of the feed-mandated
-     * attributes (section, type, ...) so the caller can apply mappings and
-     * save without further setup.
+     * Build a fresh element pre-populated with all link-mandated attributes
+     * so the caller can apply mappings and save without further setup.
      */
-    public function buildNew(Feed $feed, ?int $siteId = null): ElementInterface;
+    public function buildNew(Link $link, ?int $siteId = null): ElementInterface;
 
-    /**
-     * Soft-disable an element (set status to disabled). For elements that
-     * don't support disabling, this is a no-op.
-     */
     public function disable(ElementInterface $element): bool;
 
-    /**
-     * Hard-delete an element from all sites.
-     */
     public function delete(ElementInterface $element): bool;
 
-    /**
-     * Delete the element from a single site only.
-     */
     public function deleteForSite(ElementInterface $element, int $siteId): bool;
 }

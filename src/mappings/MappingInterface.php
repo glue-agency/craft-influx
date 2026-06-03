@@ -3,7 +3,7 @@
 namespace TDM\Influx\mappings;
 
 use craft\base\ElementInterface;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 
 /**
  * Each MappingInterface implementation handles one logical kind of
@@ -16,42 +16,31 @@ use TDM\Influx\models\Feed;
  *      element currently holds (`hasChanged`). The sync engine uses this to
  *      avoid touching elements that haven't actually changed remotely.
  *
- * Mapping config (per element field handle) shape, from YAML:
+ * Mapping config (per element field handle) shape, from project config:
  *
  *   mappings:
  *     title:
- *       type: PlainText      # registered handle (see MappingService)
- *       node: title.rendered # Hash dot-path into the JSON item
- *       options: { ... }     # mapping-specific extras
+ *       type: PlainText
+ *       node: title.rendered
+ *       options: { ... }
  */
 interface MappingInterface
 {
-    /**
-     * Stable, human-friendly key used in YAML (`type: PlainText`).
-     */
     public static function type(): string;
 
-    /**
-     * Pull a value out of $item and assign it to $element under
-     * $targetFieldHandle. Returns true if the element was mutated.
-     */
     public function apply(
         ElementInterface $element,
         string $targetFieldHandle,
         array $item,
         array $config,
-        Feed $feed,
+        Link $link,
     ): bool;
 
-    /**
-     * Would `apply()` change anything? Used by change-detection to short
-     * circuit a no-op save. Implementations should be pure / side-effect-free.
-     */
     public function hasChanged(
         ElementInterface $element,
         string $targetFieldHandle,
         array $item,
         array $config,
-        Feed $feed,
+        Link $link,
     ): bool;
 }

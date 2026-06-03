@@ -5,7 +5,7 @@ namespace TDM\Influx\services;
 use Craft;
 use craft\base\Component;
 use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\Feed;
+use TDM\Influx\models\Link;
 use TDM\Influx\targets\ElementTargetInterface;
 use yii\base\Event;
 
@@ -47,10 +47,10 @@ class TargetsService extends Component
         return $this->targets;
     }
 
-    public function forFeed(Feed $feed): ?ElementTargetInterface
+    public function forLink(Link $link): ?ElementTargetInterface
     {
         $this->fireRegistrationEventOnce();
-        return $this->targets[ltrim($feed->elementType, '\\')] ?? null;
+        return $this->targets[ltrim($link->elementType, '\\')] ?? null;
     }
 
     private function fireRegistrationEventOnce(): void

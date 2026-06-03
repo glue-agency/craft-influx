@@ -1,0 +1,172 @@
+{% extends "_layouts/cp" %}
+{% set title = link.name %}
+{% set selectedSubnavItem = "links" %}
+
+{% set crumbs = [
+    { label: "Influx"|t("influx"), url: cpUrl("influx") },
+    { label: "Links"|t("influx"), url: cpUrl("influx/links") },
+] %}
+
+{% import "_includes/forms" as forms %}
+
+{% block content %}
+    <p class="light">
+        {{ "Read-only view — administrative changes are disallowed in this environment. Enable allowAdminChanges to edit links."|t("influx") }}
+    </p>
+
+    <table class="data fullwidth fixed-layout">
+        <tbody>
+            <tr><th>{{ "Handle"|t("influx") }}</th><td><code>{{ link.handle }}</code></td></tr>
+            <tr><th>{{ "Element type"|t("influx") }}</th><td><code>{{ link.elementType }}</code></td></tr>
+            <tr>
+                <th>{{ "Criteria"|t("influx") }}</th>
+                <td>
+                    {% if link.elementCriteria is empty %}
+                        <span class="light">{{ "none"|t("influx") }}</span>
+                    {% else %}
+                        {% for k, v in link.elementCriteria %}
+                            <code>{{ k }}: {{ v }}</code>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr><th>{{ "Endpoint"|t("influx") }}</th><td><code>{{ link.endpoint ?: "—" }}</code></td></tr>
+            <tr><th>{{ "Item endpoint"|t("influx") }}</th><td><code>{{ link.itemEndpoint ?: "—" }}</code></td></tr>
+            <tr>
+                <th>{{ "Site endpoints"|t("influx") }}</th>
+                <td>
+                    {% if link.siteEndpoints is empty %}
+                        <span class="light">{{ "none"|t("influx") }}</span>
+                    {% else %}
+                        {% for site, url in link.siteEndpoints %}
+                            <div><code>{{ site }}</code> → <code>{{ url }}</code></div>
+                        {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>{{ "Headers"|t("influx") }}</th>
+                <td>
+                    {% if link.headers is empty %}
+                        <span class="light">{{ "none"|t("influx") }}</span>
+                    {% else %}
+                        {% for name, value in link.headers %}
+                            <div><code>{{ name }}</code>: <code>{{ value }}</code></div>
+                        {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>{{ "Match"|t("influx") }}</th>
+                <td>
+                    {% if link.match.attribute is defined %}
+                        <code>{{ link.match.attribute }}</code> ⇐ <code>{{ link.match.source }}</code>
+                    {% else %}
+                        <span class="error">{{ "Missing"|t("influx") }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>{{ "Root / paginator"|t("influx") }}</th>
+                <td>
+                    {% if link.rootNode %}<code>{{ link.rootNode }}</code>{% else %}<span class="light">root</span>{% endif %}
+                    /
+                    {% if link.paginatorNode %}<code>{{ link.paginatorNode }}</code>{% else %}<span class="light">none</span>{% endif %}
+                </td>
+            </tr>
+            <tr><th>{{ "Processing"|t("influx") }}</th><td>{{ link.processing|join(", ") }}</td></tr>
+            <tr><th>{{ "Item cooldown"|t("influx") }}</th><td>{{ link.itemCooldown ?? "—" }}{% if link.itemCooldown %}s{% endif %}</td></tr>
+            <tr><th>{{ "Batch size"|t("influx") }}</th><td>{{ link.batchSize ?? "—" }}</td></tr>
+            <tr><th>{{ "DB backup"|t("influx") }}</th><td>{{ link.backup ? "yes" : "no" }}</td></tr>
+        </tbody>
+    </table>
+
+    <h2>{{ "Mappings"|t("influx") }}</h2>
+    {% if link.mappings is empty %}
+        <p class="light">{{ "No mappings configured."|t("influx") }}</p>
+    {% else %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Target field"|t("influx") }}</th>
+                    <th>{{ "Type"|t("influx") }}</th>
+                    <th>{{ "Source node"|t("influx") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for field, config in link.mappings %}
+                    <tr>
+                        <td><code>{{ field }}</code></td>
+                        <td><code>{{ config.type ?? "—" }}</code></td>
+                        <td><code>{{ config.node ?? "—" }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <h2>{{ "Actions"|t("influx") }}</h2>
+    <div class="flex">
+        <form method="post" accept-charset="UTF-8">
+            {{ csrfInput() }}
+            {{ actionInput("influx/synchronization/link") }}
+            {{ hiddenInput("handle", link.handle) }}
+            <button type="submit" class="btn submit" data-icon="refresh">
+                {{ "Sync now"|t("influx") }}
+            </button>
+        </form>
+
+        {% for key, preset in link.ago %}
+            <form method="post" accept-charset="UTF-8">
+                {{ csrfInput() }}
+                {{ actionInput("influx/synchronization/link") }}
+                {{ hiddenInput("handle", link.handle) }}
+                {{ hiddenInput("ago", key) }}
+                <button type="submit" class="btn" data-icon="clock">
+                    {{ "Sync"|t("influx") }} ({{ key }} — {{ preset.since }})
+                </button>
+            </form>
+        {% endfor %}
+    </div>
+
+    <h2>{{ "Recent runs"|t("influx") }}</h2>
+    {% if recentLogs is empty %}
+        <p class="light">{{ "No runs yet."|t("influx") }}</p>
+    {% else %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Started"|t("influx") }}</th>
+                    <th>{{ "Trigger"|t("influx") }}</th>
+                    <th>{{ "Status"|t("influx") }}</th>
+                    <th>{{ "Seen"|t("influx") }}</th>
+                    <th>{{ "Created"|t("influx") }}</th>
+                    <th>{{ "Updated"|t("influx") }}</th>
+                    <th>{{ "Unchanged"|t("influx") }}</th>
+                    <th>{{ "Skipped"|t("influx") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in recentLogs %}
+                    <tr>
+                        <td>
+                            <a href="{{ cpUrl("influx/logs/" ~ log.id) }}">
+                                {{ log.startedAt|datetime("short") }}
+                            </a>
+                        </td>
+                        <td>{{ log.trigger }}</td>
+                        <td>
+                            <span class="status {{ log.status == "ok" ? "live" : (log.status == "error" ? "expired" : "pending") }}"></span>
+                            {{ log.status }}
+                        </td>
+                        <td>{{ log.itemsSeen }}</td>
+                        <td>{{ log.itemsCreated }}</td>
+                        <td>{{ log.itemsUpdated }}</td>
+                        <td>{{ log.itemsUnchanged }}</td>
+                        <td>{{ log.itemsSkipped }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}
