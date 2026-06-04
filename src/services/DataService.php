@@ -13,6 +13,11 @@ use TDM\Influx\exceptions\FeedFetchException;
 
 /**
  * Fetches JSON from a link's endpoint. JSON only by design.
+ *
+ * Endpoints resolve to either an HTTP(S) URL or a local file path — the
+ * latter happens when the configured endpoint uses a Craft `@alias` that
+ * expands to a filesystem path (e.g. `@data/vub.json`). Local paths skip
+ * Guzzle and are read straight off disk.
  */
 class DataService extends Component
 {
@@ -34,6 +39,10 @@ class DataService extends Component
     {
         $url = $this->endpoints->listUrl($link, $siteHandle);
 
+        if ($this->isLocalPath($url)) {
+            return $this->read($url);
+        }
+
         $headers = [];
         $query   = $queryParams;
         $link->applyAuth($headers, $query);
@@ -44,6 +53,10 @@ class DataService extends Component
     public function fetchOne(Link $link, array $tokens, ?string $siteHandle = null): array
     {
         $url = $this->endpoints->itemUrl($link, $tokens, $siteHandle);
+
+        if ($this->isLocalPath($url)) {
+            return $this->read($url);
+        }
 
         $headers = [];
         $query   = [];
@@ -323,6 +336,30 @@ class DataService extends Component
 
         if (!is_array($decoded)) {
             throw new FeedFetchException("Response from {$url} is not valid JSON.");
+        }
+
+        return $decoded;
+    }
+
+    private function isLocalPath(string $url): bool
+    {
+        return !preg_match('#^https?://#i', $url);
+    }
+
+    private function read(string $path): array
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            throw new FeedFetchException("File '{$path}' is not readable.");
+        }
+
+        $body = file_get_contents($path);
+        if ($body === false) {
+            throw new FeedFetchException("Failed to read '{$path}'.");
+        }
+
+        $decoded = json_decode($body, true);
+        if (!is_array($decoded)) {
+            throw new FeedFetchException("Contents of '{$path}' are not valid JSON.");
         }
 
         return $decoded;

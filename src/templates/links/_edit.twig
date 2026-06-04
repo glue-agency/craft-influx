@@ -81,22 +81,26 @@
 
     <h2>{{ 'Endpoints'|t('influx') }}</h2>
 
-    {{ forms.textField({
+    {{ forms.autosuggestField({
         label: 'List endpoint'|t('influx'),
-        instructions: 'JSON URL returning the iterable list payload. Supports $ENV variables.'|t('influx'),
+        instructions: 'JSON URL, or an <code>@alias</code> pointing to a local JSON file.'|t('influx')|raw,
         id: 'endpoint',
         name: 'endpoint',
         value: link.endpoint,
+        suggestEnvVars: true,
+        suggestAliases: true,
         errors: link.getErrors('endpoint'),
         disabled: readOnly,
     }) }}
 
-    {{ forms.textField({
+    {{ forms.autosuggestField({
         label: 'Per-item endpoint'|t('influx'),
         instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
         id: 'itemEndpoint',
         name: 'itemEndpoint',
         value: link.itemEndpoint,
+        suggestEnvVars: true,
+        suggestAliases: true,
         disabled: readOnly,
     }) }}
 
@@ -112,7 +116,7 @@
         name: 'siteEndpoints',
         cols: {
             key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
-            value: { heading: 'Endpoint URL'|t('influx'), type: 'singleline', code: true },
+            value: { heading: 'Endpoint URL'|t('influx'), type: 'autosuggest', suggestEnvVars: true, suggestAliases: true },
         },
         rows: siteEndpointRows,
         addRowLabel: 'Add a site endpoint'|t('influx'),

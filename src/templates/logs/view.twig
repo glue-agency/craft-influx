@@ -46,6 +46,25 @@
         {{ "Items"|t("influx") }}
         {% if isLive %}<span class="light" id="influx-log-stream-status">— {{ "connecting…"|t("influx") }}</span>{% endif %}
     </h2>
+
+    {% set filterColors = {
+        "created":   "live",
+        "updated":   "live",
+        "unchanged": "pending",
+        "skipped":   "pending",
+        "deleted":   "expired",
+        "disabled":  "expired",
+    } %}
+    <div class="flex influx-log-filters" id="influx-log-filters" style="gap:.4em; margin:0 0 14px; flex-wrap:wrap;">
+        {% for action, color in filterColors %}
+            <button type="button" class="btn active influx-log-filter" data-filter-action="{{ action }}">
+                <span class="status {{ color }}"></span>
+                <span>{{ action|t("influx") }}</span>
+                <span class="light influx-log-filter-count" style="margin-left:.4em;">0</span>
+            </button>
+        {% endfor %}
+    </div>
+
     <table class="data fullwidth" id="influx-log-items-table">
         <thead>
             <tr>
@@ -68,7 +87,7 @@
                     "deleted-for-site": "expired",
                     "error":     "expired",
                 }[item.action] ?? "pending" %}
-                <tr data-item-id="{{ item.id }}">
+                <tr data-item-id="{{ item.id }}" data-action="{{ item.action }}">
                     <td>{{ item.id }}</td>
                     <td>
                         <span class="status {{ color }}"></span>
@@ -79,7 +98,7 @@
                         {% if item.elementId %}
                             {% set el = craft.app.elements.getElementById(item.elementId) %}
                             {% if el %}
-                                {{ elementChip(el) }}
+                                {{ elementChip(el, { hyperlink: true }) }}
                             {% else %}
                                 <span class="light">#{{ item.elementId }} ({{ "gone"|t("influx") }})</span>
                             {% endif %}
@@ -95,6 +114,56 @@
     {% if items is empty and not isLive %}
         <p class="light">{{ "No per-item rows."|t("influx") }}</p>
     {% endif %}
+
+    {% js %}
+    (function () {
+        const filtersEl = document.getElementById('influx-log-filters');
+        const tbody = document.getElementById('influx-log-items-body');
+        if (!filtersEl || !tbody) return;
+
+        const ACTIONS = ['created','updated','unchanged','skipped','deleted','disabled'];
+
+        function activeSet() {
+            const set = new Set();
+            filtersEl.querySelectorAll('.influx-log-filter.active').forEach(function (btn) {
+                set.add(btn.getAttribute('data-filter-action'));
+            });
+            return set;
+        }
+
+        function applyVisibility() {
+            const active = activeSet();
+            tbody.querySelectorAll('tr[data-action]').forEach(function (tr) {
+                const a = tr.getAttribute('data-action');
+                tr.hidden = ACTIONS.includes(a) && !active.has(a);
+            });
+        }
+
+        function recount() {
+            const counts = {};
+            ACTIONS.forEach(function (a) { counts[a] = 0; });
+            tbody.querySelectorAll('tr[data-action]').forEach(function (tr) {
+                const a = tr.getAttribute('data-action');
+                if (counts[a] != null) counts[a]++;
+            });
+            filtersEl.querySelectorAll('.influx-log-filter').forEach(function (btn) {
+                const a = btn.getAttribute('data-filter-action');
+                const span = btn.querySelector('.influx-log-filter-count');
+                if (span) span.textContent = counts[a] || 0;
+            });
+        }
+
+        filtersEl.addEventListener('click', function (e) {
+            const btn = e.target.closest('.influx-log-filter');
+            if (!btn) return;
+            btn.classList.toggle('active');
+            applyVisibility();
+        });
+
+        recount();
+        window.__influxLogFilters = { applyVisibility: applyVisibility, recount: recount };
+    })();
+    {% endjs %}
 
     {% if isLive %}
         {% set lastItemId = items|length ? items|last.id : 0 %}
@@ -131,6 +200,7 @@
                 if (document.querySelector('tr[data-item-id="' + d.id + '"]')) return;
                 const tr = document.createElement('tr');
                 tr.setAttribute('data-item-id', d.id);
+                tr.setAttribute('data-action', d.action);
                 const color = actionColors[d.action] || 'pending';
                 tr.innerHTML =
                     '<td>' + escapeHtml(d.id) + '</td>' +
@@ -139,6 +209,10 @@
                     '<td>' + (d.elementHtml || '<span class="light">—</span>') + '</td>' +
                     '<td>' + escapeHtml(d.message) + '</td>';
                 body.appendChild(tr);
+                if (window.__influxLogFilters) {
+                    window.__influxLogFilters.recount();
+                    window.__influxLogFilters.applyVisibility();
+                }
             }
 
             function updateCounters(d) {

@@ -99,7 +99,7 @@ class LogsController extends Controller
             if ($item->elementId) {
                 $el = Craft::$app->getElements()->getElementById($item->elementId);
                 if ($el) {
-                    $elementHtml = Cp::elementChipHtml($el);
+                    $elementHtml = Cp::elementChipHtml($el, ['hyperlink' => true]);
                 } else {
                     $elementHtml = '<span class="light">#' . $item->elementId . ' (gone)</span>';
                 }
