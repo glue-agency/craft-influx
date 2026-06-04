@@ -5,6 +5,7 @@ namespace TDM\Influx\controllers;
 use Craft;
 use craft\web\Controller;
 use TDM\Influx\Influx;
+use TDM\Influx\queue\jobs\SyncLinkJob;
 use yii\web\BadRequestHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -12,40 +13,43 @@ use yii\web\Response;
 /**
  * CP-side sync triggers.
  *
- *   POST influx/synchronization/link     — kick off a full link run
- *   POST influx/synchronization/element  — sync one element via its link
+ *   POST influx/synchronization/link     — push a link run onto the queue
+ *   POST influx/synchronization/element  — sync one element via its link (sync,
+ *                                          so cooldown + UI feedback are immediate)
  */
 class SynchronizationController extends Controller
 {
     protected array|int|bool $allowAnonymous = false;
 
-    public function actionLink(string $handle): Response
+    public function actionLink(): ?Response
     {
         $this->requirePostRequest();
         $this->requirePermission('accessPlugin-influx');
+
+        $request = Craft::$app->getRequest();
+        $handle = $request->getRequiredBodyParam('handle');
+        $ago = $request->getBodyParam('ago');
 
         $plugin = Influx::getInstance();
         $link = $plugin->links->getLinkByHandle($handle)
             ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
 
-        $ago = Craft::$app->getRequest()->getBodyParam('ago');
+        Craft::$app->getQueue()->push(new SyncLinkJob([
+            'linkHandle' => $link->handle,
+            'ago'        => $ago,
+            'trigger'    => 'cp',
+        ]));
 
-        try {
-            $log = $plugin->synchronization->syncLink($link, $ago, 'cp');
-        } catch (\Throwable $e) {
-            return $this->asFailure($e->getMessage());
-        }
-
-        return $this->asSuccess(Craft::t('influx', '{n} items processed for {link}', [
-            'n'    => (int)$log->itemsSeen,
+        return $this->asSuccess(Craft::t('influx', 'Sync queued for {link}.', [
             'link' => $link->name,
         ]));
     }
 
-    public function actionElement(int $elementId): Response
+    public function actionElement(): ?Response
     {
         $this->requirePostRequest();
 
+        $elementId = (int)Craft::$app->getRequest()->getRequiredBodyParam('elementId');
         $element = Craft::$app->getElements()->getElementById($elementId);
         if (!$element) {
             throw new NotFoundHttpException("Element #{$elementId} not found.");

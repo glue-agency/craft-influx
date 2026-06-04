@@ -19,6 +19,11 @@ class Lightswitch extends Field
         return \craft\fields\Lightswitch::class;
     }
 
+    public function fieldMeta(\craft\base\FieldInterface $field): array
+    {
+        return ['kind' => 'boolean'];
+    }
+
     public function parseField(): mixed
     {
         $raw = $this->fetchSimpleValue();

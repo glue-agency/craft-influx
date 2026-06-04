@@ -40,12 +40,40 @@ abstract class AbstractElementTarget implements ElementTargetInterface
             return false;
         }
 
-        if ($element->hasAttribute($handle) || property_exists($element, $handle)) {
+        if (in_array($handle, $element->attributes(), true) || property_exists($element, $handle)) {
             $element->{$handle} = $value;
         } else {
             $element->setFieldValue($handle, $value);
         }
         return true;
+    }
+
+    /**
+     * Default: nothing is owned. Targets override when buildNew() already
+     * assigned an attribute that would otherwise be re-applied by the
+     * generic mapping loop.
+     */
+    public function ownsAttribute(Link $link, string $handle): bool
+    {
+        return false;
+    }
+
+    /**
+     * Default: assign the match value as a native attribute when one exists,
+     * otherwise treat it as a custom field. Works for every element type so
+     * far; targets only need to override for non-standard match storage.
+     */
+    public function assignMatchValue(ElementInterface $element, Link $link, mixed $matchValue): void
+    {
+        $attr = $link->matchAttribute();
+        if (!$attr) {
+            return;
+        }
+        if (in_array($attr, $element->attributes(), true) || property_exists($element, $attr)) {
+            $element->{$attr} = $matchValue;
+        } else {
+            $element->setFieldValue($attr, $matchValue);
+        }
     }
 
     public function disable(ElementInterface $element): bool

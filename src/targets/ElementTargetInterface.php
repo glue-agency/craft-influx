@@ -67,6 +67,24 @@ interface ElementTargetInterface
         array $config,
     ): bool;
 
+    /**
+     * Does the target own this mapping handle internally? Returning true
+     * tells the sync engine to skip its generic native/custom dispatch — the
+     * target has already handled this attribute during {@see buildNew()}.
+     *
+     * Example: Entry's `author` is read from the mapping's `default` and
+     * assigned at construction time, so the engine must not try to also
+     * assign it as a string value.
+     */
+    public function ownsAttribute(Link $link, string $handle): bool;
+
+    /**
+     * Assign the link's match value to a freshly-built element. The sync
+     * engine has the value but only the target knows whether the match
+     * attribute is a native attribute or a custom field on this element type.
+     */
+    public function assignMatchValue(ElementInterface $element, Link $link, mixed $matchValue): void;
+
     public function disable(ElementInterface $element): bool;
 
     public function delete(ElementInterface $element): bool;

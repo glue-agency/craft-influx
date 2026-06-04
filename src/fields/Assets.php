@@ -2,9 +2,9 @@
 
 namespace TDM\Influx\fields;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
+use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 
 /**
@@ -25,6 +25,21 @@ class Assets extends Field
     public static function craftFieldClass(): ?string
     {
         return \craft\fields\Assets::class;
+    }
+
+    public function fieldMeta(CraftFieldInterface $field): array
+    {
+        /** @var \craft\fields\Assets $field */
+        return [
+            'kind'        => 'asset',
+            'allowedKinds' => $field->allowedKinds ?? null,
+            'subFields'   => [
+                // Each entry: handle => label. The handle is used as the
+                // sub-mapping key on the saved Link config.
+                'alt'   => Craft::t('influx', 'Alt text'),
+                'title' => Craft::t('influx', 'Title'),
+            ],
+        ];
     }
 
     public function parseField(): mixed
@@ -120,65 +135,8 @@ class Assets extends Field
         return $asset; // best-effort: same filename, possibly different host
     }
 
-    /**
-     * Delegate sub-field application to the shared Relation logic — Assets
-     * is conceptually a relation that hangs off the parent element, and the
-     * `nativeFields[]` / `fields[]` shape is identical to Entries/Users/etc.
-     *
-     * Borrowing the implementation that way keeps the recursive sub-element
-     * walker in one place (see {@see Relation::populateSubElement}).
-     */
     private function applySubFields(Asset $asset): void
     {
-        $custom = $this->fieldInfo['fields'] ?? [];
-        $native = $this->fieldInfo['nativeFields'] ?? [];
-        if (empty($custom) && empty($native)) {
-            return;
-        }
-
-        $touched = false;
-        foreach ($native as $handle => $sub) {
-            if (!is_array($sub)) {
-                continue;
-            }
-            $value = $this->resolveSub($sub);
-            if ($value === null) {
-                continue;
-            }
-            if ($asset->hasAttribute($handle) || property_exists($asset, $handle)) {
-                $asset->{$handle} = $value;
-                $touched = true;
-            }
-        }
-
-        $fieldsRegistry = \TDM\Influx\Influx::getInstance()->fields;
-        foreach ($custom as $handle => $sub) {
-            $craftField = $asset->getFieldLayout()?->getFieldByHandle($handle);
-            if (!$craftField || !is_array($sub)) {
-                continue;
-            }
-            $strategy = $fieldsRegistry->forCraftField($craftField);
-            $strategy->setContext($craftField, $handle, $sub, $this->feedData, $this->link, $asset);
-            $value = $strategy->parseField();
-            if ($value === null) {
-                continue;
-            }
-            $strategy->apply($asset, $value);
-            $touched = true;
-        }
-
-        if ($touched) {
-            Craft::$app->getElements()->saveElement($asset, false);
-        }
-    }
-
-    private function resolveSub(array $sub): mixed
-    {
-        $node = $sub['node'] ?? null;
-        $value = $node ? Hash::get($this->feedData, $node) : null;
-        if ($value === null || $value === '') {
-            $value = $sub['default'] ?? null;
-        }
-        return ($value === null || $value === '') ? null : $value;
+        (new SubElementPopulator())->populate($asset, $this->feedData, $this->fieldInfo, $this->link);
     }
 }

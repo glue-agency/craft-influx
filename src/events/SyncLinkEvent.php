@@ -2,14 +2,14 @@
 
 namespace TDM\Influx\events;
 
-use yii\base\Event;
+use craft\events\ModelEvent;
 use TDM\Influx\models\Link;
 
 /**
  * Fired before and after a link run. `isValid` on the before-event can be
  * set to false to cancel the run.
  */
-class SyncLinkEvent extends Event
+class SyncLinkEvent extends ModelEvent
 {
     public Link $link;
 

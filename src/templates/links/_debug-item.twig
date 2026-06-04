@@ -1,0 +1,118 @@
+{% set actionColors = {
+    "would-create":    "live",
+    "would-update":    "live",
+    "would-unchanged": "pending",
+    "would-skip":      "pending",
+    "error":           "expired",
+} %}
+
+{% macro renderValue(value) %}
+    {% if value is null %}
+        <span class="light">—</span>
+    {% else %}
+        <code style="white-space: pre-wrap; word-break: break-all;">{{ value }}</code>
+    {% endif %}
+{% endmacro %}
+
+{% import _self as macros %}
+
+{% set color = actionColors[row.action] ?? "pending" %}
+
+<div class="influx-debug-item" style="border: 1px solid #cdd8e4; border-radius: 5px; padding: 12px; margin-bottom: 12px; background: #fff;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em; flex-wrap: wrap; gap: 8px;">
+        <div>
+            <span class="status {{ color }}"></span>
+            <code>{{ row.action }}</code>
+            {% if row.matchValue is not null %}
+                <span class="light">·</span>
+                {{ "match"|t("influx") }}:
+                <code>{{ row.matchValue }}</code>
+            {% endif %}
+        </div>
+        <div>
+            {% if row.element %}
+                <a href="{{ row.element.cpEditUrl }}" target="_blank" rel="noopener">
+                    {{ row.element.title }}
+                    <span class="light">#{{ row.element.id }}</span>
+                </a>
+            {% elseif row.action == "would-create" %}
+                <span class="light">{{ "will be created"|t("influx") }}</span>
+            {% else %}
+                <span class="light">—</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if row.message %}
+        <p class="light" style="margin: 0 0 0.5em;">{{ row.message }}</p>
+    {% endif %}
+    {% if row.error %}
+        <pre class="error" style="margin: 0 0 0.5em;">{{ row.error }}</pre>
+    {% endif %}
+
+    {% if row.mappings is not empty %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Field"|t("influx") }}</th>
+                    <th>{{ "Source node"|t("influx") }}</th>
+                    <th>{{ "Raw"|t("influx") }}</th>
+                    <th>{{ "Parsed"|t("influx") }}</th>
+                    <th>{{ "Current"|t("influx") }}</th>
+                    <th>{{ "Changed?"|t("influx") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in row.mappings %}
+                    <tr>
+                        <td>
+                            <code>{{ m.handle }}</code>
+                            {% if m.native %}
+                                <span class="light">({{ "native"|t("influx") }})</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.node %}
+                                <code>{{ m.node }}</code>
+                            {% else %}
+                                <span class="light">—</span>
+                            {% endif %}
+                            {% if m.default is not null and m.default != "" %}
+                                <br><span class="light">{{ "default"|t("influx") }}:</span> <code>{{ m.default }}</code>
+                            {% endif %}
+                        </td>
+                        <td>{{ macros.renderValue(m.rawValue) }}</td>
+                        <td>
+                            {% if m.native %}
+                                <span class="light">{{ "n/a"|t("influx") }}</span>
+                            {% else %}
+                                {{ macros.renderValue(m.parsedValue) }}
+                            {% endif %}
+                            {% if m.error %}
+                                <pre class="error">{{ m.error }}</pre>
+                            {% endif %}
+                        </td>
+                        <td>{{ macros.renderValue(m.currentValue) }}</td>
+                        <td>
+                            {% if m.changed is null %}
+                                <span class="light">?</span>
+                            {% elseif m.changed %}
+                                <span class="status live"></span> {{ "yes"|t("influx") }}
+                            {% else %}
+                                <span class="status"></span> {{ "no"|t("influx") }}
+                            {% endif %}
+                            {% if m.note %}
+                                <br><span class="light">{{ m.note }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <details style="margin-top: 0.5em;">
+        <summary class="light">{{ "Raw item JSON"|t("influx") }}</summary>
+        <pre style="max-height: 400px; overflow: auto; background: #f3f7fc; padding: 8px;">{{ row.raw|json_encode(constant("JSON_PRETTY_PRINT") b-or constant("JSON_UNESCAPED_SLASHES") b-or constant("JSON_UNESCAPED_UNICODE")) }}</pre>
+    </details>
+</div>

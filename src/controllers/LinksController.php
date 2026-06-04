@@ -6,6 +6,7 @@ use Craft;
 use craft\elements\Entry;
 use craft\helpers\Cp;
 use craft\web\Controller;
+use TDM\Influx\controllers\support\LinkPostNormalizer;
 use TDM\Influx\Influx;
 use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
@@ -33,7 +34,7 @@ class LinksController extends Controller
             return false;
         }
 
-        $viewActions = ['index', 'view', 'edit'];
+        $viewActions = ['index', 'view', 'edit', 'debug', 'debug-stream'];
         if (in_array($action->id, $viewActions, true)) {
             $this->requireAdmin(false);
         } else {
@@ -74,6 +75,120 @@ class LinksController extends Controller
             'recentLogs' => $recentLogs,
             'readOnly'   => $this->readOnly,
         ]);
+    }
+
+    /**
+     * Dry-run inspector shell. Renders the site / ago / limit selector and a
+     * results container that gets populated live via {@see actionDebugStream}.
+     * Writes nothing.
+     */
+    public function actionDebug(string $handle): Response
+    {
+        $link = Influx::getInstance()->links->getLinkByHandle($handle)
+            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+
+        $limit = (int)Craft::$app->getRequest()->getQueryParam('limit', \TDM\Influx\services\DebugService::DEFAULT_LIMIT);
+        $limit = max(1, min($limit, 500));
+
+        $siteHandles = $link->siteHandles();
+        $requestedSite = Craft::$app->getRequest()->getQueryParam('site');
+        $selectedSite = $requestedSite !== null && in_array($requestedSite, $siteHandles, true)
+            ? $requestedSite
+            : ($siteHandles[0] ?? null);
+
+        $agoKeys = array_keys($link->ago ?? []);
+        $requestedAgo = Craft::$app->getRequest()->getQueryParam('ago');
+        $selectedAgo = $requestedAgo !== null && in_array($requestedAgo, $agoKeys, true)
+            ? $requestedAgo
+            : null;
+
+        return $this->renderTemplate('influx/links/debug', [
+            'link'         => $link,
+            'limit'        => $limit,
+            'siteHandles'  => $siteHandles,
+            'selectedSite' => $selectedSite,
+            'agoKeys'      => $agoKeys,
+            'selectedAgo'  => $selectedAgo,
+            'streamUrl'    => \craft\helpers\UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
+        ]);
+    }
+
+    /**
+     * SSE endpoint backing the debug page. Streams a `meta` event with site
+     * metadata, then one `item` event per processed item, then a `done`
+     * sentinel. Strictly read-only.
+     *
+     * Bypasses Yii's normal response pipeline and writes the event stream
+     * directly so each item can flush as soon as it's processed.
+     */
+    public function actionDebugStream(string $handle): void
+    {
+        $link = Influx::getInstance()->links->getLinkByHandle($handle)
+            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+
+        $request = Craft::$app->getRequest();
+        $limit = max(1, min((int)$request->getQueryParam('limit', \TDM\Influx\services\DebugService::DEFAULT_LIMIT), 500));
+
+        $siteHandle = $request->getQueryParam('site') ?: null;
+        if ($siteHandle !== null && !in_array($siteHandle, $link->siteHandles(), true)) {
+            $siteHandle = null;
+        }
+
+        $ago = $request->getQueryParam('ago') ?: null;
+        if ($ago !== null && !isset($link->ago[$ago])) {
+            $ago = null;
+        }
+
+        // Strip any output buffers Yii / PHP may have stacked, then take
+        // exclusive control of the response.
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('X-Accel-Buffering: no');
+
+        // Pad so proxies that buffer until they see N bytes start forwarding.
+        echo ": " . str_repeat(' ', 2048) . "\n\n";
+        @flush();
+
+        $view = Craft::$app->getView();
+        $svc = Influx::getInstance()->debug;
+
+        try {
+            foreach ($svc->streamSite($link, $siteHandle, $limit, $ago) as $event) {
+                if ($event['type'] === 'item') {
+                    $html = $view->renderTemplate(
+                        'influx/links/_debug-item',
+                        ['row' => $event['data']],
+                        \craft\web\View::TEMPLATE_MODE_CP,
+                    );
+                    $payload = ['index' => $event['data']['index'] ?? null, 'html' => $html];
+                } else {
+                    $payload = $event['data'];
+                }
+
+                echo "event: {$event['type']}\n";
+                echo 'data: ' . json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
+                @flush();
+
+                if (connection_aborted()) {
+                    break;
+                }
+            }
+
+            echo "event: done\ndata: {}\n\n";
+            @flush();
+        } catch (\Throwable $e) {
+            echo "event: error\n";
+            echo 'data: ' . json_encode(['message' => $e->getMessage()]) . "\n\n";
+            @flush();
+        }
+
+        Craft::$app->end();
     }
 
     public function actionEdit(?string $handle = null, ?Link $link = null): Response
@@ -177,35 +292,7 @@ class LinksController extends Controller
             ? $plugin->links->getLinkByUid($uid) ?? new Link()
             : new Link();
 
-        $link->handle      = (string)$request->getBodyParam('handle', $link->handle);
-        $link->name        = (string)$request->getBodyParam('name', $link->name);
-        $link->elementType = (string)$request->getBodyParam('elementType', $link->elementType);
-        $link->endpoint    = $this->emptyToNull($request->getBodyParam('endpoint'));
-        $link->itemEndpoint = $this->emptyToNull($request->getBodyParam('itemEndpoint'));
-        $link->rootNode     = $this->emptyToNull($request->getBodyParam('rootNode'));
-        $link->paginatorNode = $this->emptyToNull($request->getBodyParam('paginatorNode'));
-        $link->backup       = (bool)$request->getBodyParam('backup', false);
-
-        $link->elementCriteria = array_filter(
-            $request->getBodyParam('elementCriteria') ?: [],
-            fn($v) => $v !== '' && $v !== null,
-        );
-
-        $link->auth          = $this->authFromPost($request->getBodyParam('auth') ?: []);
-        $link->siteEndpoints = $this->keyValueTable($request->getBodyParam('siteEndpoints') ?: []);
-
-        $matchAttribute = $request->getBodyParam('match.attribute') ?: null;
-        $link->match = $matchAttribute ? ['attribute' => $matchAttribute] : [];
-
-        $link->mappings = $this->mappingsFromPost($request->getBodyParam('mappings') ?: []);
-        $link->ago      = $this->agoFromTable($request->getBodyParam('ago') ?: []);
-
-        $link->processing = array_values(array_filter($request->getBodyParam('processing') ?: []));
-
-        $itemCooldown = $request->getBodyParam('itemCooldown');
-        $link->itemCooldown = ($itemCooldown === '' || $itemCooldown === null) ? null : (int)$itemCooldown;
-        $batchSize = $request->getBodyParam('batchSize');
-        $link->batchSize = ($batchSize === '' || $batchSize === null) ? null : (int)$batchSize;
+        (new LinkPostNormalizer())->apply($link, $request->getBodyParams());
 
         if (!$plugin->links->saveLink($link)) {
             return $this->asModelFailure(
@@ -265,13 +352,15 @@ class LinksController extends Controller
         $this->requireAcceptsJson();
 
         $request = Craft::$app->getRequest();
+        $normalizer = new LinkPostNormalizer();
 
+        $endpoint = $request->getBodyParam('endpoint');
         $link = new Link([
             'handle'      => 'sample',
             'name'        => 'sample',
             'elementType' => 'sample',
-            'endpoint'    => $this->emptyToNull($request->getBodyParam('endpoint')),
-            'auth'        => $this->authFromPost($request->getBodyParam('auth') ?: []),
+            'endpoint'    => ($endpoint === null || $endpoint === '') ? null : (string)$endpoint,
+            'auth'        => $normalizer->auth($request->getBodyParam('auth') ?: []),
         ]);
 
         if (!$link->endpoint) {
@@ -291,173 +380,6 @@ class LinksController extends Controller
     }
 
     // -- helpers --------------------------------------------------------
-
-    private function emptyToNull(mixed $value): ?string
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        return (string)$value;
-    }
-
-    private function keyValueTable(array $rows): array
-    {
-        $out = [];
-        foreach ($rows as $row) {
-            $k = trim((string)($row['key'] ?? ''));
-            $v = (string)($row['value'] ?? '');
-            if ($k === '' || $v === '') {
-                continue;
-            }
-            $out[$k] = $v;
-        }
-        return $out;
-    }
-
-    /**
-     * Normalise the mapping form-payload into the recursive shape stored in
-     * Project Config:
-     *
-     *   mappings:
-     *     handle:
-     *       node: 'remote.path'        # optional
-     *       default: '...'             # optional
-     *       options:                   # per-field-type extras (asset mode, ...)
-     *         mode: 'url'
-     *       fields:                    # sub-element custom fields (recursive)
-     *         someFieldOnRelated: { node: ..., default: ..., options: ... }
-     *       nativeFields:              # sub-element native attrs (recursive)
-     *         alt: { node: ..., default: ... }
-     *
-     * Empty rows are dropped so saved YAML stays clean. The legacy `type` key
-     * is ignored on read (dispatch happens by Craft field FQCN now) but kept
-     * on save when present so users can downgrade safely.
-     */
-    private function mappingsFromPost(array $rows): array
-    {
-        $out = [];
-        foreach ($rows as $handle => $row) {
-            if (!is_string($handle) || !is_array($row)) {
-                continue;
-            }
-            $entry = $this->mappingRowFromPost($row);
-            if ($entry === null) {
-                continue;
-            }
-            $out[$handle] = $entry;
-        }
-        return $out;
-    }
-
-    /**
-     * Recursively normalise a single mapping row + its sub-fields.
-     */
-    private function mappingRowFromPost(array $row): ?array
-    {
-        $node = trim((string)($row['node'] ?? ''));
-
-        $default = $row['default'] ?? null;
-        if (is_array($default)) {
-            // elementSelect posts an array of ids — take the first non-empty.
-            $filtered = array_values(array_filter($default, fn($v) => $v !== '' && $v !== null));
-            $default  = (string)($filtered[0] ?? '');
-        }
-        $default = is_string($default) ? trim($default) : '';
-
-        $options = $this->decodeOptionsBlob($row['options'] ?? null);
-
-        $subFields = $this->subFieldsFromPost($row['fields'] ?? null);
-        $nativeSubFields = $this->subFieldsFromPost($row['nativeFields'] ?? null);
-
-        $hasAnything = $node !== '' || $default !== '' || !empty($options)
-            || !empty($subFields) || !empty($nativeSubFields);
-        if (!$hasAnything) {
-            return null;
-        }
-
-        $entry = [];
-        if (!empty($row['type'])) {
-            $entry['type'] = trim((string)$row['type']);
-        }
-        if ($node !== '') {
-            $entry['node'] = $node;
-        }
-        if ($default !== '') {
-            $entry['default'] = $default;
-        }
-        if (!empty($options)) {
-            $entry['options'] = $options;
-        }
-        if (!empty($subFields)) {
-            $entry['fields'] = $subFields;
-        }
-        if (!empty($nativeSubFields)) {
-            $entry['nativeFields'] = $nativeSubFields;
-        }
-        return $entry;
-    }
-
-    /**
-     * The Vue MappingExtras component posts options as a single JSON string;
-     * legacy callers may post it as a normal array. Accept both.
-     */
-    private function decodeOptionsBlob(mixed $raw): array
-    {
-        if (is_array($raw)) {
-            return $raw;
-        }
-        if (!is_string($raw) || $raw === '') {
-            return [];
-        }
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /**
-     * Normalise either a JSON blob (Vue) or a nested array (legacy/Twig)
-     * of sub-mapping rows into the recursive shape stored in Project Config.
-     */
-    private function subFieldsFromPost(mixed $raw): array
-    {
-        $rows = $this->decodeOptionsBlob($raw);
-        if (empty($rows)) {
-            return [];
-        }
-        $out = [];
-        foreach ($rows as $subHandle => $subRow) {
-            if (!is_string($subHandle) || !is_array($subRow)) {
-                continue;
-            }
-            $normalised = $this->mappingRowFromPost($subRow);
-            if ($normalised !== null) {
-                $out[$subHandle] = $normalised;
-            }
-        }
-        return $out;
-    }
-
-    private function agoFromTable(array $rows): array
-    {
-        $out = [];
-        foreach ($rows as $row) {
-            $key = trim((string)($row['key'] ?? ''));
-            $since = trim((string)($row['since'] ?? ''));
-            $queryParam = trim((string)($row['queryParam'] ?? ''));
-
-            if ($key === '' || $since === '' || $queryParam === '') {
-                continue;
-            }
-
-            $entry = ['since' => $since, 'queryParam' => $queryParam];
-            $format = trim((string)($row['format'] ?? ''));
-            if ($format !== '') {
-                $entry['format'] = $format;
-            }
-
-            $out[$key] = $entry;
-        }
-        return $out;
-    }
 
     private function elementTypeOptions(): array
     {
@@ -567,34 +489,6 @@ class LinksController extends Controller
             'custom'      => Craft::t('influx', 'Custom header'),
             'querystring' => Craft::t('influx', 'Query string parameter'),
         ];
-    }
-
-    private function authFromPost(array $raw): array
-    {
-        $type = trim((string)($raw['type'] ?? ''));
-        $token = trim((string)($raw['token'] ?? ''));
-
-        if ($type === '' || $token === '') {
-            return [];
-        }
-
-        $auth = ['type' => $type, 'token' => $token];
-
-        if ($type === 'custom') {
-            $header = trim((string)($raw['header'] ?? ''));
-            if ($header !== '') {
-                $auth['header'] = $header;
-            }
-        }
-
-        if ($type === 'querystring') {
-            $param = trim((string)($raw['param'] ?? ''));
-            if ($param !== '') {
-                $auth['param'] = $param;
-            }
-        }
-
-        return $auth;
     }
 
     private function processingOptions(): array

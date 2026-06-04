@@ -81,6 +81,21 @@ abstract class Field
     abstract public function parseField(): mixed;
 
     /**
+     * UI-side metadata for the mapping editor. Targets call this through
+     * {@see \TDM\Influx\services\FieldsService::metaFor()} when building the
+     * mappable-fields list, so per-field-type UI hints (asset sub-fields,
+     * dropdown options, relation element type, ...) live next to the parse
+     * logic instead of in a giant if-chain on the target.
+     *
+     * Subclasses override when they have something to say; the default is
+     * "no extras", which is correct for plain field types.
+     */
+    public function fieldMeta(CraftFieldInterface $field): array
+    {
+        return [];
+    }
+
+    /**
      * Set the parsed value on the element. Default: route to `setFieldValue`,
      * which is correct for every custom field. Subclasses override only when
      * they need something more involved (e.g. assets-as-IDs arrays).

@@ -2,13 +2,13 @@
 
 namespace TDM\Influx\events;
 
-use yii\base\Event;
+use craft\events\ModelEvent;
 use TDM\Influx\models\Link;
 
 /**
  * Fired around create/save/delete of a Link configuration.
  */
-class LinkEvent extends Event
+class LinkEvent extends ModelEvent
 {
     public Link $link;
     public bool $isNew = false;

@@ -9,6 +9,7 @@ use TDM\Influx\Influx;
 use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
 use TDM\Influx\exceptions\InfluxException;
+use TDM\Influx\models\AgoPreset;
 use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
 use TDM\Influx\targets\ElementTargetInterface;
@@ -59,7 +60,7 @@ class SynchronizationService extends Component
 
         $target = $this->resolveTarget($link);
 
-        $queryParams = $this->agoQueryParams($link, $ago);
+        [$queryParams] = AgoPreset::forLink($link, $ago)?->resolve() ?? [[], null];
 
         try {
             $siteHandles = $link->siteHandles() ?: [null];
@@ -147,7 +148,10 @@ class SynchronizationService extends Component
                 break;
             }
 
-            $data = $plugin->data->fetchUrl($nextUrl, $link->resolvedHeaders());
+            $nextHeaders = [];
+            $nextQuery = [];
+            $link->applyAuth($nextHeaders, $nextQuery);
+            $data = $plugin->data->fetchUrl($nextUrl, $nextHeaders, $nextQuery);
         }
     }
 
@@ -204,12 +208,7 @@ class SynchronizationService extends Component
                 return;
             }
             $element = $target->buildNew($link, $siteId);
-            $matchAttr = $link->matchAttribute();
-            if ($element->hasAttribute($matchAttr) || property_exists($element, $matchAttr)) {
-                $element->$matchAttr = $matchValue;
-            } else {
-                $element->setFieldValue($matchAttr, $matchValue);
-            }
+            $target->assignMatchValue($element, $link, $matchValue);
             $isNew = true;
         } elseif (!in_array('update', $link->processing, true)) {
             $plugin->logs->recordItem($log, 'skipped', $element->id, (string)$matchValue, "'update' not enabled for this link.");
@@ -220,49 +219,7 @@ class SynchronizationService extends Component
             $element->siteId = $siteId;
         }
 
-        $changed = $isNew;
-        $fields = $plugin->fields;
-        $layout = $element->getFieldLayout();
-
-        foreach ($link->mappings as $handle => $config) {
-            if (!is_array($config)) {
-                continue;
-            }
-
-            // The `author` native attr on Entry is owned by the target via
-            // buildNew() (it sets a default author id). Skip here so we don't
-            // assign a user id as a plain string.
-            if ($handle === 'author' && $link->elementType === \craft\elements\Entry::class) {
-                continue;
-            }
-
-            $craftField = $layout?->getFieldByHandle($handle);
-
-            if ($craftField === null) {
-                // Native attribute (title/slug/status/...) — route to the
-                // target so element-shape concerns stay in one place.
-                $applied = $target->applyNativeAttribute($element, $handle, $item, $config);
-                if ($applied) {
-                    $changed = true;
-                }
-                continue;
-            }
-
-            // Custom field — dispatch via the per-field-type strategy.
-            $strategy = $fields->forCraftField($craftField);
-            $strategy->setContext($craftField, $handle, $config, $item, $link, $element);
-
-            $value = $strategy->parseField();
-            if ($value === null) {
-                continue;
-            }
-
-            if (!$changed && $strategy->hasChanged($element, $value)) {
-                $changed = true;
-            }
-
-            $strategy->apply($element, $value);
-        }
+        $changed = (new \TDM\Influx\sync\MappingApplier())->apply($target, $element, $link, $item, $isNew);
 
         $afterMappingEvent = new SyncItemEvent([
             'link'       => $link,
@@ -309,20 +266,4 @@ class SynchronizationService extends Component
         return $target;
     }
 
-    private function agoQueryParams(Link $link, ?string $ago): array
-    {
-        if (!$ago || !isset($link->ago[$ago])) {
-            return [];
-        }
-
-        $preset = $link->ago[$ago];
-        if (!isset($preset['since'], $preset['queryParam'])) {
-            return [];
-        }
-
-        $since = (new \DateTime())->modify($preset['since']);
-        $format = $preset['format'] ?? \DateTimeInterface::ATOM;
-
-        return [$preset['queryParam'] => $since->format($format)];
-    }
 }

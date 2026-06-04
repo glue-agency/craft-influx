@@ -26,6 +26,7 @@ use TDM\Influx\services\TargetsService;
 use TDM\Influx\services\CooldownService;
 use TDM\Influx\services\AssetUploadService;
 use TDM\Influx\services\BackupService;
+use TDM\Influx\services\DebugService;
 use TDM\Influx\targets\EntryTarget;
 
 /**
@@ -42,6 +43,7 @@ use TDM\Influx\targets\EntryTarget;
  * @property CooldownService $cooldown
  * @property BackupService $backup
  * @property AssetUploadService $assetUpload
+ * @property DebugService $debug
  */
 class Influx extends Plugin
 {
@@ -64,6 +66,7 @@ class Influx extends Plugin
                 'cooldown'        => CooldownService::class,
                 'backup'          => BackupService::class,
                 'assetUpload'     => AssetUploadService::class,
+                'debug'           => DebugService::class,
             ],
         ];
     }
@@ -131,9 +134,12 @@ class Influx extends Plugin
                 $event->rules['influx/links/new']                      = 'influx/links/edit';
                 $event->rules['influx/links/<handle:[\w\-]+>']         = 'influx/links/view';
                 $event->rules['influx/links/<handle:[\w\-]+>/edit']    = 'influx/links/edit';
+                $event->rules['influx/links/<handle:[\w\-]+>/debug']        = 'influx/links/debug';
+                $event->rules['influx/links/<handle:[\w\-]+>/debug/stream'] = 'influx/links/debug-stream';
 
                 $event->rules['influx/logs']                           = 'influx/logs/index';
                 $event->rules['influx/logs/<id:\d+>']                  = 'influx/logs/view';
+                $event->rules['influx/logs/<id:\d+>/stream']           = 'influx/logs/stream';
             },
         );
     }

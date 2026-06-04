@@ -14,6 +14,7 @@ use TDM\Influx\fields\Dropdown;
 use TDM\Influx\fields\Entries;
 use TDM\Influx\fields\Field;
 use TDM\Influx\fields\Lightswitch;
+use TDM\Influx\fields\Matrix;
 use TDM\Influx\fields\Tags;
 use TDM\Influx\fields\Users;
 
@@ -48,8 +49,19 @@ class FieldsService extends Component
         $this->registerClass(Users::class);
         $this->registerClass(Categories::class);
         $this->registerClass(Tags::class);
+        $this->registerClass(Matrix::class);
 
         $this->default = Craft::createObject(DefaultField::class);
+    }
+
+    /**
+     * UI metadata for a given Craft field — delegated to the matching
+     * strategy so each field type owns both parse logic and UI hints.
+     * Returns an empty array for field types nothing has an opinion on.
+     */
+    public function metaFor(CraftFieldInterface $field): array
+    {
+        return $this->forCraftField($field)->fieldMeta($field);
     }
 
     /**

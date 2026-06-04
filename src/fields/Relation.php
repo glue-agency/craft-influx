@@ -2,11 +2,8 @@
 
 namespace TDM\Influx\fields;
 
-use Cake\Utility\Hash;
-use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
-use craft\fields\BaseRelationField;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -29,6 +26,15 @@ abstract class Relation extends Field
      * Tag. Subclasses MUST override.
      */
     abstract protected function elementType(): string;
+
+    public function fieldMeta(\craft\base\FieldInterface $field): array
+    {
+        /** @var \craft\fields\BaseRelationField $field */
+        return [
+            'kind'        => 'relation',
+            'elementType' => $field::elementType(),
+        ];
+    }
 
     public function parseField(): mixed
     {
@@ -134,62 +140,6 @@ abstract class Relation extends Field
      */
     protected function populateSubElement(ElementInterface $element): void
     {
-        $custom = $this->fieldInfo['fields'] ?? [];
-        $native = $this->fieldInfo['nativeFields'] ?? [];
-        if (empty($custom) && empty($native)) {
-            return;
-        }
-
-        $touched = false;
-
-        // Native sub-attributes (e.g. asset.alt, entry.title).
-        foreach ($native as $handle => $sub) {
-            $value = $this->resolveSubValue($sub);
-            if ($value === null) {
-                continue;
-            }
-            if ($element->hasAttribute($handle) || property_exists($element, $handle)) {
-                $element->$handle = $value;
-                $touched = true;
-            }
-        }
-
-        // Custom sub-fields. Recurse through FieldsService so a sub-Asset
-        // with its own sub-alt mapping just works.
-        $fields = \TDM\Influx\Influx::getInstance()->fields;
-        foreach ($custom as $handle => $sub) {
-            $craftField = $element->getFieldLayout()?->getFieldByHandle($handle);
-            if (!$craftField) {
-                continue;
-            }
-            $strategy = $fields->forCraftField($craftField);
-            $strategy->setContext($craftField, $handle, $sub, $this->feedData, $this->link, $element);
-            $value = $strategy->parseField();
-            if ($value === null) {
-                continue;
-            }
-            $strategy->apply($element, $value);
-            $touched = true;
-        }
-
-        if ($touched) {
-            Craft::$app->getElements()->saveElement($element, false);
-        }
-    }
-
-    private function resolveSubValue(mixed $sub): mixed
-    {
-        if (!is_array($sub)) {
-            return null;
-        }
-        $node = $sub['node'] ?? null;
-        $value = $node ? Hash::get($this->feedData, $node) : null;
-        if ($value === null || $value === '') {
-            $value = $sub['default'] ?? null;
-        }
-        if ($value === null || $value === '') {
-            return null;
-        }
-        return $value;
+        (new SubElementPopulator())->populate($element, $this->feedData, $this->fieldInfo, $this->link);
     }
 }

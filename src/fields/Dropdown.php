@@ -21,6 +21,18 @@ class Dropdown extends Field
         return \craft\fields\BaseOptionsField::class;
     }
 
+    public function fieldMeta(\craft\base\FieldInterface $field): array
+    {
+        /** @var \craft\fields\BaseOptionsField $field */
+        $options = [];
+        foreach ($field->options ?? [] as $opt) {
+            if (is_array($opt) && isset($opt['value'])) {
+                $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
+            }
+        }
+        return ['kind' => 'options', 'options' => $options];
+    }
+
     public function parseField(): mixed
     {
         $raw = $this->fetchSimpleValue();

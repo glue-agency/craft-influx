@@ -7,6 +7,8 @@
     { label: "Logs"|t("influx"), url: cpUrl("influx/logs") },
 ] %}
 
+{% set isLive = log.status in ['running', 'pending'] %}
+
 {% block content %}
     <table class="data fullwidth fixed-layout">
         <tbody>
@@ -14,80 +16,169 @@
             <tr><th>{{ "Trigger"|t("influx") }}</th><td>{{ log.trigger }}</td></tr>
             <tr>
                 <th>{{ "Status"|t("influx") }}</th>
-                <td>
+                <td id="influx-log-status-cell">
                     <span class="status {{ log.status == "ok" ? "live" : (log.status == "error" ? "expired" : "pending") }}"></span>
-                    {{ log.status }}
+                    <span class="influx-log-status">{{ log.status }}</span>
                 </td>
             </tr>
             <tr><th>{{ "Started"|t("influx") }}</th><td>{{ log.startedAt|datetime }}</td></tr>
-            <tr><th>{{ "Finished"|t("influx") }}</th><td>{{ log.finishedAt ? log.finishedAt|datetime : "—" }}</td></tr>
-            {% if log.error %}
-                <tr><th>{{ "Error"|t("influx") }}</th><td><pre class="error">{{ log.error }}</pre></td></tr>
-            {% endif %}
+            <tr><th>{{ "Finished"|t("influx") }}</th><td id="influx-log-finished">{{ log.finishedAt ? log.finishedAt|datetime : "—" }}</td></tr>
+            <tr id="influx-log-error-row" {% if not log.error %}hidden{% endif %}>
+                <th>{{ "Error"|t("influx") }}</th>
+                <td><pre class="error" id="influx-log-error">{{ log.error }}</pre></td>
+            </tr>
         </tbody>
     </table>
 
     <h2>{{ "Counters"|t("influx") }}</h2>
     <table class="data fullwidth fixed-layout">
         <tbody>
-            <tr><th>{{ "Seen"|t("influx") }}</th><td>{{ log.itemsSeen }}</td></tr>
-            <tr><th>{{ "Created"|t("influx") }}</th><td>{{ log.itemsCreated }}</td></tr>
-            <tr><th>{{ "Updated"|t("influx") }}</th><td>{{ log.itemsUpdated }}</td></tr>
-            <tr><th>{{ "Unchanged"|t("influx") }}</th><td>{{ log.itemsUnchanged }}</td></tr>
-            <tr><th>{{ "Skipped"|t("influx") }}</th><td>{{ log.itemsSkipped }}</td></tr>
-            <tr><th>{{ "Deleted / disabled"|t("influx") }}</th><td>{{ log.itemsDeleted }}</td></tr>
+            <tr><th>{{ "Seen"|t("influx") }}</th><td data-counter="itemsSeen">{{ log.itemsSeen }}</td></tr>
+            <tr><th>{{ "Created"|t("influx") }}</th><td data-counter="itemsCreated">{{ log.itemsCreated }}</td></tr>
+            <tr><th>{{ "Updated"|t("influx") }}</th><td data-counter="itemsUpdated">{{ log.itemsUpdated }}</td></tr>
+            <tr><th>{{ "Unchanged"|t("influx") }}</th><td data-counter="itemsUnchanged">{{ log.itemsUnchanged }}</td></tr>
+            <tr><th>{{ "Skipped"|t("influx") }}</th><td data-counter="itemsSkipped">{{ log.itemsSkipped }}</td></tr>
+            <tr><th>{{ "Deleted / disabled"|t("influx") }}</th><td data-counter="itemsDeleted">{{ log.itemsDeleted }}</td></tr>
         </tbody>
     </table>
 
-    <h2>{{ "Items"|t("influx") }}</h2>
-    {% if items is empty %}
-        <p class="light">{{ "No per-item rows."|t("influx") }}</p>
-    {% else %}
-        <table class="data fullwidth">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>{{ "Action"|t("influx") }}</th>
-                    <th>{{ "Match value"|t("influx") }}</th>
-                    <th>{{ "Element"|t("influx") }}</th>
-                    <th>{{ "Message"|t("influx") }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                    <tr>
-                        <td>{{ item.id }}</td>
-                        <td>
-                            {% set color = {
-                                "created":   "live",
-                                "updated":   "live",
-                                "unchanged": "pending",
-                                "skipped":   "pending",
-                                "disabled":  "expired",
-                                "deleted":   "expired",
-                                "deleted-for-site": "expired",
-                                "error":     "expired",
-                            }[item.action] ?? "pending" %}
-                            <span class="status {{ color }}"></span>
-                            <code>{{ item.action }}</code>
-                        </td>
-                        <td><code>{{ item.matchValue ?: "—" }}</code></td>
-                        <td>
-                            {% if item.elementId %}
-                                {% set el = craft.app.elements.getElementById(item.elementId) %}
-                                {% if el %}
-                                    <a href="{{ el.cpEditUrl }}">{{ el.title ?: ("#" ~ el.id) }}</a>
-                                {% else %}
-                                    <span class="light">#{{ item.elementId }} (gone)</span>
-                                {% endif %}
+    <h2>
+        {{ "Items"|t("influx") }}
+        {% if isLive %}<span class="light" id="influx-log-stream-status">— {{ "connecting…"|t("influx") }}</span>{% endif %}
+    </h2>
+    <table class="data fullwidth" id="influx-log-items-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>{{ "Action"|t("influx") }}</th>
+                <th>{{ "Match value"|t("influx") }}</th>
+                <th>{{ "Element"|t("influx") }}</th>
+                <th>{{ "Message"|t("influx") }}</th>
+            </tr>
+        </thead>
+        <tbody id="influx-log-items-body">
+            {% for item in items %}
+                {% set color = {
+                    "created":   "live",
+                    "updated":   "live",
+                    "unchanged": "pending",
+                    "skipped":   "pending",
+                    "disabled":  "expired",
+                    "deleted":   "expired",
+                    "deleted-for-site": "expired",
+                    "error":     "expired",
+                }[item.action] ?? "pending" %}
+                <tr data-item-id="{{ item.id }}">
+                    <td>{{ item.id }}</td>
+                    <td>
+                        <span class="status {{ color }}"></span>
+                        <code>{{ item.action }}</code>
+                    </td>
+                    <td><code>{{ item.matchValue ?: "—" }}</code></td>
+                    <td>
+                        {% if item.elementId %}
+                            {% set el = craft.app.elements.getElementById(item.elementId) %}
+                            {% if el %}
+                                {{ elementChip(el) }}
                             {% else %}
-                                <span class="light">—</span>
+                                <span class="light">#{{ item.elementId }} ({{ "gone"|t("influx") }})</span>
                             {% endif %}
-                        </td>
-                        <td>{{ item.message ?: "" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        {% else %}
+                            <span class="light">—</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.message ?: "" }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if items is empty and not isLive %}
+        <p class="light">{{ "No per-item rows."|t("influx") }}</p>
+    {% endif %}
+
+    {% if isLive %}
+        {% set lastItemId = items|length ? items|last.id : 0 %}
+        {% js %}
+        (function () {
+            const streamBase = {{ streamUrl|json_encode|raw }};
+            const url = streamBase + (streamBase.includes('?') ? '&' : '?') + 'lastId={{ lastItemId }}';
+
+            const body = document.getElementById('influx-log-items-body');
+            const statusLabel = document.getElementById('influx-log-stream-status');
+            const statusCell = document.getElementById('influx-log-status-cell');
+            const finishedCell = document.getElementById('influx-log-finished');
+            const errorRow = document.getElementById('influx-log-error-row');
+            const errorPre = document.getElementById('influx-log-error');
+
+            const actionColors = {
+                'created':   'live',
+                'updated':   'live',
+                'unchanged': 'pending',
+                'skipped':   'pending',
+                'disabled':  'expired',
+                'deleted':   'expired',
+                'deleted-for-site': 'expired',
+                'error':     'expired',
+            };
+
+            function escapeHtml(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            }
+
+            function appendItem(d) {
+                if (document.querySelector('tr[data-item-id="' + d.id + '"]')) return;
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-item-id', d.id);
+                const color = actionColors[d.action] || 'pending';
+                tr.innerHTML =
+                    '<td>' + escapeHtml(d.id) + '</td>' +
+                    '<td><span class="status ' + color + '"></span> <code>' + escapeHtml(d.action) + '</code></td>' +
+                    '<td><code>' + (d.matchValue ? escapeHtml(d.matchValue) : '—') + '</code></td>' +
+                    '<td>' + (d.elementHtml || '<span class="light">—</span>') + '</td>' +
+                    '<td>' + escapeHtml(d.message) + '</td>';
+                body.appendChild(tr);
+            }
+
+            function updateCounters(d) {
+                ['itemsSeen','itemsCreated','itemsUpdated','itemsUnchanged','itemsSkipped','itemsDeleted'].forEach(function (k) {
+                    const cell = document.querySelector('[data-counter="' + k + '"]');
+                    if (cell) cell.textContent = d[k];
+                });
+                if (d.status) {
+                    const cls = d.status === 'ok' ? 'live' : (d.status === 'error' ? 'expired' : 'pending');
+                    statusCell.querySelector('.status').className = 'status ' + cls;
+                    statusCell.querySelector('.influx-log-status').textContent = d.status;
+                }
+                if (d.finishedAt) finishedCell.textContent = d.finishedAt;
+                if (d.error) {
+                    errorPre.textContent = d.error;
+                    errorRow.hidden = false;
+                }
+            }
+
+            const es = new EventSource(url, { withCredentials: true });
+            statusLabel.textContent = '— ' + {{ "streaming…"|t("influx")|json_encode|raw }};
+
+            es.addEventListener('item', function (e) {
+                try { appendItem(JSON.parse(e.data)); } catch (err) { console.error(err); }
+            });
+
+            es.addEventListener('counters', function (e) {
+                try { updateCounters(JSON.parse(e.data)); } catch (err) { console.error(err); }
+            });
+
+            es.addEventListener('done', function () {
+                statusLabel.textContent = '';
+                es.close();
+            });
+
+            es.addEventListener('error', function () {
+                statusLabel.innerHTML = '<span class="error">' + {{ "stream closed"|t("influx")|json_encode|raw }} + '</span>';
+                es.close();
+            });
+        })();
+        {% endjs %}
     {% endif %}
 {% endblock %}

@@ -51,6 +51,16 @@ class EntryTarget extends AbstractElementTarget
         return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
     }
 
+    /**
+     * `author` is read from the mapping's `default` during {@see buildNew()}
+     * and applied as a user id — the generic dispatcher must not also try to
+     * assign it as a plain string.
+     */
+    public function ownsAttribute(Link $link, string $handle): bool
+    {
+        return $handle === 'author';
+    }
+
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?Entry
     {
         $matchAttr = $link->matchAttribute();
@@ -76,6 +86,34 @@ class EntryTarget extends AbstractElementTarget
         }
 
         return $query->one();
+    }
+
+    protected function parsePostDate(\craft\base\ElementInterface $element, array $item, array $config): bool
+    {
+        return $this->assignDate($element, 'postDate', $item, $config);
+    }
+
+    protected function parseExpiryDate(\craft\base\ElementInterface $element, array $item, array $config): bool
+    {
+        return $this->assignDate($element, 'expiryDate', $item, $config);
+    }
+
+    private function assignDate(\craft\base\ElementInterface $element, string $attr, array $item, array $config): bool
+    {
+        $value = $this->resolveValue($item, $config);
+        if ($value === null || $value === '') {
+            return false;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            $element->{$attr} = $value instanceof \DateTime ? $value : \DateTime::createFromInterface($value);
+            return true;
+        }
+        $parsed = \craft\helpers\DateTimeHelper::toDateTime($value);
+        if (!$parsed) {
+            return false;
+        }
+        $element->{$attr} = $parsed;
+        return true;
     }
 
     /**
@@ -234,64 +272,11 @@ class EntryTarget extends AbstractElementTarget
                     'group'       => $tabName,
                     'defaultType' => 'text',
                     'fieldClass'  => $field::class,
-                    'fieldMeta'   => $this->fieldMeta($field),
+                    'fieldMeta'   => \TDM\Influx\Influx::getInstance()->fields->metaFor($field),
                 ];
             }
         }
 
         return $fields;
-    }
-
-    /**
-     * Per-field-type metadata for the typed-mapping UI. Implemented as a
-     * dispatch on the field's FQCN so we don't need a separate adapter per
-     * type until the divergence is genuinely big. Anything Influx doesn't
-     * have an opinion about returns an empty array.
-     */
-    private function fieldMeta(\craft\base\FieldInterface $field): array
-    {
-        if ($field instanceof \craft\fields\Assets) {
-            return [
-                'kind'        => 'asset',
-                'allowedKinds' => $field->allowedKinds ?? null,
-                'subFields'   => [
-                    // Each entry: handle => label. The handle is used as the
-                    // sub-mapping key on the saved Link config.
-                    'alt'   => Craft::t('influx', 'Alt text'),
-                    'title' => Craft::t('influx', 'Title'),
-                ],
-            ];
-        }
-
-        if ($field instanceof \craft\fields\Dropdown
-            || $field instanceof \craft\fields\RadioButtons
-            || $field instanceof \craft\fields\Checkboxes
-            || $field instanceof \craft\fields\MultiSelect
-        ) {
-            $options = [];
-            foreach ($field->options ?? [] as $opt) {
-                if (is_array($opt) && isset($opt['value'])) {
-                    $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
-                }
-            }
-            return ['kind' => 'options', 'options' => $options];
-        }
-
-        if ($field instanceof \craft\fields\Lightswitch) {
-            return ['kind' => 'boolean'];
-        }
-
-        if ($field instanceof \craft\fields\BaseRelationField) {
-            return [
-                'kind'        => 'relation',
-                'elementType' => $field::elementType(),
-            ];
-        }
-
-        if ($field instanceof \craft\fields\Matrix) {
-            return ['kind' => 'matrix']; // full Matrix UI is a later iteration
-        }
-
-        return [];
     }
 }

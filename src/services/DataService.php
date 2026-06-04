@@ -5,9 +5,9 @@ namespace TDM\Influx\services;
 use Cake\Utility\Hash;
 use Craft;
 use craft\base\Component;
-use craft\helpers\App;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use TDM\Influx\data\EndpointResolver;
 use TDM\Influx\models\Link;
 use TDM\Influx\exceptions\FeedFetchException;
 
@@ -17,6 +17,7 @@ use TDM\Influx\exceptions\FeedFetchException;
 class DataService extends Component
 {
     protected Client $client;
+    protected EndpointResolver $endpoints;
 
     public function init(): void
     {
@@ -24,21 +25,14 @@ class DataService extends Component
             'http_errors' => true,
             'timeout'     => 30,
         ]);
+        $this->endpoints = new EndpointResolver();
 
         parent::init();
     }
 
     public function fetch(Link $link, ?string $siteHandle = null, array $queryParams = []): array
     {
-        $raw = $siteHandle
-            ? ($link->siteEndpoints[$siteHandle] ?? $link->endpoint)
-            : $link->endpoint;
-
-        if (!$raw) {
-            throw new FeedFetchException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
-        }
-
-        $url = $this->resolveUrl($raw, $link->handle);
+        $url = $this->endpoints->listUrl($link, $siteHandle);
 
         $headers = [];
         $query   = $queryParams;
@@ -49,19 +43,7 @@ class DataService extends Component
 
     public function fetchOne(Link $link, array $tokens, ?string $siteHandle = null): array
     {
-        if (!$link->itemEndpoint) {
-            throw new FeedFetchException("Link '{$link->handle}' has no itemEndpoint configured.");
-        }
-
-        $url = $this->resolveUrl($link->itemEndpoint, $link->handle);
-
-        foreach ($tokens as $name => $value) {
-            $url = str_replace('{' . $name . '}', rawurlencode((string)$value), $url);
-        }
-
-        if ($siteHandle) {
-            $url = str_replace('{site}', rawurlencode($siteHandle), $url);
-        }
+        $url = $this->endpoints->itemUrl($link, $tokens, $siteHandle);
 
         $headers = [];
         $query   = [];
@@ -130,7 +112,7 @@ class DataService extends Component
         }
 
         return [
-            'url'                     => App::parseEnv($link->endpoint ?? ''),
+            'url'                     => $this->endpoints->listUrlForDisplay($link),
             'rootNode'                => $rootNode,
             'rootNodeCandidates'      => $rootCandidates,
             'paginatorNode'           => $paginatorNode,
@@ -317,28 +299,9 @@ class DataService extends Component
         return is_array($value) ? array_values($value) : [];
     }
 
-    /**
-     * Resolve `$ENV` references and `@alias` paths to a real URL. Throws a
-     * clear error if a reference can't be resolved, so we don't hand a
-     * literal `$VAR` / `@alias` string to cURL.
-     */
-    private function resolveUrl(string $raw, string $linkHandle): string
+    public function endpoints(): EndpointResolver
     {
-        $resolved = App::parseEnv($raw);
-
-        if ($resolved === null) {
-            throw new FeedFetchException(
-                "Link '{$linkHandle}' endpoint '{$raw}' references an environment variable that isn't set."
-            );
-        }
-
-        if (!is_string($resolved) || str_starts_with($resolved, '@')) {
-            throw new FeedFetchException(
-                "Link '{$linkHandle}' endpoint '{$raw}' uses an alias that isn't registered in config/general.php → 'aliases'."
-            );
-        }
-
-        return $resolved;
+        return $this->endpoints;
     }
 
     private function get(string $url, array $headers = [], array $query = []): array

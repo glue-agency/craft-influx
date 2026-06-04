@@ -3,7 +3,7 @@
 namespace TDM\Influx\events;
 
 use craft\base\ElementInterface;
-use yii\base\Event;
+use craft\events\ModelEvent;
 use TDM\Influx\models\Link;
 
 /**
@@ -18,7 +18,7 @@ use TDM\Influx\models\Link;
  *                    happened: 'created' | 'updated' | 'unchanged' | 'skipped'
  *                    | 'disabled' | 'deleted' | 'deleted-for-site'.
  */
-class SyncItemEvent extends Event
+class SyncItemEvent extends ModelEvent
 {
     public Link $link;
     public array $item = [];

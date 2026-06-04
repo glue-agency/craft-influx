@@ -4,8 +4,8 @@ namespace TDM\Influx\models;
 
 use Cake\Utility\Hash;
 use craft\base\Model;
-use craft\helpers\App;
 use craft\helpers\StringHelper;
+use TDM\Influx\auth\AuthFactory;
 
 /**
  * An Influx link: one configured connection between Craft and an external
@@ -167,23 +167,14 @@ class Link extends Model
             return;
         }
 
-        $type = $value['type'] ?? null;
-        if (!in_array($type, ['bearer', 'custom', 'querystring'], true)) {
-            $this->addError($attribute, 'Auth type must be bearer, custom, or querystring.');
+        $strategy = AuthFactory::fromConfig($value);
+        if (!$strategy) {
+            $known = implode(', ', AuthFactory::knownTypes());
+            $this->addError($attribute, "Auth type must be one of: {$known}.");
             return;
         }
 
-        if (empty($value['token'])) {
-            $this->addError($attribute, 'Auth requires a token.');
-        }
-
-        if ($type === 'custom' && empty($value['header'])) {
-            $this->addError($attribute, 'Custom auth requires a header name.');
-        }
-
-        if ($type === 'querystring' && empty($value['param'])) {
-            $this->addError($attribute, 'Querystring auth requires a parameter name.');
-        }
+        $strategy->validate(fn(string $msg) => $this->addError($attribute, $msg));
     }
 
     /**
@@ -235,37 +226,13 @@ class Link extends Model
 
     /**
      * Mutates the given header / query arrays to add this link's auth
-     * credentials. Auth tokens are resolved through `$ENV` at call time so
-     * secrets stay out of Project Config.
+     * credentials. The actual rule per auth type lives on the strategy
+     * classes in {@see \TDM\Influx\auth}.
      */
     public function applyAuth(array &$headers, array &$query): void
     {
-        if (empty($this->auth) || empty($this->auth['type']) || empty($this->auth['token'])) {
-            return;
-        }
-
-        $token = App::parseEnv($this->auth['token']);
-        if ($token === null || $token === '') {
-            return;
-        }
-
-        switch ($this->auth['type']) {
-            case 'bearer':
-                $headers['Authorization'] = 'Bearer ' . $token;
-                break;
-            case 'custom':
-                $name = trim((string)($this->auth['header'] ?? ''));
-                if ($name !== '') {
-                    $headers[$name] = $token;
-                }
-                break;
-            case 'querystring':
-                $param = trim((string)($this->auth['param'] ?? ''));
-                if ($param !== '') {
-                    $query[$param] = $token;
-                }
-                break;
-        }
+        $strategy = AuthFactory::fromConfig($this->auth);
+        $strategy?->apply($headers, $query);
     }
 
     public function siteHandles(): array
