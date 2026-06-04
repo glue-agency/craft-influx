@@ -5,7 +5,8 @@ namespace TDM\Influx\models;
 use Cake\Utility\Hash;
 use craft\base\Model;
 use craft\helpers\StringHelper;
-use TDM\Influx\auth\AuthFactory;
+use TDM\Influx\auth\AuthStrategyInterface;
+use TDM\Influx\Influx;
 
 /**
  * An Influx link: one configured connection between Craft and an external
@@ -167,9 +168,10 @@ class Link extends Model
             return;
         }
 
-        $strategy = AuthFactory::fromConfig($value);
+        $auth = $this->authService();
+        $strategy = $auth?->fromConfig($value);
         if (!$strategy) {
-            $known = implode(', ', AuthFactory::knownTypes());
+            $known = $auth ? implode(', ', $auth->knownTypes()) : '?';
             $this->addError($attribute, "Auth type must be one of: {$known}.");
             return;
         }
@@ -227,12 +229,23 @@ class Link extends Model
     /**
      * Mutates the given header / query arrays to add this link's auth
      * credentials. The actual rule per auth type lives on the strategy
-     * classes in {@see \TDM\Influx\auth}.
+     * classes in {@see \TDM\Influx\auth}, dispatched via
+     * {@see \TDM\Influx\services\AuthService}.
      */
     public function applyAuth(array &$headers, array &$query): void
     {
-        $strategy = AuthFactory::fromConfig($this->auth);
+        $strategy = $this->authService()?->fromConfig($this->auth);
         $strategy?->apply($headers, $query);
+    }
+
+    /**
+     * Resolve the auth service via the plugin singleton, returning null when
+     * the plugin isn't bootstrapped (e.g. in standalone unit tests that
+     * never set auth on the link, so the lookup is never reached).
+     */
+    private function authService(): ?\TDM\Influx\services\AuthService
+    {
+        return Influx::getInstance()?->auth;
     }
 
     public function siteHandles(): array

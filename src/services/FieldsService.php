@@ -5,7 +5,7 @@ namespace TDM\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\FieldInterface as CraftFieldInterface;
-use craft\events\RegisterComponentTypesEvent;
+use TDM\Influx\events\RegisterFieldsEvent;
 use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\fields\Assets;
 use TDM\Influx\fields\Categories;
@@ -19,13 +19,23 @@ use TDM\Influx\fields\Tags;
 use TDM\Influx\fields\Users;
 
 /**
- * Registry of per-Craft-field-type mapping strategies. Keyed by Craft field
- * FQCN; lookups walk the parent class chain so {@see \craft\fields\Dropdown}
- * etc. resolve to the strategy registered against `BaseOptionsField`, and any
- * relation field resolves to the right Relation subclass via its concrete class.
+ * Registry of per-Craft-field-type mapping strategies. Built-ins are seeded
+ * into the registration event payload before triggering, so listeners can
+ * append new strategies, override built-ins (by re-adding under the same
+ * Craft field class), or remove them entirely.
  *
- * Third parties can add or override strategies via
- * {@see self::EVENT_REGISTER_FIELDS} or {@see registerClass()}.
+ *   Event::on(
+ *       FieldsService::class,
+ *       FieldsService::EVENT_REGISTER_FIELDS,
+ *       function (RegisterFieldsEvent $event) {
+ *           $event->fields[] = MyMatrixStrategy::class;
+ *       }
+ *   );
+ *
+ * Lookups walk the parent class chain so concrete Craft classes (Dropdown,
+ * RadioButtons, ...) pick up a strategy registered against their shared base
+ * (BaseOptionsField, BaseRelationField). Unknown field types fall through to
+ * {@see DefaultField}.
  */
 class FieldsService extends Component
 {
@@ -41,33 +51,77 @@ class FieldsService extends Component
     public function init(): void
     {
         parent::init();
-
-        $this->registerClass(Assets::class);
-        $this->registerClass(Lightswitch::class);
-        $this->registerClass(Dropdown::class);
-        $this->registerClass(Entries::class);
-        $this->registerClass(Users::class);
-        $this->registerClass(Categories::class);
-        $this->registerClass(Tags::class);
-        $this->registerClass(Matrix::class);
-
         $this->default = Craft::createObject(DefaultField::class);
+    }
+
+    /**
+     * Built-ins shipped with the plugin. Exposed as a method so tests and
+     * subclasses can override the default set.
+     *
+     * @return list<class-string<Field>>
+     */
+    protected function defaultFields(): array
+    {
+        return [
+            Assets::class,
+            Lightswitch::class,
+            Dropdown::class,
+            Entries::class,
+            Users::class,
+            Categories::class,
+            Tags::class,
+            Matrix::class,
+        ];
+    }
+
+    /**
+     * Direct registration. Forces the registration event to fire first
+     * (seeding built-ins) so callers can rely on overriding built-ins by
+     * simply re-registering them — the explicit call always wins over the
+     * defaults regardless of timing.
+     *
+     * @param class-string<Field> $class
+     */
+    public function registerClass(string $class): void
+    {
+        $this->ensureLoaded();
+        $this->registerOne($class);
+    }
+
+    /**
+     * Resolve the right strategy for the given Craft field. Walks the field's
+     * class hierarchy so concrete Craft classes pick up a strategy registered
+     * against their shared base.
+     */
+    public function forCraftField(CraftFieldInterface $field): Field
+    {
+        $this->ensureLoaded();
+
+        for ($class = $field::class; $class; $class = get_parent_class($class)) {
+            if (isset($this->byCraftFqcn[$class])) {
+                return $this->byCraftFqcn[$class];
+            }
+        }
+        return $this->default;
     }
 
     /**
      * UI metadata for a given Craft field — delegated to the matching
      * strategy so each field type owns both parse logic and UI hints.
-     * Returns an empty array for field types nothing has an opinion on.
      */
     public function metaFor(CraftFieldInterface $field): array
     {
         return $this->forCraftField($field)->fieldMeta($field);
     }
 
-    /**
-     * @param class-string<Field> $class
-     */
-    public function registerClass(string $class): void
+    /** @return array<class-string, Field> */
+    public function all(): array
+    {
+        $this->ensureLoaded();
+        return $this->byCraftFqcn;
+    }
+
+    private function registerOne(string $class): void
     {
         if (!is_subclass_of($class, Field::class)) {
             throw new InfluxException("'{$class}' must extend " . Field::class . '.');
@@ -82,44 +136,18 @@ class FieldsService extends Component
         $this->byCraftFqcn[$fqcn] = Craft::createObject($class);
     }
 
-    /**
-     * Resolve the right strategy for the given Craft field. Walks the field's
-     * class hierarchy so concrete Craft classes (Dropdown, RadioButtons, ...)
-     * pick up a strategy registered against their shared base
-     * (BaseOptionsField, BaseRelationField).
-     */
-    public function forCraftField(CraftFieldInterface $field): Field
-    {
-        $this->ensureExternalsRegistered();
-
-        for ($class = $field::class; $class; $class = get_parent_class($class)) {
-            if (isset($this->byCraftFqcn[$class])) {
-                return $this->byCraftFqcn[$class];
-            }
-        }
-        return $this->default;
-    }
-
-    /** @return array<class-string, Field> */
-    public function all(): array
-    {
-        $this->ensureExternalsRegistered();
-        return $this->byCraftFqcn;
-    }
-
-    private function ensureExternalsRegistered(): void
+    private function ensureLoaded(): void
     {
         if ($this->initialized) {
             return;
         }
         $this->initialized = true;
 
-        if ($this->hasEventHandlers(self::EVENT_REGISTER_FIELDS)) {
-            $event = new RegisterComponentTypesEvent();
-            $this->trigger(self::EVENT_REGISTER_FIELDS, $event);
-            foreach ($event->types as $class) {
-                $this->registerClass($class);
-            }
+        $event = new RegisterFieldsEvent(['fields' => $this->defaultFields()]);
+        $this->trigger(self::EVENT_REGISTER_FIELDS, $event);
+
+        foreach ($event->fields as $class) {
+            $this->registerOne($class);
         }
     }
 }

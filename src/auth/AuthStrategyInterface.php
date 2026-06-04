@@ -5,8 +5,9 @@ namespace TDM\Influx\auth;
 /**
  * Per-auth-type strategy. One concrete class per shape currently stored under
  * `Link::$auth` — bearer / custom header / query-string. Adding a new auth
- * type means writing a new strategy and teaching {@see AuthFactory} about it;
- * no other code needs to learn the difference.
+ * type means writing a new strategy and registering it through
+ * {@see \TDM\Influx\services\AuthService}; no other code needs to learn the
+ * difference.
  *
  * Strategies are stateful value objects: they're constructed with the
  * config slice from a Link and used once per HTTP call.

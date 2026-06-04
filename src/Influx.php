@@ -17,6 +17,7 @@ use craft\web\UrlManager;
 use craft\web\View;
 use yii\base\Event;
 use TDM\Influx\models\Settings;
+use TDM\Influx\services\AuthService;
 use TDM\Influx\services\LinksService;
 use TDM\Influx\services\DataService;
 use TDM\Influx\services\FieldsService;
@@ -27,7 +28,6 @@ use TDM\Influx\services\CooldownService;
 use TDM\Influx\services\AssetUploadService;
 use TDM\Influx\services\BackupService;
 use TDM\Influx\services\DebugService;
-use TDM\Influx\targets\EntryTarget;
 
 /**
  * Influx plugin.
@@ -44,6 +44,7 @@ use TDM\Influx\targets\EntryTarget;
  * @property BackupService $backup
  * @property AssetUploadService $assetUpload
  * @property DebugService $debug
+ * @property AuthService $auth
  */
 class Influx extends Plugin
 {
@@ -67,6 +68,7 @@ class Influx extends Plugin
                 'backup'          => BackupService::class,
                 'assetUpload'     => AssetUploadService::class,
                 'debug'           => DebugService::class,
+                'auth'            => AuthService::class,
             ],
         ];
     }
@@ -83,7 +85,6 @@ class Influx extends Plugin
             $this->registerControllers();
             $this->registerCpRoutes();
             $this->registerCpTemplateRoots();
-            $this->registerBuiltInTargets();
             $this->registerEntrySyncButton();
         });
     }
@@ -153,11 +154,6 @@ class Influx extends Plugin
                 $event->roots['influx'] = __DIR__ . '/templates';
             },
         );
-    }
-
-    protected function registerBuiltInTargets(): void
-    {
-        $this->targets->register(EntryTarget::class);
     }
 
     /**

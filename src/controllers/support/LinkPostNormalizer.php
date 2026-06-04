@@ -42,15 +42,15 @@ class LinkPostNormalizer
         $link->backup       = (bool)($body['backup'] ?? false);
 
         $link->elementCriteria = array_filter(
-            $body['elementCriteria'] ?? [],
+            $this->arr($body['elementCriteria'] ?? null),
             fn($v) => $v !== '' && $v !== null,
         );
 
-        $link->auth          = $this->auth($body['auth'] ?? []);
-        $link->siteEndpoints = $this->keyValueTable($body['siteEndpoints'] ?? []);
-        $link->mappings      = $this->mappings($body['mappings'] ?? []);
-        $link->ago           = $this->ago($body['ago'] ?? []);
-        $link->processing    = array_values(array_filter($body['processing'] ?? []));
+        $link->auth          = $this->auth($this->arr($body['auth'] ?? null));
+        $link->siteEndpoints = $this->keyValueTable($this->arr($body['siteEndpoints'] ?? null));
+        $link->mappings      = $this->mappings($this->arr($body['mappings'] ?? null));
+        $link->ago           = $this->ago($this->arr($body['ago'] ?? null));
+        $link->processing    = array_values(array_filter($this->arr($body['processing'] ?? null)));
 
         $matchAttribute = $body['match.attribute'] ?? ($body['match']['attribute'] ?? null);
         $link->match = $matchAttribute ? ['attribute' => $matchAttribute] : [];
@@ -247,5 +247,15 @@ class LinkPostNormalizer
             return null;
         }
         return (int)$value;
+    }
+
+    /**
+     * Form fields can post as `''` when empty (table widgets sometimes do
+     * this for an empty row count). Coerce anything that isn't already an
+     * array to `[]` so the typed normalisers below can rely on the input.
+     */
+    private function arr(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
     }
 }

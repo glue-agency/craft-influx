@@ -4,35 +4,69 @@ namespace TDM\Influx\services;
 
 use Craft;
 use craft\base\Component;
+use TDM\Influx\events\RegisterTargetsEvent;
 use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\models\Link;
 use TDM\Influx\targets\ElementTargetInterface;
-use yii\base\Event;
+use TDM\Influx\targets\EntryTarget;
 
 /**
- * Registry of element-target adapters. Built-ins are added by the plugin
- * during init; third-party plugins listen to EVENT_REGISTER_TARGETS or call
- * register() directly.
+ * Registry of element-target adapters. Built-ins are seeded into the
+ * registration event payload before triggering, so listeners can append new
+ * targets, override built-ins (by re-adding under the same element type), or
+ * remove them entirely.
+ *
+ *   Event::on(
+ *       TargetsService::class,
+ *       TargetsService::EVENT_REGISTER_TARGETS,
+ *       function (RegisterTargetsEvent $event) {
+ *           $event->targets[] = MyCalendarEventTarget::class;
+ *       }
+ *   );
+ *
+ * Targets are keyed by their {@see ElementTargetInterface::elementType()};
+ * a new registration under the same key replaces whatever was there.
  */
 class TargetsService extends Component
 {
-    /**
-     * Event for registering additional targets. Push FQCNs onto $event->types.
-     */
     public const EVENT_REGISTER_TARGETS = 'registerTargets';
 
     /** @var ElementTargetInterface[] keyed by elementType FQCN */
     private array $targets = [];
 
-    private bool $eventFired = false;
+    private bool $initialized = false;
 
     /**
+     * Built-ins shipped with the plugin. Exposed as a method so tests and
+     * subclasses can override the default set.
+     *
+     * @return list<class-string<ElementTargetInterface>>
+     */
+    protected function defaultTargets(): array
+    {
+        return [
+            EntryTarget::class,
+        ];
+    }
+
+    /**
+     * Direct registration. Forces the registration event to fire first
+     * (seeding built-ins) so callers can rely on overriding built-ins by
+     * simply re-registering them — the explicit call always wins over the
+     * defaults regardless of timing.
+     *
      * @param class-string<ElementTargetInterface> $class
      */
     public function register(string $class): void
     {
+        $this->ensureLoaded();
+        $this->registerOne($class);
+    }
+
+    private function registerOne(string $class): void
+    {
         if (!is_subclass_of($class, ElementTargetInterface::class)) {
-            throw new InfluxException("'{$class}' must implement ElementTargetInterface.");
+            throw new InfluxException("'{$class}' must implement " . ElementTargetInterface::class . '.');
         }
         $target = Craft::createObject($class);
         $this->targets[ltrim($class::elementType(), '\\')] = $target;
@@ -43,29 +77,28 @@ class TargetsService extends Component
      */
     public function all(): array
     {
-        $this->fireRegistrationEventOnce();
+        $this->ensureLoaded();
         return $this->targets;
     }
 
     public function forLink(Link $link): ?ElementTargetInterface
     {
-        $this->fireRegistrationEventOnce();
+        $this->ensureLoaded();
         return $this->targets[ltrim($link->elementType, '\\')] ?? null;
     }
 
-    private function fireRegistrationEventOnce(): void
+    private function ensureLoaded(): void
     {
-        if ($this->eventFired) {
+        if ($this->initialized) {
             return;
         }
-        $this->eventFired = true;
+        $this->initialized = true;
 
-        if ($this->hasEventHandlers(self::EVENT_REGISTER_TARGETS)) {
-            $event = new \craft\events\RegisterComponentTypesEvent();
-            $this->trigger(self::EVENT_REGISTER_TARGETS, $event);
-            foreach ($event->types as $class) {
-                $this->register($class);
-            }
+        $event = new RegisterTargetsEvent(['targets' => $this->defaultTargets()]);
+        $this->trigger(self::EVENT_REGISTER_TARGETS, $event);
+
+        foreach ($event->targets as $class) {
+            $this->registerOne($class);
         }
     }
 }
