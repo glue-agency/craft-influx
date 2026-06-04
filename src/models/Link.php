@@ -78,9 +78,9 @@ class Link extends Model
     public ?string $paginatorNode = null;
 
     /**
-     * { attribute: importId, source: id }
-     *  - attribute: handle on the element used as the unique key
-     *  - source: Hash dot-path into the item used to look it up
+     * { attribute: importId }
+     *  - attribute: handle on the element used as the unique key. The match
+     *    value is always read from this field's configured mapping node.
      */
     public array $match = [];
 
@@ -140,15 +140,13 @@ class Link extends Model
             return;
         }
 
-        // The match value is read from `match.source` if set, otherwise from
-        // the node configured on the mapped field. So either an explicit
-        // source or a node-bearing mapping for the match field is required.
-        $explicitSource = !empty($value['source']);
+        // The match value is read from the node configured on the mapped
+        // field, so the chosen match attribute must have an active mapping.
         $mappedNode = $this->mappings[$value['attribute']]['node'] ?? null;
-        if (!$explicitSource && !$mappedNode) {
+        if (!$mappedNode) {
             $this->addError(
                 $attribute,
-                "Match attribute '{$value['attribute']}' needs either an explicit Match source or a configured mapping with a source node.",
+                "Match attribute '{$value['attribute']}' needs a configured mapping with a source node.",
             );
         }
     }
@@ -277,14 +275,8 @@ class Link extends Model
 
     public function matchValue(array $item): mixed
     {
-        // Prefer an explicit override; otherwise read from the node configured
-        // on the mapped match field. The save validator guarantees one of the
-        // two exists, so a saved link always yields a path here.
-        $path = $this->match['source'] ?? null;
-        if (!$path) {
-            $attr = $this->matchAttribute();
-            $path = $attr ? ($this->mappings[$attr]['node'] ?? null) : null;
-        }
+        $attr = $this->matchAttribute();
+        $path = $attr ? ($this->mappings[$attr]['node'] ?? null) : null;
         return $path ? Hash::get($item, $path) : null;
     }
 

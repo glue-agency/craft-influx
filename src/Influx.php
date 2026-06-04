@@ -19,11 +19,12 @@ use yii\base\Event;
 use TDM\Influx\models\Settings;
 use TDM\Influx\services\LinksService;
 use TDM\Influx\services\DataService;
+use TDM\Influx\services\FieldsService;
 use TDM\Influx\services\SynchronizationService;
-use TDM\Influx\services\MappingService;
 use TDM\Influx\services\LogsService;
 use TDM\Influx\services\TargetsService;
 use TDM\Influx\services\CooldownService;
+use TDM\Influx\services\AssetUploadService;
 use TDM\Influx\services\BackupService;
 use TDM\Influx\targets\EntryTarget;
 
@@ -35,15 +36,16 @@ use TDM\Influx\targets\EntryTarget;
  * @property LinksService $links
  * @property DataService $data
  * @property SynchronizationService $synchronization
- * @property MappingService $mapping
+ * @property FieldsService $fields
  * @property LogsService $logs
  * @property TargetsService $targets
  * @property CooldownService $cooldown
  * @property BackupService $backup
+ * @property AssetUploadService $assetUpload
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.2.0';
+    public string $schemaVersion = '1.4.0';
 
     public bool $hasCpSettings = false;
 
@@ -56,11 +58,12 @@ class Influx extends Plugin
                 'links'           => LinksService::class,
                 'data'            => DataService::class,
                 'synchronization' => SynchronizationService::class,
-                'mapping'         => MappingService::class,
+                'fields'          => FieldsService::class,
                 'logs'            => LogsService::class,
                 'targets'         => TargetsService::class,
                 'cooldown'        => CooldownService::class,
                 'backup'          => BackupService::class,
+                'assetUpload'     => AssetUploadService::class,
             ],
         ];
     }

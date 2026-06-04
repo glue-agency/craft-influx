@@ -225,11 +225,17 @@ class DataService extends Component
     }
 
     /**
+     * Best-effort list of paginator-node candidates. Starts with a heuristic
+     * ordering for the most common shapes (so the first hit is sensibly
+     * pre-selected), then unions with every leaf-path on the response whose
+     * value is a non-empty string — that way an unconventional shape can
+     * still be picked from the dropdown after a sample fetch.
+     *
      * @return string[]
      */
     private function findPaginatorPaths(array $response): array
     {
-        $candidates = [
+        $preferred = [
             'next', 'next_url', 'nextPageUrl',
             'links.next', 'links.next_url',
             'meta.next', 'meta.next_url', 'meta.next_page_url',
@@ -238,13 +244,66 @@ class DataService extends Component
         ];
 
         $hits = [];
-        foreach ($candidates as $path) {
+        $seen = [];
+
+        foreach ($preferred as $path) {
             $value = Hash::get($response, $path);
             if (is_string($value) && $value !== '') {
                 $hits[] = $path;
+                $seen[$path] = true;
             }
         }
+
+        // Walk the whole response (skipping the iterable root list, which is
+        // identified by findArrayPaths) and add any string leaves.
+        foreach ($this->stringLeafPaths($response, []) as $path) {
+            if ($path === '' || isset($seen[$path])) {
+                continue;
+            }
+            $hits[] = $path;
+            $seen[$path] = true;
+        }
+
         return $hits;
+    }
+
+    /**
+     * Walk an array and yield dot-paths to every scalar (or null) leaf. Skips
+     * list-of-objects branches — those are root-node candidates, not paginator
+     * candidates. Null/empty values are still listed: a key that's null on one
+     * response may carry a real URL on another, so the user still needs to be
+     * able to pick it.
+     *
+     * @return list<string>
+     */
+    private function stringLeafPaths(mixed $value, array $prefix): array
+    {
+        if (!is_array($value)) {
+            return [$prefix ? implode('.', $prefix) : ''];
+        }
+
+        if (empty($value)) {
+            return [];
+        }
+
+        if (array_is_list($value)) {
+            $first = $value[0] ?? null;
+            if (is_array($first) && !array_is_list($first)) {
+                return [];
+            }
+            return [$prefix ? implode('.', $prefix) : ''];
+        }
+
+        $paths = [];
+        foreach ($value as $key => $child) {
+            if (!is_string($key)) {
+                continue;
+            }
+            foreach ($this->stringLeafPaths($child, array_merge($prefix, [$key])) as $p) {
+                $paths[] = $p;
+            }
+        }
+        return $paths;
     }
 
     public function rootList(Link $link, array $response): array

@@ -50,6 +50,23 @@ interface ElementTargetInterface
      */
     public function buildNew(Link $link, ?int $siteId = null): ElementInterface;
 
+    /**
+     * Apply a mapped value to a *native* attribute (title, slug, status,
+     * postDate, ...). Custom fields are routed to per-field-type strategies
+     * via FieldsService — this hook only fires when no Craft field with the
+     * handle exists on the element's layout.
+     *
+     * Implementations resolve the value from the feed item using the mapping
+     * config, translate it to whatever attribute(s) the element actually
+     * accepts (e.g. status → enabled), and return true if a write happened.
+     */
+    public function applyNativeAttribute(
+        ElementInterface $element,
+        string $handle,
+        array $item,
+        array $config,
+    ): bool;
+
     public function disable(ElementInterface $element): bool;
 
     public function delete(ElementInterface $element): bool;
@@ -64,13 +81,25 @@ interface ElementTargetInterface
      *     'handle' => 'title',
      *     'name'   => 'Title',
      *     'native' => true,
-     *     'defaultType' => 'text' | 'user',    // type of fallback input
+     *     'group'  => 'Native' | 'Content' | ... // matches the field-layout
+     *                                            // tab name for custom fields
+     *     'defaultType' => 'text' | 'select' | 'element',
+     *     // For 'select': map of value => label.
+     *     'options' => ['live' => 'Live', 'disabled' => 'Disabled'],
+     *     // For 'element': FQCN of the element type to pick from.
+     *     'elementType' => craft\elements\User::class,
+     *     // Optional: FQCN of the custom-field class (for typed-mapping
+     *     // dispatch; null/absent for native fields).
+     *     'fieldClass' => 'craft\\fields\\Assets',
+     *     // Optional: opaque map of per-field-type meta the typed-mapping
+     *     // UI / runtime needs (sources, sub-fields, dropdown options...).
+     *     'fieldMeta' => [],
      *   ]
      *
      * Targets that don't have a meaningful field surface for a given link
      * (e.g. the link is missing a section/type) may return an empty list.
      *
-     * @return list<array{handle: string, name: string, native: bool, defaultType: string}>
+     * @return list<array{handle: string, name: string, native: bool, group: string, defaultType: string, options?: array<string,string>, elementType?: class-string, fieldClass?: ?string, fieldMeta?: array}>
      */
     public function getMappableFields(Link $link): array;
 }

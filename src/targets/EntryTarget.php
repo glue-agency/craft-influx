@@ -78,6 +78,21 @@ class EntryTarget extends AbstractElementTarget
         return $query->one();
     }
 
+    /**
+     * Translate the `status` mapping to the underlying `enabled` flag (status
+     * is a derived attribute computed from enabled + postDate + expiryDate;
+     * the sync engine can't set it directly).
+     */
+    protected function parseStatus(\craft\base\ElementInterface $element, array $item, array $config): bool
+    {
+        $value = $this->resolveValue($item, $config);
+        if ($value === null) {
+            return false;
+        }
+        $element->enabled = !in_array(strtolower((string)$value), ['disabled', 'false', '0'], true);
+        return true;
+    }
+
     public function buildNew(Link $link, ?int $siteId = null): Entry
     {
         $sectionHandle = $link->elementCriteria['section']
@@ -138,13 +153,33 @@ class EntryTarget extends AbstractElementTarget
 
     public function getMappableFields(Link $link): array
     {
+        $native = Craft::t('influx', 'Native');
         $fields = [
-            ['handle' => 'title',      'name' => Craft::t('app', 'Title'),       'native' => true, 'defaultType' => 'text'],
-            ['handle' => 'slug',       'name' => Craft::t('app', 'Slug'),        'native' => true, 'defaultType' => 'text'],
-            ['handle' => 'enabled',    'name' => Craft::t('app', 'Enabled'),     'native' => true, 'defaultType' => 'text'],
-            ['handle' => 'postDate',   'name' => Craft::t('app', 'Post Date'),   'native' => true, 'defaultType' => 'text'],
-            ['handle' => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'), 'native' => true, 'defaultType' => 'text'],
-            ['handle' => 'author',     'name' => Craft::t('app', 'Author'),      'native' => true, 'defaultType' => 'user'],
+            ['handle' => 'title', 'name' => Craft::t('app', 'Title'), 'native' => true, 'group' => $native, 'defaultType' => 'text'],
+            ['handle' => 'slug',  'name' => Craft::t('app', 'Slug'),  'native' => true, 'group' => $native, 'defaultType' => 'text'],
+            [
+                'handle' => 'status',
+                'name'   => Craft::t('app', 'Status'),
+                'native' => true,
+                'group'  => $native,
+                'defaultType' => 'select',
+                'options' => [
+                    Entry::STATUS_LIVE    => Craft::t('app', 'Live'),
+                    Entry::STATUS_PENDING => Craft::t('app', 'Pending'),
+                    Entry::STATUS_EXPIRED => Craft::t('app', 'Expired'),
+                    'disabled'            => Craft::t('app', 'Disabled'),
+                ],
+            ],
+            ['handle' => 'postDate',   'name' => Craft::t('app', 'Post Date'),   'native' => true, 'group' => $native, 'defaultType' => 'text'],
+            ['handle' => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'), 'native' => true, 'group' => $native, 'defaultType' => 'text'],
+            [
+                'handle' => 'author',
+                'name'   => Craft::t('app', 'Author'),
+                'native' => true,
+                'group'  => $native,
+                'defaultType' => 'element',
+                'elementType' => \craft\elements\User::class,
+            ],
         ];
 
         $sectionHandle = $link->elementCriteria['section'] ?? null;
@@ -178,15 +213,85 @@ class EntryTarget extends AbstractElementTarget
             return $fields;
         }
 
-        foreach ($layout->getCustomFields() as $field) {
-            $fields[] = [
-                'handle'      => $field->handle,
-                'name'        => $field->name,
-                'native'      => false,
-                'defaultType' => 'text',
-            ];
+        // Walk the field-layout tabs so custom fields keep the same grouping
+        // they have in Craft's own entry editor. CustomField elements have a
+        // `field` property; tabs without a name fall back to a generic label.
+        $fallbackTab = Craft::t('influx', 'Content');
+        foreach ($layout->getTabs() as $tab) {
+            $tabName = $tab->name ?: $fallbackTab;
+            foreach ($tab->getElements() as $element) {
+                if (!($element instanceof \craft\fieldlayoutelements\CustomField)) {
+                    continue;
+                }
+                $field = $element->getField();
+                if (!$field) {
+                    continue;
+                }
+                $fields[] = [
+                    'handle'      => $field->handle,
+                    'name'        => $field->name,
+                    'native'      => false,
+                    'group'       => $tabName,
+                    'defaultType' => 'text',
+                    'fieldClass'  => $field::class,
+                    'fieldMeta'   => $this->fieldMeta($field),
+                ];
+            }
         }
 
         return $fields;
+    }
+
+    /**
+     * Per-field-type metadata for the typed-mapping UI. Implemented as a
+     * dispatch on the field's FQCN so we don't need a separate adapter per
+     * type until the divergence is genuinely big. Anything Influx doesn't
+     * have an opinion about returns an empty array.
+     */
+    private function fieldMeta(\craft\base\FieldInterface $field): array
+    {
+        if ($field instanceof \craft\fields\Assets) {
+            return [
+                'kind'        => 'asset',
+                'allowedKinds' => $field->allowedKinds ?? null,
+                'subFields'   => [
+                    // Each entry: handle => label. The handle is used as the
+                    // sub-mapping key on the saved Link config.
+                    'alt'   => Craft::t('influx', 'Alt text'),
+                    'title' => Craft::t('influx', 'Title'),
+                ],
+            ];
+        }
+
+        if ($field instanceof \craft\fields\Dropdown
+            || $field instanceof \craft\fields\RadioButtons
+            || $field instanceof \craft\fields\Checkboxes
+            || $field instanceof \craft\fields\MultiSelect
+        ) {
+            $options = [];
+            foreach ($field->options ?? [] as $opt) {
+                if (is_array($opt) && isset($opt['value'])) {
+                    $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
+                }
+            }
+            return ['kind' => 'options', 'options' => $options];
+        }
+
+        if ($field instanceof \craft\fields\Lightswitch) {
+            return ['kind' => 'boolean'];
+        }
+
+        if ($field instanceof \craft\fields\BaseRelationField) {
+            return [
+                'kind'        => 'relation',
+                'elementType' => $field::elementType(),
+            ];
+        }
+
+        if ($field instanceof \craft\fields\Matrix) {
+            return ['kind' => 'matrix']; // full Matrix UI is a later iteration
+        }
+
+        return [];
     }
 }

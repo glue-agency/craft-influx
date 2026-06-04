@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+
+# Source maps are not shipped with the plugin distribution.
+/src/web/assets/links/dist/js/*.map
+/src/web/assets/links/dist/css/*.map
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

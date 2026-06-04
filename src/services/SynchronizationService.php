@@ -162,12 +162,14 @@ class SynchronizationService extends Component
         $matchValue = $link->matchValue($item);
 
         if ($matchValue === null) {
+            $matchAttr = $link->matchAttribute() ?: '?';
+            $node = $link->mappings[$matchAttr]['node'] ?? '?';
             $plugin->logs->recordItem(
                 $log,
                 'skipped',
                 null,
                 null,
-                "Remote item has no value at match path '{$link->match['source']}'.",
+                "Remote item has no value at match path '{$node}' (match attribute: {$matchAttr}).",
                 $item,
             );
             return;
@@ -219,27 +221,47 @@ class SynchronizationService extends Component
         }
 
         $changed = $isNew;
-        $mappingsService = $plugin->mapping;
+        $fields = $plugin->fields;
+        $layout = $element->getFieldLayout();
 
-        foreach ($link->mappings as $targetField => $config) {
-            if (!is_array($config) || !isset($config['type'])) {
+        foreach ($link->mappings as $handle => $config) {
+            if (!is_array($config)) {
                 continue;
             }
 
-            // The `author` field on Entry is set by EntryTarget::buildNew()
-            // from `mappings.author.default`. Skip the generic mapping path
-            // so we don't assign a user id as a plain string.
-            if ($targetField === 'author' && $link->elementType === \craft\elements\Entry::class) {
+            // The `author` native attr on Entry is owned by the target via
+            // buildNew() (it sets a default author id). Skip here so we don't
+            // assign a user id as a plain string.
+            if ($handle === 'author' && $link->elementType === \craft\elements\Entry::class) {
                 continue;
             }
 
-            $mapping = $mappingsService->get($config['type']);
+            $craftField = $layout?->getFieldByHandle($handle);
 
-            if (!$changed && $mapping->hasChanged($element, $targetField, $item, $config, $link)) {
+            if ($craftField === null) {
+                // Native attribute (title/slug/status/...) — route to the
+                // target so element-shape concerns stay in one place.
+                $applied = $target->applyNativeAttribute($element, $handle, $item, $config);
+                if ($applied) {
+                    $changed = true;
+                }
+                continue;
+            }
+
+            // Custom field — dispatch via the per-field-type strategy.
+            $strategy = $fields->forCraftField($craftField);
+            $strategy->setContext($craftField, $handle, $config, $item, $link, $element);
+
+            $value = $strategy->parseField();
+            if ($value === null) {
+                continue;
+            }
+
+            if (!$changed && $strategy->hasChanged($element, $value)) {
                 $changed = true;
             }
 
-            $mapping->apply($element, $targetField, $item, $config, $link);
+            $strategy->apply($element, $value);
         }
 
         $afterMappingEvent = new SyncItemEvent([

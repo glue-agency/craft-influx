@@ -9,6 +9,7 @@ use craft\web\Controller;
 use TDM\Influx\Influx;
 use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
+use TDM\Influx\web\assets\links\LinksAsset;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -98,9 +99,12 @@ class LinksController extends Controller
             $title = Craft::t('influx', 'New link');
         }
 
-        $sectionEntryTypes = $this->sectionEntryTypes();
-        $mappableFields    = $this->mappableFieldsForLink($link);
-        $matchFieldOptions = $this->matchFieldOptions($mappableFields);
+        Craft::$app->getView()->registerAssetBundle(LinksAsset::class);
+
+        $sectionEntryTypes  = $this->sectionEntryTypes();
+        $mappableFields     = $this->mappableFieldsForLink($link);
+        $mappableGroups     = $this->groupMappableFields($mappableFields);
+        $matchFieldOptions  = $this->matchFieldOptions($mappableFields);
 
         $variables = [
             'link'   => $link,
@@ -109,13 +113,12 @@ class LinksController extends Controller
             'elementTypeOptions' => $this->elementTypeOptions(),
             'sectionOptions'     => $this->sectionOptions(),
             'sectionEntryTypes'  => $sectionEntryTypes,
-            'mappingTypeOptions' => $this->mappingTypeOptions(),
             'siteOptions'        => $this->siteOptions(),
             'processingOptions'  => $this->processingOptions(),
             'authTypeOptions'    => $this->authTypeOptions(),
             'mappableFields'     => $mappableFields,
+            'mappableGroups'     => $mappableGroups,
             'matchFieldOptions'  => $matchFieldOptions,
-            'userOptions'        => $this->userOptions(),
         ];
 
         $response = $this->asCpScreen()
@@ -136,12 +139,9 @@ class LinksController extends Controller
                 ->action('influx/links/save')
                 ->redirectUrl('influx/links')
                 ->additionalButtonsHtml(
-                    '<div class="flex flex-nowrap" style="align-items: center; gap: 7px;">'
-                    . '<button type="button" class="btn" data-icon="download" id="influx-fetch-sample">'
+                    '<button type="button" class="btn" data-icon="download" id="influx-fetch-sample">'
                     . Craft::t('influx', 'Fetch sample')
                     . '</button>'
-                    . '<span id="influx-fetch-status" class="light" aria-live="polite"></span>'
-                    . '</div>'
                 )
                 ->addAltAction(Craft::t('app', 'Save and continue editing'), [
                     'redirect'    => 'influx/links/{handle}/edit',
@@ -150,12 +150,13 @@ class LinksController extends Controller
                 ]);
 
             if (!$isNew && $link->uid) {
-                $response->destructiveAction(
-                    Craft::t('app', 'Delete'),
-                    'influx/links/delete',
-                    confirmationMessage: Craft::t('influx', 'Are you sure you want to delete this link?'),
-                    redirectUrl: 'influx/links',
-                );
+                $response->addAltAction(Craft::t('app', 'Delete'), [
+                    'action'              => 'influx/links/delete',
+                    'destructive'         => true,
+                    'confirm'             => Craft::t('influx', 'Are you sure you want to delete this link?'),
+                    'redirect'            => 'influx/links',
+                    'params'              => ['uid' => $link->uid],
+                ]);
             }
         } else {
             $response->noticeHtml(Cp::readOnlyNoticeHtml());
@@ -193,10 +194,8 @@ class LinksController extends Controller
         $link->auth          = $this->authFromPost($request->getBodyParam('auth') ?: []);
         $link->siteEndpoints = $this->keyValueTable($request->getBodyParam('siteEndpoints') ?: []);
 
-        $link->match = array_filter([
-            'attribute' => $request->getBodyParam('match.attribute') ?: null,
-            'source'    => $request->getBodyParam('match.source') ?: null,
-        ]);
+        $matchAttribute = $request->getBodyParam('match.attribute') ?: null;
+        $link->match = $matchAttribute ? ['attribute' => $matchAttribute] : [];
 
         $link->mappings = $this->mappingsFromPost($request->getBodyParam('mappings') ?: []);
         $link->ago      = $this->agoFromTable($request->getBodyParam('ago') ?: []);
@@ -316,42 +315,123 @@ class LinksController extends Controller
     }
 
     /**
-     * The new mapping UI posts one entry per field:
+     * Normalise the mapping form-payload into the recursive shape stored in
+     * Project Config:
      *
-     *   mappings[fieldHandle][node] = 'remote.path' | ''
-     *   mappings[fieldHandle][type] = 'PlainText'           // hidden, optional
+     *   mappings:
+     *     handle:
+     *       node: 'remote.path'        # optional
+     *       default: '...'             # optional
+     *       options:                   # per-field-type extras (asset mode, ...)
+     *         mode: 'url'
+     *       fields:                    # sub-element custom fields (recursive)
+     *         someFieldOnRelated: { node: ..., default: ..., options: ... }
+     *       nativeFields:              # sub-element native attrs (recursive)
+     *         alt: { node: ..., default: ... }
      *
-     * Empty nodes are dropped so the saved Project Config only contains
-     * fields the user actually wired up.
+     * Empty rows are dropped so saved YAML stays clean. The legacy `type` key
+     * is ignored on read (dispatch happens by Craft field FQCN now) but kept
+     * on save when present so users can downgrade safely.
      */
     private function mappingsFromPost(array $rows): array
     {
         $out = [];
-        foreach ($rows as $fieldHandle => $row) {
-            if (!is_string($fieldHandle) || !is_array($row)) {
+        foreach ($rows as $handle => $row) {
+            if (!is_string($handle) || !is_array($row)) {
                 continue;
             }
-            $node = trim((string)($row['node'] ?? ''));
-            $default = $row['default'] ?? null;
-            if (is_array($default)) {
-                $filtered = array_values(array_filter($default, fn($v) => $v !== '' && $v !== null));
-                $default  = (string)($filtered[0] ?? '');
-            }
-            $default = is_string($default) ? trim($default) : '';
-
-            if ($node === '' && $default === '') {
+            $entry = $this->mappingRowFromPost($row);
+            if ($entry === null) {
                 continue;
             }
+            $out[$handle] = $entry;
+        }
+        return $out;
+    }
 
-            $type = trim((string)($row['type'] ?? '')) ?: 'PlainText';
-            $entry = ['type' => $type];
-            if ($node !== '') {
-                $entry['node'] = $node;
+    /**
+     * Recursively normalise a single mapping row + its sub-fields.
+     */
+    private function mappingRowFromPost(array $row): ?array
+    {
+        $node = trim((string)($row['node'] ?? ''));
+
+        $default = $row['default'] ?? null;
+        if (is_array($default)) {
+            // elementSelect posts an array of ids — take the first non-empty.
+            $filtered = array_values(array_filter($default, fn($v) => $v !== '' && $v !== null));
+            $default  = (string)($filtered[0] ?? '');
+        }
+        $default = is_string($default) ? trim($default) : '';
+
+        $options = $this->decodeOptionsBlob($row['options'] ?? null);
+
+        $subFields = $this->subFieldsFromPost($row['fields'] ?? null);
+        $nativeSubFields = $this->subFieldsFromPost($row['nativeFields'] ?? null);
+
+        $hasAnything = $node !== '' || $default !== '' || !empty($options)
+            || !empty($subFields) || !empty($nativeSubFields);
+        if (!$hasAnything) {
+            return null;
+        }
+
+        $entry = [];
+        if (!empty($row['type'])) {
+            $entry['type'] = trim((string)$row['type']);
+        }
+        if ($node !== '') {
+            $entry['node'] = $node;
+        }
+        if ($default !== '') {
+            $entry['default'] = $default;
+        }
+        if (!empty($options)) {
+            $entry['options'] = $options;
+        }
+        if (!empty($subFields)) {
+            $entry['fields'] = $subFields;
+        }
+        if (!empty($nativeSubFields)) {
+            $entry['nativeFields'] = $nativeSubFields;
+        }
+        return $entry;
+    }
+
+    /**
+     * The Vue MappingExtras component posts options as a single JSON string;
+     * legacy callers may post it as a normal array. Accept both.
+     */
+    private function decodeOptionsBlob(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (!is_string($raw) || $raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Normalise either a JSON blob (Vue) or a nested array (legacy/Twig)
+     * of sub-mapping rows into the recursive shape stored in Project Config.
+     */
+    private function subFieldsFromPost(mixed $raw): array
+    {
+        $rows = $this->decodeOptionsBlob($raw);
+        if (empty($rows)) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $subHandle => $subRow) {
+            if (!is_string($subHandle) || !is_array($subRow)) {
+                continue;
             }
-            if ($default !== '') {
-                $entry['default'] = $default;
+            $normalised = $this->mappingRowFromPost($subRow);
+            if ($normalised !== null) {
+                $out[$subHandle] = $normalised;
             }
-            $out[$fieldHandle] = $entry;
         }
         return $out;
     }
@@ -424,6 +504,26 @@ class LinksController extends Controller
     }
 
     /**
+     * Group the flat mappable-fields list into the buckets the UI renders:
+     * one per field-layout tab (and one for natives). Preserves the order
+     * in which getMappableFields() returned the fields.
+     *
+     * @return list<array{label: string, fields: list<array>}>
+     */
+    private function groupMappableFields(array $mappableFields): array
+    {
+        $byLabel = [];
+        foreach ($mappableFields as $field) {
+            $label = $field['group'] ?? Craft::t('influx', 'Other');
+            if (!isset($byLabel[$label])) {
+                $byLabel[$label] = ['label' => $label, 'fields' => []];
+            }
+            $byLabel[$label]['fields'][] = $field;
+        }
+        return array_values($byLabel);
+    }
+
+    /**
      * Build the options for the Match-attribute dropdown. Driven by the
      * target adapter's mappable fields so the user can only pair the match
      * key with a real field on the element.
@@ -433,25 +533,6 @@ class LinksController extends Controller
         $options = ['' => Craft::t('influx', '— Select a field —')];
         foreach ($mappableFields as $f) {
             $options[$f['handle']] = $f['name'] . ' (' . $f['handle'] . ')';
-        }
-        return $options;
-    }
-
-    /**
-     * Active users, formatted for a Selectize dropdown. Used as default-
-     * value source for `author` and similar user fields.
-     */
-    private function userOptions(): array
-    {
-        $options = ['' => Craft::t('influx', '— None —')];
-        $users = \craft\elements\User::find()
-            ->status(null)
-            ->orderBy(['fullName' => SORT_ASC, 'username' => SORT_ASC])
-            ->limit(null)
-            ->all();
-        foreach ($users as $u) {
-            $label = $u->getName() ?: $u->username ?: $u->email;
-            $options[(string)$u->id] = "{$label} ({$u->username})";
         }
         return $options;
     }
@@ -467,15 +548,6 @@ class LinksController extends Controller
             $out[$section->handle] = $types;
         }
         return $out;
-    }
-
-    private function mappingTypeOptions(): array
-    {
-        $options = [];
-        foreach (array_keys(Influx::getInstance()->mapping->all()) as $type) {
-            $options[$type] = $type;
-        }
-        return $options;
     }
 
     private function siteOptions(): array

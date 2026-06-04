@@ -1,0 +1,37 @@
+<?php
+
+namespace TDM\Influx\fields;
+
+use craft\elements\Category as CategoryElement;
+use craft\elements\db\ElementQueryInterface;
+use craft\helpers\Db;
+
+class Categories extends Relation
+{
+    public static function craftFieldClass(): ?string
+    {
+        return \craft\fields\Categories::class;
+    }
+
+    protected function elementType(): string
+    {
+        return CategoryElement::class;
+    }
+
+    protected function scopeBySources(ElementQueryInterface $query): void
+    {
+        if (!$this->craftField) {
+            return;
+        }
+        $source = $this->craftField->source ?? null;
+        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+            return;
+        }
+        [, $uid] = explode(':', $source);
+        $id = Db::idByUid('{{%categorygroups}}', $uid);
+        if ($id) {
+            /** @phpstan-ignore-next-line */
+            $query->groupId($id);
+        }
+    }
+}

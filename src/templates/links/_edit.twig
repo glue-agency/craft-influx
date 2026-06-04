@@ -2,13 +2,6 @@
 
 {% import "_includes/forms.twig" as forms %}
 
-<style>
-    .btn.influx-fetch-success { color: #008549 !important; }
-    .btn.influx-fetch-success::before { color: #008549 !important; }
-    .btn.influx-fetch-error   { color: #cf1124 !important; }
-    .btn.influx-fetch-error::before   { color: #cf1124 !important; }
-</style>
-
 {% if not readOnly %}
     {% if link.uid %}{{ hiddenInput('uid', link.uid) }}{% endif %}
 {% endif %}
@@ -225,36 +218,28 @@
             {{ 'For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use “Fetch sample” to populate the node dropdowns from a live response.'|t('influx') }}
         </p>
 
-        {% set nativeFields = mappableFields|filter(f => f.native) %}
-        {% set customFields = mappableFields|filter(f => not f.native) %}
-
-        <style>
-            .influx-mapping-list { margin-top: 12px; }
-            .influx-mapping-group { margin-bottom: 18px; border: 1px solid rgba(0,0,0,.1); border-radius: 5px; overflow: hidden; background: #fff; }
-            .influx-mapping-group-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f3f5f7; border-bottom: 1px solid rgba(0,0,0,.08); font-weight: 600; }
-            .influx-mapping-group-header .count { background: rgba(0,0,0,.08); border-radius: 9px; padding: 1px 7px; font-size: 11px; font-weight: 600; color: #444; }
-            .influx-mapping-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr); gap: 12px; align-items: center; padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,.05); }
-            .influx-mapping-row:last-child { border-bottom: none; }
-            .influx-mapping-row .meta { line-height: 1.2; }
-            .influx-mapping-row .meta .name { font-weight: 600; }
-            .influx-mapping-row .meta .handle { display: block; font-size: 11px; }
-            .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
-            .influx-auto-badge { display: none; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: #fff7d6; color: #8a6d00; border: 1px solid #f0d97a; font-size: 10px; font-weight: 600; vertical-align: middle; }
-            .influx-mapping-row[data-auto="true"] .influx-auto-badge { display: inline-block; }
-            .influx-mapping-headings { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr); gap: 12px; padding: 6px 12px; font-size: 11px; font-weight: 600; color: #777; text-transform: uppercase; letter-spacing: .04em; }
-        </style>
-
         <div id="influx-mappings" class="influx-mapping-list">
-            {% for group in [
-                {label: 'Native fields'|t('influx'), fields: nativeFields},
-                {label: 'Custom fields'|t('influx'), fields: customFields},
-            ] %}
-                {% if group.fields|length %}
-                    <div class="influx-mapping-group">
-                        <div class="influx-mapping-group-header">
-                            <span>{{ group.label }}</span>
-                            <span class="count">{{ group.fields|length }}</span>
-                        </div>
+            {% for group in mappableGroups %}
+                {% set mappedCount = 0 %}
+                {% for f in group.fields %}
+                    {% if link.mappings[f.handle].node ?? false %}
+                        {% set mappedCount = mappedCount + 1 %}
+                    {% endif %}
+                {% endfor %}
+
+                <div class="influx-mapping-group" data-group="{{ group.label }}">
+                    <div class="influx-mapping-group-header" role="button" tabindex="0" aria-expanded="true">
+                        <span class="chevron" aria-hidden="true">▼</span>
+                        <span class="label">{{ group.label }}</span>
+                        <span class="pill pill-mapped" data-mapped="{{ mappedCount }}" title="{{ 'Fields with an active source node'|t('influx') }}">
+                            <span class="num">{{ mappedCount }}</span>&nbsp;{{ 'mapped'|t('influx') }}
+                        </span>
+                        <span class="pill pill-auto" data-auto="0" title="{{ 'Fields filled in by Fetch sample'|t('influx') }}" hidden>
+                            <span class="num">0</span>&nbsp;{{ 'auto'|t('influx') }}
+                        </span>
+                        <span class="pill pill-count" title="{{ 'Total fields in this group'|t('influx') }}">{{ group.fields|length }}</span>
+                    </div>
+                    <div class="influx-mapping-group-body">
                         <div class="influx-mapping-headings">
                             <div>{{ 'Field'|t('influx') }}</div>
                             <div>{{ 'Source node'|t('influx') }}</div>
@@ -262,18 +247,31 @@
                         </div>
                         {% for f in group.fields %}
                             {% set savedNode    = link.mappings[f.handle].node ?? '' %}
-                            {% set savedType    = link.mappings[f.handle].type ?? 'PlainText' %}
                             {% set savedDefault = link.mappings[f.handle].default ?? '' %}
+                            {% set fieldMeta    = f.fieldMeta|default({}) %}
+                            {% set fieldKind    = fieldMeta.kind|default(null) %}
+                            {% set defaultType  = fieldKind == 'asset' ? 'Asset' : 'PlainText' %}
+                            {% set savedType    = link.mappings[f.handle].type ?? defaultType %}
+                            {% set savedOptions = link.mappings[f.handle].options ?? {} %}
+                            {% set hasExtras    = fieldKind is not null %}
+                            {% set extrasBoot = {
+                                field: { handle: f.handle, name: f.name, fieldMeta: fieldMeta },
+                                saved: { type: savedType, options: savedOptions },
+                                namespace: '',
+                                readOnly: readOnly,
+                            } %}
 
-                            {% set rowOptions = [{value: '', label: '(no mapping)'|t('influx')}] %}
+                            {# Empty option (no label) lets the user clear back to
+                               "no mapping" any time, even before fetching a sample.
+                               The selectize placeholder below renders the empty state. #}
+                            {% set rowOptions = [{value: '', label: ''}] %}
                             {% if savedNode %}
                                 {% set rowOptions = rowOptions|merge([{value: savedNode, label: savedNode|replace({'.': ' → '})}]) %}
                             {% endif %}
 
-                            <div class="influx-mapping-row"
+                            <div class="influx-mapping-row{{ hasExtras ? ' has-extras' : '' }}"
                                  data-field-handle="{{ f.handle }}"
-                                 data-auto="false"
-                                 data-needs-sample="true">
+                                 data-auto="false">
                                 <div class="meta">
                                     <span class="name">{{ f.name }}</span>
                                     <span class="influx-auto-badge"
@@ -290,14 +288,37 @@
                                         options: rowOptions,
                                         value: savedNode,
                                         disabled: readOnly,
+                                        selectizeOptions: {
+                                            placeholder: 'no mapping'|t('influx'),
+                                            allowEmptyOption: true,
+                                        },
                                     }) }}
                                 </div>
                                 <div>
-                                    {% if f.defaultType == 'user' %}
-                                        {{ forms.selectize({
+                                    {% if f.defaultType == 'element' %}
+                                        {% set elementType = f.elementType ?? null %}
+                                        {% set defaultElements = [] %}
+                                        {% if savedDefault and elementType %}
+                                            {% set el = craft.app.elements.getElementById(savedDefault, elementType) %}
+                                            {% if el %}{% set defaultElements = [el] %}{% endif %}
+                                        {% endif %}
+                                        {{ forms.elementSelect({
                                             id: "mapping-#{f.handle}-default",
                                             name: "mappings[#{f.handle}][default]",
-                                            options: userOptions,
+                                            elementType: elementType,
+                                            elements: defaultElements,
+                                            limit: 1,
+                                            disabled: readOnly,
+                                        }) }}
+                                    {% elseif f.defaultType == 'select' %}
+                                        {% set selectOptions = [{value: '', label: '—'}] %}
+                                        {% for v, l in (f.options ?? {}) %}
+                                            {% set selectOptions = selectOptions|merge([{value: v, label: l}]) %}
+                                        {% endfor %}
+                                        {{ forms.select({
+                                            id: "mapping-#{f.handle}-default",
+                                            name: "mappings[#{f.handle}][default]",
+                                            options: selectOptions,
                                             value: savedDefault,
                                             disabled: readOnly,
                                         }) }}
@@ -311,10 +332,16 @@
                                         }) }}
                                     {% endif %}
                                 </div>
+
+                                {% if hasExtras %}
+                                    <div class="influx-mapping-extras-slot"
+                                         data-influx-extras-app
+                                         data-bootstrap="{{ extrasBoot|json_encode|e('html_attr') }}"></div>
+                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
-                {% endif %}
+                </div>
             {% endfor %}
         </div>
 
@@ -325,23 +352,13 @@
 
         {{ forms.selectField({
             label: 'Match attribute'|t('influx'),
-            instructions: 'The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.'|t('influx')|raw,
+            instructions: 'The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>. The match value is read from the source node configured for this field above.'|t('influx')|raw,
             id: 'match-attribute',
             name: 'match[attribute]',
             options: matchFieldOptions,
             value: link.match.attribute ?? '',
             errors: link.getErrors('match'),
             required: true,
-            disabled: readOnly,
-        }) }}
-
-        {{ forms.textField({
-            label: 'Match source override'|t('influx'),
-            instructions: 'Optional. Dot-path into the JSON item to use as the match value, in case it differs from the source node configured for the match attribute above.'|t('influx'),
-            id: 'match-source',
-            name: 'match[source]',
-            class: 'code',
-            value: link.match.source ?? '',
             disabled: readOnly,
         }) }}
     {% endif %}
@@ -499,29 +516,29 @@
             const $btn = $('#influx-fetch-sample');
             if (!$btn.length) return;
 
-            const $status      = $('#influx-fetch-status');
             const $endpoint    = $('#{{ endpointId|e('js') }}');
             const $rootNode    = $('#{{ rootNodeId|e('js') }}');
             const $paginator   = $('#{{ paginatorId|e('js') }}');
             const $mappingRows = $('#influx-mappings .influx-mapping-row');
 
-            const MAPPING_EMPTY_LABEL    = {{ '(no mapping)'|t('influx')|json_encode|raw }};
+            // Empty mapping options have a blank label — Selectize renders the
+            // placeholder text instead (see selectizeOptions.placeholder above).
+            const MAPPING_EMPTY_LABEL    = '';
             const ROOT_EMPTY_LABEL       = {{ '(response root)'|t('influx')|json_encode|raw }};
             const PAGINATOR_EMPTY_LABEL  = {{ '(none — single-page response)'|t('influx')|json_encode|raw }};
             const BTN_LABEL_DEFAULT      = {{ 'Fetch sample'|t('influx')|json_encode|raw }};
             const BTN_LABEL_FETCHING     = {{ 'Fetching…'|t('influx')|json_encode|raw }};
+            const BTN_LABEL_SUCCESS      = {{ 'Sample fetched'|t('influx')|json_encode|raw }};
 
-            // Selects whose options come from the remote sample. They start
-            // disabled and only get enabled after a successful fetch — so the
-            // user always picks from a current, verified node list.
+            // Root + paginator stay locked until a fetch happens — there's no
+            // empty-as-placeholder pattern on those native selects and we want
+            // the user picking from a known node list. Mapping selectizes stay
+            // enabled at all times so the user can clear/reset a mapping even
+            // before fetching a sample (the empty option in their list).
             const sampleDependentSelects = () => {
                 const list = [];
                 if ($rootNode.length)  list.push($rootNode[0]);
                 if ($paginator.length) list.push($paginator[0]);
-                $mappingRows.each(function () {
-                    const sel = this.querySelector('select[name$="[node]"]');
-                    if (sel) list.push(sel);
-                });
                 return list;
             };
 
@@ -535,15 +552,8 @@
                 });
             };
 
-            // Lock down sample-dependent selects until Fetch sample succeeds.
+            // Lock the sample-dependent native selects until Fetch sample succeeds.
             toggleSampleSelects(false);
-
-            const setStatus = (klass, text) => {
-                $status
-                    .removeClass('light error success')
-                    .addClass(klass || 'light')
-                    .text(text || '');
-            };
 
             const setButtonState = (state) => {
                 $btn
@@ -560,7 +570,7 @@
                     case 'success':
                         $btn.addClass('influx-fetch-success')
                             .attr('data-icon', 'check')
-                            .text(BTN_LABEL_DEFAULT);
+                            .text(BTN_LABEL_SUCCESS);
                         break;
                     case 'error':
                         $btn.addClass('influx-fetch-error')
@@ -671,6 +681,59 @@
                 if ($row.data('influx-programmatic')) return;
                 if ($row.attr('data-auto') === 'true') {
                     setRowAuto($row, false);
+                    recountGroup($row.closest('.influx-mapping-group'));
+                }
+            });
+
+            // -- group collapse + live mapped/auto counts -----------------
+            const recountGroup = ($group) => {
+                let mapped = 0;
+                let auto = 0;
+                $group.find('.influx-mapping-row').each(function () {
+                    const $row = $(this);
+                    const v = ($row.find('select[name$="[node]"]').val() || '').toString();
+                    if (v !== '') mapped += 1;
+                    if ($row.attr('data-auto') === 'true') auto += 1;
+                });
+
+                const $mappedPill = $group.find('.pill-mapped');
+                $mappedPill.attr('data-mapped', mapped);
+                $mappedPill.find('.num').text(mapped);
+
+                const $autoPill = $group.find('.pill-auto');
+                $autoPill.attr('data-auto', auto);
+                $autoPill.find('.num').text(auto);
+                if (auto > 0) {
+                    $autoPill.removeAttr('hidden');
+                } else {
+                    $autoPill.attr('hidden', 'hidden');
+                }
+            };
+
+            const recountAllGroups = () => {
+                $('#influx-mappings .influx-mapping-group').each(function () {
+                    recountGroup($(this));
+                });
+            };
+
+            // Recount whenever any node select changes (programmatic or user).
+            $('#influx-mappings').on('change', 'select[name$="[node]"]', function () {
+                recountGroup($(this).closest('.influx-mapping-group'));
+            });
+
+            // Click or Enter/Space on a group header toggles the body.
+            const toggleGroup = ($header) => {
+                const $group = $header.closest('.influx-mapping-group');
+                const collapsed = $group.toggleClass('collapsed').hasClass('collapsed');
+                $header.attr('aria-expanded', collapsed ? 'false' : 'true');
+            };
+            $('#influx-mappings').on('click', '.influx-mapping-group-header', function () {
+                toggleGroup($(this));
+            });
+            $('#influx-mappings').on('keydown', '.influx-mapping-group-header', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleGroup($(this));
                 }
             });
 
@@ -706,7 +769,6 @@
 
                 if (!$endpoint.val()) {
                     const msg = Craft.t('influx', 'Set a list endpoint first.');
-                    setStatus('error', msg);
                     Craft.cp.displayError(msg);
                     setButtonState('error');
                     scheduleReset(2500);
@@ -731,7 +793,6 @@
                 };
 
                 setButtonState('fetching');
-                setStatus('light', Craft.t('influx', 'Contacting endpoint…'));
 
                 Craft.sendActionRequest('POST', 'influx/links/fetch-sample', { data: payload })
                     .then((response) => {
@@ -758,9 +819,27 @@
                             }
                         });
 
+                        // Selectize.setValue(_, silent=true) doesn't trigger
+                        // a change event, so the per-group recount listener
+                        // wouldn't catch programmatic auto-fills. Recount now.
+                        recountAllGroups();
+
                         // Selects can now safely be used — they hold a fresh
                         // node list and the saved values, if any, are merged in.
                         toggleSampleSelects(true);
+
+                        // Hand the inspect report to anything else that wants
+                        // it — currently the Vue typed-mapping extras.
+                        window.dispatchEvent(new CustomEvent('influx:sample-fetched', {
+                            detail: {
+                                flatNodes,
+                                rootNode: report.rootNode || null,
+                                rootNodeCandidates: report.rootNodeCandidates || [],
+                                paginatorNode: report.paginatorNode || null,
+                                paginatorNodeCandidates: report.paginatorNodeCandidates || [],
+                                mappingSuggestions: report.mappingSuggestions || [],
+                            },
+                        }));
 
                         const nodeCount = flatNodes.length;
                         const summary = Craft.t('influx',
@@ -771,7 +850,6 @@
                             }
                         );
 
-                        setStatus('success', summary);
                         Craft.cp.displayNotice(summary);
                         setButtonState('success');
                         scheduleReset(4000);
@@ -780,7 +858,6 @@
                         const msg = (e && e.response && e.response.data && e.response.data.message)
                             || (e && e.message)
                             || Craft.t('influx', 'Fetch failed.');
-                        setStatus('error', msg);
                         Craft.cp.displayError(msg);
                         setButtonState('error');
                         scheduleReset(4000);

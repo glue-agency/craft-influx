@@ -1,0 +1,79 @@
+<?php
+
+namespace TDM\Influx\fields;
+
+use Cake\Utility\Hash;
+use Craft;
+use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
+use craft\elements\Entry as EntryElement;
+use craft\helpers\Db;
+
+/**
+ * Relation strategy for the Entries field.
+ *
+ * Extras (under options):
+ *   match:  'id' | 'title' | 'slug' | <any unique attr / field handle>
+ *   create: bool        (create a new Entry when no match is found)
+ *   group:  { sectionId, typeId }  (where to create — required when create=true)
+ */
+class Entries extends Relation
+{
+    public static function craftFieldClass(): ?string
+    {
+        return \craft\fields\Entries::class;
+    }
+
+    protected function elementType(): string
+    {
+        return EntryElement::class;
+    }
+
+    protected function scopeBySources(ElementQueryInterface $query): void
+    {
+        // Constrain by the Craft field's configured sources (section UIDs).
+        if (!$this->craftField) {
+            return;
+        }
+        $sources = $this->craftField->sources ?? '*';
+        if ($sources === '*' || !is_array($sources)) {
+            return;
+        }
+
+        $sectionIds = [];
+        foreach ($sources as $source) {
+            if (str_starts_with($source, 'section:')) {
+                [, $uid] = explode(':', $source);
+                $id = Db::idByUid('{{%sections}}', $uid);
+                if ($id) {
+                    $sectionIds[] = $id;
+                }
+            }
+        }
+        if (!empty($sectionIds)) {
+            /** @phpstan-ignore-next-line — Entries query exposes sectionId */
+            $query->sectionId($sectionIds);
+        }
+    }
+
+    protected function createMissing(mixed $value): ?ElementInterface
+    {
+        $sectionId = Hash::get($this->fieldInfo, 'options.group.sectionId');
+        $typeId = Hash::get($this->fieldInfo, 'options.group.typeId');
+        if (!$sectionId || !$typeId) {
+            // Without an explicit target we'd be guessing — bail rather than
+            // dropping the entry into the first section we find.
+            return null;
+        }
+
+        $entry = new EntryElement();
+        $entry->sectionId = (int)$sectionId;
+        $entry->typeId = (int)$typeId;
+        $entry->title = (string)$value;
+
+        if (!Craft::$app->getElements()->saveElement($entry, true)) {
+            return null;
+        }
+        return $entry;
+    }
+}
