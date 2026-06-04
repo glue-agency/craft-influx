@@ -1,0 +1,6 @@
+# Pure-logic strategy tests. No Craft boot. Anything that talks to the DB or
+# `Craft::$app` belongs in the feature suite.
+actor: UnitTester
+modules:
+    enabled:
+        - Asserts
