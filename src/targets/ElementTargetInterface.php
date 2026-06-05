@@ -25,6 +25,13 @@ interface ElementTargetInterface
     public static function elementType(): string;
 
     /**
+     * Human-readable label for this element type, used as the option label in
+     * the link-edit dropdown and anywhere else the CP would otherwise show
+     * a bare FQCN. Defaults to the element class's `displayName()`.
+     */
+    public static function friendlyName(): string;
+
+    /**
      * Is this target the right one for the given link?
      */
     public function handles(Link $link): bool;
@@ -56,7 +63,7 @@ interface ElementTargetInterface
      * via FieldsService — this hook only fires when no Craft field with the
      * handle exists on the element's layout.
      *
-     * Implementations resolve the value from the feed item using the mapping
+     * Implementations resolve the value from the remote item using the mapping
      * config, translate it to whatever attribute(s) the element actually
      * accepts (e.g. status → enabled), and return true if a write happened.
      */

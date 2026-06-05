@@ -12,6 +12,7 @@ use craft\events\RebuildConfigEvent;
 use craft\helpers\Html;
 use craft\helpers\UrlHelper;
 use craft\elements\Entry;
+use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\web\UrlManager;
 use craft\web\View;
@@ -48,7 +49,7 @@ use TDM\Influx\services\DebugService;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.4.0';
+    public string $schemaVersion = '1.5.0';
 
     public bool $hasCpSettings = false;
 
@@ -86,6 +87,7 @@ class Influx extends Plugin
             $this->registerCpRoutes();
             $this->registerCpTemplateRoots();
             $this->registerEntrySyncButton();
+            $this->registerGarbageCollection();
         });
     }
 
@@ -110,6 +112,13 @@ class Influx extends Plugin
                 'url'   => 'influx/logs',
             ],
         ];
+
+        if (Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+            $parent['subnav']['settings'] = [
+                'label' => Craft::t('influx', 'Settings'),
+                'url'   => 'influx/settings',
+            ];
+        }
 
         return $parent;
     }
@@ -141,6 +150,9 @@ class Influx extends Plugin
                 $event->rules['influx/logs']                           = 'influx/logs/index';
                 $event->rules['influx/logs/<id:\d+>']                  = 'influx/logs/view';
                 $event->rules['influx/logs/<id:\d+>/stream']           = 'influx/logs/stream';
+                $event->rules['influx/logs/items/<id:\d+>']            = 'influx/logs/item';
+
+                $event->rules['influx/settings']                       = 'influx/settings/edit';
             },
         );
     }
@@ -185,6 +197,21 @@ class Influx extends Plugin
                 $event->config['influx']['links'] = $links;
             },
         );
+    }
+
+    /**
+     * Prune old log rows on Craft's periodic garbage-collection cycle when
+     * the user has set a retention window. Zero (the default) keeps logs
+     * indefinitely.
+     */
+    protected function registerGarbageCollection(): void
+    {
+        Event::on(Gc::class, Gc::EVENT_RUN, function () {
+            $days = (int)$this->getSettings()->logRetentionDays;
+            if ($days > 0) {
+                $this->logs->deleteOlderThan($days);
+            }
+        });
     }
 
     /**

@@ -7,7 +7,7 @@ use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
-use TDM\Influx\models\AgoPreset;
+use TDM\Influx\models\OffsetPreset;
 use TDM\Influx\models\Link;
 use TDM\Influx\targets\ElementTargetInterface;
 
@@ -31,7 +31,7 @@ class DebugService extends Component
      * The generator finishes naturally when the first page is exhausted or the
      * limit is reached; callers should send their own "done" sentinel.
      */
-    public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $ago = null): \Generator
+    public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): \Generator
     {
         $plugin = Influx::getInstance();
         $target = $plugin->targets->forLink($link);
@@ -39,7 +39,7 @@ class DebugService extends Component
         $matchAttr = $link->matchAttribute();
         $matchNode = $matchAttr ? ($link->mappings[$matchAttr]['node'] ?? null) : null;
 
-        [$queryParams, $agoLabel] = AgoPreset::forLink($link, $ago)?->resolve() ?? [[], null];
+        [$queryParams, $offsetLabel] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
         if (!$target) {
             yield [
@@ -67,9 +67,9 @@ class DebugService extends Component
                     'limit'         => $limit,
                     'matchAttribute' => $matchAttr,
                     'matchNode'     => $matchNode,
-                    'ago'           => $ago,
-                    'agoLabel'      => $agoLabel,
-                    'agoQuery'      => $queryParams,
+                    'offset'        => $offset,
+                    'offsetLabel'   => $offsetLabel,
+                    'offsetQuery'   => $queryParams,
                     'error'         => $e->getMessage(),
                 ],
             ];
@@ -95,9 +95,9 @@ class DebugService extends Component
                 'limit'          => $limit,
                 'matchAttribute' => $matchAttr,
                 'matchNode'      => $matchNode,
-                'ago'            => $ago,
-                'agoLabel'       => $agoLabel,
-                'agoQuery'       => $queryParams,
+                'offset'         => $offset,
+                'offsetLabel'    => $offsetLabel,
+                'offsetQuery'    => $queryParams,
                 'error'          => null,
             ],
         ];
@@ -112,6 +112,31 @@ class DebugService extends Component
             $row['index'] = $index++;
             yield ['type' => 'item', 'data' => $row];
         }
+    }
+
+    /**
+     * Public entry point: run the per-item inspection against an already-fetched
+     * remote item. Used by the log detail drill-down to reuse the debug
+     * machinery against a historical row's stored payload.
+     */
+    public function inspectItem(Link $link, array $item, ?int $siteId = null): array
+    {
+        $target = Influx::getInstance()->targets->forLink($link);
+        if (!$target) {
+            return [
+                'matchAttribute' => $link->matchAttribute(),
+                'matchNode'      => null,
+                'matchValue'     => null,
+                'element'        => null,
+                'isNew'          => false,
+                'action'         => 'error',
+                'message'        => null,
+                'raw'            => $item,
+                'mappings'       => [],
+                'error'          => "No element target registered for '{$link->elementType}'.",
+            ];
+        }
+        return $this->debugItem($link, $target, $item, $siteId);
     }
 
     private function debugItem(
@@ -153,17 +178,21 @@ class DebugService extends Component
 
         if ($element) {
             $row['element'] = $this->describeElement($element);
-            if (!in_array('update', $link->processing, true)) {
+        }
+
+        switch ($link->decideAction($matchValue, $element)) {
+            case Link::DECISION_SKIP_NO_UPDATE:
                 $row['action'] = 'would-skip';
                 $row['message'] = "'update' not enabled for this link.";
-            } else {
-                $row['action'] = 'would-update';
-            }
-        } else {
-            if (!in_array('create', $link->processing, true)) {
+                break;
+            case Link::DECISION_SKIP_NO_CREATE:
                 $row['action'] = 'would-skip';
                 $row['message'] = "No existing element and 'create' not enabled.";
-            } else {
+                break;
+            case Link::DECISION_UPDATE:
+                $row['action'] = 'would-update';
+                break;
+            case Link::DECISION_CREATE:
                 $row['action'] = 'would-create';
                 $row['isNew'] = true;
                 try {
@@ -173,7 +202,7 @@ class DebugService extends Component
                     $row['error'] = 'buildNew: ' . $e->getMessage();
                     return $row;
                 }
-            }
+                break;
         }
 
         if ($element === null) {
@@ -258,7 +287,12 @@ class DebugService extends Component
                 $strategy = $fields->forCraftField($craftField);
                 $strategy->setContext($craftField, $handle, $config, $item, $link, $element);
                 $value = $strategy->parseField();
-                $mappingRow['parsedValue'] = $this->describeValue($value);
+                try {
+                    $displayValue = $craftField->normalizeValue($value, $element);
+                } catch (\Throwable) {
+                    $displayValue = $value;
+                }
+                $mappingRow['parsedValue'] = $this->describeValue($displayValue);
 
                 try {
                     $current = $element->getFieldValue($handle);
@@ -317,6 +351,8 @@ class DebugService extends Component
         }
         if (is_scalar($value)) {
             $str = (string)$value;
+        } elseif ($value instanceof \DateTimeInterface) {
+            $str = $value->format('Y-m-d H:i:s');
         } elseif ($value instanceof \craft\elements\db\ElementQueryInterface) {
             $ids = [];
             try {

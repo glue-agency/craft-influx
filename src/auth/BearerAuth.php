@@ -2,6 +2,8 @@
 
 namespace TDM\Influx\auth;
 
+use craft\helpers\App;
+
 class BearerAuth extends AbstractAuthStrategy
 {
     public static function type(): string
@@ -9,19 +11,26 @@ class BearerAuth extends AbstractAuthStrategy
         return 'bearer';
     }
 
-    public function validate(callable $addError): void
+    public static function label(): string
     {
-        if (empty($this->config['token'])) {
-            $addError('Bearer auth requires a token.');
-        }
+        return 'Bearer token';
+    }
+
+    public static function editTemplate(): ?string
+    {
+        return 'influx/_auth/bearer';
+    }
+
+    protected function defineRules(): array
+    {
+        return [
+            [['token'], 'required'],
+            [['token'], 'string'],
+        ];
     }
 
     public function apply(array &$headers, array &$query): void
     {
-        $token = $this->resolvedToken();
-        if ($token === '') {
-            return;
-        }
-        $headers['Authorization'] = 'Bearer ' . $token;
+        $headers['Authorization'] = 'Bearer ' . App::parseEnv($this->token);
     }
 }

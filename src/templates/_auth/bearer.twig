@@ -1,0 +1,14 @@
+{# Form fields for the Bearer auth strategy. Included by `links/_edit.twig`
+   inside a `{% namespace 'auth' %}` block, so `name: 'token'` ends up as
+   `auth[token]` and `id: 'bearer-token'` ends up as `auth-bearer-token`. #}
+{% import "_includes/forms.twig" as forms %}
+
+{{ forms.textField({
+    label: 'Token'|t('influx'),
+    instructions: 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'|t('influx')|raw,
+    id: 'bearer-token',
+    name: 'token',
+    class: 'code',
+    value: isActive ? (link.auth.token ?? '') : '',
+    disabled: readOnly,
+}) }}

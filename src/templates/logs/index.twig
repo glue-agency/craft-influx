@@ -36,7 +36,7 @@
                     <tr>
                         <td>
                             <a href="{{ cpUrl("influx/logs/" ~ log.id) }}">
-                                {{ log.startedAt|datetime("short") }}
+                                {{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt, 'short') }}
                             </a>
                         </td>
                         <td>

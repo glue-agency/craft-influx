@@ -9,7 +9,7 @@ use TDM\Influx\Influx;
 use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
 use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\AgoPreset;
+use TDM\Influx\models\OffsetPreset;
 use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
 use TDM\Influx\targets\ElementTargetInterface;
@@ -38,12 +38,12 @@ class SynchronizationService extends Component
     /**
      * Run a full link sync.
      *
-     * @param string|null $ago Key into $link->ago presets, applied as a query param.
+     * @param string|null $offset Key into $link->offset presets, applied as a query param.
      * @param string $trigger One of: console, cp, queue, element
      */
     public function syncLink(
         Link $link,
-        ?string $ago = null,
+        ?string $offset = null,
         string $trigger = 'console',
     ): LogRecord {
         $plugin = Influx::getInstance();
@@ -60,7 +60,7 @@ class SynchronizationService extends Component
 
         $target = $this->resolveTarget($link);
 
-        [$queryParams] = AgoPreset::forLink($link, $ago)?->resolve() ?? [[], null];
+        [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
         try {
             $siteHandles = $link->siteHandles() ?: [null];
@@ -184,7 +184,6 @@ class SynchronizationService extends Component
             : null;
 
         $element = $target->findByMatchValue($link, $matchValue, $siteId);
-        $isNew = false;
 
         $beforeEvent = new SyncItemEvent([
             'link'       => $link,
@@ -195,24 +194,29 @@ class SynchronizationService extends Component
         $this->trigger(self::EVENT_BEFORE_ITEM, $beforeEvent);
 
         if ($beforeEvent->skip) {
-            $plugin->logs->recordItem($log, 'skipped', $element?->id, (string)$matchValue);
+            $plugin->logs->recordItem($log, 'skipped', $element?->id, (string)$matchValue, null, $item);
             return;
         }
 
         // Allow listeners to swap in a different element.
         $element = $beforeEvent->element;
 
-        if (!$element) {
-            if (!in_array('create', $link->processing, true)) {
-                $plugin->logs->recordItem($log, 'skipped', null, (string)$matchValue, "No existing element and 'create' not enabled.");
+        switch ($link->decideAction($matchValue, $element)) {
+            case Link::DECISION_SKIP_NO_CREATE:
+                $plugin->logs->recordItem($log, 'skipped', null, (string)$matchValue, "No existing element and 'create' not enabled.", $item);
                 return;
-            }
-            $element = $target->buildNew($link, $siteId);
-            $target->assignMatchValue($element, $link, $matchValue);
-            $isNew = true;
-        } elseif (!in_array('update', $link->processing, true)) {
-            $plugin->logs->recordItem($log, 'skipped', $element->id, (string)$matchValue, "'update' not enabled for this link.");
-            return;
+            case Link::DECISION_SKIP_NO_UPDATE:
+                $plugin->logs->recordItem($log, 'skipped', $element->id, (string)$matchValue, "'update' not enabled for this link.", $item);
+                return;
+            case Link::DECISION_CREATE:
+                $element = $target->buildNew($link, $siteId);
+                $target->assignMatchValue($element, $link, $matchValue);
+                $isNew = true;
+                break;
+            case Link::DECISION_UPDATE:
+            default:
+                $isNew = false;
+                break;
         }
 
         if ($siteId) {
@@ -230,12 +234,8 @@ class SynchronizationService extends Component
         $this->trigger(self::EVENT_AFTER_ITEM_MAPPING, $afterMappingEvent);
 
         if (!$changed) {
-            $plugin->logs->recordItem($log, 'unchanged', $element->id, (string)$matchValue);
-            $afterEvent = new SyncItemEvent([
-                'link' => $link, 'item' => $item, 'element' => $element,
-                'siteHandle' => $siteHandle, 'action' => 'unchanged',
-            ]);
-            $this->trigger(self::EVENT_AFTER_ITEM, $afterEvent);
+            $plugin->logs->recordItem($log, 'unchanged', $element->id, (string)$matchValue, null, $item);
+            $this->fireAfterItem($link, $item, $element, $siteHandle, 'unchanged');
             return;
         }
 
@@ -248,11 +248,25 @@ class SynchronizationService extends Component
             $element->id,
             (string)$matchValue,
             $saved ? null : json_encode($element->getErrors()),
+            $item,
         );
 
+        $this->fireAfterItem($link, $item, $element, $siteHandle, $action);
+    }
+
+    private function fireAfterItem(
+        Link $link,
+        array $item,
+        ElementInterface $element,
+        ?string $siteHandle,
+        string $action,
+    ): void {
         $afterEvent = new SyncItemEvent([
-            'link' => $link, 'item' => $item, 'element' => $element,
-            'siteHandle' => $siteHandle, 'action' => $action,
+            'link'       => $link,
+            'item'       => $item,
+            'element'    => $element,
+            'siteHandle' => $siteHandle,
+            'action'     => $action,
         ]);
         $this->trigger(self::EVENT_AFTER_ITEM, $afterEvent);
     }

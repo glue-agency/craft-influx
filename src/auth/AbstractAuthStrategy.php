@@ -2,30 +2,31 @@
 
 namespace TDM\Influx\auth;
 
-use craft\helpers\App;
+use craft\base\Model;
 
-abstract class AbstractAuthStrategy implements AuthStrategyInterface
+/**
+ * Base for auth strategies. Strategies are real Craft/Yii models so per-type
+ * validation can live in `defineRules()` and reuse the framework's standard
+ * validators instead of a hand-rolled closure-based protocol.
+ *
+ * The {@see \TDM\Influx\services\AuthService} builds a strategy via
+ * `new $class($config)`, where `$config` is the link's `auth` slice — the
+ * `type` key is stripped here so it doesn't get assigned as a property.
+ */
+abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterface
 {
-    /** Raw `Link::$auth` config slice (already validated). */
-    protected array $config;
-
-    public function __construct(array $config)
-    {
-        $this->config = $config;
-    }
-
     /**
-     * Pull the token out of the config and resolve $ENV references. Returns
-     * an empty string when the token is unset, blank, or points at an env
-     * var that isn't defined — callers short-circuit on the empty result.
+     * Token / secret. Stored as written by the user — `$VARNAME` references
+     * are resolved at request time, not at save time, so secrets stay out of
+     * Project Config.
      */
-    protected function resolvedToken(): string
+    public ?string $token = null;
+
+    public function __construct(array $config = [])
     {
-        $raw = (string)($this->config['token'] ?? '');
-        if ($raw === '') {
-            return '';
-        }
-        $resolved = App::parseEnv($raw);
-        return is_string($resolved) ? $resolved : '';
+        // The `type` discriminator lives in the auth slice but identifies the
+        // strategy class — it isn't a property on the strategy itself.
+        unset($config['type']);
+        parent::__construct($config);
     }
 }

@@ -87,6 +87,21 @@ class TargetsService extends Component
         return $this->targets[ltrim($link->elementType, '\\')] ?? null;
     }
 
+    /**
+     * Human-readable label for an element-type FQCN. Falls back to the class's
+     * short name when no target is registered for it.
+     */
+    public function friendlyNameFor(string $elementType): string
+    {
+        $this->ensureLoaded();
+        $key = ltrim($elementType, '\\');
+        if (isset($this->targets[$key])) {
+            return $this->targets[$key]::friendlyName();
+        }
+        $parts = explode('\\', $key);
+        return end($parts) ?: $elementType;
+    }
+
     private function ensureLoaded(): void
     {
         if ($this->initialized) {

@@ -6,7 +6,7 @@ use TDM\Influx\models\Link;
 
 /**
  * Translates raw POST input from the CP edit form into the shape stored in
- * Project Config — mappings (recursive), auth, ago presets, siteEndpoints,
+ * Project Config — mappings (recursive), auth, offset presets, siteEndpoints,
  * etc. Extracted from {@see \TDM\Influx\controllers\LinksController} so the
  * controller stays focused on routing / response handling.
  *
@@ -17,11 +17,10 @@ use TDM\Influx\models\Link;
  *   elementCriteria: array
  *   auth: { type, token, header?, param? }
  *   siteEndpoints: [{ key, value }, ...]  (table)
- *   ago: [{ key, since, queryParam, format? }, ...]  (table)
+ *   offset: [{ key, since, queryParam, format? }, ...]  (table)
  *   mappings: { handle: { node, default, options (json string), fields (json), nativeFields (json), type? } }
- *   processing: ['create', 'update', ...]
+ *   processing: subset of {@see Link::ALL_PROCESSING}
  *   match.attribute: scalar
- *   itemCooldown, batchSize: scalars (empty → null)
  *   backup: bool
  */
 class LinkPostNormalizer
@@ -49,14 +48,11 @@ class LinkPostNormalizer
         $link->auth          = $this->auth($this->arr($body['auth'] ?? null));
         $link->siteEndpoints = $this->keyValueTable($this->arr($body['siteEndpoints'] ?? null));
         $link->mappings      = $this->mappings($this->arr($body['mappings'] ?? null));
-        $link->ago           = $this->ago($this->arr($body['ago'] ?? null));
+        $link->offset        = $this->offset($this->arr($body['offset'] ?? null));
         $link->processing    = array_values(array_filter($this->arr($body['processing'] ?? null)));
 
         $matchAttribute = $body['match.attribute'] ?? ($body['match']['attribute'] ?? null);
         $link->match = $matchAttribute ? ['attribute' => $matchAttribute] : [];
-
-        $link->itemCooldown = $this->emptyOrInt($body['itemCooldown'] ?? null);
-        $link->batchSize    = $this->emptyOrInt($body['batchSize']    ?? null);
 
         return $link;
     }
@@ -128,7 +124,7 @@ class LinkPostNormalizer
         return $out;
     }
 
-    public function ago(array $rows): array
+    public function offset(array $rows): array
     {
         $out = [];
         foreach ($rows as $row) {
@@ -239,14 +235,6 @@ class LinkPostNormalizer
             return null;
         }
         return (string)$value;
-    }
-
-    private function emptyOrInt(mixed $value): ?int
-    {
-        if ($value === '' || $value === null) {
-            return null;
-        }
-        return (int)$value;
     }
 
     /**

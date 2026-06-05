@@ -2,19 +2,20 @@
 
 namespace TDM\Influx\services;
 
-use Craft;
 use craft\base\Component;
 use craft\base\FieldInterface as CraftFieldInterface;
 use TDM\Influx\events\RegisterFieldsEvent;
 use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\fields\Assets;
 use TDM\Influx\fields\Categories;
+use TDM\Influx\fields\Date;
 use TDM\Influx\fields\DefaultField;
 use TDM\Influx\fields\Dropdown;
 use TDM\Influx\fields\Entries;
 use TDM\Influx\fields\Field;
 use TDM\Influx\fields\Lightswitch;
 use TDM\Influx\fields\Matrix;
+use TDM\Influx\fields\RichText;
 use TDM\Influx\fields\Tags;
 use TDM\Influx\fields\Users;
 
@@ -51,7 +52,7 @@ class FieldsService extends Component
     public function init(): void
     {
         parent::init();
-        $this->default = Craft::createObject(DefaultField::class);
+        $this->default = new DefaultField();
     }
 
     /**
@@ -64,9 +65,11 @@ class FieldsService extends Component
     {
         return [
             Assets::class,
+            Date::class,
             Lightswitch::class,
             Dropdown::class,
             Entries::class,
+            RichText::class,
             Users::class,
             Categories::class,
             Tags::class,
@@ -111,7 +114,10 @@ class FieldsService extends Component
      */
     public function metaFor(CraftFieldInterface $field): array
     {
-        return $this->forCraftField($field)->fieldMeta($field);
+        $strategy = $this->forCraftField($field);
+        return $strategy->fieldMeta($field) + [
+            'hasExtras' => $strategy->hasMappingExtras(),
+        ];
     }
 
     /** @return array<class-string, Field> */
@@ -133,7 +139,7 @@ class FieldsService extends Component
             // breaking init for.
             return;
         }
-        $this->byCraftFqcn[$fqcn] = Craft::createObject($class);
+        $this->byCraftFqcn[$fqcn] = new $class();
     }
 
     private function ensureLoaded(): void

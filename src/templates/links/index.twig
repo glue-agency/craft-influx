@@ -44,133 +44,131 @@
             {% endif %}
         </div>
     {% else %}
-        <div id="content" class="content-pane">
-            <table class="data fullwidth">
-                <thead>
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Name"|t("influx") }}</th>
+                    <th>{{ "Handle"|t("influx") }}</th>
+                    <th>{{ "Target"|t("influx") }}</th>
+                    <th>{{ "Sites"|t("influx") }}</th>
+                    <th>{{ "Last run"|t("influx") }}</th>
+                    <th colspan="2">{{ "Actions"|t('influx') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for link in links %}
+                    {% set lastRun = lastRuns[link.handle] ?? null %}
                     <tr>
-                        <th>{{ "Name"|t("influx") }}</th>
-                        <th>{{ "Handle"|t("influx") }}</th>
-                        <th>{{ "Target"|t("influx") }}</th>
-                        <th>{{ "Sites"|t("influx") }}</th>
-                        <th>{{ "Last run"|t("influx") }}</th>
-                        <th colspan="2">{{ "Actions"|t('influx') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for link in links %}
-                        {% set lastRun = lastRuns[link.handle] ?? null %}
-                        <tr>
-                            <td>
-                                <a href="{{ cpUrl('influx/links/' ~ link.handle) }}">
-                                    <strong>{{ link.name }}</strong>
+                        <td>
+                            <a href="{{ cpUrl('influx/links/' ~ link.handle) }}">
+                                <strong>{{ link.name }}</strong>
+                            </a>
+                        </td>
+                        <td><code>{{ link.handle }}</code></td>
+                        <td>
+                            {{ link.elementTypeLabel() }}
+                            {% if link.elementCriteria.section is defined %}
+                                <span class="light">/ {{ link.elementCriteria.section }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set sites = link.siteHandles() %}
+                            {% if sites is empty %}
+                                <span class="light">{{ "primary"|t("influx") }}</span>
+                            {% else %}
+                                {{ sites|join(", ") }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lastRun %}
+                                <span class="status {{ lastRun.status == "ok" ? "live" : (lastRun.status == "error" ? "expired" : "pending") }}"
+                                      title="{{ lastRun.status|t('influx') }}"></span>
+                                <a href="{{ cpUrl('influx/logs/' ~ lastRun.id) }}">
+                                    {{ craft.app.formattingLocale.getFormatter().asDatetime(lastRun.startedAt) }}
                                 </a>
-                            </td>
-                            <td><code>{{ link.handle }}</code></td>
-                            <td>
-                                <code>{{ link.elementType|replace({"craft\\elements\\": ""}) }}</code>
-                                {% if link.elementCriteria.section is defined %}
-                                    <span class="light">/ {{ link.elementCriteria.section }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% set sites = link.siteHandles() %}
-                                {% if sites is empty %}
-                                    <span class="light">{{ "primary"|t("influx") }}</span>
-                                {% else %}
-                                    {{ sites|join(", ") }}
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if lastRun %}
-                                    <span class="status {{ lastRun.status == "ok" ? "live" : (lastRun.status == "error" ? "expired" : "pending") }}"></span>
-                                    {{ lastRun.startedAt|datetime("short") }}
-                                    <span class="light">
-                                        ({{ lastRun.itemsCreated }}c / {{ lastRun.itemsUpdated }}u / {{ lastRun.itemsUnchanged }}=)
-                                    </span>
-                                {% else %}
-                                    <span class="light">{{ "never"|t("influx") }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="thin">
-                                {# Forms hoisted out of the btngroup so the buttons can sit as direct
-                                   children — Craft's .btngroup radius rules target .btn:first-child /
-                                   :last-child, which would never match when the buttons are wrapped. #}
-                                <form id="influx-sync-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
+                            {% else %}
+                                <span class="light">{{ "never"|t("influx") }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="thin">
+                            {# Forms hoisted out of the btngroup so the buttons can sit as direct
+                               children — Craft's .btngroup radius rules target .btn:first-child /
+                               :last-child, which would never match when the buttons are wrapped. #}
+                            <form id="influx-sync-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
+                                {{ csrfInput() }}
+                                {{ actionInput("influx/synchronization/link") }}
+                                {{ hiddenInput("handle", link.handle) }}
+                            </form>
+
+                            {% for key, _ in link.offset %}
+                                <form id="influx-sync-{{ link.handle }}-{{ key }}" method="post" accept-charset="UTF-8" hidden>
                                     {{ csrfInput() }}
                                     {{ actionInput("influx/synchronization/link") }}
                                     {{ hiddenInput("handle", link.handle) }}
+                                    {{ hiddenInput("offset", key) }}
                                 </form>
+                            {% endfor %}
 
-                                {% for key, _ in link.ago %}
-                                    <form id="influx-sync-{{ link.handle }}-{{ key }}" method="post" accept-charset="UTF-8" hidden>
-                                        {{ csrfInput() }}
-                                        {{ actionInput("influx/synchronization/link") }}
-                                        {{ hiddenInput("handle", link.handle) }}
-                                        {{ hiddenInput("ago", key) }}
-                                    </form>
-                                {% endfor %}
+                            {% if not readOnly %}
+                                <form id="influx-duplicate-{{ link.handle }}" method="post" accept-charset="UTF-8" class="influx-duplicate-form" hidden>
+                                    {{ csrfInput() }}
+                                    {{ actionInput("influx/links/duplicate") }}
+                                    {{ hiddenInput("handle", link.handle) }}
+                                    {{ hiddenInput("newHandle", "") }}
+                                </form>
+                            {% endif %}
+
+                            <div class="btngroup">
+                                <button type="submit"
+                                        form="influx-sync-{{ link.handle }}"
+                                        class="btn"
+                                        data-icon="refresh"
+                                        title="{{ 'Sync'|t('influx') }}">
+                                    {{ "Sync"|t("influx") }}
+                                </button>
+
+                                {% if link.offset is not empty %}
+                                    <button type="button" class="btn menubtn" title="{{ 'Sync with preset'|t('influx') }}"></button>
+                                    <div class="menu" data-align="right">
+                                        <ul>
+                                            {% for key, preset in link.offset %}
+                                                <li>
+                                                    <button type="submit"
+                                                            form="influx-sync-{{ link.handle }}-{{ key }}"
+                                                            class="menu-option">
+                                                        {{ key }}
+                                                        <span class="light">— {{ preset.since }}</span>
+                                                    </button>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="thin">
+                            <div class="btngroup">
+                                <a href="{{ cpUrl('influx/links/' ~ link.handle ~ '/debug') }}"
+                                   class="btn"
+                                   data-icon="search"
+                                   title="{{ 'Debug'|t('influx') }}">
+                                    {{ "Debug"|t("influx") }}
+                                </a>
 
                                 {% if not readOnly %}
-                                    <form id="influx-duplicate-{{ link.handle }}" method="post" accept-charset="UTF-8" class="influx-duplicate-form" hidden>
-                                        {{ csrfInput() }}
-                                        {{ actionInput("influx/links/duplicate") }}
-                                        {{ hiddenInput("handle", link.handle) }}
-                                        {{ hiddenInput("newHandle", "") }}
-                                    </form>
-                                {% endif %}
-
-                                <div class="btngroup">
                                     <button type="submit"
-                                            form="influx-sync-{{ link.handle }}"
+                                            form="influx-duplicate-{{ link.handle }}"
                                             class="btn"
-                                            data-icon="refresh"
-                                            title="{{ 'Sync'|t('influx') }}">
-                                        {{ "Sync"|t("influx") }}
+                                            data-icon="duplicate"
+                                            title="{{ 'Duplicate'|t('influx') }}">
+                                        {{ "Duplicate"|t("influx") }}
                                     </button>
-
-                                    {% if link.ago is not empty %}
-                                        <button type="button" class="btn menubtn" title="{{ 'Sync with preset'|t('influx') }}"></button>
-                                        <div class="menu" data-align="right">
-                                            <ul>
-                                                {% for key, preset in link.ago %}
-                                                    <li>
-                                                        <button type="submit"
-                                                                form="influx-sync-{{ link.handle }}-{{ key }}"
-                                                                class="menu-option">
-                                                            {{ key }}
-                                                            <span class="light">— {{ preset.since }}</span>
-                                                        </button>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
-                                        </div>
-                                    {% endif %}
-                                </div>
-                            </td>
-                            <td class="thin">
-                                <div class="btngroup">
-                                    <a href="{{ cpUrl('influx/links/' ~ link.handle ~ '/debug') }}"
-                                       class="btn"
-                                       data-icon="search"
-                                       title="{{ 'Debug'|t('influx') }}">
-                                        {{ "Debug"|t("influx") }}
-                                    </a>
-
-                                    {% if not readOnly %}
-                                        <button type="submit"
-                                                form="influx-duplicate-{{ link.handle }}"
-                                                class="btn"
-                                                data-icon="duplicate"
-                                                title="{{ 'Duplicate'|t('influx') }}">
-                                            {{ "Duplicate"|t("influx") }}
-                                        </button>
-                                    {% endif %}
-                                </div>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     {% endif %}
 {% endblock %}

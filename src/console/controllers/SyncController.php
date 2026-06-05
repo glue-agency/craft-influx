@@ -13,16 +13,16 @@ use yii\console\ExitCode;
  *   ./craft influx/sync news                 # one link
  *   ./craft influx/sync news,events          # multiple
  *   ./craft influx/sync --all                # everything
- *   ./craft influx/sync news --ago=hour      # use the "hour" preset from the link config
+ *   ./craft influx/sync news --offset=hour   # use the "hour" preset from the link config
  */
 class SyncController extends Controller
 {
     public bool $all = false;
-    public ?string $ago = null;
+    public ?string $offset = null;
 
     public function options($actionID): array
     {
-        return array_merge(parent::options($actionID), ['all', 'ago']);
+        return array_merge(parent::options($actionID), ['all', 'offset']);
     }
 
     public function optionAliases(): array
@@ -56,7 +56,7 @@ class SyncController extends Controller
         foreach ($links as $link) {
             $this->stdout("→ Syncing '{$link->handle}'\n");
             try {
-                $log = $plugin->synchronization->syncLink($link, $this->ago, 'console');
+                $log = $plugin->synchronization->syncLink($link, $this->offset, 'console');
                 $this->stdout(sprintf(
                     "  done. seen=%d created=%d updated=%d unchanged=%d skipped=%d\n",
                     $log->itemsSeen,

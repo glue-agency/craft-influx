@@ -9,6 +9,32 @@ class Install extends Migration
 {
     public function safeUp(): bool
     {
+        $this->createTable(Table::LINKS, [
+            'id'              => $this->primaryKey(),
+            'name'            => $this->string()->notNull(),
+            'handle'          => $this->string(100)->notNull(),
+            'elementType'     => $this->string()->notNull()->defaultValue(''),
+            'elementCriteria' => $this->text()->null(),
+            'endpoint'        => $this->text()->null(),
+            'itemEndpoint'    => $this->text()->null(),
+            'siteEndpoints'   => $this->text()->null(),
+            'auth'            => $this->text()->null(),
+            'rootNode'        => $this->string()->null(),
+            'paginatorNode'   => $this->string()->null(),
+            'match'           => $this->text()->null(),
+            'mappings'        => $this->longText()->null(),
+            'processing'      => $this->text()->null(),
+            'offset'          => $this->text()->null(),
+            'backup'          => $this->boolean()->notNull()->defaultValue(false),
+            'dateCreated'     => $this->dateTime()->notNull(),
+            'dateUpdated'     => $this->dateTime()->notNull(),
+            'uid'             => $this->uid(),
+        ]);
+
+        $this->createIndex(null, Table::LINKS, ['handle'], true);
+        $this->createIndex(null, Table::LINKS, ['uid'], true);
+        $this->createIndex(null, Table::LINKS, ['elementType']);
+
         $this->createTable(Table::LOGS, [
             'id'           => $this->primaryKey(),
             'linkHandle'   => $this->string(100)->notNull(),
@@ -65,6 +91,7 @@ class Install extends Migration
     {
         $this->dropTableIfExists(Table::LOG_ITEMS);
         $this->dropTableIfExists(Table::LOGS);
+        $this->dropTableIfExists(Table::LINKS);
         return true;
     }
 }

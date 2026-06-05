@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="currentColor">
+    <title>Influx</title>
+    <!-- Silhouette form: same convergence-into-element mark, single-color
+         so Craft can tint it via CSS color. -->
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round" fill="none">
+        <path d="M22 18 L48 56"/>
+        <path d="M50 14 L50 56"/>
+        <path d="M78 18 L52 56"/>
+    </g>
+    <rect x="22" y="62" width="56" height="16" rx="5"/>
+</svg>

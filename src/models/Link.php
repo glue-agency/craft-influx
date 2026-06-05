@@ -3,6 +3,7 @@
 namespace TDM\Influx\models;
 
 use Cake\Utility\Hash;
+use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\helpers\StringHelper;
 use TDM\Influx\auth\AuthStrategyInterface;
@@ -18,6 +19,35 @@ use TDM\Influx\Influx;
  */
 class Link extends Model
 {
+    public const PROCESSING_CREATE = 'create';
+    public const PROCESSING_UPDATE = 'update';
+    public const PROCESSING_DISABLE = 'disable';
+    public const PROCESSING_DELETE = 'delete';
+    public const PROCESSING_DELETE_FOR_SITE = 'delete-for-site';
+
+    public const ALL_PROCESSING = [
+        self::PROCESSING_CREATE,
+        self::PROCESSING_UPDATE,
+        self::PROCESSING_DISABLE,
+        self::PROCESSING_DELETE,
+        self::PROCESSING_DELETE_FOR_SITE,
+    ];
+
+    /**
+     * Decision outcomes returned by {@see self::decideAction()}. The
+     * `DECISION_CREATE` and `DECISION_UPDATE` values intentionally share
+     * strings with their processing-flag counterparts since they name the
+     * same action; the `SKIP_*` values name the reason a sync would not
+     * touch the element.
+     */
+    public const DECISION_CREATE          = self::PROCESSING_CREATE;
+    public const DECISION_UPDATE          = self::PROCESSING_UPDATE;
+    public const DECISION_SKIP_NO_MATCH   = 'skip:no-match';
+    public const DECISION_SKIP_NO_CREATE  = 'skip:no-create';
+    public const DECISION_SKIP_NO_UPDATE  = 'skip:no-update';
+
+    public ?int $id = null;
+
     public ?string $uid = null;
 
     public string $handle = '';
@@ -91,27 +121,16 @@ class Link extends Model
     public array $mappings = [];
 
     /**
-     * Allowed actions. Subset of:
-     *   create, update, disable, delete, delete-for-site
+     * Allowed actions. Subset of {@see self::ALL_PROCESSING}.
      */
-    public array $processing = ['create', 'update'];
+    public array $processing = [self::PROCESSING_CREATE, self::PROCESSING_UPDATE];
 
     /**
      * Sliding-window sync presets, e.g.
-     *   ago:
+     *   offset:
      *     hour: { since: '-1 hour', queryParam: modified_since }
      */
-    public array $ago = [];
-
-    /**
-     * Cooldown (seconds) between manual per-element syncs.
-     */
-    public ?int $itemCooldown = null;
-
-    /**
-     * Batch size for paginated processing.
-     */
-    public ?int $batchSize = null;
+    public array $offset = [];
 
     /**
      * Take a DB backup before this link runs.
@@ -125,11 +144,10 @@ class Link extends Model
             [['handle'], 'match', 'pattern' => '/^[a-zA-Z][a-zA-Z0-9_\-]*$/', 'message' => 'Handle must start with a letter and contain only letters, numbers, underscores, and dashes.'],
             [['endpoint', 'itemEndpoint'], 'string'],
             [['endpoint'], 'required', 'when' => fn(self $m) => empty($m->siteEndpoints), 'message' => 'Either an endpoint or at least one site endpoint is required.'],
-            [['itemCooldown', 'batchSize'], 'integer', 'min' => 0],
             [['match'], 'validateMatch'],
             [['mappings'], 'validateMappings'],
             [['auth'], 'validateAuth'],
-            [['processing'], 'each', 'rule' => ['in', 'range' => ['create', 'update', 'disable', 'delete', 'delete-for-site']]],
+            [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
         ]);
     }
 
@@ -176,7 +194,11 @@ class Link extends Model
             return;
         }
 
-        $strategy->validate(fn(string $msg) => $this->addError($attribute, $msg));
+        if (!$strategy->validate()) {
+            foreach ($strategy->getFirstErrors() as $msg) {
+                $this->addError($attribute, $msg);
+            }
+        }
     }
 
     /**
@@ -209,9 +231,7 @@ class Link extends Model
             'match'           => $this->match,
             'mappings'        => $this->mappings,
             'processing'      => $this->processing,
-            'ago'             => $this->ago,
-            'itemCooldown'    => $this->itemCooldown,
-            'batchSize'       => $this->batchSize,
+            'offset'          => $this->offset,
             'backup'          => $this->backup,
         ];
 
@@ -253,6 +273,16 @@ class Link extends Model
         return !empty($this->siteEndpoints) ? array_keys($this->siteEndpoints) : [];
     }
 
+    /**
+     * Human-readable label for this link's element type — resolved through the
+     * registered target's `friendlyName()`, falling back to the class's short
+     * name when no target is registered for it.
+     */
+    public function elementTypeLabel(): string
+    {
+        return Influx::getInstance()->targets->friendlyNameFor($this->elementType);
+    }
+
     public function matchValue(array $item): mixed
     {
         $attr = $this->matchAttribute();
@@ -265,13 +295,30 @@ class Link extends Model
         return $this->match['attribute'] ?? null;
     }
 
-    public function effectiveItemCooldown(int $default): int
+    /**
+     * Decide what a sync run should do with one remote item given its match
+     * value and the element (if any) that was found for it. Used by both
+     * {@see \TDM\Influx\services\SynchronizationService::processItem()} for
+     * the real run and {@see \TDM\Influx\services\DebugService::debugItem()}
+     * for the dry-run inspector, so both stay aligned on the rule.
+     *
+     * Returns one of: {@see self::DECISION_CREATE}, {@see self::DECISION_UPDATE},
+     * {@see self::DECISION_SKIP_NO_MATCH}, {@see self::DECISION_SKIP_NO_CREATE},
+     * {@see self::DECISION_SKIP_NO_UPDATE}.
+     */
+    public function decideAction(mixed $matchValue, ?ElementInterface $element): string
     {
-        return $this->itemCooldown ?? $default;
+        if ($matchValue === null || $matchValue === '') {
+            return self::DECISION_SKIP_NO_MATCH;
+        }
+        if ($element === null) {
+            return in_array(self::PROCESSING_CREATE, $this->processing, true)
+                ? self::DECISION_CREATE
+                : self::DECISION_SKIP_NO_CREATE;
+        }
+        return in_array(self::PROCESSING_UPDATE, $this->processing, true)
+            ? self::DECISION_UPDATE
+            : self::DECISION_SKIP_NO_UPDATE;
     }
 
-    public function effectiveBatchSize(int $default): int
-    {
-        return $this->batchSize ?? $default;
-    }
 }

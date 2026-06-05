@@ -18,7 +18,28 @@ class Matrix extends Field
 
     public function fieldMeta(\craft\base\FieldInterface $field): array
     {
-        return ['kind' => 'matrix'];
+        return [
+            'kind'   => 'matrix',
+            'labels' => self::extrasLabels() + self::commonExtrasLabels(),
+        ];
+    }
+
+    public function hasMappingExtras(): bool
+    {
+        return true;
+    }
+
+    /**
+     * UI strings rendered inside the matrix extras block (currently just
+     * a placeholder until block-shaped mapping ships).
+     *
+     * @return array<string, string>
+     */
+    public static function extrasLabels(): array
+    {
+        return [
+            'placeholder' => \Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
+        ];
     }
 
     public function parseField(): mixed

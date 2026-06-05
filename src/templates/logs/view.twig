@@ -21,8 +21,8 @@
                     <span class="influx-log-status">{{ log.status }}</span>
                 </td>
             </tr>
-            <tr><th>{{ "Started"|t("influx") }}</th><td>{{ log.startedAt|datetime }}</td></tr>
-            <tr><th>{{ "Finished"|t("influx") }}</th><td id="influx-log-finished">{{ log.finishedAt ? log.finishedAt|datetime : "—" }}</td></tr>
+            <tr><th>{{ "Started"|t("influx") }}</th><td>{{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt) }}</td></tr>
+            <tr><th>{{ "Finished"|t("influx") }}</th><td id="influx-log-finished">{{ log.finishedAt ? craft.app.formattingLocale.getFormatter().asDatetime(log.finishedAt) : "—" }}</td></tr>
             <tr id="influx-log-error-row" {% if not log.error %}hidden{% endif %}>
                 <th>{{ "Error"|t("influx") }}</th>
                 <td><pre class="error" id="influx-log-error">{{ log.error }}</pre></td>
@@ -87,8 +87,10 @@
                     "deleted-for-site": "expired",
                     "error":     "expired",
                 }[item.action] ?? "pending" %}
-                <tr data-item-id="{{ item.id }}" data-action="{{ item.action }}">
-                    <td>{{ item.id }}</td>
+                <tr data-item-id="{{ item.id }}" data-action="{{ item.action }}" class="influx-log-row">
+                    <td>
+                        <button type="button" class="btn small influx-log-inspect" title="{{ 'Inspect'|t('influx') }}" data-icon="search">{{ item.id }}</button>
+                    </td>
                     <td>
                         <span class="status {{ color }}"></span>
                         <code>{{ item.action }}</code>
@@ -137,6 +139,11 @@
                 const a = tr.getAttribute('data-action');
                 tr.hidden = ACTIONS.includes(a) && !active.has(a);
             });
+            // Keep expanded detail rows in lockstep with their parent row.
+            tbody.querySelectorAll('tr.influx-log-detail').forEach(function (tr) {
+                const prev = tr.previousElementSibling;
+                tr.hidden = !!(prev && prev.hidden);
+            });
         }
 
         function recount() {
@@ -162,6 +169,67 @@
 
         recount();
         window.__influxLogFilters = { applyVisibility: applyVisibility, recount: recount };
+    })();
+
+    (function () {
+        const tbody = document.getElementById('influx-log-items-body');
+        if (!tbody) return;
+
+        const urlTemplate = {{ itemUrlTemplate|json_encode|raw }};
+        const COLS = 5;
+
+        function detailRowFor(tr) {
+            const next = tr.nextElementSibling;
+            return (next && next.classList.contains('influx-log-detail')) ? next : null;
+        }
+
+        function buildDetailRow(html) {
+            const tr = document.createElement('tr');
+            tr.className = 'influx-log-detail';
+            const td = document.createElement('td');
+            td.colSpan = COLS;
+            td.style.background = '#f3f7fc';
+            td.innerHTML = html;
+            tr.appendChild(td);
+            return tr;
+        }
+
+        tbody.addEventListener('click', function (e) {
+            const btn = e.target.closest('.influx-log-inspect');
+            if (!btn) return;
+            const tr = btn.closest('tr[data-item-id]');
+            if (!tr) return;
+            e.preventDefault();
+
+            const existing = detailRowFor(tr);
+            if (existing) {
+                existing.remove();
+                return;
+            }
+
+            const detail = buildDetailRow('<p class="light" style="padding:8px;"><span class="spinner"></span> ' + Craft.t('influx', 'Loading…') + '</p>');
+            tr.insertAdjacentElement('afterend', detail);
+
+            const id = tr.getAttribute('data-item-id');
+            const url = urlTemplate.replace('__ID__', encodeURIComponent(id));
+
+            Craft.sendActionRequest('GET', url).then(function (response) {
+                detail.querySelector('td').innerHTML = response.data && response.data.html
+                    ? response.data.html
+                    : '<p class="error" style="padding:8px;">' + Craft.t('influx', 'No content returned.') + '</p>';
+            }).catch(function (err) {
+                const msg = (err && err.response && err.response.data && err.response.data.message)
+                    || err.message
+                    || 'Request failed.';
+                const td = detail.querySelector('td');
+                td.innerHTML = '';
+                const p = document.createElement('p');
+                p.className = 'error';
+                p.style.padding = '8px';
+                p.textContent = msg;
+                td.appendChild(p);
+            });
+        });
     })();
     {% endjs %}
 
@@ -202,8 +270,9 @@
                 tr.setAttribute('data-item-id', d.id);
                 tr.setAttribute('data-action', d.action);
                 const color = actionColors[d.action] || 'pending';
+                tr.classList.add('influx-log-row');
                 tr.innerHTML =
-                    '<td>' + escapeHtml(d.id) + '</td>' +
+                    '<td><button type="button" class="btn small influx-log-inspect" data-icon="search">' + escapeHtml(d.id) + '</button></td>' +
                     '<td><span class="status ' + color + '"></span> <code>' + escapeHtml(d.action) + '</code></td>' +
                     '<td><code>' + (d.matchValue ? escapeHtml(d.matchValue) : '—') + '</code></td>' +
                     '<td>' + (d.elementHtml || '<span class="light">—</span>') + '</td>' +

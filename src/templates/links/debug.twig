@@ -30,16 +30,16 @@
                 </div>
 
                 <div class="field">
-                    <div class="heading"><label for="influx-debug-ago">{{ "Sliding window"|t("influx") }}</label></div>
+                    <div class="heading"><label for="influx-debug-offset">{{ "Sliding window"|t("influx") }}</label></div>
                     <div class="input">
-                        {% if agoKeys is empty %}
+                        {% if offsetKeys is empty %}
                             <span class="light">{{ "No presets configured"|t("influx") }}</span>
                         {% else %}
                             <div class="select">
-                                <select id="influx-debug-ago" name="ago">
+                                <select id="influx-debug-offset" name="offset">
                                     <option value="">{{ "— full feed —"|t("influx") }}</option>
-                                    {% for k in agoKeys %}
-                                        <option value="{{ k }}"{% if k == selectedAgo %} selected{% endif %}>{{ k }}</option>
+                                    {% for k in offsetKeys %}
+                                        <option value="{{ k }}"{% if k == selectedOffset %} selected{% endif %}>{{ k }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -81,7 +81,7 @@
         const streamBase = {{ streamUrl|json_encode|raw }};
         const params = new URLSearchParams();
         {% if selectedSite %}params.set('site', {{ selectedSite|json_encode|raw }});{% endif %}
-        {% if selectedAgo %}params.set('ago', {{ selectedAgo|json_encode|raw }});{% endif %}
+        {% if selectedOffset %}params.set('offset', {{ selectedOffset|json_encode|raw }});{% endif %}
         params.set('limit', {{ limit|json_encode|raw }});
 
         const url = streamBase + (streamBase.includes('?') ? '&' : '?') + params.toString();
@@ -124,8 +124,8 @@
                     }
                     html += '</td></tr>';
                 }
-                if (d.agoLabel) {
-                    html += '<tr><th>Sliding window</th><td><code>' + escapeHtml(d.ago) + '</code> <span class="light">→</span> <code>' + escapeHtml(d.agoLabel) + '</code></td></tr>';
+                if (d.offsetLabel) {
+                    html += '<tr><th>Sliding window</th><td><code>' + escapeHtml(d.offset) + '</code> <span class="light">→</span> <code>' + escapeHtml(d.offsetLabel) + '</code></td></tr>';
                 }
             }
             html += '</tbody></table>';

@@ -2,6 +2,7 @@
 
 namespace TDM\Influx\fields;
 
+use Craft;
 use craft\elements\Category as CategoryElement;
 use craft\elements\db\ElementQueryInterface;
 use craft\helpers\Db;
@@ -16,6 +17,19 @@ class Categories extends Relation
     protected function elementType(): string
     {
         return CategoryElement::class;
+    }
+
+    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    {
+        $source = $field->source ?? null;
+        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+            return;
+        }
+        [, $uid] = explode(':', $source);
+        $group = Craft::$app->getCategories()->getGroupByUid($uid);
+        if ($group) {
+            yield $group->getFieldLayout();
+        }
     }
 
     protected function scopeBySources(ElementQueryInterface $query): void

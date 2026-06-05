@@ -3,8 +3,8 @@
 namespace TDM\Influx\fields;
 
 /**
- * Coerces an arbitrary feed value (string/number/bool) into a boolean using a
- * user-configurable "truthy values" list.
+ * Coerces an arbitrary remote value (string/number/bool) into a boolean using
+ * a user-configurable "truthy values" list.
  *
  *   options.truthy: ['true', '1', 'yes', 'on']  // defaults
  *
@@ -21,7 +21,26 @@ class Lightswitch extends Field
 
     public function fieldMeta(\craft\base\FieldInterface $field): array
     {
-        return ['kind' => 'boolean'];
+        return [
+            'kind'   => 'boolean',
+            'labels' => self::extrasLabels() + self::commonExtrasLabels(),
+        ];
+    }
+
+    /**
+     * UI strings rendered inside the boolean extras block. Kept around even
+     * though the extras component no longer mounts for booleans, so the
+     * dormant template branch keeps reading from a single source.
+     *
+     * @return array<string, string>
+     */
+    public static function extrasLabels(): array
+    {
+        return [
+            'truthyLabel'       => \Craft::t('influx', 'Truthy values'),
+            'truthyPlaceholder' => \Craft::t('influx', 'true, 1, yes, on'),
+            'truthyHint'        => \Craft::t('influx', 'Comma-separated. Anything else (incl. null) maps to false.'),
+        ];
     }
 
     public function parseField(): mixed

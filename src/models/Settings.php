@@ -12,7 +12,24 @@ class Settings extends Model
     public int $defaultItemCooldown = 30;
 
     /**
-     * Default batch size for paginated link processing.
+     * Whether sync runs write to the log tables. Disable to skip all log
+     * writes (run records + per-item rows) — useful for high-volume feeds
+     * where the audit trail isn't worth the table growth.
      */
-    public int $defaultBatchSize = 100;
+    public bool $loggingEnabled = true;
+
+    /**
+     * How many days of log history to keep before garbage collection removes
+     * them. `0` disables automatic deletion, so runs accumulate indefinitely.
+     * Pruning runs on Craft's GC event, not on every sync.
+     */
+    public int $logRetentionDays = 0;
+
+    public function defineRules(): array
+    {
+        return [
+            [['defaultItemCooldown', 'logRetentionDays'], 'integer', 'min' => 0],
+            [['loggingEnabled'], 'boolean'],
+        ];
+    }
 }

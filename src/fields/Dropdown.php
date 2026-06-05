@@ -30,7 +30,32 @@ class Dropdown extends Field
                 $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
             }
         }
-        return ['kind' => 'options', 'options' => $options];
+        return [
+            'kind'    => 'options',
+            'options' => $options,
+            'labels'  => self::extrasLabels() + self::commonExtrasLabels(),
+        ];
+    }
+
+    public function hasMappingExtras(): bool
+    {
+        return true;
+    }
+
+    /**
+     * UI strings rendered inside the dropdown/value-map extras block.
+     *
+     * @return array<string, string>
+     */
+    public static function extrasLabels(): array
+    {
+        return [
+            'valueMapHint' => \Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.'),
+            'remoteValue'  => \Craft::t('influx', 'Remote value'),
+            'pickLocal'    => \Craft::t('influx', '— pick —'),
+            'addRow'       => \Craft::t('influx', 'Add value map'),
+            'removeRow'    => \Craft::t('influx', 'Remove row'),
+        ];
     }
 
     public function parseField(): mixed

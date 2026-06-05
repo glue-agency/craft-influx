@@ -17,7 +17,7 @@
     <table class="data fullwidth fixed-layout">
         <tbody>
             <tr><th>{{ "Handle"|t("influx") }}</th><td><code>{{ link.handle }}</code></td></tr>
-            <tr><th>{{ "Element type"|t("influx") }}</th><td><code>{{ link.elementType }}</code></td></tr>
+            <tr><th>{{ "Element type"|t("influx") }}</th><td>{{ link.elementTypeLabel() }} <span class="light"><code>{{ link.elementType }}</code></span></td></tr>
             <tr>
                 <th>{{ "Criteria"|t("influx") }}</th>
                 <td>
@@ -79,8 +79,6 @@
                 </td>
             </tr>
             <tr><th>{{ "Processing"|t("influx") }}</th><td>{{ link.processing|join(", ") }}</td></tr>
-            <tr><th>{{ "Item cooldown"|t("influx") }}</th><td>{{ link.itemCooldown ?? "—" }}{% if link.itemCooldown %}s{% endif %}</td></tr>
-            <tr><th>{{ "Batch size"|t("influx") }}</th><td>{{ link.batchSize ?? "—" }}</td></tr>
             <tr><th>{{ "DB backup"|t("influx") }}</th><td>{{ link.backup ? "yes" : "no" }}</td></tr>
         </tbody>
     </table>
@@ -120,12 +118,12 @@
             </button>
         </form>
 
-        {% for key, preset in link.ago %}
+        {% for key, preset in link.offset %}
             <form method="post" accept-charset="UTF-8">
                 {{ csrfInput() }}
                 {{ actionInput("influx/synchronization/link") }}
                 {{ hiddenInput("handle", link.handle) }}
-                {{ hiddenInput("ago", key) }}
+                {{ hiddenInput("offset", key) }}
                 <button type="submit" class="btn" data-icon="clock">
                     {{ "Sync"|t("influx") }} ({{ key }} — {{ preset.since }})
                 </button>
@@ -155,7 +153,7 @@
                     <tr>
                         <td>
                             <a href="{{ cpUrl("influx/logs/" ~ log.id) }}">
-                                {{ log.startedAt|datetime("short") }}
+                                {{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt, 'short') }}
                             </a>
                         </td>
                         <td>{{ log.trigger }}</td>

@@ -53,7 +53,68 @@ class LogsController extends Controller
             'log'   => $log,
             'items' => $items,
             'streamUrl' => \craft\helpers\UrlHelper::cpUrl("influx/logs/{$log->id}/stream"),
+            'itemUrlTemplate' => \craft\helpers\UrlHelper::cpUrl('influx/logs/items/__ID__'),
         ]);
+    }
+
+    /**
+     * Drill-down for one stored log item. Re-runs the debug-view inspection
+     * against the raw remote payload captured when the item was synced, so
+     * the user can see per-field source/parsed/current values and which
+     * mappings would (re-)apply if synced again.
+     */
+    public function actionItem(int $id): Response
+    {
+        $this->requireAcceptsJson();
+
+        $item = LogItemRecord::findOne($id)
+            ?? throw new NotFoundHttpException("Log item #{$id} not found.");
+
+        $log = LogRecord::findOne($item->logId)
+            ?? throw new NotFoundHttpException("Log #{$item->logId} not found.");
+
+        $plugin = Influx::getInstance();
+        $link = $plugin->links->getLinkByHandle($log->linkHandle);
+        if (!$link) {
+            return $this->asJson([
+                'html' => '<div class="influx-debug-item"><p class="error">'
+                    . Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle])
+                    . '</p></div>',
+            ]);
+        }
+
+        $raw = null;
+        if ($item->payload) {
+            $decoded = json_decode($item->payload, true);
+            if (is_array($decoded)) {
+                $raw = $decoded;
+            }
+        }
+
+        if ($raw === null) {
+            return $this->asJson([
+                'html' => '<div class="influx-debug-item"><p class="light">'
+                    . Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')
+                    . '</p></div>',
+            ]);
+        }
+
+        $siteId = $log->siteHandle
+            ? (Craft::$app->getSites()->getSiteByHandle($log->siteHandle)?->id)
+            : null;
+
+        $row = $plugin->debug->inspectItem($link, $raw, $siteId);
+        $row['index'] = (int)$item->id;
+        $row['action'] = (string)$item->action;
+        if ($item->message) {
+            $row['message'] = (string)$item->message;
+        }
+
+        $html = Craft::$app->getView()->renderTemplate('influx/links/_debug-item', [
+            'row' => $row,
+        ]);
+
+        return $this->asJson(['html' => $html]);
     }
 
     /**

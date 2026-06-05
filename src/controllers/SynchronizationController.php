@@ -28,7 +28,7 @@ class SynchronizationController extends Controller
 
         $request = Craft::$app->getRequest();
         $handle = $request->getRequiredBodyParam('handle');
-        $ago = $request->getBodyParam('ago');
+        $offset = $request->getBodyParam('offset');
 
         $plugin = Influx::getInstance();
         $link = $plugin->links->getLinkByHandle($handle)
@@ -36,7 +36,7 @@ class SynchronizationController extends Controller
 
         Craft::$app->getQueue()->push(new SyncLinkJob([
             'linkHandle' => $link->handle,
-            'ago'        => $ago,
+            'offset'     => $offset,
             'trigger'    => 'cp',
         ]));
 

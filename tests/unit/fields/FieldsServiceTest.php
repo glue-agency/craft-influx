@@ -9,7 +9,6 @@ use TDM\Influx\fields\DefaultField;
 use TDM\Influx\fields\Dropdown;
 use TDM\Influx\fields\Entries;
 use TDM\Influx\fields\Lightswitch;
-use TDM\Influx\fields\Relation;
 use TDM\Influx\fields\Tags;
 use TDM\Influx\fields\Users;
 use TDM\Influx\services\FieldsService;

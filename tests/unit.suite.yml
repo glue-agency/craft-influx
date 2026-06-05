@@ -1,5 +1,5 @@
-# Pure-logic strategy tests. No Craft boot. Anything that talks to the DB or
-# `Craft::$app` belongs in the feature suite.
+# Pure-logic tests. No Craft boot. The only suite in the repo — see
+# tests/README.md for why the feature suite was dropped.
 actor: UnitTester
 modules:
     enabled:

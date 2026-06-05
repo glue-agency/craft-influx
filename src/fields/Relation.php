@@ -2,8 +2,10 @@
 
 namespace TDM\Influx\fields;
 
+use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
+use craft\models\FieldLayout;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -31,9 +33,103 @@ abstract class Relation extends Field
     {
         /** @var \craft\fields\BaseRelationField $field */
         return [
-            'kind'        => 'relation',
-            'elementType' => $field::elementType(),
+            'kind'         => 'relation',
+            'elementType'  => $field::elementType(),
+            'matchOptions' => $this->matchOptions($field),
+            'labels'       => self::extrasLabels() + self::commonExtrasLabels(),
         ];
+    }
+
+    public function hasMappingExtras(): bool
+    {
+        return true;
+    }
+
+    /**
+     * UI strings rendered inside the relation extras block. Static so the
+     * native `author` mapping on {@see \TDM\Influx\targets\EntryTarget} can
+     * reuse the exact same set without building a field instance.
+     *
+     * @return array<string, string>
+     */
+    public static function extrasLabels(): array
+    {
+        return [
+            'matchBy'        => Craft::t('influx', 'Match by'),
+            'createMissing'  => Craft::t('influx', 'Create when not found'),
+        ];
+    }
+
+    /**
+     * Options offered in the CP "Match by" dropdown — native identifiers
+     * (id / slug / title) plus every custom-field handle defined on the
+     * related element type's configured sources. The runtime in
+     * {@see findOne()} already routes unknown match keys through the
+     * dynamic query method, so this only widens the *UI surface*, not the
+     * underlying matching logic.
+     *
+     * Shape is grouped — the Vue dropdown renders each group as an
+     * `<optgroup>` ("Native" first, then "Fields" when there are custom
+     * fields to surface). Empty groups are omitted so a relation field
+     * pointing at an element type without custom fields doesn't render an
+     * empty heading.
+     *
+     * @return list<array{label: string, options: list<array{value: string, label: string}>}>
+     */
+    protected function matchOptions(\craft\fields\BaseRelationField $field): array
+    {
+        $groups = [
+            [
+                'label'   => Craft::t('influx', 'Native'),
+                'options' => [
+                    ['value' => 'id',    'label' => Craft::t('influx', 'Element ID')],
+                    ['value' => 'slug',  'label' => Craft::t('influx', 'Slug')],
+                    ['value' => 'title', 'label' => Craft::t('influx', 'Title')],
+                ],
+            ],
+        ];
+
+        $customFields = [];
+        $seen = ['id' => true, 'slug' => true, 'title' => true];
+        foreach ($this->sourceFieldLayouts($field) as $layout) {
+            if (!$layout instanceof FieldLayout) {
+                continue;
+            }
+            foreach ($layout->getCustomFields() as $customField) {
+                $handle = $customField->handle;
+                if (isset($seen[$handle])) {
+                    continue;
+                }
+                $seen[$handle] = true;
+                $customFields[] = [
+                    'value' => $handle,
+                    'label' => $customField->name . ' (' . $handle . ')',
+                ];
+            }
+        }
+
+        if ($customFields) {
+            $groups[] = [
+                'label'   => Craft::t('influx', 'Fields'),
+                'options' => $customFields,
+            ];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Field layouts of the elements this relation field points at, resolved
+     * from the field's configured sources. Subclasses know how to translate
+     * source keys (`section:UID`, `group:UID`, ...) into the right layouts
+     * and override accordingly; the base returns nothing so unknown
+     * relation flavors still build a sensible (built-ins-only) matchOptions.
+     *
+     * @return iterable<FieldLayout|null>
+     */
+    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    {
+        return [];
     }
 
     public function parseField(): mixed
@@ -135,11 +231,16 @@ abstract class Relation extends Field
 
     /**
      * Apply any configured sub-mappings to the related element and save it.
+     * Inherited by every relation strategy ({@see \TDM\Influx\fields\Entries},
+     * {@see \TDM\Influx\fields\Categories}, {@see \TDM\Influx\fields\Tags},
+     * {@see \TDM\Influx\fields\Users}) — they all get sub-mapping support
+     * "for free" through this base.
+     *
      * Recursive: a sub-field can itself be a relation with sub-fields, since
      * each sub-mapping is dispatched through the same FieldsService.
      */
     protected function populateSubElement(ElementInterface $element): void
     {
-        (new SubElementPopulator())->populate($element, $this->feedData, $this->fieldInfo, $this->link);
+        (new SubElementPopulator())->populate($element, $this->item, $this->fieldInfo, $this->link);
     }
 }

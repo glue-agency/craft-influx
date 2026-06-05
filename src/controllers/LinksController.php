@@ -78,7 +78,7 @@ class LinksController extends Controller
     }
 
     /**
-     * Dry-run inspector shell. Renders the site / ago / limit selector and a
+     * Dry-run inspector shell. Renders the site / offset / limit selector and a
      * results container that gets populated live via {@see actionDebugStream}.
      * Writes nothing.
      */
@@ -96,20 +96,20 @@ class LinksController extends Controller
             ? $requestedSite
             : ($siteHandles[0] ?? null);
 
-        $agoKeys = array_keys($link->ago ?? []);
-        $requestedAgo = Craft::$app->getRequest()->getQueryParam('ago');
-        $selectedAgo = $requestedAgo !== null && in_array($requestedAgo, $agoKeys, true)
-            ? $requestedAgo
+        $offsetKeys = array_keys($link->offset ?? []);
+        $requestedOffset = Craft::$app->getRequest()->getQueryParam('offset');
+        $selectedOffset = $requestedOffset !== null && in_array($requestedOffset, $offsetKeys, true)
+            ? $requestedOffset
             : null;
 
         return $this->renderTemplate('influx/links/debug', [
-            'link'         => $link,
-            'limit'        => $limit,
-            'siteHandles'  => $siteHandles,
-            'selectedSite' => $selectedSite,
-            'agoKeys'      => $agoKeys,
-            'selectedAgo'  => $selectedAgo,
-            'streamUrl'    => \craft\helpers\UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
+            'link'           => $link,
+            'limit'          => $limit,
+            'siteHandles'    => $siteHandles,
+            'selectedSite'   => $selectedSite,
+            'offsetKeys'     => $offsetKeys,
+            'selectedOffset' => $selectedOffset,
+            'streamUrl'      => \craft\helpers\UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
         ]);
     }
 
@@ -134,9 +134,9 @@ class LinksController extends Controller
             $siteHandle = null;
         }
 
-        $ago = $request->getQueryParam('ago') ?: null;
-        if ($ago !== null && !isset($link->ago[$ago])) {
-            $ago = null;
+        $offset = $request->getQueryParam('offset') ?: null;
+        if ($offset !== null && !isset($link->offset[$offset])) {
+            $offset = null;
         }
 
         // Strip any output buffers Yii / PHP may have stacked, then take
@@ -159,7 +159,7 @@ class LinksController extends Controller
         $svc = Influx::getInstance()->debug;
 
         try {
-            foreach ($svc->streamSite($link, $siteHandle, $limit, $ago) as $event) {
+            foreach ($svc->streamSite($link, $siteHandle, $limit, $offset) as $event) {
                 if ($event['type'] === 'item') {
                     $html = $view->renderTemplate(
                         'influx/links/_debug-item',
@@ -209,7 +209,7 @@ class LinksController extends Controller
         } else {
             $link = $link ?? new Link([
                 'elementType' => Entry::class,
-                'processing'  => ['create', 'update'],
+                'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
             ]);
             $title = Craft::t('influx', 'New link');
         }
@@ -231,6 +231,7 @@ class LinksController extends Controller
             'siteOptions'        => $this->siteOptions(),
             'processingOptions'  => $this->processingOptions(),
             'authTypeOptions'    => $this->authTypeOptions(),
+            'authStrategies'     => $this->authStrategies(),
             'mappableFields'     => $mappableFields,
             'mappableGroups'     => $mappableGroups,
             'matchFieldOptions'  => $matchFieldOptions,
@@ -355,12 +356,16 @@ class LinksController extends Controller
         $normalizer = new LinkPostNormalizer();
 
         $endpoint = $request->getBodyParam('endpoint');
+        $rootNode = $request->getBodyParam('rootNode');
+        $paginatorNode = $request->getBodyParam('paginatorNode');
         $link = new Link([
-            'handle'      => 'sample',
-            'name'        => 'sample',
-            'elementType' => 'sample',
-            'endpoint'    => ($endpoint === null || $endpoint === '') ? null : (string)$endpoint,
-            'auth'        => $normalizer->auth($request->getBodyParam('auth') ?: []),
+            'handle'        => 'sample',
+            'name'          => 'sample',
+            'elementType'   => 'sample',
+            'endpoint'      => ($endpoint === null || $endpoint === '') ? null : (string)$endpoint,
+            'rootNode'      => ($rootNode === null || $rootNode === '') ? null : (string)$rootNode,
+            'paginatorNode' => ($paginatorNode === null || $paginatorNode === '') ? null : (string)$paginatorNode,
+            'auth'          => $normalizer->auth($request->getBodyParam('auth') ?: []),
         ]);
 
         if (!$link->endpoint) {
@@ -385,19 +390,18 @@ class LinksController extends Controller
     {
         $options = [];
         foreach (Influx::getInstance()->targets->all() as $fqcn => $target) {
-            $label = ltrim($fqcn, '\\');
-            $options[$label] = $label;
+            $options[ltrim($fqcn, '\\')] = $target::friendlyName();
         }
         if (empty($options)) {
-            $options[Entry::class] = Entry::class;
+            $options[Entry::class] = Entry::displayName();
         }
-        ksort($options);
+        asort($options);
         return $options;
     }
 
     private function sectionOptions(): array
     {
-        $options = ['' => Craft::t('influx', '— Select —')];
+        $options = ['' => Craft::t('influx', '— select —')];
         foreach (Craft::$app->getEntries()->getAllSections() as $section) {
             $options[$section->handle] = $section->name;
         }
@@ -452,7 +456,7 @@ class LinksController extends Controller
      */
     private function matchFieldOptions(array $mappableFields): array
     {
-        $options = ['' => Craft::t('influx', '— Select a field —')];
+        $options = ['' => Craft::t('influx', '— select a field —')];
         foreach ($mappableFields as $f) {
             $options[$f['handle']] = $f['name'] . ' (' . $f['handle'] . ')';
         }
@@ -481,24 +485,49 @@ class LinksController extends Controller
         return $options;
     }
 
+    /**
+     * Build the dropdown options for the "Authentication type" select from
+     * the registry, so a third-party plugin that registers a strategy class
+     * via {@see \TDM\Influx\events\RegisterAuthTypesEvent} automatically
+     * shows up here too.
+     */
     private function authTypeOptions(): array
     {
-        return [
-            ''            => Craft::t('influx', 'None'),
-            'bearer'      => Craft::t('influx', 'Bearer token'),
-            'custom'      => Craft::t('influx', 'Custom header'),
-            'querystring' => Craft::t('influx', 'Query string parameter'),
-        ];
+        $options = ['' => Craft::t('influx', 'None')];
+        foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
+            $options[$type] = Craft::t('influx', $class::label());
+        }
+        return $options;
+    }
+
+    /**
+     * Shape passed to the edit template so it can loop over the registered
+     * strategies and include each one's form partial. Skips strategies that
+     * declare no template (e.g. a hypothetical no-config "anonymous" auth).
+     *
+     * @return list<array{type: string, template: string}>
+     */
+    private function authStrategies(): array
+    {
+        $strategies = [];
+        foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
+            $template = $class::editTemplate();
+            if ($template === null) {
+                continue;
+            }
+            $strategies[] = ['type' => $type, 'template' => $template];
+        }
+        return $strategies;
     }
 
     private function processingOptions(): array
     {
         return [
-            'create'           => Craft::t('influx', 'Create — make new elements'),
-            'update'           => Craft::t('influx', 'Update — change existing elements'),
-            'disable'          => Craft::t('influx', 'Disable — soft-disable elements removed from the link'),
-            'delete'           => Craft::t('influx', 'Delete — hard-delete elements removed from the link'),
-            'delete-for-site'  => Craft::t('influx', 'Delete for site — remove the localized row only'),
+            Link::PROCESSING_CREATE          => Craft::t('influx', 'Create — make new elements'),
+            Link::PROCESSING_UPDATE          => Craft::t('influx', 'Update — change existing elements'),
+            Link::PROCESSING_DISABLE         => Craft::t('influx', 'Disable — soft-disable elements removed from the link'),
+            Link::PROCESSING_DELETE          => Craft::t('influx', 'Delete — hard-delete elements removed from the link'),
+            Link::PROCESSING_DELETE_FOR_SITE => Craft::t('influx', 'Delete for site — remove the localized row only'),
         ];
     }
 

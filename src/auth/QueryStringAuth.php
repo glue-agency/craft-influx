@@ -2,33 +2,37 @@
 
 namespace TDM\Influx\auth;
 
+use craft\helpers\App;
+
 class QueryStringAuth extends AbstractAuthStrategy
 {
+    public ?string $param = null;
+
     public static function type(): string
     {
         return 'querystring';
     }
 
-    public function validate(callable $addError): void
+    public static function label(): string
     {
-        if (empty($this->config['token'])) {
-            $addError('Querystring auth requires a token.');
-        }
-        if (empty($this->config['param'])) {
-            $addError('Querystring auth requires a parameter name.');
-        }
+        return 'Query string parameter';
+    }
+
+    public static function editTemplate(): ?string
+    {
+        return 'influx/_auth/querystring';
+    }
+
+    protected function defineRules(): array
+    {
+        return [
+            [['token', 'param'], 'required'],
+            [['token', 'param'], 'string'],
+        ];
     }
 
     public function apply(array &$headers, array &$query): void
     {
-        $token = $this->resolvedToken();
-        if ($token === '') {
-            return;
-        }
-        $param = trim((string)($this->config['param'] ?? ''));
-        if ($param === '') {
-            return;
-        }
-        $query[$param] = $token;
+        $query[$this->param] = App::parseEnv($this->token);
     }
 }

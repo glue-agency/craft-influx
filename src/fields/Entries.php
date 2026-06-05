@@ -29,6 +29,34 @@ class Entries extends Relation
         return EntryElement::class;
     }
 
+    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    {
+        $sources = $field->sources ?? '*';
+        $entriesService = Craft::$app->getEntries();
+
+        $sections = [];
+        if ($sources === '*' || !is_array($sources)) {
+            $sections = $entriesService->getAllSections();
+        } else {
+            foreach ($sources as $source) {
+                if (!is_string($source) || !str_starts_with($source, 'section:')) {
+                    continue;
+                }
+                [, $uid] = explode(':', $source);
+                $section = $entriesService->getSectionByUid($uid);
+                if ($section) {
+                    $sections[] = $section;
+                }
+            }
+        }
+
+        foreach ($sections as $section) {
+            foreach ($section->getEntryTypes() as $type) {
+                yield $type->getFieldLayout();
+            }
+        }
+    }
+
     protected function scopeBySources(ElementQueryInterface $query): void
     {
         // Constrain by the Craft field's configured sources (section UIDs).

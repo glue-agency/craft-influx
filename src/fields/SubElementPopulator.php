@@ -14,6 +14,13 @@ use TDM\Influx\models\Link;
  * {@see Assets} so the recursive walker — and the "did anything change?"
  * tracking — lives in one place.
  *
+ * Invocation sites:
+ *   - {@see Relation::populateSubElement()} — inherited by every relation
+ *     strategy ({@see Entries}, {@see Categories}, {@see Tags}, {@see Users}),
+ *     so sub-mappings work uniformly across all of them.
+ *   - {@see Assets::applySubFields()} — Assets isn't a Relation but its
+ *     sub-field model (alt/title on the matched asset) needs the same walker.
+ *
  * A sub-field that's itself a Relation (an entry inside an entry, an asset
  * with its own sub-fields) recurses naturally because each child mapping is
  * dispatched back through {@see \TDM\Influx\services\FieldsService}.
@@ -21,13 +28,13 @@ use TDM\Influx\models\Link;
 class SubElementPopulator
 {
     /**
-     * @param array<mixed> $feedData     The remote item being processed.
-     * @param array<mixed> $fieldInfo    The parent mapping config (the field
-     *                                   whose value is the related element).
+     * @param array<mixed> $item       The remote item being processed.
+     * @param array<mixed> $fieldInfo  The parent mapping config (the field
+     *                                 whose value is the related element).
      */
     public function populate(
         ElementInterface $element,
-        array $feedData,
+        array $item,
         array $fieldInfo,
         Link $link,
     ): bool {
@@ -37,8 +44,8 @@ class SubElementPopulator
             return false;
         }
 
-        $touched = $this->applyNative($element, $native, $feedData);
-        $touched = $this->applyCustom($element, $custom, $feedData, $link) || $touched;
+        $touched = $this->applyNative($element, $native, $item);
+        $touched = $this->applyCustom($element, $custom, $item, $link) || $touched;
 
         if ($touched) {
             Craft::$app->getElements()->saveElement($element, false);
@@ -49,14 +56,14 @@ class SubElementPopulator
     /**
      * @param array<string, mixed> $native
      */
-    private function applyNative(ElementInterface $element, array $native, array $feedData): bool
+    private function applyNative(ElementInterface $element, array $native, array $item): bool
     {
         $touched = false;
         foreach ($native as $handle => $sub) {
             if (!is_string($handle) || !is_array($sub)) {
                 continue;
             }
-            $value = $this->resolveSubValue($sub, $feedData);
+            $value = $this->resolveSubValue($sub, $item);
             if ($value === null) {
                 continue;
             }
@@ -71,7 +78,7 @@ class SubElementPopulator
     /**
      * @param array<string, mixed> $custom
      */
-    private function applyCustom(ElementInterface $element, array $custom, array $feedData, Link $link): bool
+    private function applyCustom(ElementInterface $element, array $custom, array $item, Link $link): bool
     {
         $touched = false;
         $fieldsRegistry = Influx::getInstance()->fields;
@@ -85,7 +92,7 @@ class SubElementPopulator
                 continue;
             }
             $strategy = $fieldsRegistry->forCraftField($craftField);
-            $strategy->setContext($craftField, $handle, $sub, $feedData, $link, $element);
+            $strategy->setContext($craftField, $handle, $sub, $item, $link, $element);
             $value = $strategy->parseField();
             if ($value === null) {
                 continue;
@@ -96,10 +103,10 @@ class SubElementPopulator
         return $touched;
     }
 
-    private function resolveSubValue(array $sub, array $feedData): mixed
+    private function resolveSubValue(array $sub, array $item): mixed
     {
         $node = $sub['node'] ?? null;
-        $value = $node ? Hash::get($feedData, $node) : null;
+        $value = $node ? Hash::get($item, $node) : null;
         if ($value === null || $value === '') {
             $value = $sub['default'] ?? null;
         }

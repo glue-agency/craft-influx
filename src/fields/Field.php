@@ -50,8 +50,8 @@ abstract class Field
     /** Per-field mapping config from the link's `mappings[handle]` shape. */
     protected array $fieldInfo = [];
 
-    /** The remote item being processed (one element of the feed root list). */
-    protected array $feedData = [];
+    /** The remote item being processed (one element of the root list). */
+    protected array $item = [];
 
     protected ?Link $link = null;
 
@@ -61,20 +61,20 @@ abstract class Field
         ?CraftFieldInterface $craftField,
         string $fieldHandle,
         array $fieldInfo,
-        array $feedData,
+        array $item,
         Link $link,
         ElementInterface $element,
     ): void {
         $this->craftField = $craftField;
         $this->fieldHandle = $fieldHandle;
         $this->fieldInfo = $fieldInfo;
-        $this->feedData = $feedData;
+        $this->item = $item;
         $this->link = $link;
         $this->element = $element;
     }
 
     /**
-     * Resolve the feed payload + per-field config into the value the element
+     * Resolve the remote item + per-field config into the value the element
      * field should hold. Return `null` to indicate "no value, leave the field
      * untouched" — the sync loop checks the result before applying.
      */
@@ -93,6 +93,34 @@ abstract class Field
     public function fieldMeta(CraftFieldInterface $field): array
     {
         return [];
+    }
+
+    /**
+     * Whether this field type contributes a per-field options block to the
+     * mapping editor (the "Configure" toggle in {@see MappingExtras.vue}).
+     * Drives the twig `hasExtras` flag on the mapping row so the toggle and
+     * mount point only render when the strategy actually has options to show.
+     */
+    public function hasMappingExtras(): bool
+    {
+        return false;
+    }
+
+    /**
+     * UI strings shared by every kind of mapping-extras block — currently
+     * just the show/hide toggle copy. Strategies layer their own labels on
+     * top via `static::extrasLabels()` (or analogous) when assembling
+     * {@see fieldMeta()}, so the Vue side reads everything from
+     * `fieldMeta.labels` instead of hard-coding translations.
+     *
+     * @return array<string, string>
+     */
+    public static function commonExtrasLabels(): array
+    {
+        return [
+            'configure'   => \Craft::t('influx', 'Configure'),
+            'hideOptions' => \Craft::t('influx', 'Hide options'),
+        ];
     }
 
     /**
@@ -123,7 +151,7 @@ abstract class Field
     // -- shared helpers ----------------------------------------------------
 
     /**
-     * Read a scalar value from the feed, falling back to the per-field
+     * Read a scalar value from the remote item, falling back to the per-field
      * `default`. Returns `null` when neither side has data.
      */
     protected function fetchSimpleValue(): mixed
@@ -133,7 +161,7 @@ abstract class Field
             return $this->fieldInfo['default'] ?? null;
         }
 
-        $raw = Hash::get($this->feedData, $node);
+        $raw = Hash::get($this->item, $node);
         if ($raw === null || $raw === '') {
             return $this->fieldInfo['default'] ?? null;
         }
@@ -152,6 +180,10 @@ abstract class Field
         }
         if (is_scalar($value)) {
             return (string)$value;
+        }
+        if ($value instanceof \Stringable) {
+            $str = (string)$value;
+            return $str === '' ? null : $str;
         }
         return json_encode($value);
     }

@@ -8,19 +8,33 @@ use craft\base\ElementInterface;
 use craft\db\Query;
 use craft\events\ConfigEvent;
 use craft\helpers\Db;
-use craft\helpers\ProjectConfig as ProjectConfigHelper;
+use TDM\Influx\db\Table;
 use TDM\Influx\events\LinkEvent;
 use TDM\Influx\Influx;
 use TDM\Influx\models\Link;
 use yii\base\InvalidConfigException;
 
 /**
- * Reads and writes Influx links to Craft's Project Config.
+ * Reads and writes Influx links.
  *
- * Links live under `influx.links.{uid}` and round-trip to YAML the same way
- * Craft's own sections, entry types, volumes, etc. do. Writes are gated by
- * `allowAdminChanges` automatically because Project Config itself enforces
- * that constraint.
+ * Architecture (mirrors craft-remote-entries):
+ *
+ *  - The `influx_links` DB table is the runtime source of truth. All reads
+ *    (`getAllLinks`, `getLinkByHandle`, `getLinkByUid`, `getLinkById`) query
+ *    the table directly. Nothing in the runtime path touches Project Config.
+ *
+ *  - Project Config is the *deployment* channel: saving a link writes to
+ *    `influx.links.{uid}` in PC, and `handleChangedLink` / `handleDeletedLink`
+ *    (wired in {@see \TDM\Influx\Influx::registerProjectConfigEventListeners()})
+ *    react to those changes by upserting/deleting the DB row. This means
+ *    `project-config/apply` after pulling YAML on a fresh environment seeds
+ *    the DB; nothing else needs to run.
+ *
+ *  - PC rebuild reads `getAllLinks()` (DB) and emits the YAML — same path as
+ *    every other rebuild.
+ *
+ *  - Writes are still gated by `allowAdminChanges` because PC enforces that
+ *    constraint on `set` / `remove`.
  */
 class LinksService extends Component
 {
@@ -30,6 +44,21 @@ class LinksService extends Component
     public const EVENT_AFTER_SAVE_LINK = 'afterSaveLink';
     public const EVENT_BEFORE_DELETE_LINK = 'beforeDeleteLink';
     public const EVENT_AFTER_DELETE_LINK = 'afterDeleteLink';
+
+    /**
+     * Link config fields that are stored as JSON-encoded columns. Listed once
+     * here and reused for encoding (DB write) and decoding (DB read) so the
+     * two stay symmetric.
+     */
+    private const JSON_COLUMNS = [
+        'elementCriteria',
+        'siteEndpoints',
+        'auth',
+        'match',
+        'mappings',
+        'processing',
+        'offset',
+    ];
 
     /** @var Link[]|null in-memory cache keyed by handle */
     private ?array $links = null;
@@ -45,13 +74,9 @@ class LinksService extends Component
 
         $this->links = [];
 
-        $configs = Craft::$app->getProjectConfig()->get(self::CONFIG_LINKS_KEY) ?? [];
-
-        foreach ($configs as $uid => $config) {
-            if (!is_array($config)) {
-                continue;
-            }
-            $this->links[$config['handle'] ?? $uid] = $this->createLinkFromConfig($uid, $config);
+        foreach ($this->createQuery()->all() as $row) {
+            $link = $this->linkFromRow($row);
+            $this->links[$link->handle] = $link;
         }
 
         ksort($this->links);
@@ -61,16 +86,20 @@ class LinksService extends Component
 
     public function getLinkByHandle(string $handle): ?Link
     {
-        return $this->getAllLinks()[$handle] ?? null;
+        $row = $this->createQuery()->where(['handle' => $handle])->one();
+        return $row ? $this->linkFromRow($row) : null;
     }
 
     public function getLinkByUid(string $uid): ?Link
     {
-        $config = Craft::$app->getProjectConfig()->get(self::CONFIG_LINKS_KEY . '.' . $uid);
-        if (!is_array($config)) {
-            return null;
-        }
-        return $this->createLinkFromConfig($uid, $config);
+        $row = $this->createQuery()->where(['uid' => $uid])->one();
+        return $row ? $this->linkFromRow($row) : null;
+    }
+
+    public function getLinkById(int $id): ?Link
+    {
+        $row = $this->createQuery()->where(['id' => $id])->one();
+        return $row ? $this->linkFromRow($row) : null;
     }
 
     /**
@@ -93,14 +122,14 @@ class LinksService extends Component
     }
 
     /**
-     * Persist a link to Project Config.
+     * Persist a link.
      *
-     * @param bool $runValidation
-     * @return bool true on success
+     * Writes to Project Config — the PC change handler {@see handleChangedLink}
+     * then upserts the DB row. Mirrors craft-remote-entries' SourcesService::save.
      */
     public function saveLink(Link $link, bool $runValidation = true): bool
     {
-        $isNew = !$link->uid;
+        $isNew = !$link->id;
 
         if ($runValidation && !$link->validate()) {
             Craft::info('Link not saved due to validation errors.', __METHOD__);
@@ -109,7 +138,7 @@ class LinksService extends Component
 
         // Reject handle collisions when creating or renaming.
         foreach ($this->getAllLinks() as $other) {
-            if ($other->handle === $link->handle && $other->uid !== $link->uid) {
+            if ($other->handle === $link->handle && $other->id !== $link->id) {
                 $link->addError('handle', "A link with handle '{$link->handle}' already exists.");
                 return false;
             }
@@ -130,6 +159,11 @@ class LinksService extends Component
             "Save influx link “{$link->handle}”",
         );
 
+        // PC handler has now upserted the DB row; back-fill the id.
+        if (!$link->id) {
+            $link->id = Db::idByUid(Table::LINKS, $link->uid) ?: null;
+        }
+
         if ($this->hasEventHandlers(self::EVENT_AFTER_SAVE_LINK)) {
             $this->trigger(self::EVENT_AFTER_SAVE_LINK, new LinkEvent([
                 'link' => $link,
@@ -141,7 +175,8 @@ class LinksService extends Component
     }
 
     /**
-     * Delete a link by UID.
+     * Delete a link by UID. Removing from PC triggers {@see handleDeletedLink}
+     * which deletes the DB row.
      */
     public function deleteLinkByUid(string $uid): bool
     {
@@ -179,6 +214,7 @@ class LinksService extends Component
         }
 
         $copy = clone $source;
+        $copy->id = null;
         $copy->uid = null;
         $copy->handle = $newHandle;
         $copy->name = $newName ?? ($source->name . ' (copy)');
@@ -194,26 +230,103 @@ class LinksService extends Component
     // -- Project Config listeners --------------------------------------------
 
     /**
-     * Project Config add/update handler — invoked when a link is added or
-     * changed (including remotely, e.g. via `project-config/apply`).
+     * Project Config add/update handler — fires when a link is saved through
+     * the service or applied from YAML. Upserts the matching row in
+     * `influx_links` so runtime reads stay in sync.
      */
     public function handleChangedLink(ConfigEvent $event): void
     {
-        // The plugin doesn't keep a DB index of links — the in-memory cache
-        // is the only thing that can go stale.
+        $uid = $event->tokenMatches[0];
+        $data = is_array($event->newValue) ? $event->newValue : [];
+        $id = Db::idByUid(Table::LINKS, $uid);
+
+        $columns = self::columnValuesFromConfig($data);
+        $columns['uid'] = $uid;
+        $columns['dateUpdated'] = Db::prepareDateForDb(new \DateTime());
+
+        if (!$id) {
+            $columns['dateCreated'] = $columns['dateUpdated'];
+            Craft::$app->getDb()->createCommand()
+                ->insert(Table::LINKS, $columns)
+                ->execute();
+        } else {
+            Craft::$app->getDb()->createCommand()
+                ->update(Table::LINKS, $columns, ['id' => $id])
+                ->execute();
+        }
+
         $this->links = null;
     }
 
+    /**
+     * Project Config remove handler — deletes the matching row.
+     */
     public function handleDeletedLink(ConfigEvent $event): void
     {
+        $uid = $event->tokenMatches[0];
+        Craft::$app->getDb()->createCommand()
+            ->delete(Table::LINKS, ['uid' => $uid])
+            ->execute();
+
         $this->links = null;
     }
 
     // -- helpers -------------------------------------------------------------
 
-    private function createLinkFromConfig(string $uid, array $config): Link
+    /**
+     * Map a Project Config link payload to DB column values. Used by both the
+     * PC change handler and the install/upgrade migrations (for seeding the
+     * table from PC entries that pre-date the schema bump).
+     *
+     * Array-shaped fields are JSON-encoded; scalars and nullables pass through
+     * with explicit type coercion so callers don't have to think about it.
+     */
+    public static function columnValuesFromConfig(array $config): array
     {
-        $config['uid'] = $uid;
-        return new Link($config);
+        $columns = [
+            'name'          => (string)($config['name'] ?? ''),
+            'handle'        => (string)($config['handle'] ?? ''),
+            'elementType'   => (string)($config['elementType'] ?? ''),
+            'endpoint'      => $config['endpoint']      ?? null,
+            'itemEndpoint'  => $config['itemEndpoint']  ?? null,
+            'rootNode'      => $config['rootNode']      ?? null,
+            'paginatorNode' => $config['paginatorNode'] ?? null,
+            'backup'        => !empty($config['backup']),
+        ];
+
+        foreach (self::JSON_COLUMNS as $key) {
+            $columns[$key] = isset($config[$key]) ? json_encode($config[$key]) : null;
+        }
+
+        return $columns;
+    }
+
+    private function createQuery(): Query
+    {
+        return (new Query())
+            ->select('*')
+            ->from(Table::LINKS);
+    }
+
+    private function linkFromRow(array $row): Link
+    {
+        foreach (self::JSON_COLUMNS as $key) {
+            $raw = $row[$key] ?? null;
+            if (is_string($raw) && $raw !== '') {
+                $decoded = json_decode($raw, true);
+                $row[$key] = is_array($decoded) ? $decoded : [];
+            } else {
+                $row[$key] = [];
+            }
+        }
+
+        // Boolean / int columns come back as strings on some drivers.
+        $row['backup'] = !empty($row['backup']);
+        $row['id']     = (int)$row['id'];
+
+        // Drop columns Link doesn't know about; the Model base would warn.
+        unset($row['dateCreated'], $row['dateUpdated']);
+
+        return new Link($row);
     }
 }

@@ -10,6 +10,7 @@ use GuzzleHttp\Exception\GuzzleException;
 use TDM\Influx\data\EndpointResolver;
 use TDM\Influx\models\Link;
 use TDM\Influx\exceptions\FeedFetchException;
+use TDM\Influx\exceptions\InfluxException;
 
 /**
  * Fetches JSON from a link's endpoint. JSON only by design.
@@ -92,14 +93,31 @@ class DataService extends Component
         $response = $this->fetch($link);
 
         $rootCandidates = $this->findArrayPaths($response, '', 3);
-        $rootNode = $rootCandidates[0] ?? null;
-
         $paginatorCandidates = $this->findPaginatorPaths($response);
-        $paginatorNode = $paginatorCandidates[0] ?? null;
 
-        $list = $rootNode === null
-            ? (is_array($response) ? array_values($response) : [])
-            : (is_array(Hash::get($response, $rootNode)) ? array_values(Hash::get($response, $rootNode)) : []);
+        // Use only the user's configured root node. Auto-guessing the first
+        // array path silently mis-targets feeds whose iterable lives behind
+        // a real key, so we surface a hard error instead and let the user
+        // pick from the candidate dropdown.
+        $rootNode = $link->rootNode;
+        $paginatorNode = $link->paginatorNode;
+
+        if ($rootNode === null) {
+            if (!is_array($response) || !array_is_list($response)) {
+                throw new InfluxException(
+                    "Configure a root node before fetching a sample — the response is not a top-level array, so Influx needs to know which key inside the response holds the list of items."
+                );
+            }
+            $list = $response;
+        } else {
+            $listSource = Hash::get($response, $rootNode);
+            if (!is_array($listSource)) {
+                throw new InfluxException(
+                    "Root node '{$rootNode}' does not resolve to an array in the response."
+                );
+            }
+            $list = array_values($listSource);
+        }
 
         $sampleItem = $list[0] ?? null;
 

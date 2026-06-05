@@ -1,0 +1,37 @@
+{% import "_includes/forms" as forms %}
+
+<div id="synchronisation">
+    {{ forms.textField({
+        label: "Item cooldown"|t("influx"),
+        instructions: "Minimum delay between two consecutive “Sync from remote” clicks on the same element in seconds. Prevents accidental hammering of upstream feeds."|t("influx"),
+        id: "defaultItemCooldown",
+        name: "defaultItemCooldown",
+        type: "number",
+        min: 0,
+        size: 6,
+        value: settings.defaultItemCooldown,
+        errors: settings.getErrors("defaultItemCooldown"),
+    }) }}
+</div>
+
+<div id="logging" class="hidden">
+    {{ forms.lightswitchField({
+        label: "Enable logging"|t("influx"),
+        instructions: "When off, sync runs are not recorded — neither the run summary nor per-item rows. Useful for high-volume feeds where the audit trail isn’t worth the table growth."|t("influx"),
+        id: "loggingEnabled",
+        name: "loggingEnabled",
+        on: settings.loggingEnabled,
+    }) }}
+
+    {{ forms.textField({
+        label: "Log retention (days)"|t("influx"),
+        instructions: "Number of days to keep log entries before they are removed automatically by Craft’s garbage collector. Use <code>0</code> to keep logs forever."|t("influx")|raw,
+        id: "logRetentionDays",
+        name: "logRetentionDays",
+        type: "number",
+        min: 0,
+        size: 6,
+        value: settings.logRetentionDays,
+        errors: settings.getErrors("logRetentionDays"),
+    }) }}
+</div>

@@ -15,7 +15,21 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
-     * Default native-attribute apply: resolve the feed value (`node` then
+     * Default: delegate to the element class's own `displayName()`. Subclasses
+     * override only when they need a label distinct from Craft's own.
+     */
+    public static function friendlyName(): string
+    {
+        $class = static::elementType();
+        if (is_subclass_of($class, ElementInterface::class)) {
+            return $class::displayName();
+        }
+        $parts = explode('\\', ltrim($class, '\\'));
+        return end($parts) ?: $class;
+    }
+
+    /**
+     * Default native-attribute apply: resolve the remote value (`node` then
      * `default`) and assign it via setAttribute, falling back to setFieldValue
      * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
      * methods first to translate values that aren't directly settable (e.g.
@@ -98,7 +112,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
-     * Read the feed value for a mapping config, falling back to `default`
+     * Read the remote value for a mapping config, falling back to `default`
      * when the node is missing or empty. Shared between native-attribute
      * handlers across targets.
      */

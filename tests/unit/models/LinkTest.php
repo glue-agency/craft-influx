@@ -78,7 +78,7 @@ class LinkTest extends Unit
         // Empty arrays / nulls / "" / false should be dropped from project config:
         $this->assertArrayNotHasKey('siteEndpoints', $config);
         $this->assertArrayNotHasKey('itemEndpoint', $config);
-        $this->assertArrayNotHasKey('ago', $config);
+        $this->assertArrayNotHasKey('offset', $config);
         $this->assertArrayNotHasKey('paginatorNode', $config);
         $this->assertArrayNotHasKey('backup', $config);
     }

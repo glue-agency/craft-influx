@@ -10,9 +10,7 @@
     },
     "require-dev": {
         "codeception/codeception": "^5.0",
-        "codeception/module-asserts": "^3.0",
-        "craftcms/test-framework": "^4.0",
-        "phpunit/phpunit": "^10.0"
+        "codeception/module-asserts": "^3.0"
     },
     "autoload": {
         "psr-4": {
@@ -39,8 +37,6 @@
         }
     },
     "scripts": {
-        "test": "codecept run",
-        "test-unit": "codecept run unit",
-        "test-feature": "codecept run feature"
+        "test": "codecept run unit"
     }
 }

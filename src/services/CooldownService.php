@@ -30,8 +30,7 @@ class CooldownService extends Component
 
     public function mark(Link $link, ElementInterface $element): void
     {
-        $defaultCooldown = Influx::getInstance()->getSettings()->defaultItemCooldown;
-        $cooldown = $link->effectiveItemCooldown($defaultCooldown);
+        $cooldown = Influx::getInstance()->getSettings()->defaultItemCooldown;
 
         Craft::$app->getCache()->set(
             $this->key($link, $element),

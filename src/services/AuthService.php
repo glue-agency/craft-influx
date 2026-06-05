@@ -83,6 +83,19 @@ class AuthService extends Component
     }
 
     /**
+     * Registered strategies keyed by type. Used by the link edit screen to
+     * derive the dropdown options and the per-type form partials from the
+     * same source of truth — no hardcoded list in the controller.
+     *
+     * @return array<string, class-string<AuthStrategyInterface>>
+     */
+    public function strategies(): array
+    {
+        $this->ensureLoaded();
+        return $this->strategies;
+    }
+
+    /**
      * Build a strategy for the link's auth config, or null when no auth is
      * configured. Returns null for an unknown `type` too — validation on the
      * Link model is what reports that as an error.

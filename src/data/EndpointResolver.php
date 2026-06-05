@@ -94,7 +94,7 @@ class EndpointResolver
         }
         if (!is_string($resolved) || str_starts_with($resolved, '@')) {
             throw new FeedFetchException(
-                "Link '{$linkHandle}' endpoint '{$raw}' uses an alias that isn't registered in config/general.php → 'aliases'."
+                "Link '{$linkHandle}' endpoint '{$raw}' uses an alias that isn't registered."
             );
         }
         return $resolved;

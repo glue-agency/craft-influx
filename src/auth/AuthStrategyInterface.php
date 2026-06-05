@@ -20,13 +20,24 @@ interface AuthStrategyInterface
     public static function type(): string;
 
     /**
-     * Validate the link's auth config slice. Add an error to the link via
-     * the closure when the shape is wrong (so the model's own validate()
-     * lifecycle keeps owning error reporting).
-     *
-     * @param callable(string $message): void $addError
+     * Human-readable label shown in the CP "Authentication type" dropdown.
+     * Built-ins return English; the controller wraps it in {@see Craft::t}
+     * so plugin translation domains can localize their own strategies.
      */
-    public function validate(callable $addError): void;
+    public static function label(): string;
+
+    /**
+     * Path to the Twig partial that renders the strategy-specific form fields
+     * on the link edit screen, or null when no extra fields are needed.
+     *
+     * The link-edit template includes this partial wrapped in
+     * `{% namespace 'auth' %}`, so field names/ids inside the partial should
+     * be relative (e.g. `name: 'token'`, `id: 'bearer-token'`) — Craft turns
+     * them into `auth[token]` / `auth-bearer-token` on render. The partial
+     * receives the variables `link`, `readOnly`, and `isActive` (true when
+     * this strategy is the link's currently saved type).
+     */
+    public static function editTemplate(): ?string;
 
     /**
      * Mutate the outgoing request's headers + query string to attach

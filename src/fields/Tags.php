@@ -19,6 +19,19 @@ class Tags extends Relation
         return TagElement::class;
     }
 
+    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    {
+        $source = $field->source ?? null;
+        if (!is_string($source) || !str_starts_with($source, 'taggroup:')) {
+            return;
+        }
+        [, $uid] = explode(':', $source);
+        $group = Craft::$app->getTags()->getTagGroupByUid($uid);
+        if ($group) {
+            yield $group->getFieldLayout();
+        }
+    }
+
     protected function scopeBySources(ElementQueryInterface $query): void
     {
         if (!$this->craftField) {

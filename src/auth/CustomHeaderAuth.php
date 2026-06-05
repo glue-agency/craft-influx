@@ -2,33 +2,37 @@
 
 namespace TDM\Influx\auth;
 
+use craft\helpers\App;
+
 class CustomHeaderAuth extends AbstractAuthStrategy
 {
+    public ?string $header = null;
+
     public static function type(): string
     {
-        return 'custom';
+        return 'custom-header';
     }
 
-    public function validate(callable $addError): void
+    public static function label(): string
     {
-        if (empty($this->config['token'])) {
-            $addError('Custom auth requires a token.');
-        }
-        if (empty($this->config['header'])) {
-            $addError('Custom auth requires a header name.');
-        }
+        return 'Custom header';
+    }
+
+    public static function editTemplate(): ?string
+    {
+        return 'influx/_auth/custom-header';
+    }
+
+    protected function defineRules(): array
+    {
+        return [
+            [['token', 'header'], 'required'],
+            [['token', 'header'], 'string'],
+        ];
     }
 
     public function apply(array &$headers, array &$query): void
     {
-        $token = $this->resolvedToken();
-        if ($token === '') {
-            return;
-        }
-        $name = trim((string)($this->config['header'] ?? ''));
-        if ($name === '') {
-            return;
-        }
-        $headers[$name] = $token;
+        $headers[$this->header] = App::parseEnv($this->token);
     }
 }

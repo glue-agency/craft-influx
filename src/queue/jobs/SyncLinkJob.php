@@ -14,7 +14,7 @@ use TDM\Influx\Influx;
 class SyncLinkJob extends BaseJob
 {
     public string $linkHandle = '';
-    public ?string $ago = null;
+    public ?string $offset = null;
     public string $trigger = 'queue';
 
     public function execute($queue): void
@@ -25,12 +25,12 @@ class SyncLinkJob extends BaseJob
             return;
         }
 
-        $plugin->synchronization->syncLink($link, $this->ago, $this->trigger);
+        $plugin->synchronization->syncLink($link, $this->offset, $this->trigger);
     }
 
     protected function defaultDescription(): ?string
     {
-        $suffix = $this->ago ? " (preset: {$this->ago})" : '';
+        $suffix = $this->offset ? " (preset: {$this->offset})" : '';
         return Craft::t('influx', 'Syncing influx link “{handle}”{suffix}', [
             'handle' => $this->linkHandle,
             'suffix' => $suffix,

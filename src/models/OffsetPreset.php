@@ -5,7 +5,7 @@ namespace TDM\Influx\models;
 /**
  * Sliding-window preset for incremental syncs:
  *
- *   ago:
+ *   offset:
  *     hour: { since: '-1 hour', queryParam: 'modified_since' }
  *     day:  { since: '-1 day',  queryParam: 'modified_since', format: 'Y-m-d' }
  *
@@ -14,7 +14,7 @@ namespace TDM\Influx\models;
  * {@see DebugService} both consume this — they used to duplicate the parsing
  * with subtly different error handling.
  */
-class AgoPreset
+class OffsetPreset
 {
     public function __construct(
         public readonly string $key,
@@ -25,7 +25,7 @@ class AgoPreset
     }
 
     /**
-     * Build a preset from a Link's ago map slice. Returns null when the
+     * Build a preset from a Link's offset map slice. Returns null when the
      * config is missing the mandatory keys — the caller treats null as
      * "no filter", same way the sync service used to.
      */
@@ -47,10 +47,10 @@ class AgoPreset
      */
     public static function forLink(Link $link, ?string $key): ?self
     {
-        if (!$key || !isset($link->ago[$key]) || !is_array($link->ago[$key])) {
+        if (!$key || !isset($link->offset[$key]) || !is_array($link->offset[$key])) {
             return null;
         }
-        return self::fromConfig($key, $link->ago[$key]);
+        return self::fromConfig($key, $link->offset[$key]);
     }
 
     /**

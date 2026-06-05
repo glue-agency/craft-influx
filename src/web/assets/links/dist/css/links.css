@@ -70,6 +70,12 @@
     border: 1px solid #f0d97a;
 }
 
+.influx-mapping-group-header .pill-missing {
+    background: #fdecc8;
+    color: #8a6d00;
+    border: 1px solid #f0c674;
+}
+
 .influx-mapping-group.collapsed .influx-mapping-group-body { display: none; }
 
 .influx-mapping-row {
@@ -81,8 +87,21 @@
     border-bottom: 1px solid rgba(0, 0, 0, .05);
 }
 
-.influx-mapping-row.has-extras { grid-template-rows: auto auto; }
+.influx-mapping-row.has-extras { grid-template-rows: auto auto; row-gap: 0; }
+
+/* The slot lives inside the row's padded content area — same horizontal
+   bounds as the meta / source-node / default-value columns above — so the
+   extras content lines up edge-for-edge with the parent row. The gray
+   tint when expanded is provided by the parent row's background (which
+   covers padding too), no need for the slot to stretch beyond the row. */
 .influx-mapping-row .influx-mapping-extras-slot { grid-column: 1 / -1; }
+
+/* Light gray tint applied to the whole row only while the user has the
+   extras open. Collapsed state stays unstyled — just the plain "Configure"
+   toggle in the slot below the field controls. */
+.influx-mapping-row.has-extras:has(.influx-mapping-extras[data-expanded="true"]) {
+    background: #f8f9fb;
+}
 
 .influx-mapping-row:last-child { border-bottom: none; }
 .influx-mapping-row .meta { line-height: 1.2; padding-top: 4px; }
@@ -105,6 +124,28 @@
 
 .influx-mapping-row[data-auto="true"] .influx-auto-badge { display: inline-block; }
 
+/* Missing-mapping badge: shown after Fetch sample detects that this row's
+   saved source node is no longer present in the feed. Same shape as the
+   auto badge, warm-amber palette to signal "needs attention". */
+.influx-missing-badge {
+    display: none;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: #fdecc8;
+    color: #8a6d00;
+    border: 1px solid #f0c674;
+    font-size: 10px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.influx-mapping-row[data-missing="true"] .influx-missing-badge { display: inline-block; }
+.influx-mapping-row[data-missing="true"],
+.influx-mapping-row.has-extras[data-missing="true"]:has(.influx-mapping-extras[data-expanded="true"]) {
+    background: #fff9ea;
+}
+
 .influx-mapping-headings {
     display: grid;
     grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
@@ -117,22 +158,5 @@
     letter-spacing: .04em;
 }
 
-/* Typed mapping extras (sub-fields, asset url/id mode, etc.) */
-.influx-mapping-extras {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: #f8f9fb;
-    border: 1px solid rgba(0, 0, 0, .06);
-    border-radius: 4px;
-}
-
-.influx-mapping-extras > .row {
-    display: grid;
-    grid-template-columns: 120px 1fr;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 4px;
-}
-
-.influx-mapping-extras > .row:last-child { margin-bottom: 0; }
-.influx-mapping-extras label { font-size: 11px; font-weight: 600; color: #555; }
+/* Inner layout of the extras (rows, header, sub-fields, value-maps) lives
+   in the Vue component's scoped style. links.css only positions the slot. */

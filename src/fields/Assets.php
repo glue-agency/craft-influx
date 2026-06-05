@@ -8,7 +8,7 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 
 /**
- * Maps a feed node onto a Craft Assets field.
+ * Maps a remote-item node onto a Craft Assets field.
  *
  *   options.mode:      'id' | 'url'
  *   options.subFields: { alt: { node: 'images.0.alt', default: '' }, ... }
@@ -31,15 +31,79 @@ class Assets extends Field
     {
         /** @var \craft\fields\Assets $field */
         return [
-            'kind'        => 'asset',
+            'kind'         => 'asset',
             'allowedKinds' => $field->allowedKinds ?? null,
-            'subFields'   => [
+            'subFields'    => [
                 // Each entry: handle => label. The handle is used as the
                 // sub-mapping key on the saved Link config.
                 'alt'   => Craft::t('influx', 'Alt text'),
                 'title' => Craft::t('influx', 'Title'),
             ],
+            'modeOptions'     => self::modeOptions(),
+            'conflictOptions' => self::conflictOptions(),
+            'labels'          => self::extrasLabels() + self::commonExtrasLabels(),
         ];
+    }
+
+    /**
+     * UI strings rendered inside the asset extras block.
+     *
+     * @return array<string, string>
+     */
+    public static function extrasLabels(): array
+    {
+        return [
+            'valueIs'              => Craft::t('influx', 'Value is'),
+            'uploadToggle'         => Craft::t('influx', 'Download & upload missing files'),
+            'targetVolume'         => Craft::t('influx', 'Target volume'),
+            'targetVolumePh'       => Craft::t('influx', 'Volume handle'),
+            'subFolder'            => Craft::t('influx', 'Sub-folder'),
+            'subFolderPh'          => Craft::t('influx', 'e.g. imports/2024'),
+            'onConflict'           => Craft::t('influx', 'On conflict'),
+            'subFieldsTitle'       => Craft::t('influx', 'Asset sub-fields'),
+            'subFieldsHint'        => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).'),
+            'noMapping'            => Craft::t('influx', '— no mapping —'),
+            'defaultPh'            => Craft::t('influx', 'Default'),
+        ];
+    }
+
+    /**
+     * Options for the "Value is" dropdown — whether the remote node carries
+     * an asset id (default) or a URL we look up / optionally download.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public static function modeOptions(): array
+    {
+        // Fixed set — each value drives a parse-time branch in
+        // {@see parseField()}, so adding a new mode without code support
+        // would be silently inert. Not exposed as an event registry.
+        return [
+            ['value' => 'id',  'label' => Craft::t('influx', 'Asset ID')],
+            ['value' => 'url', 'label' => Craft::t('influx', 'URL (lookup or download)')],
+        ];
+    }
+
+    /**
+     * Options for the "On conflict" dropdown when downloading-and-uploading
+     * an asset whose filename already exists in the target folder.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public static function conflictOptions(): array
+    {
+        // Same story as {@see modeOptions()} — each value maps to a fixed
+        // branch in the upload helper, so the list is intentionally closed.
+        return [
+            ['value' => 'index',    'label' => Craft::t('influx', 'Reuse existing')],
+            ['value' => 'keepBoth', 'label' => Craft::t('influx', 'Keep both (rename)')],
+            ['value' => 'replace',  'label' => Craft::t('influx', 'Replace')],
+        ];
+    }
+
+    public function hasMappingExtras(): bool
+    {
+        return true;
     }
 
     public function parseField(): mixed
@@ -137,6 +201,6 @@ class Assets extends Field
 
     private function applySubFields(Asset $asset): void
     {
-        (new SubElementPopulator())->populate($asset, $this->feedData, $this->fieldInfo, $this->link);
+        (new SubElementPopulator())->populate($asset, $this->item, $this->fieldInfo, $this->link);
     }
 }

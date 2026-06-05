@@ -3,20 +3,19 @@
 /**
  * Codeception bootstrap.
  *
- * Per-suite Craft boot (feature/) is handled by craftcms/test-framework via
- * its codeception module — see tests/feature.suite.yml. The unit suite runs
- * plain PHPUnit assertions against pure Field strategies and needs nothing
- * more than composer autoload, which Codeception arranges itself.
+ * The unit suite is the only suite in this repo. It runs pure PHPUnit
+ * assertions against Field strategies, the Link model and FieldsService.
+ * No Craft boot, no DB.
  *
- * Anything that has to be in place BEFORE either suite loads (env vars,
- * timezones, ...) can go below.
+ * The plugin used to ship a `feature/` suite using `\craft\test\Craft`, but
+ * that path is broken on Craft 5 in practice (see tests/README.md). It was
+ * removed; this file only needs to set sane defaults for the unit suite.
  */
 
 date_default_timezone_set('UTC');
 
-defined('CRAFT_TESTS_BASE_DIR') || define('CRAFT_TESTS_BASE_DIR', __DIR__ . '/_craft');
-defined('CRAFT_BASE_PATH') || define('CRAFT_BASE_PATH', __DIR__ . '/_craft');
-defined('CRAFT_CONFIG_PATH') || define('CRAFT_CONFIG_PATH', __DIR__ . '/_craft/config');
-defined('CRAFT_STORAGE_PATH') || define('CRAFT_STORAGE_PATH', __DIR__ . '/_craft/storage');
-defined('CRAFT_TEMPLATES_PATH') || define('CRAFT_TEMPLATES_PATH', __DIR__ . '/_craft/templates');
-defined('CRAFT_TRANSLATIONS_PATH') || define('CRAFT_TRANSLATIONS_PATH', __DIR__ . '/_craft/translations');
+// The Yii class is bootstrapped, not autoloaded. Field strategies extend
+// craft\base\Component which extends yii\base\Component; constructing one
+// touches Yii::configure(), so the class has to be in scope even for the
+// pure-PHP unit suite.
+require_once dirname(__DIR__) . '/vendor/yiisoft/yii2/Yii.php';
