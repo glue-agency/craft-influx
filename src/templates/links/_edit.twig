@@ -38,7 +38,7 @@
     }) }}
 
     <hr>
-    <h2>{{ 'Element criteria'|t('influx') }}</h2>
+    <h2>{{ 'Element'|t('influx') }}</h2>
 
     {{ forms.selectField({
         label: 'Element type'|t('influx'),
@@ -79,10 +79,11 @@
         disabled: readOnly,
     }) }}
 
-    <h2>{{ 'Endpoints'|t('influx') }}</h2>
+    <hr>
+    <h2>{{ 'Endpoint'|t('influx') }}</h2>
 
     {{ forms.autosuggestField({
-        label: 'List endpoint'|t('influx'),
+        label: 'Base Endpoint'|t('influx'),
         instructions: 'JSON URL, or an <code>@alias</code> pointing to a local JSON file.'|t('influx')|raw,
         id: 'endpoint',
         name: 'endpoint',
@@ -93,14 +94,71 @@
         disabled: readOnly,
     }) }}
 
-    {{ forms.autosuggestField({
-        label: 'Per-item endpoint'|t('influx'),
-        instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
-        id: 'itemEndpoint',
-        name: 'itemEndpoint',
-        value: link.itemEndpoint,
-        suggestEnvVars: true,
-        suggestAliases: true,
+    {{ forms.lightswitchField({
+        label: 'Does the external service support synchronisation by offset?'|t('influx'),
+        id: 'supportsOffset',
+        name: 'supportsOffset',
+        on: link.offset|length > 0,
+        disabled: readOnly,
+    }) }}
+
+    {% set offsetRows = [] %}
+    {% for key, preset in link.offset %}
+        {% set offsetRows = offsetRows|merge([{
+            key:        key,
+            since:      preset.since ?? '',
+            queryParam: preset.queryParam ?? '',
+            format:     preset.format ?? '',
+        }]) %}
+    {% endfor %}
+
+    <div id="offsetFieldWrapper"{% if link.offset|length == 0 %} class="hidden"{% endif %}>
+        {{ forms.editableTableField({
+            label: 'Sliding-window presets'|t('influx'),
+            instructions: 'Each preset becomes a button on the link page and a <code>--offset=KEY</code> option on the console command. <code>since</code> is anything PHP <code>DateTime::modify</code> accepts.'|t('influx')|raw,
+            id: 'offset',
+            name: 'offset',
+            cols: {
+                key:        { heading: 'Key'|t('influx'),         type: 'singleline', code: true },
+                since:      { heading: 'Since'|t('influx'),        type: 'singleline', code: true },
+                queryParam: { heading: 'Query param'|t('influx'),  type: 'singleline', code: true },
+                format:     { heading: 'Date format'|t('influx'),  type: 'singleline', code: true, info: 'Optional; defaults to ATOM.'|t('influx') },
+            },
+            rows: offsetRows,
+            addRowLabel: 'Add a preset'|t('influx'),
+            allowAdd: not readOnly,
+            allowDelete: not readOnly,
+            allowReorder: not readOnly,
+            static: readOnly,
+        }) }}
+    </div>
+
+    {{ forms.lightswitchField({
+        label: 'Does the external service support single resource responses?'|t('influx'),
+        id: 'supportsItemEndpoint',
+        name: 'supportsItemEndpoint',
+        on: link.itemEndpoint ? true : false,
+        disabled: readOnly,
+    }) }}
+
+    <div id="itemEndpointFieldWrapper"{% if not link.itemEndpoint %} class="hidden"{% endif %}>
+        {{ forms.autosuggestField({
+            label: 'Resource Endpoint'|t('influx'),
+            instructions: 'URL pattern for the per-element "Sync from remote" button. Use <code>{id}</code> for the match value and <code>{site}</code> for the current site handle.'|t('influx')|raw,
+            id: 'itemEndpoint',
+            name: 'itemEndpoint',
+            value: link.itemEndpoint,
+            suggestEnvVars: true,
+            suggestAliases: true,
+            disabled: readOnly,
+        }) }}
+    </div>
+
+    {{ forms.lightswitchField({
+        label: 'Does the external service support resource localisation?'|t('influx'),
+        id: 'supportsSiteEndpoints',
+        name: 'supportsSiteEndpoints',
+        on: link.siteEndpoints|length > 0,
         disabled: readOnly,
     }) }}
 
@@ -109,23 +167,26 @@
         {% set siteEndpointRows = siteEndpointRows|merge([{key: handle, value: url}]) %}
     {% endfor %}
 
-    {{ forms.editableTableField({
-        label: 'Per-site endpoints'|t('influx'),
-        instructions: 'Optional. When set, the link runs once per listed site and writes localized data to the same canonical element.'|t('influx'),
-        id: 'siteEndpoints',
-        name: 'siteEndpoints',
-        cols: {
-            key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
-            value: { heading: 'Endpoint URL'|t('influx'), type: 'autosuggest', suggestEnvVars: true, suggestAliases: true },
-        },
-        rows: siteEndpointRows,
-        addRowLabel: 'Add a site endpoint'|t('influx'),
-        allowAdd: not readOnly,
-        allowDelete: not readOnly,
-        allowReorder: not readOnly,
-        static: readOnly,
-    }) }}
+    <div id="siteEndpointsFieldWrapper"{% if link.siteEndpoints|length == 0 %} class="hidden"{% endif %}>
+        {{ forms.editableTableField({
+            label: 'Site-specific endpoints'|t('influx'),
+            instructions: 'Optional. When set, the link runs once per listed site and writes localized data to the same canonical element.'|t('influx'),
+            id: 'siteEndpoints',
+            name: 'siteEndpoints',
+            cols: {
+                key:   { heading: 'Site handle'|t('influx'), type: 'select', options: siteOptions },
+                value: { heading: 'Endpoint URL'|t('influx'), type: 'autosuggest', suggestEnvVars: true, suggestAliases: true },
+            },
+            rows: siteEndpointRows,
+            addRowLabel: 'Add a site endpoint'|t('influx'),
+            allowAdd: not readOnly,
+            allowDelete: not readOnly,
+            allowReorder: not readOnly,
+            static: readOnly,
+        }) }}
+    </div>
 
+    <hr>
     <h2>{{ 'Processing actions'|t('influx') }}</h2>
 
     {{ forms.checkboxGroupField({
@@ -143,9 +204,8 @@
    Pagination
    ===================================================================== #}
 <div id="pagination" class="hidden">
-    <h2>{{ 'Response shape'|t('influx') }}</h2>
-
-    <p class="light">{{ 'Use the “Fetch sample” button to populate the dropdowns below from a live response.'|t('influx') }}</p>
+    <h2>{{ 'Response'|t('influx') }}</h2>
+    <p class="light">{{ 'Use the “Fetch sample” button to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.'|t('influx') }}</p>
 
     {% set rootOptions = [{value: '', label: '— response root —'|t('influx')}] %}
     {% if link.rootNode %}
@@ -177,36 +237,6 @@
         disabled: readOnly,
     }) }}
 
-    <h2>{{ 'Sliding-window presets'|t('influx') }}</h2>
-
-    {% set offsetRows = [] %}
-    {% for key, preset in link.offset %}
-        {% set offsetRows = offsetRows|merge([{
-            key:        key,
-            since:      preset.since ?? '',
-            queryParam: preset.queryParam ?? '',
-            format:     preset.format ?? '',
-        }]) %}
-    {% endfor %}
-
-    {{ forms.editableTableField({
-        label: 'Sliding-window presets'|t('influx'),
-        instructions: 'Each preset becomes a button on the link page and a <code>--offset=KEY</code> option on the console command. <code>since</code> is anything PHP <code>DateTime::modify</code> accepts.'|t('influx')|raw,
-        id: 'offset',
-        name: 'offset',
-        cols: {
-            key:        { heading: 'Key'|t('influx'),         type: 'singleline', code: true },
-            since:      { heading: 'Since'|t('influx'),        type: 'singleline', code: true },
-            queryParam: { heading: 'Query param'|t('influx'),  type: 'singleline', code: true },
-            format:     { heading: 'Date format'|t('influx'),  type: 'singleline', code: true, info: 'Optional; defaults to ATOM.'|t('influx') },
-        },
-        rows: offsetRows,
-        addRowLabel: 'Add a preset'|t('influx'),
-        allowAdd: not readOnly,
-        allowDelete: not readOnly,
-        allowReorder: not readOnly,
-        static: readOnly,
-    }) }}
 </div>
 
 {# =====================================================================
@@ -218,8 +248,9 @@
             {{ 'Pick an element type (and a section, for entries) above, then save to see the destination fields here.'|t('influx') }}
         </p>
     {% else %}
+        <h2>{{ 'Response'|t('influx') }}</h2>
         <p class="light">
-            {{ 'For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use “Fetch sample” to populate the node dropdowns from a live response.'|t('influx') }}
+            {{ 'For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use the “Fetch sample” button to call your configured endpoint and populate the node dropdowns from the discovered JSON nodes.'|t('influx') }}
         </p>
 
         <div id="influx-mappings" class="influx-mapping-list">
@@ -382,7 +413,7 @@
 <div id="authentication" class="hidden">
     {{ forms.selectField({
         label: 'Authentication type'|t('influx'),
-        instructions: 'How Influx should authenticate against the remote API. Token values support <code>$ENV</code> references so secrets never land in Project Config.'|t('influx')|raw,
+        instructions: 'How Influx should authenticate against the remote API.'|t('influx'),
         id: 'auth-type',
         name: 'auth[type]',
         options: authTypeOptions,
@@ -419,8 +450,8 @@
    ===================================================================== #}
 <div id="settings" class="hidden">
     {{ forms.lightswitchField({
-        label: 'Take a DB backup before every run'|t('influx'),
-        instructions: 'Off by default. Mainly useful for destructive processing actions.'|t('influx'),
+        label: 'Database backup'|t('influx'),
+        instructions: 'Preform a full database backup before each run.'|t('influx'),
         id: 'backup',
         name: 'backup',
         on: link.backup,
@@ -459,6 +490,20 @@
                     $type.html(html);
                 });
             }
+
+            // -- endpoint lightswitches ------------------------------------
+            const wireEndpointToggle = (switchId, wrapperId) => {
+                const $sw = $('#' + switchId);
+                const $wrap = $('#' + wrapperId);
+                if (!$sw.length || !$wrap.length) return;
+                $sw.on('change', () => {
+                    const isOn = $sw.children('input[type=hidden]').val() === '1';
+                    $wrap.toggleClass('hidden', !isOn);
+                });
+            };
+            wireEndpointToggle({{ 'supportsOffset'|namespaceInputId|json_encode|raw }},        'offsetFieldWrapper');
+            wireEndpointToggle({{ 'supportsItemEndpoint'|namespaceInputId|json_encode|raw }}, 'itemEndpointFieldWrapper');
+            wireEndpointToggle({{ 'supportsSiteEndpoints'|namespaceInputId|json_encode|raw }},'siteEndpointsFieldWrapper');
 
             // -- fetch sample ----------------------------------------------
             const $btn = $('#influx-fetch-sample');
