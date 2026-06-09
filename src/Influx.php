@@ -19,6 +19,7 @@ use craft\web\View;
 use yii\base\Event;
 use TDM\Influx\models\Settings;
 use TDM\Influx\services\AuthService;
+use TDM\Influx\services\LinkBuilderService;
 use TDM\Influx\services\LinksService;
 use TDM\Influx\services\DataService;
 use TDM\Influx\services\FieldsService;
@@ -59,6 +60,7 @@ class Influx extends Plugin
     {
         return [
             'components' => [
+                'linkBuilder'     => LinkBuilderService::class,
                 'links'           => LinksService::class,
                 'data'            => DataService::class,
                 'synchronization' => SynchronizationService::class,
@@ -146,6 +148,14 @@ class Influx extends Plugin
                 $event->rules['influx/links/<handle:[\w\-]+>/edit']    = 'influx/links/edit';
                 $event->rules['influx/links/<handle:[\w\-]+>/debug']        = 'influx/links/debug';
                 $event->rules['influx/links/<handle:[\w\-]+>/debug/stream'] = 'influx/links/debug-stream';
+
+                // LinkBuilder SPA — JSON CP routes
+                $event->rules['influx/link-builder/bootstrap']                  = 'influx/link-builder/bootstrap';
+                $event->rules['influx/link-builder/save']                       = 'influx/link-builder/save';
+                $event->rules['influx/link-builder/sample']                     = 'influx/link-builder/sample';
+                $event->rules['influx/link-builder/mappable-fields']            = 'influx/link-builder/mappable-fields';
+                $event->rules['influx/link-builder/endpoint-token-suggestions'] = 'influx/link-builder/endpoint-token-suggestions';
+                $event->rules['influx/link-builder/render-element-select']      = 'influx/link-builder/render-element-select';
 
                 $event->rules['influx/logs']                           = 'influx/logs/index';
                 $event->rules['influx/logs/<id:\d+>']                  = 'influx/logs/view';

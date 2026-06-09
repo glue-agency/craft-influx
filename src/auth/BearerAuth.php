@@ -2,6 +2,7 @@
 
 namespace TDM\Influx\auth;
 
+use Craft;
 use craft\helpers\App;
 
 class BearerAuth extends AbstractAuthStrategy
@@ -16,9 +17,16 @@ class BearerAuth extends AbstractAuthStrategy
         return 'Bearer token';
     }
 
-    public static function editTemplate(): ?string
+    public static function editSchema(): array
     {
-        return 'influx/_auth/bearer';
+        return [
+            [
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
+                'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'),
+                'inputType'    => 'code',
+            ],
+        ];
     }
 
     protected function defineRules(): array

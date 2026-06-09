@@ -2,6 +2,7 @@
 
 namespace TDM\Influx\auth;
 
+use Craft;
 use craft\helpers\App;
 
 class QueryStringAuth extends AbstractAuthStrategy
@@ -18,9 +19,22 @@ class QueryStringAuth extends AbstractAuthStrategy
         return 'Query string parameter';
     }
 
-    public static function editTemplate(): ?string
+    public static function editSchema(): array
     {
-        return 'influx/_auth/querystring';
+        return [
+            [
+                'handle'       => 'param',
+                'label'        => Craft::t('influx', 'Parameter name'),
+                'instructions' => Craft::t('influx', 'e.g. <code>api_key</code>.'),
+                'inputType'    => 'code',
+            ],
+            [
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
+                'instructions' => Craft::t('influx', 'Appended to every request as the parameter value.'),
+                'inputType'    => 'code',
+            ],
+        ];
     }
 
     protected function defineRules(): array

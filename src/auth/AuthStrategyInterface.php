@@ -27,17 +27,19 @@ interface AuthStrategyInterface
     public static function label(): string;
 
     /**
-     * Path to the Twig partial that renders the strategy-specific form fields
-     * on the link edit screen, or null when no extra fields are needed.
+     * Field schema rendered by the LinkBuilder SPA's Authentication tab
+     * when this strategy is selected. Each entry shapes as
+     * `{handle, label, instructions?, inputType}` — `inputType` is one of
+     * `'text'` or `'code'` for the moment. Return an empty array when the
+     * strategy needs no extra fields (e.g. a hypothetical "anonymous"
+     * strategy).
      *
-     * The link-edit template includes this partial wrapped in
-     * `{% namespace 'auth' %}`, so field names/ids inside the partial should
-     * be relative (e.g. `name: 'token'`, `id: 'bearer-token'`) — Craft turns
-     * them into `auth[token]` / `auth-bearer-token` on render. The partial
-     * receives the variables `link`, `readOnly`, and `isActive` (true when
-     * this strategy is the link's currently saved type).
+     * Labels / instructions are not auto-translated; return them through
+     * `Craft::t()` yourself so your plugin's translation category applies.
+     *
+     * @return list<array{handle: string, label: string, instructions?: string, inputType: string}>
      */
-    public static function editTemplate(): ?string;
+    public static function editSchema(): array;
 
     /**
      * Mutate the outgoing request's headers + query string to attach

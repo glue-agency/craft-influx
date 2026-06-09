@@ -2,6 +2,7 @@
 
 namespace TDM\Influx\auth;
 
+use Craft;
 use craft\helpers\App;
 
 class CustomHeaderAuth extends AbstractAuthStrategy
@@ -18,9 +19,22 @@ class CustomHeaderAuth extends AbstractAuthStrategy
         return 'Custom header';
     }
 
-    public static function editTemplate(): ?string
+    public static function editSchema(): array
     {
-        return 'influx/_auth/custom-header';
+        return [
+            [
+                'handle'       => 'header',
+                'label'        => Craft::t('influx', 'Header name'),
+                'instructions' => Craft::t('influx', 'e.g. <code>X-API-Key</code>.'),
+                'inputType'    => 'code',
+            ],
+            [
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
+                'instructions' => Craft::t('influx', 'Used verbatim as the header value.'),
+                'inputType'    => 'code',
+            ],
+        ];
     }
 
     protected function defineRules(): array

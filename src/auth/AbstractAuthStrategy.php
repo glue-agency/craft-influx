@@ -29,4 +29,14 @@ abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterfa
         unset($config['type']);
         parent::__construct($config);
     }
+
+    /**
+     * Default empty schema so subclasses that haven't been updated for the
+     * SPA's Authentication tab still satisfy the interface contract. The
+     * three built-ins override this with real field lists.
+     */
+    public static function editSchema(): array
+    {
+        return [];
+    }
 }

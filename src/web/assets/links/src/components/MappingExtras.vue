@@ -201,13 +201,6 @@
             </template>
         </div>
 
-        <!--
-            All extras state lives in two hidden JSON blobs — options (per-
-            field-type config) and nativeFields (sub-element native attrs).
-            The controller decodes both into the recursive mapping shape.
-        -->
-        <input type="hidden" :name="optionsInputName" :value="serializedOptions">
-        <input type="hidden" :name="nativeFieldsInputName" :value="serializedNativeFields">
     </div>
 </template>
 
@@ -218,9 +211,10 @@ export default {
     props: {
         field: { type: Object, required: true },
         saved: { type: Object, required: true },
-        namespace: { type: String, default: '' },
         readOnly: { type: Boolean, default: false },
     },
+
+    emits: ['update:options', 'update:nativeFields'],
 
     data() {
         return {
@@ -267,43 +261,6 @@ export default {
             return (this.field.fieldMeta && this.field.fieldMeta.matchOptions) || [];
         },
 
-        optionsInputName() {
-            const base = `mappings[${this.field.handle}][options]`;
-            return this.namespace ? `${this.namespace}[${base}]` : base;
-        },
-
-        nativeFieldsInputName() {
-            const base = `mappings[${this.field.handle}][nativeFields]`;
-            return this.namespace ? `${this.namespace}[${base}]` : base;
-        },
-
-        serializedOptions() {
-            // Keep payload compact: drop empties so saved Project Config
-            // doesn't fill up with noise.
-            const out = {};
-            for (const k of Object.keys(this.options)) {
-                const v = this.options[k];
-                if (v === '' || v === null || v === undefined || v === false) continue;
-                if (typeof v === 'object' && !Object.keys(v).length) continue;
-                out[k] = v;
-            }
-            return Object.keys(out).length ? JSON.stringify(out) : '';
-        },
-
-        serializedNativeFields() {
-            // Server side decodes this and merges back into the recursive
-            // mapping tree, so each sub-handle becomes its own `nativeFields`
-            // entry with the normal node/default shape.
-            const out = {};
-            for (const h of Object.keys(this.nativeFields)) {
-                const row = this.nativeFields[h];
-                if (!row || (row.node === '' && row.default === '')) continue;
-                out[h] = {};
-                if (row.node) out[h].node = row.node;
-                if (row.default) out[h].default = row.default;
-            }
-            return Object.keys(out).length ? JSON.stringify(out) : '';
-        },
     },
 
     created() {
@@ -317,6 +274,38 @@ export default {
                 seen.add(saved);
             }
         }
+    },
+
+    watch: {
+        // Push internal state up to the parent so the link store stays
+        // in sync. We emit the trimmed shape that ends up in Project Config.
+        options: {
+            deep: true,
+            handler() {
+                const trimmed = {};
+                for (const k of Object.keys(this.options)) {
+                    const v = this.options[k];
+                    if (v === '' || v === null || v === undefined || v === false) continue;
+                    if (typeof v === 'object' && !Object.keys(v).length) continue;
+                    trimmed[k] = v;
+                }
+                this.$emit('update:options', trimmed);
+            },
+        },
+        nativeFields: {
+            deep: true,
+            handler() {
+                const out = {};
+                for (const h of Object.keys(this.nativeFields)) {
+                    const row = this.nativeFields[h];
+                    if (!row || (row.node === '' && row.default === '')) continue;
+                    out[h] = {};
+                    if (row.node) out[h].node = row.node;
+                    if (row.default) out[h].default = row.default;
+                }
+                this.$emit('update:nativeFields', out);
+            },
+        },
     },
 
     mounted() {
@@ -390,9 +379,9 @@ export default {
         },
 
         commit() {
-            // Reactivity drives the hidden-input via :value="serializedOptions".
-            // This method exists as an explicit hook in case future extras
-            // need to do post-change validation.
+            // Explicit hook called after mutations. Reactivity already
+            // emits `update:options` to the parent; keep this around so
+            // future extras can run post-change validation here.
         },
 
         commitTruthy() {
