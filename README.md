@@ -81,6 +81,7 @@ Hook into any stage:
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
 - `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `skipped` / `error`
 - `SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKENS` — mutate `$event->tokens` to add / override / remove tokens substituted into the link's Resource Endpoint URL
+- `SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Append token" picker
 - `TargetsService::EVENT_REGISTER_TARGETS`
 - `MappingService::EVENT_REGISTER_MAPPINGS`
 

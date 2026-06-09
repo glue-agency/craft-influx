@@ -142,16 +142,51 @@
     }) }}
 
     <div id="itemEndpointFieldWrapper"{% if not link.itemEndpoint %} class="hidden"{% endif %}>
-        {{ forms.autosuggestField({
-            label: 'Resource Endpoint'|t('influx'),
-            instructions: 'URL pattern for the per-element "Sync from remote" button. Available tokens: <code>{id}</code>, <code>{status}</code>, <code>{slug}</code>, <code>{site.id}</code>, <code>{site.handle}</code>, <code>{site.locale}</code>, plus any custom field of type Dropdown, Email, Number, PlainText or Radio Buttons referenced by its handle (e.g. <code>{importId}</code>).'|t('influx')|raw,
-            id: 'itemEndpoint',
-            name: 'itemEndpoint',
-            value: link.itemEndpoint,
-            suggestEnvVars: true,
-            suggestAliases: true,
-            disabled: readOnly,
-        }) }}
+        <div class="influx-endpoint-picker-row">
+            <div class="influx-endpoint-picker-field">
+                {{ forms.autosuggestField({
+                    label: 'Resource Endpoint'|t('influx'),
+                    instructions: 'URL pattern for the per-element "Sync from remote" button. Use the "Append token" picker to add a placeholder, then move it where you need it.'|t('influx'),
+                    id: 'itemEndpoint',
+                    name: 'itemEndpoint',
+                    value: link.itemEndpoint,
+                    suggestEnvVars: true,
+                    suggestAliases: true,
+                    disabled: readOnly,
+                }) }}
+            </div>
+            {% if not readOnly and endpointTokenSuggestions|length %}
+                <div class="influx-endpoint-picker">
+                    <button type="button"
+                            id="influx-token-picker-btn"
+                            class="btn menubtn">{{ 'Append token'|t('influx') }}</button>
+                    <div class="menu" id="influx-token-picker-menu">
+                        {% for group in endpointTokenSuggestions %}
+                            {% set kind = group.kind ?? 'custom' %}
+                            {% if group.label ?? '' %}
+                                <h6>{{ group.label }}</h6>
+                            {% endif %}
+                            <ul class="padded influx-token-group" data-kind="{{ kind }}">
+                                {% for item in group.data ?? [] %}
+                                    <li>
+                                        <button type="button"
+                                                class="menu-item"
+                                                data-value="{{ item.name }}">
+                                            <span class="label">
+                                                <code class="influx-token-pill">{{ item.name }}</code>
+                                                {% if item.hint ?? '' %}
+                                                    <span class="light">— {{ item.hint }}</span>
+                                                {% endif %}
+                                            </span>
+                                        </button>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
     </div>
 
     {{ forms.lightswitchField({
@@ -500,6 +535,26 @@
             wireEndpointToggle({{ 'supportsOffset'|namespaceInputId|json_encode|raw }},        'offsetFieldWrapper');
             wireEndpointToggle({{ 'supportsItemEndpoint'|namespaceInputId|json_encode|raw }}, 'itemEndpointFieldWrapper');
             wireEndpointToggle({{ 'supportsSiteEndpoints'|namespaceInputId|json_encode|raw }},'siteEndpointsFieldWrapper');
+
+            // -- token picker ----------------------------------------------
+            // Tokens append to the end of the current value rather than
+            // insert at the cursor — vue-autosuggest re-renders the input on
+            // focus changes, which makes cursor-position tracking fragile.
+            // Appending sidesteps the whole dance.
+            const $tokenBtn = $('#influx-token-picker-btn');
+            const tokenMenubtn = $tokenBtn.menubtn().data('menubtn');
+            if (tokenMenubtn) {
+                const endpointInputSel = '#{{ 'itemEndpoint'|namespaceInputId|e('js') }}';
+                tokenMenubtn.on('optionSelect', (ev) => {
+                    const token = $(ev.option).data('value');
+                    const input = document.querySelector(endpointInputSel);
+                    if (!token || !input) return;
+                    input.value = (input.value || '') + token;
+                    // Notify vue-autosuggest's v-model so the value sticks
+                    // through re-renders / form submit.
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            }
 
             // -- fetch sample ----------------------------------------------
             const $btn = $('#influx-fetch-sample');

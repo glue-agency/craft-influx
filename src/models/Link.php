@@ -148,7 +148,6 @@ class Link extends Model
             [['endpoint', 'itemEndpoint'], 'string'],
             [['endpoint'], 'required', 'when' => fn(self $m) => empty($m->siteEndpoints), 'message' => 'Either an endpoint or at least one site endpoint is required.'],
             [['match'], 'validateMatch'],
-            [['mappings'], 'validateMappings'],
             [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
         ]);
@@ -170,15 +169,6 @@ class Link extends Model
                 $attribute,
                 "Match attribute '{$value['attribute']}' needs a configured mapping with a source node.",
             );
-        }
-    }
-
-    public function validateMappings(string $attribute): void
-    {
-        foreach ($this->$attribute as $handle => $config) {
-            if (!is_array($config) || empty($config['type'])) {
-                $this->addError($attribute, "Mapping for '{$handle}' is missing a `type`.");
-            }
         }
     }
 

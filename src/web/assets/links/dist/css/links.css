@@ -160,3 +160,53 @@
 
 /* Inner layout of the extras (rows, header, sub-fields, value-maps) lives
    in the Vue component's scoped style. links.css only positions the slot. */
+
+/* Resource Endpoint + token picker row */
+.influx-endpoint-picker-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.influx-endpoint-picker-row .influx-endpoint-picker-field {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.influx-endpoint-picker {
+    flex: 0 0 auto;
+    /* Push the button down so it sits next to the input itself, not
+       on top of the label / instructions row. */
+    margin-top: 23px;
+}
+.influx-endpoint-picker .menu {
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+/* Token pills inside the picker menu — one accent per group so the user can
+   tell at a glance whether a token is native, site-scoped, or comes from a
+   custom field. The colors match the chip styles used elsewhere in the CP. */
+.influx-token-pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 9px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+.influx-token-group[data-kind="element"] .influx-token-pill {
+    background: #e4f5e5;
+    color: #1f6f30;
+    border-color: #b9e0bf;
+}
+.influx-token-group[data-kind="site"] .influx-token-pill {
+    background: #e1eefc;
+    color: #1c4f8a;
+    border-color: #b9d3f0;
+}
+.influx-token-group[data-kind="fields"] .influx-token-pill,
+.influx-token-group[data-kind="custom"] .influx-token-pill {
+    background: #ececef;
+    color: #4a4f57;
+    border-color: #d4d6db;
+}

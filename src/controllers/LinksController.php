@@ -235,6 +235,7 @@ class LinksController extends Controller
             'mappableFields'     => $mappableFields,
             'mappableGroups'     => $mappableGroups,
             'matchFieldOptions'  => $matchFieldOptions,
+            'endpointTokenSuggestions' => $plugin->synchronization->endpointTokenSuggestions($link),
         ];
 
         $response = $this->asCpScreen()

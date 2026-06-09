@@ -7,6 +7,7 @@ use craft\base\Component;
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
 use TDM\Influx\events\RegisterEndpointTokensEvent;
+use TDM\Influx\events\RegisterEndpointTokenSuggestionsEvent;
 use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
 use TDM\Influx\exceptions\InfluxException;
@@ -36,6 +37,21 @@ class SynchronizationService extends Component
     public const EVENT_AFTER_ITEM_MAPPING = 'afterItemMapping';
     public const EVENT_AFTER_ITEM = 'afterItem';
     public const EVENT_REGISTER_ENDPOINT_TOKENS = 'registerEndpointTokens';
+    public const EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS = 'registerEndpointTokenSuggestions';
+
+    /**
+     * Custom field classes whose value is a single printable scalar and
+     * therefore safe to expose as a Resource Endpoint URL token. Shared by
+     * {@see self::tokensForElement()} (runtime value) and
+     * {@see self::endpointTokenSuggestions()} (edit-screen picker).
+     */
+    private const TOKEN_FIELD_TYPES = [
+        \craft\fields\Dropdown::class,
+        \craft\fields\Email::class,
+        \craft\fields\Number::class,
+        \craft\fields\PlainText::class,
+        \craft\fields\RadioButtons::class,
+    ];
 
     /**
      * Run a full link sync.
@@ -163,19 +179,11 @@ class SynchronizationService extends Component
             $tokens['site.locale'] = $site->language;
         }
 
-        $allowedFieldTypes = [
-            \craft\fields\Dropdown::class,
-            \craft\fields\Email::class,
-            \craft\fields\Number::class,
-            \craft\fields\PlainText::class,
-            \craft\fields\RadioButtons::class,
-        ];
-
         if (method_exists($element, 'getFieldLayout')) {
             $layout = $element->getFieldLayout();
             if ($layout) {
                 foreach ($layout->getCustomFields() as $field) {
-                    if (!in_array($field::class, $allowedFieldTypes, true)) {
+                    if (!in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
                         continue;
                     }
                     $handle = $field->handle;
@@ -202,6 +210,107 @@ class SynchronizationService extends Component
         }
 
         return $tokens;
+    }
+
+    /**
+     * Token suggestions surfaced by the link edit screen's "Insert token"
+     * picker on the Resource Endpoint input. Mirrors {@see self::tokensForElement()}
+     * so what the picker advertises matches what's actually substituted at
+     * sync-time. Plugins can append more via
+     * {@see self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS}.
+     *
+     * @return list<array{label: string, data: list<array{name: string, hint?: string}>}>
+     */
+    public function endpointTokenSuggestions(Link $link): array
+    {
+        $suggestions = [
+            [
+                'kind'  => 'element',
+                'label' => Craft::t('influx', 'Element'),
+                'data'  => [
+                    ['name' => '{id}',     'hint' => Craft::t('influx', 'Element ID')],
+                    ['name' => '{status}', 'hint' => Craft::t('influx', 'Status')],
+                    ['name' => '{slug}',   'hint' => Craft::t('influx', 'Slug')],
+                ],
+            ],
+            [
+                'kind'  => 'site',
+                'label' => Craft::t('influx', 'Site'),
+                'data'  => [
+                    ['name' => '{site.id}',     'hint' => Craft::t('influx', 'Site ID')],
+                    ['name' => '{site.handle}', 'hint' => Craft::t('influx', 'Site handle')],
+                    ['name' => '{site.locale}', 'hint' => Craft::t('influx', 'Site locale')],
+                ],
+            ],
+        ];
+
+        $fieldItems = [];
+        foreach ($this->customFieldsForLink($link) as $field) {
+            if (!in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
+                continue;
+            }
+            $fieldItems[] = [
+                'name' => '{' . $field->handle . '}',
+                'hint' => $field->name,
+            ];
+        }
+        if ($fieldItems) {
+            $suggestions[] = [
+                'kind'  => 'fields',
+                'label' => Craft::t('influx', 'Fields'),
+                'data'  => $fieldItems,
+            ];
+        }
+
+        if ($this->hasEventHandlers(self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS)) {
+            $event = new RegisterEndpointTokenSuggestionsEvent([
+                'link'        => $link,
+                'suggestions' => $suggestions,
+            ]);
+            $this->trigger(self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS, $event);
+            $suggestions = $event->suggestions;
+        }
+
+        return $suggestions;
+    }
+
+    /**
+     * Custom fields on the entry type that the configured link points at,
+     * or an empty list when the link has no section/type yet. Used by the
+     * token picker; runtime token-building reads the live element's layout.
+     *
+     * @return list<\craft\base\FieldInterface>
+     */
+    private function customFieldsForLink(Link $link): array
+    {
+        $sectionHandle = $link->elementCriteria['section'] ?? null;
+        $typeHandle    = $link->elementCriteria['type'] ?? null;
+        if (!$sectionHandle) {
+            return [];
+        }
+
+        $section = Craft::$app->getEntries()->getSectionByHandle($sectionHandle);
+        if (!$section) {
+            return [];
+        }
+
+        $entryTypes = $section->getEntryTypes();
+        $entryType = null;
+        if ($typeHandle) {
+            foreach ($entryTypes as $candidate) {
+                if ($candidate->handle === $typeHandle) {
+                    $entryType = $candidate;
+                    break;
+                }
+            }
+        }
+        $entryType ??= $entryTypes[0] ?? null;
+        if (!$entryType) {
+            return [];
+        }
+
+        $layout = $entryType->getFieldLayout();
+        return $layout ? $layout->getCustomFields() : [];
     }
 
     private function processSite(

@@ -132,7 +132,10 @@ class LinksService extends Component
         $isNew = !$link->id;
 
         if ($runValidation && !$link->validate()) {
-            Craft::info('Link not saved due to validation errors.', __METHOD__);
+            Craft::info(
+                'Link not saved due to validation errors: ' . json_encode($link->getErrors()),
+                __METHOD__,
+            );
             return false;
         }
 
