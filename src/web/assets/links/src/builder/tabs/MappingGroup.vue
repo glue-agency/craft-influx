@@ -74,12 +74,12 @@ export default {
             }, 0);
         },
 
-        // Saved source node is no longer in the fetched sample. Only
-        // meaningful once a sample exists — otherwise we'd flag everything
-        // as missing.
+        // Saved source nodes that are no longer present in the latest
+        // fetched sample. Only meaningful once a sample has been run.
         missingCount() {
-            if (!this.state.sample) return 0;
-            const available = new Set(this.nodeOptions.map(o => o.value));
+            const discovered = this.state.sample?.flatNodes;
+            if (!discovered) return 0;
+            const available = new Set(discovered.map(o => o.value));
             return this.group.fields.reduce((count, f) => {
                 const saved = this.link.mappings?.[f.handle]?.node;
                 if (!saved) return count;

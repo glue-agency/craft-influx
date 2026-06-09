@@ -17,30 +17,29 @@
         </div>
 
         <div>
-            <div class="select fullwidth">
-                <select :value="mapping.node ?? ''" @change="onNodeChange">
-                    <option value="">{{ $t('— no mapping —') }}</option>
-                    <option v-for="opt in nodeOptions"
-                            :key="opt.value"
-                            :value="opt.value">{{ opt.label }}</option>
-                </select>
-            </div>
+            <searchable-select
+                :model-value="mapping.node ?? ''"
+                :options="sourceNodeOptions"
+                :placeholder="$t('— no mapping —')"
+                :search-placeholder="$t('Search nodes…')"
+                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                @update:model-value="onNodeSelect"
+            />
         </div>
 
         <div>
             <!-- Default-value editor. Three shapes:
-                 - `select` → native <select>
+                 - `select` → searchable single-select
                  - `element` → not yet supported in the SPA (followup)
                  - anything else → plain text -->
             <template v-if="field.defaultType === 'select'">
-                <div class="select fullwidth">
-                    <select :value="mapping.default ?? ''" @change="onDefaultChange">
-                        <option value="">—</option>
-                        <option v-for="(label, value) in (field.options || {})"
-                                :key="value"
-                                :value="value">{{ label }}</option>
-                    </select>
-                </div>
+                <searchable-select
+                    :model-value="mapping.default ?? ''"
+                    :options="defaultSelectOptions"
+                    :placeholder="'—'"
+                    :search-placeholder="$t('Search options…')"
+                    @update:model-value="onDefaultSelect"
+                />
             </template>
             <template v-else-if="field.defaultType === 'element'">
                 <element-picker
@@ -73,6 +72,7 @@
 <script>
 import MappingExtras from '../../components/MappingExtras.vue';
 import ElementPicker from '../ElementPicker.vue';
+import SearchableSelect from '../SearchableSelect.vue';
 import { store } from '../store.js';
 
 /**
@@ -84,7 +84,7 @@ import { store } from '../store.js';
 export default {
     name: 'MappingRow',
 
-    components: { MappingExtras, ElementPicker },
+    components: { MappingExtras, ElementPicker, SearchableSelect },
 
     props: {
         field: { type: Object, required: true },
@@ -118,20 +118,44 @@ export default {
             return { options: this.mapping.options || {} };
         },
 
-        // Flag the row when the saved source node isn't in the latest
-        // sample — same rule the Twig form's missing-badge uses.
+        // The saved source node is no longer in the fetched sample. Compares
+        // directly against the discovered flatNodes — the merged nodeOptions
+        // prop deliberately re-adds saved-but-missing values for dropdown
+        // legibility, so we can't use it as the "is the node still live"
+        // signal.
         isMissing() {
             const saved = this.mapping.node;
             if (!saved) return false;
-            if (!store.state.sample) return false;
-            return !this.nodeOptions.some(o => o.value === saved);
+            const discovered = store.state.sample?.flatNodes;
+            if (!discovered) return false;
+            return !discovered.some(o => o.value === saved);
+        },
+
+        // SearchableSelect wants a flat [{value,label}] list with the
+        // empty/clear sentinel up top.
+        sourceNodeOptions() {
+            return [
+                { value: '', label: this.$t('— no mapping —') },
+                ...this.nodeOptions,
+            ];
+        },
+
+        defaultSelectOptions() {
+            const opts = this.field.options || {};
+            return [
+                { value: '', label: '—' },
+                ...Object.keys(opts).map(value => ({ value, label: opts[value] })),
+            ];
         },
     },
 
     methods: {
-        onNodeChange(e) {
-            const value = e.target.value;
+        onNodeSelect(value) {
             this.writeMapping('node', value);
+        },
+
+        onDefaultSelect(value) {
+            this.writeMapping('default', value);
         },
 
         onDefaultChange(e) {

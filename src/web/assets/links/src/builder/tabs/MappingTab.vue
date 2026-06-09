@@ -33,13 +33,12 @@
                     <p v-html="$t('The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.')"></p>
                 </div>
                 <div class="input ltr">
-                    <div class="select fullwidth">
-                        <select id="builder-match-attribute" v-model="matchAttribute">
-                            <option v-for="opt in state.mappable.matchOptions"
-                                    :key="opt.value || '_'"
-                                    :value="opt.value">{{ opt.label }}</option>
-                        </select>
-                    </div>
+                    <searchable-select
+                        v-model="matchAttribute"
+                        :options="state.mappable.matchOptions"
+                        :placeholder="$t('Select an attribute…')"
+                        :search-placeholder="$t('Search attributes…')"
+                    />
                 </div>
                 <field-errors :messages="state.errors.match" />
             </div>
@@ -50,6 +49,7 @@
 <script>
 import MappingGroup from './MappingGroup.vue';
 import FieldErrors from '../FieldErrors.vue';
+import SearchableSelect from '../SearchableSelect.vue';
 import { store } from '../store.js';
 
 /**
@@ -65,7 +65,7 @@ import { store } from '../store.js';
 export default {
     name: 'MappingTab',
 
-    components: { MappingGroup, FieldErrors },
+    components: { MappingGroup, FieldErrors, SearchableSelect },
 
     data() {
         return {
@@ -87,7 +87,9 @@ export default {
             const discovered = store.state.sample?.flatNodes ?? [];
             // Merge saved-but-not-discovered mapping nodes so a row whose
             // node fell out of the sample still has a legible selected
-            // option (and the missing-badge gives the heads-up).
+            // option. The row-level missing badge (driven by isMissing in
+            // MappingRow) tells the user the node isn't in the latest
+            // sample — the dropdown itself stays a plain picker.
             const seen = new Set(discovered.map(o => o.value));
             const extras = [];
             const mappings = this.link.mappings || {};
