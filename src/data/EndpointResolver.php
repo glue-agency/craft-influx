@@ -14,7 +14,7 @@ use TDM\Influx\models\Link;
  * and DebugService:
  *   - Per-site lookup (siteEndpoints[$siteHandle] → endpoint fallback).
  *   - `$ENV` / `@alias` resolution via Craft's App::parseEnv.
- *   - Token substitution for itemEndpoint (`{id}` / `{site}` etc.).
+ *   - Token substitution for itemEndpoint (`{id}`, `{slug}`, `{site.handle}` etc.).
  *
  * Throws {@see FeedFetchException} for the specific failure modes a misconfigured
  * link can hit, so consumers get a clear message rather than a confused 4xx
@@ -35,12 +35,12 @@ class EndpointResolver
     }
 
     /**
-     * Resolve the per-item endpoint, substituting `{tokenName}` placeholders.
-     * Site is interpolated into `{site}` when supplied.
+     * Resolve the per-item endpoint, substituting `{tokenName}` placeholders
+     * from the supplied map.
      *
      * @param array<string, string|int> $tokens
      */
-    public function itemUrl(Link $link, array $tokens, ?string $siteHandle = null): string
+    public function itemUrl(Link $link, array $tokens): string
     {
         if (!$link->itemEndpoint) {
             throw new FeedFetchException("Link '{$link->handle}' has no itemEndpoint configured.");
@@ -49,9 +49,6 @@ class EndpointResolver
 
         foreach ($tokens as $name => $value) {
             $url = str_replace('{' . $name . '}', rawurlencode((string)$value), $url);
-        }
-        if ($siteHandle) {
-            $url = str_replace('{site}', rawurlencode($siteHandle), $url);
         }
         return $url;
     }

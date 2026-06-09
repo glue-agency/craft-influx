@@ -260,17 +260,11 @@ export default {
         },
 
         /**
-         * "Match by" options for the relation extras. PHP always ships the
-         * grouped shape `[{ label, options: [{value,label}] }]` — we just
-         * normalise a legacy flat array into the same wrapper so the
-         * template only renders one branch.
+         * "Match by" options for the relation extras. PHP ships the grouped
+         * shape `[{ label, options: [{value,label}] }]`.
          */
         matchOptions() {
-            const raw = (this.field.fieldMeta && this.field.fieldMeta.matchOptions) || [];
-            if (raw.length && raw[0] && Array.isArray(raw[0].options)) {
-                return raw;
-            }
-            return raw.length ? [{ label: '', options: raw }] : [];
+            return (this.field.fieldMeta && this.field.fieldMeta.matchOptions) || [];
         },
 
         optionsInputName() {

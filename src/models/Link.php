@@ -73,9 +73,12 @@ class Link extends Model
     public ?string $endpoint = null;
 
     /**
-     * Endpoint pattern for syncing a single remote resource. Tokens like
-     * `{id}` are substituted at sync-time. Used by the per-element
-     * "Sync from remote" button.
+     * Endpoint pattern for syncing a single remote resource. Used by the
+     * per-element "Sync from remote" button. Tokens substituted at sync-time
+     * are built by {@see \TDM\Influx\services\SynchronizationService::tokensForElement()}:
+     * `{id}`, `{status}`, `{slug}`, `{site.id}`, `{site.handle}`,
+     * `{site.locale}`, plus any Dropdown/Email/Number/PlainText/RadioButtons
+     * custom field referenced by its handle.
      */
     public ?string $itemEndpoint = null;
 

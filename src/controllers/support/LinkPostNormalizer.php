@@ -169,9 +169,6 @@ class LinkPostNormalizer
         }
 
         $entry = [];
-        if (!empty($row['type'])) {
-            $entry['type'] = trim((string)$row['type']);
-        }
         if ($node !== '') {
             $entry['node'] = $node;
         }
@@ -191,14 +188,11 @@ class LinkPostNormalizer
     }
 
     /**
-     * The Vue MappingExtras component posts options as a single JSON string;
-     * legacy callers may post it as a normal array. Accept both.
+     * Decode the JSON blob the Vue MappingExtras component posts for
+     * `[options]` / `[fields]` / `[nativeFields]`.
      */
     private function decodeOptionsBlob(mixed $raw): array
     {
-        if (is_array($raw)) {
-            return $raw;
-        }
         if (!is_string($raw) || $raw === '') {
             return [];
         }
@@ -207,8 +201,8 @@ class LinkPostNormalizer
     }
 
     /**
-     * Normalise either a JSON blob (Vue) or a nested array (legacy/Twig) of
-     * sub-mapping rows into the recursive Project Config shape.
+     * Decode a JSON blob of sub-mapping rows posted by Vue and normalise it
+     * into the recursive Project Config shape.
      */
     private function subFields(mixed $raw): array
     {

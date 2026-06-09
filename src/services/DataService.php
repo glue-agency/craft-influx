@@ -51,9 +51,9 @@ class DataService extends Component
         return $this->get($url, $headers, $query);
     }
 
-    public function fetchOne(Link $link, array $tokens, ?string $siteHandle = null): array
+    public function fetchOne(Link $link, array $tokens): array
     {
-        $url = $this->endpoints->itemUrl($link, $tokens, $siteHandle);
+        $url = $this->endpoints->itemUrl($link, $tokens);
 
         if ($this->isLocalPath($url)) {
             return $this->read($url);

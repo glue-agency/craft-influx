@@ -80,6 +80,7 @@ Hook into any stage:
 - `SynchronizationService::EVENT_BEFORE_ITEM` — set `$event->skip = true` or swap `$event->element` to redirect
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
 - `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `skipped` / `error`
+- `SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKENS` — mutate `$event->tokens` to add / override / remove tokens substituted into the link's Resource Endpoint URL
 - `TargetsService::EVENT_REGISTER_TARGETS`
 - `MappingService::EVENT_REGISTER_MAPPINGS`
 

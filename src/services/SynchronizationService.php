@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
+use TDM\Influx\events\RegisterEndpointTokensEvent;
 use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
 use TDM\Influx\exceptions\InfluxException;
@@ -34,6 +35,7 @@ class SynchronizationService extends Component
     public const EVENT_BEFORE_ITEM = 'beforeItem';
     public const EVENT_AFTER_ITEM_MAPPING = 'afterItemMapping';
     public const EVENT_AFTER_ITEM = 'afterItem';
+    public const EVENT_REGISTER_ENDPOINT_TOKENS = 'registerEndpointTokens';
 
     /**
      * Run a full link sync.
@@ -111,7 +113,8 @@ class SynchronizationService extends Component
             $siteHandles = $link->siteHandles() ?: [null];
 
             foreach ($siteHandles as $siteHandle) {
-                $item = $plugin->data->fetchOne($link, ['id' => $matchValue], $siteHandle);
+                $tokens = $this->tokensForElement($link, $element, $siteHandle);
+                $item = $plugin->data->fetchOne($link, $tokens);
                 $this->processItem($link, $target, $item, $siteHandle, $log);
             }
 
@@ -123,6 +126,82 @@ class SynchronizationService extends Component
         }
 
         return $log;
+    }
+
+    /**
+     * Build the token map used by the link's Resource Endpoint URL template.
+     *
+     * Exposes a small, predictable set:
+     *   - Native attributes: {id}, {status}, {slug}
+     *   - Current site: {site.id}, {site.handle}, {site.locale}
+     *   - Custom fields, limited to the field types whose value is a single
+     *     printable scalar: Dropdown, Email, Number, PlainText, RadioButtons.
+     *
+     * Anything else (relations, assets, matrices, dates, lightswitches, ...)
+     * is intentionally not exposed — they don't have an obvious URL form.
+     * Plugins can contribute more tokens via {@see self::EVENT_REGISTER_ENDPOINT_TOKENS}.
+     *
+     * @return array<string, string>
+     */
+    private function tokensForElement(Link $link, ElementInterface $element, ?string $siteHandle): array
+    {
+        $tokens = [];
+
+        foreach (['id', 'status', 'slug'] as $attr) {
+            $v = $element->$attr ?? null;
+            if (is_scalar($v) && $v !== '') {
+                $tokens[$attr] = (string)$v;
+            }
+        }
+
+        $site = $siteHandle
+            ? Craft::$app->getSites()->getSiteByHandle($siteHandle)
+            : (method_exists($element, 'getSite') ? $element->getSite() : null);
+        if ($site) {
+            $tokens['site.id']     = (string)$site->id;
+            $tokens['site.handle'] = $site->handle;
+            $tokens['site.locale'] = $site->language;
+        }
+
+        $allowedFieldTypes = [
+            \craft\fields\Dropdown::class,
+            \craft\fields\Email::class,
+            \craft\fields\Number::class,
+            \craft\fields\PlainText::class,
+            \craft\fields\RadioButtons::class,
+        ];
+
+        if (method_exists($element, 'getFieldLayout')) {
+            $layout = $element->getFieldLayout();
+            if ($layout) {
+                foreach ($layout->getCustomFields() as $field) {
+                    if (!in_array($field::class, $allowedFieldTypes, true)) {
+                        continue;
+                    }
+                    $handle = $field->handle;
+                    if (isset($tokens[$handle])) {
+                        continue;
+                    }
+                    $v = $element->getFieldValue($handle);
+                    if ($v !== null && (string)$v !== '') {
+                        $tokens[$handle] = (string)$v;
+                    }
+                }
+            }
+        }
+
+        if ($this->hasEventHandlers(self::EVENT_REGISTER_ENDPOINT_TOKENS)) {
+            $event = new RegisterEndpointTokensEvent([
+                'link'       => $link,
+                'element'    => $element,
+                'siteHandle' => $siteHandle,
+                'tokens'     => $tokens,
+            ]);
+            $this->trigger(self::EVENT_REGISTER_ENDPOINT_TOKENS, $event);
+            $tokens = $event->tokens;
+        }
+
+        return $tokens;
     }
 
     private function processSite(
