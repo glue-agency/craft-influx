@@ -2,6 +2,8 @@
 
 namespace TDM\Influx\fields;
 
+use TDM\Influx\sync\FieldContext;
+
 /**
  * Option-based fields: Dropdown, RadioButtons, Checkboxes, MultiSelect.
  * Registered against `BaseOptionsField` so all four share this strategy.
@@ -58,14 +60,14 @@ class Dropdown extends Field
         ];
     }
 
-    public function parseField(): mixed
+    public function parse(FieldContext $context): mixed
     {
-        $raw = $this->fetchSimpleValue();
+        $raw = $context->mapping->resolve($context->item);
         if ($raw === null) {
             return null;
         }
 
-        $map = $this->fieldInfo['options']['valueMap'] ?? null;
+        $map = $context->mapping->option('valueMap');
         if (is_array($map) && array_key_exists((string)$raw, $map)) {
             return $map[(string)$raw];
         }

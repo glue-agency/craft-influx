@@ -3,9 +3,11 @@
 namespace TDM\Influx\fields;
 
 use Craft;
+use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\Tag as TagElement;
 use craft\helpers\Db;
+use TDM\Influx\sync\FieldContext;
 
 class Tags extends Relation
 {
@@ -32,12 +34,12 @@ class Tags extends Relation
         }
     }
 
-    protected function scopeBySources(ElementQueryInterface $query): void
+    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        if (!$this->craftField) {
+        if (!$context->craftField) {
             return;
         }
-        $source = $this->craftField->source ?? null;
+        $source = $context->craftField->source ?? null;
         if (!is_string($source) || !str_starts_with($source, 'taggroup:')) {
             return;
         }
@@ -53,17 +55,17 @@ class Tags extends Relation
      * Tags are cheap to create — auto-create when not found, in the field's
      * configured group. Mirrors how most Craft sites use Tags fields.
      */
-    protected function shouldCreate(): bool
+    protected function shouldCreate(FieldContext $context): bool
     {
-        return $this->fieldInfo['options']['create'] ?? true;
+        return (bool)$context->mapping->option('create', true);
     }
 
-    protected function createMissing(mixed $value): ?TagElement
+    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
-        if (!$this->craftField) {
+        if (!$context->craftField) {
             return null;
         }
-        $source = $this->craftField->source ?? null;
+        $source = $context->craftField->source ?? null;
         if (!is_string($source) || !str_starts_with($source, 'taggroup:')) {
             return null;
         }

@@ -133,13 +133,13 @@ class LinkBuilderService extends Component
 
     /**
      * Endpoint-token-picker suggestions for a given element type / criteria.
-     * Thin wrapper around {@see SynchronizationService::endpointTokenSuggestions()}
-     * with the right Link stub.
+     * Thin wrapper around {@see EndpointTokensService::suggestions()} with
+     * the right Link stub.
      */
     public function endpointTokenSuggestions(string $elementType, array $criteria): array
     {
         $stub = new Link(['elementType' => $elementType, 'elementCriteria' => $criteria]);
-        return Influx::getInstance()->synchronization->endpointTokenSuggestions($stub);
+        return Influx::getInstance()->endpointTokens->suggestions($stub);
     }
 
     /**
@@ -181,7 +181,7 @@ class LinkBuilderService extends Component
         return ['ok' => true, 'report' => $report];
     }
 
-    private function emptyToNull(mixed $v): ?string
+    protected function emptyToNull(mixed $v): ?string
     {
         if ($v === null) return null;
         $s = trim((string)$v);
@@ -364,7 +364,7 @@ class LinkBuilderService extends Component
      *
      * @return list<array{kind: string, label: string, data: list<array{name: string, hint?: string, type: string}>}>
      */
-    private function envAndAliasSuggestions(): array
+    protected function envAndAliasSuggestions(): array
     {
         $cp = new \craft\web\twig\variables\Cp();
         $raw = $cp->getEnvSuggestions(true);
@@ -403,7 +403,7 @@ class LinkBuilderService extends Component
      * {@see Link::toProjectConfig()} but flattens the array-y attrs into
      * the form the Vue store binds to directly.
      */
-    private function serializeLink(Link $link): array
+    protected function serializeLink(Link $link): array
     {
         return [
             'id'              => $link->id,
@@ -433,7 +433,7 @@ class LinkBuilderService extends Component
      * for us, but we want to coerce a few fields (objects → arrays,
      * trimming strings) before they hit the model.
      */
-    private function hydrateLink(Link $link, array $payload): void
+    protected function hydrateLink(Link $link, array $payload): void
     {
         $strOrNull = static fn(mixed $v): ?string => is_string($v) && trim($v) !== '' ? trim($v) : null;
 
@@ -456,11 +456,11 @@ class LinkBuilderService extends Component
     }
 
     // ------------------------------------------------------------------
-    //  Option builders. Kept private — the SPA only sees their output
+    //  Option builders. Internal — the SPA only sees their output
     //  via `bootstrap()`.
     // ------------------------------------------------------------------
 
-    private function elementTypeOptions(): array
+    protected function elementTypeOptions(): array
     {
         $out = [];
         foreach (Influx::getInstance()->targets->all() as $target) {
@@ -472,7 +472,7 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    private function sectionOptions(): array
+    protected function sectionOptions(): array
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— select —')]];
         foreach (Craft::$app->getEntries()->getAllSections() as $section) {
@@ -481,7 +481,7 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    private function sectionEntryTypes(): array
+    protected function sectionEntryTypes(): array
     {
         $out = [];
         foreach (Craft::$app->getEntries()->getAllSections() as $section) {
@@ -494,7 +494,7 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    private function siteOptions(): array
+    protected function siteOptions(): array
     {
         $out = [];
         foreach (Craft::$app->getSites()->getAllSites() as $site) {
@@ -503,7 +503,7 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    private function processingActionOptions(): array
+    protected function processingActionOptions(): array
     {
         return [
             ['value' => Link::PROCESSING_CREATE,           'label' => Craft::t('influx', 'Create new elements')],
@@ -514,7 +514,7 @@ class LinkBuilderService extends Component
         ];
     }
 
-    private function authTypeOptions(): array
+    protected function authTypeOptions(): array
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— none —')]];
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
@@ -533,7 +533,7 @@ class LinkBuilderService extends Component
      *
      * @return list<array{type: string, fields: list<array{handle: string, label: string, instructions?: string, inputType: string}>}>
      */
-    private function authStrategyDefinitions(): array
+    protected function authStrategyDefinitions(): array
     {
         $out = [];
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
@@ -547,7 +547,7 @@ class LinkBuilderService extends Component
     }
 
     /** Group flat mappable fields by their `group` label. */
-    private function groupMappableFields(array $fields): array
+    protected function groupMappableFields(array $fields): array
     {
         $byLabel = [];
         foreach ($fields as $field) {

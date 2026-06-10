@@ -8,6 +8,7 @@ use craft\base\Component;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use TDM\Influx\data\EndpointResolver;
+use TDM\Influx\data\PagedFeed;
 use TDM\Influx\models\Link;
 use TDM\Influx\exceptions\FeedFetchException;
 use TDM\Influx\exceptions\InfluxException;
@@ -161,7 +162,7 @@ class DataService extends Component
      *
      * @return list<string>
      */
-    private function flattenLeafPaths(mixed $value, array $prefix): array
+    protected function flattenLeafPaths(mixed $value, array $prefix): array
     {
         if (!is_array($value)) {
             return [$prefix ? implode('.', $prefix) : ''];
@@ -199,7 +200,7 @@ class DataService extends Component
      *
      * @return string[]
      */
-    private function findArrayPaths(mixed $value, string $prefix, int $depth): array
+    protected function findArrayPaths(mixed $value, string $prefix, int $depth): array
     {
         $paths = [];
 
@@ -228,7 +229,7 @@ class DataService extends Component
         return $paths;
     }
 
-    private function looksLikeListOfObjects(array $value): bool
+    protected function looksLikeListOfObjects(array $value): bool
     {
         if (!array_is_list($value) || empty($value)) {
             return false;
@@ -246,7 +247,7 @@ class DataService extends Component
      *
      * @return string[]
      */
-    private function findPaginatorPaths(array $response): array
+    protected function findPaginatorPaths(array $response): array
     {
         $preferred = [
             'next', 'next_url', 'nextPageUrl',
@@ -289,7 +290,7 @@ class DataService extends Component
      *
      * @return list<string>
      */
-    private function stringLeafPaths(mixed $value, array $prefix): array
+    protected function stringLeafPaths(mixed $value, array $prefix): array
     {
         if (!is_array($value)) {
             return [$prefix ? implode('.', $prefix) : ''];
@@ -330,12 +331,22 @@ class DataService extends Component
         return is_array($value) ? array_values($value) : [];
     }
 
+    /**
+     * Lazily-paginated view over the link's feed: pages fetch on demand as
+     * the iterator advances, following the link's paginatorNode with cycle
+     * and runaway-chain guards built in.
+     */
+    public function pages(Link $link, ?string $siteHandle = null, array $queryParams = []): PagedFeed
+    {
+        return new PagedFeed($this, $link, $siteHandle, $queryParams);
+    }
+
     public function endpoints(): EndpointResolver
     {
         return $this->endpoints;
     }
 
-    private function get(string $url, array $headers = [], array $query = []): array
+    protected function get(string $url, array $headers = [], array $query = []): array
     {
         try {
             $response = $this->client->get($url, [
@@ -359,12 +370,12 @@ class DataService extends Component
         return $decoded;
     }
 
-    private function isLocalPath(string $url): bool
+    protected function isLocalPath(string $url): bool
     {
         return !preg_match('#^https?://#i', $url);
     }
 
-    private function read(string $path): array
+    protected function read(string $path): array
     {
         if (!is_file($path) || !is_readable($path)) {
             throw new FeedFetchException("File '{$path}' is not readable.");

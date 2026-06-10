@@ -32,9 +32,9 @@ class AuthService extends Component
     public const EVENT_REGISTER_AUTH_TYPES = 'registerAuthTypes';
 
     /** @var array<string, class-string<AuthStrategyInterface>> Strategy class by type. */
-    private array $strategies = [];
+    protected array $strategies = [];
 
-    private bool $initialized = false;
+    protected bool $initialized = false;
 
     /**
      * Built-ins shipped with the plugin. Exposed as a method so tests and
@@ -65,7 +65,7 @@ class AuthService extends Component
         $this->registerOne($class);
     }
 
-    private function registerOne(string $class): void
+    protected function registerOne(string $class): void
     {
         if (!is_subclass_of($class, AuthStrategyInterface::class)) {
             throw new InfluxException("'{$class}' must implement " . AuthStrategyInterface::class . '.');
@@ -115,7 +115,7 @@ class AuthService extends Component
         return new $class($config);
     }
 
-    private function ensureLoaded(): void
+    protected function ensureLoaded(): void
     {
         if ($this->initialized) {
             return;

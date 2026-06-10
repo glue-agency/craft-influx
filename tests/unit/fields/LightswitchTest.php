@@ -5,6 +5,9 @@ namespace TDM\Influx\Tests\unit\fields;
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use TDM\Influx\fields\Lightswitch;
+use TDM\Influx\models\FieldMapping;
+use TDM\Influx\sync\FieldContext;
+use TDM\Influx\sync\RemoteItem;
 use TDM\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -19,19 +22,15 @@ class LightswitchTest extends Unit
 {
     public function testBooleanFeedValuePassesThrough(): void
     {
-        $strategy = $this->build(['featured' => true]);
-        $this->assertTrue($strategy->parseField());
-
-        $strategy = $this->build(['featured' => false]);
-        $this->assertFalse($strategy->parseField());
+        $this->assertTrue((new Lightswitch())->parse($this->context(['featured' => true])));
+        $this->assertFalse((new Lightswitch())->parse($this->context(['featured' => false])));
     }
 
     public function testStringTruthyValuesAreCoerced(): void
     {
         foreach (['true', '1', 'yes', 'on', 'TRUE', 'Yes'] as $truthy) {
-            $strategy = $this->build(['featured' => $truthy]);
             $this->assertTrue(
-                $strategy->parseField(),
+                (new Lightswitch())->parse($this->context(['featured' => $truthy])),
                 "Expected '$truthy' to coerce to true under default truthy list.",
             );
         }
@@ -40,9 +39,8 @@ class LightswitchTest extends Unit
     public function testStringFalseyValuesAreCoerced(): void
     {
         foreach (['no', 'false', '0', '', 'maybe', null] as $falsey) {
-            $strategy = $this->build(['featured' => $falsey]);
             $this->assertFalse(
-                $strategy->parseField(),
+                (new Lightswitch())->parse($this->context(['featured' => $falsey])),
                 'Expected ' . var_export($falsey, true) . ' to coerce to false.',
             );
         }
@@ -51,26 +49,26 @@ class LightswitchTest extends Unit
     public function testCustomTruthyListOverridesDefaults(): void
     {
         // With a custom list, the defaults no longer apply: 'yes' is no longer truthy.
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['featured' => 'yes'],
             mapping: ['node' => 'featured', 'options' => ['truthy' => ['ja']]],
         );
-        $this->assertFalse($strategy->parseField());
+        $this->assertFalse((new Lightswitch())->parse($context));
 
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['featured' => 'ja'],
             mapping: ['node' => 'featured', 'options' => ['truthy' => ['ja']]],
         );
-        $this->assertTrue($strategy->parseField());
+        $this->assertTrue((new Lightswitch())->parse($context));
     }
 
     public function testFallsBackToDefaultWhenNodeMissing(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: [],
             mapping: ['node' => 'featured', 'default' => 'true'],
         );
-        $this->assertTrue($strategy->parseField());
+        $this->assertTrue((new Lightswitch())->parse($context));
     }
 
     public function testCraftFieldClassIsLightswitch(): void
@@ -78,17 +76,15 @@ class LightswitchTest extends Unit
         $this->assertSame(\craft\fields\Lightswitch::class, Lightswitch::craftFieldClass());
     }
 
-    private function build(array $feed, array $mapping = ['node' => 'featured']): Lightswitch
+    private function context(array $feed, array $mapping = ['node' => 'featured']): FieldContext
     {
-        $strategy = new Lightswitch();
-        $strategy->setContext(
+        return new FieldContext(
             craftField: null,
-            fieldHandle: 'featured',
-            fieldInfo: $mapping,
-            item: $feed,
+            handle: 'featured',
+            mapping: FieldMapping::fromConfig('featured', $mapping),
+            item: new RemoteItem($feed),
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );
-        return $strategy;
     }
 }

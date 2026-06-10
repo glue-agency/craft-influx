@@ -60,7 +60,7 @@ class m250603_180000_mapping_recursive_shape extends Migration
         return true;
     }
 
-    private function migrateRow(array $row): array
+    protected function migrateRow(array $row): array
     {
         // Lift options.subFields → nativeFields, recursively. Sub-rows in
         // either branch get the same treatment.

@@ -5,6 +5,9 @@ namespace TDM\Influx\Tests\unit\fields;
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use TDM\Influx\fields\DefaultField;
+use TDM\Influx\models\FieldMapping;
+use TDM\Influx\sync\FieldContext;
+use TDM\Influx\sync\RemoteItem;
 use TDM\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -19,47 +22,47 @@ class DefaultFieldTest extends Unit
 {
     public function testReadsValueAtNode(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['summary' => 'hello'],
             mapping: ['node' => 'summary'],
         );
-        $this->assertSame('hello', $strategy->parseField());
+        $this->assertSame('hello', (new DefaultField())->parse($context));
     }
 
     public function testNestedNodeViaDotPath(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['meta' => ['summary' => 'nested']],
             mapping: ['node' => 'meta.summary'],
         );
-        $this->assertSame('nested', $strategy->parseField());
+        $this->assertSame('nested', (new DefaultField())->parse($context));
     }
 
     public function testFallsBackToDefaultWhenNodeMissing(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: [],
             mapping: ['node' => 'summary', 'default' => 'fallback'],
         );
-        $this->assertSame('fallback', $strategy->parseField());
+        $this->assertSame('fallback', (new DefaultField())->parse($context));
     }
 
     public function testFallsBackToDefaultWhenNodeEmpty(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['summary' => ''],
             mapping: ['node' => 'summary', 'default' => 'fallback'],
         );
-        $this->assertSame('fallback', $strategy->parseField());
+        $this->assertSame('fallback', (new DefaultField())->parse($context));
     }
 
     public function testReturnsNullWhenNothingResolves(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: [],
             mapping: ['node' => 'summary'],
         );
-        $this->assertNull($strategy->parseField());
+        $this->assertNull((new DefaultField())->parse($context));
     }
 
     public function testCraftFieldClassIsNullToActAsFallback(): void
@@ -70,17 +73,15 @@ class DefaultFieldTest extends Unit
         $this->assertNull(DefaultField::craftFieldClass());
     }
 
-    private function build(array $feed, array $mapping): DefaultField
+    private function context(array $feed, array $mapping): FieldContext
     {
-        $strategy = new DefaultField();
-        $strategy->setContext(
+        return new FieldContext(
             craftField: null,
-            fieldHandle: 'summary',
-            fieldInfo: $mapping,
-            item: $feed,
+            handle: 'summary',
+            mapping: FieldMapping::fromConfig('summary', $mapping),
+            item: new RemoteItem($feed),
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );
-        return $strategy;
     }
 }

@@ -16,12 +16,28 @@ namespace TDM\Influx\models;
  */
 class OffsetPreset
 {
+    /** The preset's key in the link's offset map ('hour', 'day', ...). */
+    public string $key = '';
+
+    /** Relative date string fed to DateTime::modify ('-1 hour'). */
+    public string $since = '';
+
+    /** Query-string parameter the cutoff is sent as. */
+    public string $queryParam = '';
+
+    /** PHP date format for the cutoff value. */
+    public string $format = \DateTimeInterface::ATOM;
+
     public function __construct(
-        public readonly string $key,
-        public readonly string $since,
-        public readonly string $queryParam,
-        public readonly string $format = \DateTimeInterface::ATOM,
+        string $key,
+        string $since,
+        string $queryParam,
+        string $format = \DateTimeInterface::ATOM,
     ) {
+        $this->key = $key;
+        $this->since = $since;
+        $this->queryParam = $queryParam;
+        $this->format = $format;
     }
 
     /**

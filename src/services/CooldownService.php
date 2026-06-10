@@ -13,7 +13,7 @@ use TDM\Influx\models\Link;
  */
 class CooldownService extends Component
 {
-    private function key(Link $link, ElementInterface $element): string
+    protected function key(Link $link, ElementInterface $element): string
     {
         return "influx:cooldown:{$link->handle}:{$element->id}";
     }

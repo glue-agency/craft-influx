@@ -50,7 +50,7 @@ class LinksService extends Component
      * here and reused for encoding (DB write) and decoding (DB read) so the
      * two stay symmetric.
      */
-    private const JSON_COLUMNS = [
+    protected const JSON_COLUMNS = [
         'elementCriteria',
         'siteEndpoints',
         'auth',
@@ -61,7 +61,7 @@ class LinksService extends Component
     ];
 
     /** @var Link[]|null in-memory cache keyed by handle */
-    private ?array $links = null;
+    protected ?array $links = null;
 
     /**
      * @return Link[] indexed by handle
@@ -139,6 +139,10 @@ class LinksService extends Component
             return false;
         }
 
+        if ($runValidation && !$this->validateMappingHandles($link)) {
+            return false;
+        }
+
         // Reject handle collisions when creating or renaming.
         foreach ($this->getAllLinks() as $other) {
             if ($other->handle === $link->handle && $other->id !== $link->id) {
@@ -175,6 +179,49 @@ class LinksService extends Component
         }
 
         return true;
+    }
+
+    /**
+     * Every mapping handle must be one the target reports as mappable — a
+     * typo'd native handle ('Slug') would otherwise silently fall through to
+     * setFieldValue at sync time and never write anything.
+     *
+     * Only enforced when the target's field surface includes custom fields:
+     * a natives-only list means the link's criteria didn't resolve (no
+     * section/type yet), and rejecting stored custom-field mappings on a
+     * half-configured link would block legitimate edits.
+     */
+    protected function validateMappingHandles(Link $link): bool
+    {
+        $target = Influx::getInstance()->targets->forLink($link);
+        if (!$target) {
+            return true;
+        }
+
+        $mappable = $target->getMappableFields($link);
+        if (empty($mappable)) {
+            return true;
+        }
+
+        $known = [];
+        $hasCustomFields = false;
+        foreach ($mappable as $field) {
+            $known[$field['handle']] = true;
+            if (empty($field['native'])) {
+                $hasCustomFields = true;
+            }
+        }
+        if (!$hasCustomFields) {
+            return true;
+        }
+
+        foreach ($link->getMappingCollection() as $handle => $mapping) {
+            if (!isset($known[$handle])) {
+                $link->addError('mappings', "Mapping handle '{$handle}' is not a mappable field for this link.");
+            }
+        }
+
+        return !$link->hasErrors('mappings');
     }
 
     /**
@@ -304,14 +351,14 @@ class LinksService extends Component
         return $columns;
     }
 
-    private function createQuery(): Query
+    protected function createQuery(): Query
     {
         return (new Query())
             ->select('*')
             ->from(Table::LINKS);
     }
 
-    private function linkFromRow(array $row): Link
+    protected function linkFromRow(array $row): Link
     {
         foreach (self::JSON_COLUMNS as $key) {
             $raw = $row[$key] ?? null;

@@ -43,11 +43,11 @@ class FieldsService extends Component
     public const EVENT_REGISTER_FIELDS = 'registerFields';
 
     /** Concrete Field strategy instances, keyed by Craft field FQCN. */
-    private array $byCraftFqcn = [];
+    protected array $byCraftFqcn = [];
 
-    private ?Field $default = null;
+    protected ?Field $default = null;
 
-    private bool $initialized = false;
+    protected bool $initialized = false;
 
     public function init(): void
     {
@@ -127,7 +127,7 @@ class FieldsService extends Component
         return $this->byCraftFqcn;
     }
 
-    private function registerOne(string $class): void
+    protected function registerOne(string $class): void
     {
         if (!is_subclass_of($class, Field::class)) {
             throw new InfluxException("'{$class}' must extend " . Field::class . '.');
@@ -142,7 +142,7 @@ class FieldsService extends Component
         $this->byCraftFqcn[$fqcn] = new $class();
     }
 
-    private function ensureLoaded(): void
+    protected function ensureLoaded(): void
     {
         if ($this->initialized) {
             return;

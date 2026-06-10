@@ -2,7 +2,7 @@
 
 namespace TDM\Influx\fields;
 
-use craft\base\ElementInterface;
+use TDM\Influx\sync\FieldContext;
 
 /**
  * Strategy for craft\htmlfield\HtmlField-based fields (Redactor, CKEditor, …).
@@ -23,24 +23,27 @@ class RichText extends Field
         return 'craft\htmlfield\HtmlField';
     }
 
-    public function parseField(): mixed
+    public function parse(FieldContext $context): mixed
     {
-        return $this->fetchSimpleValue();
+        return $context->mapping->resolve($context->item);
     }
 
-    public function hasChanged(ElementInterface $element, mixed $incoming): bool
+    public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
         if ($incoming === null || $incoming === '') {
             return false;
         }
+        if ($context->craftField === null) {
+            return parent::hasChanged($context, $incoming);
+        }
         try {
-            $current = $element->getFieldValue($this->fieldHandle);
+            $current = $context->element->getFieldValue($context->handle);
             $currentRaw = is_a($current, 'craft\htmlfield\HtmlFieldData')
                 ? $current->getRawContent()
                 : (string)($current ?? '');
-            $serialized = (string)($this->craftField->serializeValue($incoming, $element) ?? '');
+            $serialized = (string)($context->craftField->serializeValue($incoming, $context->element) ?? '');
         } catch (\Throwable) {
-            return parent::hasChanged($element, $incoming);
+            return parent::hasChanged($context, $incoming);
         }
         return $currentRaw !== $serialized;
     }

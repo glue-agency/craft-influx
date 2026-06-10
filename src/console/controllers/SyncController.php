@@ -4,6 +4,7 @@ namespace TDM\Influx\console\controllers;
 
 use Craft;
 use craft\console\Controller;
+use TDM\Influx\enums\SyncTrigger;
 use TDM\Influx\Influx;
 use yii\console\ExitCode;
 
@@ -56,7 +57,7 @@ class SyncController extends Controller
         foreach ($links as $link) {
             $this->stdout("→ Syncing '{$link->handle}'\n");
             try {
-                $log = $plugin->synchronization->syncLink($link, $this->offset, 'console');
+                $log = $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::Console);
                 $this->stdout(sprintf(
                     "  done. seen=%d created=%d updated=%d unchanged=%d skipped=%d\n",
                     $log->itemsSeen,

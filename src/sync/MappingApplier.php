@@ -4,46 +4,53 @@ namespace TDM\Influx\sync;
 
 use craft\base\ElementInterface;
 use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
-use TDM\Influx\targets\ElementTargetInterface;
 
 /**
- * Walks `$link->mappings` against one remote item and writes the resolved
- * values onto the element.
+ * Walks the link's mappings against one remote item and writes the resolved
+ * values onto the element, reporting one {@see MappingResult} per mapping.
  *
- * Pulled out of {@see \TDM\Influx\services\SynchronizationService::processItem}
- * so the per-mapping dispatch (target-owned? native attribute? custom field
- * strategy?) lives in one place. The sync service still owns the event
- * lifecycle around an item — only the inside of the mapping foreach moved.
+ * Error policy: a throwing strategy fails its own row, never the item — the
+ * error lands on {@see MappingResult::$error} and the walk continues. This
+ * matches what the debug view always did, so a feed that "debugs fine with
+ * one red row" behaves identically when actually run.
  *
- * Returns whether any write happened, which the caller turns into
- * created / updated / unchanged on the log.
+ * Saving is not this class's business; the aggregate
+ * {@see MappingOutcome::$changed} flag tells the caller whether persisting
+ * is worth it.
  */
 class MappingApplier
 {
     /**
-     * @param bool $isNew  When true, every write counts as a change (so a
-     *                     freshly-built element always saves on the first
-     *                     pass regardless of value-equality short-cuts).
-     * @return bool        Whether the element was mutated.
+     * @param bool $isNew When true, every write counts as a change (so a
+     * freshly-built element always saves on the first pass regardless of
+     * value-equality short-cuts).
      */
     public function apply(
-        ElementTargetInterface $target,
+        SyncContext $syncContext,
         ElementInterface $element,
-        Link $link,
-        array $item,
+        RemoteItem $item,
         bool $isNew,
-    ): bool {
-        $changed = $isNew;
+    ): MappingOutcome {
+        $link = $syncContext->link;
+        $target = $syncContext->target;
         $fields = Influx::getInstance()->fields;
         $layout = $element->getFieldLayout();
 
-        foreach ($link->mappings as $handle => $config) {
-            if (!is_array($config)) {
-                continue;
-            }
+        $changed = $isNew;
+        $results = [];
+
+        foreach ($link->getMappingCollection() as $handle => $mapping) {
+            $rawValue = $mapping->rawValue($item);
 
             if ($target->ownsAttribute($link, $handle)) {
+                $results[] = new MappingResult(
+                    handle: $handle,
+                    node: $mapping->node,
+                    default: $mapping->default,
+                    native: true,
+                    rawValue: $rawValue,
+                    note: 'Managed by target.',
+                );
                 continue;
             }
 
@@ -52,28 +59,114 @@ class MappingApplier
             if ($craftField === null) {
                 // Native attribute (title/slug/status/...) — let the target
                 // translate to whatever attribute Craft actually accepts.
-                if ($target->applyNativeAttribute($element, $handle, $item, $config)) {
+                $currentValue = $this->safeAttribute($element, $handle);
+                try {
+                    $wrote = $target->applyNativeAttribute($element, $handle, $item, $mapping);
+                } catch (\Throwable $e) {
+                    $results[] = new MappingResult(
+                        handle: $handle,
+                        node: $mapping->node,
+                        default: $mapping->default,
+                        native: true,
+                        rawValue: $rawValue,
+                        currentValue: $currentValue,
+                        error: $e->getMessage(),
+                    );
+                    continue;
+                }
+                if ($wrote) {
                     $changed = true;
                 }
+                $results[] = new MappingResult(
+                    handle: $handle,
+                    node: $mapping->node,
+                    default: $mapping->default,
+                    native: true,
+                    rawValue: $rawValue,
+                    currentValue: $currentValue,
+                    changed: $wrote,
+                );
                 continue;
             }
 
             // Custom field — dispatch through the per-field-type strategy.
+            $currentValue = $this->safeFieldValue($element, $handle);
+            $context = new FieldContext(
+                craftField: $craftField,
+                handle: $handle,
+                mapping: $mapping,
+                item: $item,
+                link: $link,
+                element: $element,
+                dryRun: $syncContext->dryRun,
+            );
             $strategy = $fields->forCraftField($craftField);
-            $strategy->setContext($craftField, $handle, $config, $item, $link, $element);
 
-            $value = $strategy->parseField();
-            if ($value === null) {
-                continue;
+            try {
+                $value = $strategy->parse($context);
+
+                if ($value === null) {
+                    $results[] = new MappingResult(
+                        handle: $handle,
+                        node: $mapping->node,
+                        default: $mapping->default,
+                        native: false,
+                        rawValue: $rawValue,
+                        currentValue: $currentValue,
+                        changed: false,
+                        note: 'Strategy returned null — field left untouched.',
+                    );
+                    continue;
+                }
+
+                $rowChanged = $isNew ? true : $strategy->hasChanged($context, $value);
+                if ($rowChanged) {
+                    $changed = true;
+                }
+
+                $strategy->apply($context, $value);
+
+                $results[] = new MappingResult(
+                    handle: $handle,
+                    node: $mapping->node,
+                    default: $mapping->default,
+                    native: false,
+                    rawValue: $rawValue,
+                    parsedValue: $value,
+                    currentValue: $currentValue,
+                    changed: $rowChanged,
+                );
+            } catch (\Throwable $e) {
+                $results[] = new MappingResult(
+                    handle: $handle,
+                    node: $mapping->node,
+                    default: $mapping->default,
+                    native: false,
+                    rawValue: $rawValue,
+                    currentValue: $currentValue,
+                    error: $e->getMessage(),
+                );
             }
-
-            if (!$changed && $strategy->hasChanged($element, $value)) {
-                $changed = true;
-            }
-
-            $strategy->apply($element, $value);
         }
 
-        return $changed;
+        return new MappingOutcome($changed, $results);
+    }
+
+    protected function safeAttribute(ElementInterface $element, string $handle): mixed
+    {
+        try {
+            return $element->{$handle} ?? null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    protected function safeFieldValue(ElementInterface $element, string $handle): mixed
+    {
+        try {
+            return $element->getFieldValue($handle);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

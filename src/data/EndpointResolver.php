@@ -68,7 +68,7 @@ class EndpointResolver
         return is_string($parsed) && $parsed !== '' ? $parsed : $raw;
     }
 
-    private function rawListEndpoint(Link $link, ?string $siteHandle): ?string
+    protected function rawListEndpoint(Link $link, ?string $siteHandle): ?string
     {
         if ($siteHandle && isset($link->siteEndpoints[$siteHandle])) {
             return $link->siteEndpoints[$siteHandle];
@@ -80,7 +80,7 @@ class EndpointResolver
      * Resolve `$ENV` references and reject `@alias` paths that didn't resolve
      * to a real URL — we'd rather throw than hand `$VAR` to cURL.
      */
-    private function parse(string $raw, string $linkHandle): string
+    protected function parse(string $raw, string $linkHandle): string
     {
         $resolved = App::parseEnv($raw);
 

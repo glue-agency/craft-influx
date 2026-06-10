@@ -2,12 +2,14 @@
 
 namespace TDM\Influx\fields;
 
+use TDM\Influx\sync\FieldContext;
+
 /**
  * Placeholder strategy for Craft's Matrix field. A real implementation is a
  * later iteration — for now this exists purely so the mapping UI can render
  * a `kind: matrix` marker (which the Vue side uses to disable controls that
- * don't make sense yet). Parsing falls through to {@see Field::fetchSimpleValue},
- * same as {@see DefaultField}.
+ * don't make sense yet). Parsing falls through to the mapping's plain
+ * resolution, same as {@see DefaultField}.
  */
 class Matrix extends Field
 {
@@ -42,8 +44,8 @@ class Matrix extends Field
         ];
     }
 
-    public function parseField(): mixed
+    public function parse(FieldContext $context): mixed
     {
-        return $this->fetchSimpleValue();
+        return $context->mapping->resolve($context->item);
     }
 }

@@ -2,12 +2,12 @@
 
 namespace TDM\Influx\fields;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\Entry as EntryElement;
 use craft\helpers\Db;
+use TDM\Influx\sync\FieldContext;
 
 /**
  * Relation strategy for the Entries field.
@@ -57,13 +57,13 @@ class Entries extends Relation
         }
     }
 
-    protected function scopeBySources(ElementQueryInterface $query): void
+    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
         // Constrain by the Craft field's configured sources (section UIDs).
-        if (!$this->craftField) {
+        if (!$context->craftField) {
             return;
         }
-        $sources = $this->craftField->sources ?? '*';
+        $sources = $context->craftField->sources ?? '*';
         if ($sources === '*' || !is_array($sources)) {
             return;
         }
@@ -84,10 +84,10 @@ class Entries extends Relation
         }
     }
 
-    protected function createMissing(mixed $value): ?ElementInterface
+    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
-        $sectionId = Hash::get($this->fieldInfo, 'options.group.sectionId');
-        $typeId = Hash::get($this->fieldInfo, 'options.group.typeId');
+        $sectionId = $context->mapping->option('group.sectionId');
+        $typeId = $context->mapping->option('group.typeId');
         if (!$sectionId || !$typeId) {
             // Without an explicit target we'd be guessing — bail rather than
             // dropping the entry into the first section we find.

@@ -25,7 +25,7 @@ class LinksController extends Controller
 {
     protected array|int|bool $allowAnonymous = false;
 
-    private bool $readOnly;
+    protected bool $readOnly;
 
     public function beforeAction($action): bool
     {
@@ -295,7 +295,7 @@ class LinksController extends Controller
         return $this->redirect("influx/links/{$link->handle}/edit");
     }
 
-    private function lastRunPerLink(): array
+    protected function lastRunPerLink(): array
     {
         $out = [];
         $logs = LogRecord::find()

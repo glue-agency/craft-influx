@@ -4,6 +4,7 @@ namespace TDM\Influx\queue\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use TDM\Influx\enums\SyncTrigger;
 use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\Influx;
 
@@ -30,7 +31,7 @@ class SyncLinkJob extends BaseJob
             throw new InfluxException("Cannot sync link '{$this->linkHandle}' — no link with that handle exists.");
         }
 
-        $plugin->synchronization->syncLink($link, $this->offset, $this->trigger);
+        $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::from($this->trigger));
     }
 
     protected function defaultDescription(): ?string

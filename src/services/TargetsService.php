@@ -32,9 +32,9 @@ class TargetsService extends Component
     public const EVENT_REGISTER_TARGETS = 'registerTargets';
 
     /** @var ElementTargetInterface[] keyed by elementType FQCN */
-    private array $targets = [];
+    protected array $targets = [];
 
-    private bool $initialized = false;
+    protected bool $initialized = false;
 
     /**
      * Built-ins shipped with the plugin. Exposed as a method so tests and
@@ -63,7 +63,7 @@ class TargetsService extends Component
         $this->registerOne($class);
     }
 
-    private function registerOne(string $class): void
+    protected function registerOne(string $class): void
     {
         if (!is_subclass_of($class, ElementTargetInterface::class)) {
             throw new InfluxException("'{$class}' must implement " . ElementTargetInterface::class . '.');
@@ -102,7 +102,7 @@ class TargetsService extends Component
         return end($parts) ?: $elementType;
     }
 
-    private function ensureLoaded(): void
+    protected function ensureLoaded(): void
     {
         if ($this->initialized) {
             return;

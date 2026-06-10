@@ -5,6 +5,9 @@ namespace TDM\Influx\Tests\unit\fields;
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use TDM\Influx\fields\Dropdown;
+use TDM\Influx\models\FieldMapping;
+use TDM\Influx\sync\FieldContext;
+use TDM\Influx\sync\RemoteItem;
 use TDM\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -31,66 +34,64 @@ class DropdownTest extends Unit
 
     public function testPassThroughWhenNoValueMap(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['region' => 'north'],
             mapping: ['node' => 'region'],
         );
-        $this->assertSame('north', $strategy->parseField());
+        $this->assertSame('north', (new Dropdown())->parse($context));
     }
 
     public function testValueMapRewritesIncomingValue(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['region' => 'EN'],
             mapping: [
                 'node' => 'region',
                 'options' => ['valueMap' => ['EN' => 'english', 'NL' => 'dutch']],
             ],
         );
-        $this->assertSame('english', $strategy->parseField());
+        $this->assertSame('english', (new Dropdown())->parse($context));
     }
 
     public function testValueNotInMapPassesThrough(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: ['region' => 'south'],
             mapping: [
                 'node' => 'region',
                 'options' => ['valueMap' => ['EN' => 'english']],
             ],
         );
-        $this->assertSame('south', $strategy->parseField());
+        $this->assertSame('south', (new Dropdown())->parse($context));
     }
 
     public function testReturnsNullWhenNodeMissingAndNoDefault(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: [],
             mapping: ['node' => 'region'],
         );
-        $this->assertNull($strategy->parseField());
+        $this->assertNull((new Dropdown())->parse($context));
     }
 
     public function testFallsBackToDefault(): void
     {
-        $strategy = $this->build(
+        $context = $this->context(
             feed: [],
             mapping: ['node' => 'region', 'default' => 'north'],
         );
-        $this->assertSame('north', $strategy->parseField());
+        $this->assertSame('north', (new Dropdown())->parse($context));
     }
 
-    private function build(array $feed, array $mapping): Dropdown
+    private function context(array $feed, array $mapping): FieldContext
     {
-        $strategy = new Dropdown();
-        $strategy->setContext(
+        return new FieldContext(
             craftField: null,
-            fieldHandle: 'region',
-            fieldInfo: $mapping,
-            item: $feed,
+            handle: 'region',
+            mapping: FieldMapping::fromConfig('region', $mapping),
+            item: new RemoteItem($feed),
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );
-        return $strategy;
     }
 }

@@ -2,6 +2,8 @@
 
 namespace TDM\Influx\fields;
 
+use TDM\Influx\sync\FieldContext;
+
 /**
  * Coerces an arbitrary remote value (string/number/bool) into a boolean using
  * a user-configurable "truthy values" list.
@@ -12,7 +14,7 @@ namespace TDM\Influx\fields;
  */
 class Lightswitch extends Field
 {
-    private const DEFAULT_TRUTHY = ['true', '1', 'yes', 'on'];
+    protected const DEFAULT_TRUTHY = ['true', '1', 'yes', 'on'];
 
     public static function craftFieldClass(): ?string
     {
@@ -43,14 +45,14 @@ class Lightswitch extends Field
         ];
     }
 
-    public function parseField(): mixed
+    public function parse(FieldContext $context): mixed
     {
-        $raw = $this->fetchSimpleValue();
+        $raw = $context->mapping->resolve($context->item);
         if (is_bool($raw)) {
             return $raw;
         }
 
-        $truthy = $this->fieldInfo['options']['truthy'] ?? self::DEFAULT_TRUTHY;
+        $truthy = $context->mapping->option('truthy');
         if (!is_array($truthy)) {
             $truthy = self::DEFAULT_TRUTHY;
         }

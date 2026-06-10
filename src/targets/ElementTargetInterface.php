@@ -3,7 +3,9 @@
 namespace TDM\Influx\targets;
 
 use craft\base\ElementInterface;
+use TDM\Influx\models\FieldMapping;
 use TDM\Influx\models\Link;
+use TDM\Influx\sync\RemoteItem;
 
 /**
  * Adapter that lets the sync engine talk to any element type. One
@@ -63,15 +65,24 @@ interface ElementTargetInterface
      * via FieldsService — this hook only fires when no Craft field with the
      * handle exists on the element's layout.
      *
-     * Implementations resolve the value from the remote item using the mapping
-     * config, translate it to whatever attribute(s) the element actually
-     * accepts (e.g. status → enabled), and return true if a write happened.
+     * Implementations resolve the value via {@see FieldMapping::resolve()},
+     * translate it to whatever attribute(s) the element actually accepts
+     * (e.g. status → enabled), and return true if a write happened.
+     *
+     * Convention: {@see AbstractElementTarget} dispatches to a
+     * `parse{Handle}()` method on the target when one exists — declare
+     * `parseStatus()`, `parsePostDate()`, ... (signature:
+     * `(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool`)
+     * for attributes that need translation, and let the generic assignment
+     * handle the rest. Every handle a target supports this way must also be
+     * reported by {@see getMappableFields()} — link saving validates
+     * mapping handles against that list.
      */
     public function applyNativeAttribute(
         ElementInterface $element,
         string $handle,
-        array $item,
-        array $config,
+        RemoteItem $item,
+        FieldMapping $mapping,
     ): bool;
 
     /**

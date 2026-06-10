@@ -2,10 +2,11 @@
 
 namespace TDM\Influx\targets;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
+use TDM\Influx\models\FieldMapping;
 use TDM\Influx\models\Link;
+use TDM\Influx\sync\RemoteItem;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {
@@ -33,7 +34,8 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * `default`) and assign it via setAttribute, falling back to setFieldValue
      * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
      * methods first to translate values that aren't directly settable (e.g.
-     * Entry's `status` → `enabled`).
+     * Entry's `status` → `enabled`) — see the convention documented on
+     * {@see ElementTargetInterface::applyNativeAttribute()}.
      *
      * Returns true when a write happened, so the sync engine can flag the
      * element as changed.
@@ -41,15 +43,15 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function applyNativeAttribute(
         ElementInterface $element,
         string $handle,
-        array $item,
-        array $config,
+        RemoteItem $item,
+        FieldMapping $mapping,
     ): bool {
         $method = 'parse' . ucfirst($handle);
         if (method_exists($this, $method)) {
-            return (bool)$this->{$method}($element, $item, $config);
+            return (bool)$this->{$method}($element, $item, $mapping);
         }
 
-        $value = $this->resolveValue($item, $config);
+        $value = $mapping->resolve($item);
         if ($value === null) {
             return false;
         }
@@ -109,23 +111,5 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function getMappableFields(Link $link): array
     {
         return [];
-    }
-
-    /**
-     * Read the remote value for a mapping config, falling back to `default`
-     * when the node is missing or empty. Shared between native-attribute
-     * handlers across targets.
-     */
-    protected function resolveValue(array $item, array $config): mixed
-    {
-        $node = $config['node'] ?? null;
-        $value = $node ? Hash::get($item, $node) : null;
-        if ($value === null || $value === '') {
-            $value = $config['default'] ?? null;
-        }
-        if ($value === '' || $value === null) {
-            return null;
-        }
-        return $value;
     }
 }

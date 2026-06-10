@@ -4,6 +4,7 @@ namespace TDM\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
 use TDM\Influx\models\Link;
+use TDM\Influx\sync\RemoteItem;
 
 /**
  * Link model behaviour spec — the bits the sync engine relies on.
@@ -26,7 +27,7 @@ class LinkTest extends Unit
             'match' => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'remote_id']],
         ]);
-        $this->assertSame(42, $link->matchValue(['remote_id' => 42, 'title' => 'x']));
+        $this->assertSame(42, $link->matchValue(new RemoteItem(['remote_id' => 42, 'title' => 'x'])));
     }
 
     public function testMatchValueSupportsNestedNodes(): void
@@ -35,7 +36,7 @@ class LinkTest extends Unit
             'match' => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'meta.remote_id']],
         ]);
-        $this->assertSame('abc', $link->matchValue(['meta' => ['remote_id' => 'abc']]));
+        $this->assertSame('abc', $link->matchValue(new RemoteItem(['meta' => ['remote_id' => 'abc']])));
     }
 
     public function testMatchValueIsNullWhenSourceMissing(): void
@@ -44,7 +45,7 @@ class LinkTest extends Unit
             'match' => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'remote_id']],
         ]);
-        $this->assertNull($link->matchValue(['title' => 'x']));
+        $this->assertNull($link->matchValue(new RemoteItem(['title' => 'x'])));
     }
 
     public function testSiteHandlesReturnsKeysOfSiteEndpoints(): void

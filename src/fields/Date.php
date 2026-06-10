@@ -3,10 +3,11 @@
 namespace TDM\Influx\fields;
 
 use Craft;
-use craft\base\ElementInterface;
 use craft\fields\Date as DateField;
 use craft\helpers\DateTimeHelper;
 use TDM\Influx\events\RegisterMappingOptionsEvent;
+use TDM\Influx\exceptions\MappingValueException;
+use TDM\Influx\sync\FieldContext;
 use yii\base\Event;
 
 class Date extends Field
@@ -68,22 +69,33 @@ class Date extends Field
         return $event->options;
     }
 
-    public function parseField(): mixed
+    /**
+     * @throws MappingValueException when a present value can't be parsed as
+     * a date — malformed data must surface as an error row, not silently
+     * leave the field untouched.
+     */
+    public function parse(FieldContext $context): mixed
     {
-        $raw = $this->fetchSimpleValue();
+        $raw = $context->mapping->resolve($context->item);
         if ($raw === null || $raw === '') {
             return null;
         }
-        return DateTimeHelper::toDateTime($raw) ?: null;
+
+        $parsed = DateTimeHelper::toDateTime($raw);
+        if ($parsed === false) {
+            $display = is_scalar($raw) ? (string)$raw : gettype($raw);
+            throw new MappingValueException("Unparseable date value '{$display}'.");
+        }
+        return $parsed;
     }
 
-    public function hasChanged(ElementInterface $element, mixed $incoming): bool
+    public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
         if (!$incoming instanceof \DateTimeInterface) {
-            return parent::hasChanged($element, $incoming);
+            return parent::hasChanged($context, $incoming);
         }
         try {
-            $current = $element->getFieldValue($this->fieldHandle);
+            $current = $context->element->getFieldValue($context->handle);
         } catch (\Throwable) {
             return true;
         }

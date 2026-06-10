@@ -2,12 +2,13 @@
 
 namespace TDM\Influx\models;
 
-use Cake\Utility\Hash;
 use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\helpers\StringHelper;
 use TDM\Influx\auth\AuthStrategyInterface;
+use TDM\Influx\enums\SyncDecision;
 use TDM\Influx\Influx;
+use TDM\Influx\sync\RemoteItem;
 
 /**
  * An Influx link: one configured connection between Craft and an external
@@ -33,17 +34,15 @@ class Link extends Model
         self::PROCESSING_DELETE_FOR_SITE,
     ];
 
-    /**
-     * Decision outcomes returned by {@see self::decideAction()}. The
-     * `DECISION_CREATE` and `DECISION_UPDATE` values intentionally share
-     * strings with their processing-flag counterparts since they name the
-     * same action; the `SKIP_*` values name the reason a sync would not
-     * touch the element.
-     */
+    /** @deprecated Use {@see SyncDecision::Create} — {@see self::decideAction()} returns the enum now. */
     public const DECISION_CREATE          = self::PROCESSING_CREATE;
+    /** @deprecated Use {@see SyncDecision::Update}. */
     public const DECISION_UPDATE          = self::PROCESSING_UPDATE;
+    /** @deprecated Use {@see SyncDecision::SkipNoMatch}. */
     public const DECISION_SKIP_NO_MATCH   = 'skip:no-match';
+    /** @deprecated Use {@see SyncDecision::SkipNoCreate}. */
     public const DECISION_SKIP_NO_CREATE  = 'skip:no-create';
+    /** @deprecated Use {@see SyncDecision::SkipNoUpdate}. */
     public const DECISION_SKIP_NO_UPDATE  = 'skip:no-update';
 
     public ?int $id = null;
@@ -139,6 +138,12 @@ class Link extends Model
      * Take a DB backup before this link runs.
      */
     public bool $backup = false;
+
+    /** Memoized typed view over $mappings — see {@see getMappingCollection()}. */
+    protected ?MappingCollection $mappingCollection = null;
+
+    /** The raw $mappings array the memo was built from, for staleness checks. */
+    protected ?array $mappingCollectionSource = null;
 
     public function defineRules(): array
     {
@@ -256,7 +261,7 @@ class Link extends Model
      * the plugin isn't bootstrapped (e.g. in standalone unit tests that
      * never set auth on the link, so the lookup is never reached).
      */
-    private function authService(): ?\TDM\Influx\services\AuthService
+    protected function authService(): ?\TDM\Influx\services\AuthService
     {
         return Influx::getInstance()?->auth;
     }
@@ -276,11 +281,29 @@ class Link extends Model
         return Influx::getInstance()->targets->friendlyNameFor($this->elementType);
     }
 
-    public function matchValue(array $item): mixed
+    /**
+     * Typed view over {@see self::$mappings}. Rebuilt lazily whenever the
+     * raw array changes, so hydration (DB, builder payload) keeps assigning
+     * the plain array and readers get {@see FieldMapping} objects.
+     */
+    public function getMappingCollection(): MappingCollection
+    {
+        if ($this->mappingCollection === null || $this->mappingCollectionSource !== $this->mappings) {
+            $this->mappingCollection = MappingCollection::fromConfig($this->mappings);
+            $this->mappingCollectionSource = $this->mappings;
+        }
+        return $this->mappingCollection;
+    }
+
+    /**
+     * The unique key this item carries, read from the match attribute's
+     * mapped node. Deliberately no `default` fallback — a match value must
+     * come from the feed, or every item would match the same element.
+     */
+    public function matchValue(RemoteItem $item): mixed
     {
         $attr = $this->matchAttribute();
-        $path = $attr ? ($this->mappings[$attr]['node'] ?? null) : null;
-        return $path ? Hash::get($item, $path) : null;
+        return $attr ? $this->getMappingCollection()->get($attr)?->rawValue($item) : null;
     }
 
     public function matchAttribute(): ?string
@@ -294,24 +317,20 @@ class Link extends Model
      * {@see \TDM\Influx\services\SynchronizationService::processItem()} for
      * the real run and {@see \TDM\Influx\services\DebugService::debugItem()}
      * for the dry-run inspector, so both stay aligned on the rule.
-     *
-     * Returns one of: {@see self::DECISION_CREATE}, {@see self::DECISION_UPDATE},
-     * {@see self::DECISION_SKIP_NO_MATCH}, {@see self::DECISION_SKIP_NO_CREATE},
-     * {@see self::DECISION_SKIP_NO_UPDATE}.
      */
-    public function decideAction(mixed $matchValue, ?ElementInterface $element): string
+    public function decideAction(mixed $matchValue, ?ElementInterface $element): SyncDecision
     {
         if ($matchValue === null || $matchValue === '') {
-            return self::DECISION_SKIP_NO_MATCH;
+            return SyncDecision::SkipNoMatch;
         }
         if ($element === null) {
             return in_array(self::PROCESSING_CREATE, $this->processing, true)
-                ? self::DECISION_CREATE
-                : self::DECISION_SKIP_NO_CREATE;
+                ? SyncDecision::Create
+                : SyncDecision::SkipNoCreate;
         }
         return in_array(self::PROCESSING_UPDATE, $this->processing, true)
-            ? self::DECISION_UPDATE
-            : self::DECISION_SKIP_NO_UPDATE;
+            ? SyncDecision::Update
+            : SyncDecision::SkipNoUpdate;
     }
 
 }

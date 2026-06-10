@@ -6,6 +6,9 @@ use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use TDM\Influx\fields\DefaultField;
 use TDM\Influx\fields\Lightswitch;
+use TDM\Influx\models\FieldMapping;
+use TDM\Influx\sync\FieldContext;
+use TDM\Influx\sync\RemoteItem;
 use TDM\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -26,26 +29,23 @@ class CompareTest extends Unit
 {
     public function testEqualScalarsAreUnchanged(): void
     {
-        $strategy = $this->buildDefault();
-        $element = $this->elementReturning('hello');
-        $this->assertFalse($strategy->hasChanged($element, 'hello'));
+        $context = $this->context($this->elementReturning('hello'));
+        $this->assertFalse((new DefaultField())->hasChanged($context, 'hello'));
     }
 
     public function testDifferentScalarsAreChanged(): void
     {
-        $strategy = $this->buildDefault();
-        $element = $this->elementReturning('hello');
-        $this->assertTrue($strategy->hasChanged($element, 'world'));
+        $context = $this->context($this->elementReturning('hello'));
+        $this->assertTrue((new DefaultField())->hasChanged($context, 'world'));
     }
 
     public function testNullAndEmptyStringAreEquivalent(): void
     {
-        $strategy = $this->buildDefault();
-        $element = $this->elementReturning('');
-        $this->assertFalse($strategy->hasChanged($element, null));
+        $context = $this->context($this->elementReturning(''));
+        $this->assertFalse((new DefaultField())->hasChanged($context, null));
 
-        $element = $this->elementReturning(null);
-        $this->assertFalse($strategy->hasChanged($element, ''));
+        $context = $this->context($this->elementReturning(null));
+        $this->assertFalse((new DefaultField())->hasChanged($context, ''));
     }
 
     public function testNumericCoercionFollowsStringNormalisation(): void
@@ -53,18 +53,17 @@ class CompareTest extends Unit
         // normalise() converts scalars to strings; the comparison is then
         // string-vs-string so '1' equals 1 (intentional: feeds often hand
         // numbers as strings).
-        $strategy = $this->buildDefault();
-        $element = $this->elementReturning(1);
-        $this->assertFalse($strategy->hasChanged($element, '1'));
+        $context = $this->context($this->elementReturning(1));
+        $this->assertFalse((new DefaultField())->hasChanged($context, '1'));
     }
 
     public function testReadFailureTreatedAsChanged(): void
     {
-        $strategy = $this->buildDefault();
         $element = $this->createMock(ElementInterface::class);
         $element->method('getFieldValue')->willThrowException(new \RuntimeException('boom'));
+        $context = $this->context($element);
         $this->assertTrue(
-            $strategy->hasChanged($element, 'anything'),
+            (new DefaultField())->hasChanged($context, 'anything'),
             "Failing to read the current value must default to 'changed' — otherwise we'd silently skip syncs on broken fields.",
         );
     }
@@ -74,30 +73,21 @@ class CompareTest extends Unit
         // Lightswitch inherits the base hasChanged; both sides normalise to
         // a string. true -> "1", false -> "" (empty -> null).
         $strategy = new Lightswitch();
-        $strategy->setContext(
-            craftField: null,
-            fieldHandle: 'featured',
-            fieldInfo: ['node' => 'featured'],
-            item: ['featured' => true],
-            link: FakeLink::make(),
-            element: $this->elementReturning(true),
-        );
-        $this->assertFalse($strategy->hasChanged($this->elementReturning(true), true));
-        $this->assertTrue($strategy->hasChanged($this->elementReturning(true), false));
+        $context = $this->context($this->elementReturning(true), handle: 'featured');
+        $this->assertFalse($strategy->hasChanged($context, true));
+        $this->assertTrue($strategy->hasChanged($context, false));
     }
 
-    private function buildDefault(): DefaultField
+    private function context(ElementInterface $element, string $handle = 'summary'): FieldContext
     {
-        $strategy = new DefaultField();
-        $strategy->setContext(
+        return new FieldContext(
             craftField: null,
-            fieldHandle: 'summary',
-            fieldInfo: ['node' => 'summary'],
-            item: [],
+            handle: $handle,
+            mapping: FieldMapping::fromConfig($handle, ['node' => $handle]),
+            item: new RemoteItem([]),
             link: FakeLink::make(),
-            element: $this->createMock(ElementInterface::class),
+            element: $element,
         );
-        return $strategy;
     }
 
     private function elementReturning(mixed $current): ElementInterface

@@ -2,31 +2,28 @@
 
 namespace TDM\Influx\fields;
 
-use Cake\Utility\Hash;
-use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
-use TDM\Influx\models\Link;
+use TDM\Influx\sync\FieldContext;
 
 /**
  * Per-Craft-field-type mapping strategy. One concrete subclass per `craft\fields\*`
  * class whose mapping behaviour genuinely diverges from the default; everything
  * else falls through to {@see DefaultField}.
  *
- * Mirrors FeedMe's `craft\feedme\base\Field` so the codebase reads the same to
- * anyone who already knows that plugin. We're picking up the SRP win — one
- * place per field type — without inheriting FeedMe's wider surface area
- * (templates, events, multi-element saves...) until we actually need it.
+ * Strategies are stateless shared singletons (see
+ * {@see \TDM\Influx\services\FieldsService}): everything a call needs travels
+ * in an immutable {@see FieldContext}, so the sub-mapping recursion can safely
+ * re-enter the same instance.
  *
- * Lifecycle, driven by {@see \TDM\Influx\services\SynchronizationService}:
+ * Lifecycle, driven by {@see \TDM\Influx\sync\MappingApplier}:
  *
- *   $strategy->setContext($craftField, $handle, $fieldInfo, $item, $link, $element);
- *   $value = $strategy->parseField();
- *   if ($strategy->hasChanged($element, $value)) {
- *       $strategy->apply($element, $value);
+ *   $value = $strategy->parse($context);
+ *   if ($value !== null && $strategy->hasChanged($context, $value)) {
+ *       $strategy->apply($context, $value);
  *   }
  *
- * `parseField()` is the one method subclasses have to implement; everything
- * else has a sensible default in this base.
+ * `parse()` is the one method subclasses have to implement; everything else
+ * has a sensible default in this base.
  */
 abstract class Field
 {
@@ -43,51 +40,20 @@ abstract class Field
         return null;
     }
 
-    protected ?CraftFieldInterface $craftField = null;
-
-    protected string $fieldHandle = '';
-
-    /** Per-field mapping config from the link's `mappings[handle]` shape. */
-    protected array $fieldInfo = [];
-
-    /** The remote item being processed (one element of the root list). */
-    protected array $item = [];
-
-    protected ?Link $link = null;
-
-    protected ?ElementInterface $element = null;
-
     /**
-     * When true the strategy must be side-effect free: no element saves, no
-     * asset uploads, no created-when-missing relations. Set by
-     * {@see \TDM\Influx\services\DebugService} so dry-runs stay dry.
+     * Resolve the remote item + per-field mapping into the value the element
+     * field should hold.
+     *
+     * Contract:
+     *   - return null — "no data for this mapping, leave the field untouched";
+     *   - throw       — present-but-malformed data; the applier surfaces it
+     *                   as a per-mapping error.
+     *
+     * Strategies with side effects (creating missing relations, uploading
+     * assets, writing to related elements) must honour `$context->dryRun`
+     * and skip them when set — the debug inspector runs this exact code path.
      */
-    protected bool $dryRun = false;
-
-    public function setContext(
-        ?CraftFieldInterface $craftField,
-        string $fieldHandle,
-        array $fieldInfo,
-        array $item,
-        Link $link,
-        ElementInterface $element,
-        bool $dryRun = false,
-    ): void {
-        $this->craftField = $craftField;
-        $this->fieldHandle = $fieldHandle;
-        $this->fieldInfo = $fieldInfo;
-        $this->item = $item;
-        $this->link = $link;
-        $this->element = $element;
-        $this->dryRun = $dryRun;
-    }
-
-    /**
-     * Resolve the remote item + per-field config into the value the element
-     * field should hold. Return `null` to indicate "no value, leave the field
-     * untouched" — the sync loop checks the result before applying.
-     */
-    abstract public function parseField(): mixed;
+    abstract public function parse(FieldContext $context): mixed;
 
     /**
      * UI-side metadata for the mapping editor. Targets call this through
@@ -133,13 +99,13 @@ abstract class Field
     }
 
     /**
-     * Set the parsed value on the element. Default: route to `setFieldValue`,
-     * which is correct for every custom field. Subclasses override only when
-     * they need something more involved (e.g. assets-as-IDs arrays).
+     * Set the parsed value on the context's element. Default: route to
+     * `setFieldValue`, which is correct for every custom field. Subclasses
+     * override only when they need something more involved.
      */
-    public function apply(ElementInterface $element, mixed $value): bool
+    public function apply(FieldContext $context, mixed $value): bool
     {
-        $element->setFieldValue($this->fieldHandle, $value);
+        $context->element->setFieldValue($context->handle, $value);
         return true;
     }
 
@@ -147,10 +113,10 @@ abstract class Field
      * Whether the incoming value differs from what the element currently holds.
      * The sync engine uses this to skip elements that nothing has changed for.
      */
-    public function hasChanged(ElementInterface $element, mixed $incoming): bool
+    public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
         try {
-            $current = $element->getFieldValue($this->fieldHandle);
+            $current = $context->element->getFieldValue($context->handle);
         } catch (\Throwable) {
             return true;
         }
@@ -158,25 +124,6 @@ abstract class Field
     }
 
     // -- shared helpers ----------------------------------------------------
-
-    /**
-     * Read a scalar value from the remote item, falling back to the per-field
-     * `default`. Returns `null` when neither side has data.
-     */
-    protected function fetchSimpleValue(): mixed
-    {
-        $node = $this->fieldInfo['node'] ?? null;
-        if ($node === null || $node === '') {
-            return $this->fieldInfo['default'] ?? null;
-        }
-
-        $raw = Hash::get($this->item, $node);
-        if ($raw === null || $raw === '') {
-            return $this->fieldInfo['default'] ?? null;
-        }
-
-        return $raw;
-    }
 
     /**
      * Project-config-friendly representation used to compare values for change

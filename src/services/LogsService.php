@@ -4,6 +4,8 @@ namespace TDM\Influx\services;
 
 use craft\base\Component;
 use craft\helpers\Db;
+use TDM\Influx\enums\ItemAction;
+use TDM\Influx\enums\SyncTrigger;
 use TDM\Influx\Influx;
 use TDM\Influx\models\Link;
 use TDM\Influx\records\Log as LogRecord;
@@ -20,11 +22,11 @@ use TDM\Influx\records\LogItem as LogItemRecord;
  */
 class LogsService extends Component
 {
-    public function start(Link $link, string $trigger, ?string $siteHandle = null): LogRecord
+    public function start(Link $link, SyncTrigger $trigger, ?string $siteHandle = null): LogRecord
     {
         $log = new LogRecord();
         $log->linkHandle = $link->handle;
-        $log->trigger = $trigger;
+        $log->trigger = $trigger->value;
         $log->siteHandle = $siteHandle;
         $log->status = 'running';
         $log->startedAt = Db::prepareDateForDb(new \DateTime());
@@ -38,7 +40,7 @@ class LogsService extends Component
 
     public function recordItem(
         LogRecord $log,
-        string $action,
+        ItemAction $action,
         ?int $elementId = null,
         ?string $matchValue = null,
         ?string $message = null,
@@ -52,19 +54,12 @@ class LogsService extends Component
         $item->logId = $log->id;
         $item->elementId = $elementId;
         $item->matchValue = $matchValue !== null ? (string)$matchValue : null;
-        $item->action = $action;
+        $item->action = $action->value;
         $item->message = $message;
         $item->payload = $payload !== null ? json_encode($payload) : null;
         $item->save(false);
 
-        $counterAttr = match ($action) {
-            'created'   => 'itemsCreated',
-            'updated'   => 'itemsUpdated',
-            'unchanged' => 'itemsUnchanged',
-            'skipped'   => 'itemsSkipped',
-            'deleted', 'deleted-for-site', 'disabled' => 'itemsDeleted',
-            default => null,
-        };
+        $counterAttr = $action->counterAttribute();
 
         if ($counterAttr) {
             $log->$counterAttr = (int)$log->$counterAttr + 1;
@@ -113,7 +108,7 @@ class LogsService extends Component
         ]);
     }
 
-    private function loggingEnabled(): bool
+    protected function loggingEnabled(): bool
     {
         return (bool)Influx::getInstance()->getSettings()->loggingEnabled;
     }

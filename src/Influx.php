@@ -19,6 +19,7 @@ use craft\web\View;
 use yii\base\Event;
 use TDM\Influx\models\Settings;
 use TDM\Influx\services\AuthService;
+use TDM\Influx\services\EndpointTokensService;
 use TDM\Influx\services\LinkBuilderService;
 use TDM\Influx\services\LinksService;
 use TDM\Influx\services\DataService;
@@ -47,6 +48,7 @@ use TDM\Influx\services\DebugService;
  * @property AssetUploadService $assetUpload
  * @property DebugService $debug
  * @property AuthService $auth
+ * @property EndpointTokensService $endpointTokens
  */
 class Influx extends Plugin
 {
@@ -72,6 +74,7 @@ class Influx extends Plugin
                 'assetUpload'     => AssetUploadService::class,
                 'debug'           => DebugService::class,
                 'auth'            => AuthService::class,
+                'endpointTokens'  => EndpointTokensService::class,
             ],
         ];
     }

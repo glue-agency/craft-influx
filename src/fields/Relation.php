@@ -6,6 +6,8 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\models\FieldLayout;
+use TDM\Influx\sync\FieldContext;
+use TDM\Influx\sync\SubElementApplier;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -19,7 +21,9 @@ use craft\models\FieldLayout;
  * override `createMissing()` to create elements when no match is found.
  *
  * Mirrors FeedMe's craft\feedme\fields\Entries split into a shared base so
- * Users/Categories/Tags don't have to repeat the lookup loop.
+ * Users/Categories/Tags don't have to repeat the lookup loop. Deliberately
+ * NOT mirrored from FeedMe: side effects (creating elements, saving sub
+ * elements) are dry-run-gated via {@see FieldContext::$dryRun}.
  */
 abstract class Relation extends Field
 {
@@ -132,14 +136,14 @@ abstract class Relation extends Field
         return [];
     }
 
-    public function parseField(): mixed
+    public function parse(FieldContext $context): mixed
     {
-        $raw = $this->fetchSimpleValue();
+        $raw = $context->mapping->resolve($context->item);
         if ($raw === null || $raw === '') {
             return null;
         }
 
-        $match = $this->fieldInfo['options']['match'] ?? 'id';
+        $match = (string)$context->mapping->option('match', 'id');
         $values = is_array($raw) ? $raw : [$raw];
 
         $ids = [];
@@ -147,34 +151,26 @@ abstract class Relation extends Field
             if ($value === null || $value === '') {
                 continue;
             }
-            $element = $this->findOne($match, $value);
-            if (!$element && $this->shouldCreate() && !$this->dryRun) {
-                $element = $this->createMissing($value);
+            $element = $this->findOne($context, $match, $value);
+            if (!$element && !$context->dryRun && $this->shouldCreate($context)) {
+                $element = $this->createMissing($context, $value);
             }
             if ($element) {
                 $ids[] = $element->id;
-                if (!$this->dryRun) {
-                    $this->populateSubElement($element);
-                }
+                $this->populateSubElement($context, $element);
             }
         }
 
         return $ids ?: null;
     }
 
-    public function apply(ElementInterface $element, mixed $value): bool
-    {
-        $element->setFieldValue($this->fieldHandle, $value);
-        return true;
-    }
-
-    public function hasChanged(ElementInterface $element, mixed $incoming): bool
+    public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
         if (!is_array($incoming)) {
             return true;
         }
         try {
-            $currentIds = $element->getFieldValue($this->fieldHandle)?->ids() ?? [];
+            $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
         } catch (\Throwable) {
             return true;
         }
@@ -184,16 +180,16 @@ abstract class Relation extends Field
         return $currentIds !== $incoming;
     }
 
-    protected function shouldCreate(): bool
+    protected function shouldCreate(FieldContext $context): bool
     {
-        return !empty($this->fieldInfo['options']['create']);
+        return !empty($context->mapping->option('create'));
     }
 
     /**
      * Look up an element by the configured match strategy. Returns the first
      * hit (relation fields are unordered by default).
      */
-    protected function findOne(string $match, mixed $value): ?ElementInterface
+    protected function findOne(FieldContext $context, string $match, mixed $value): ?ElementInterface
     {
         $class = $this->elementType();
         /** @var ElementQueryInterface $query */
@@ -206,7 +202,7 @@ abstract class Relation extends Field
             default => $query->$match($value),
         };
 
-        $this->scopeBySources($query);
+        $this->scopeBySources($context, $query);
 
         return $query->one();
     }
@@ -216,7 +212,7 @@ abstract class Relation extends Field
      * (sectionIds for Entries, groupIds for Users/Tags/Categories). Subclasses
      * may override when their sources don't map onto a single id list.
      */
-    protected function scopeBySources(ElementQueryInterface $query): void
+    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
         // Default: no-op. Concrete strategies that need source scoping
         // override this (e.g. Entries narrowing by sectionId).
@@ -224,25 +220,31 @@ abstract class Relation extends Field
 
     /**
      * Create the element when no match was found and `options.create` is on.
-     * Default: return null (no create). Override per subclass.
+     * Never called under dry-run. Default: return null (no create). Override
+     * per subclass.
      */
-    protected function createMissing(mixed $value): ?ElementInterface
+    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
         return null;
     }
 
     /**
-     * Apply any configured sub-mappings to the related element and save it.
-     * Inherited by every relation strategy ({@see \TDM\Influx\fields\Entries},
-     * {@see \TDM\Influx\fields\Categories}, {@see \TDM\Influx\fields\Tags},
-     * {@see \TDM\Influx\fields\Users}) — they all get sub-mapping support
-     * "for free" through this base.
+     * Apply any configured sub-mappings to the related element and persist it
+     * when something changed. Inherited by every relation strategy
+     * ({@see Entries}, {@see Categories}, {@see Tags}, {@see Users}) — they
+     * all get sub-mapping support "for free" through this base.
      *
-     * Recursive: a sub-field can itself be a relation with sub-fields, since
-     * each sub-mapping is dispatched through the same FieldsService.
+     * Skipped entirely under dry-run: the related element is a real, saved
+     * element that the debug inspector must not mutate. The walk itself
+     * ({@see SubElementApplier}) never saves; persistence is decided here.
      */
-    protected function populateSubElement(ElementInterface $element): void
+    protected function populateSubElement(FieldContext $context, ElementInterface $element): void
     {
-        (new SubElementPopulator())->populate($element, $this->item, $this->fieldInfo, $this->link);
+        if ($context->dryRun) {
+            return;
+        }
+        if ((new SubElementApplier())->apply($element, $context)) {
+            Craft::$app->getElements()->saveElement($element, false);
+        }
     }
 }

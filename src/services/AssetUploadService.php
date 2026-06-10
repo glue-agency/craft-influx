@@ -9,7 +9,7 @@ use craft\errors\AssetException;
 use craft\helpers\Assets as AssetsHelper;
 use craft\helpers\FileHelper;
 use GuzzleHttp\Client;
-use TDM\Influx\exceptions\InfluxException;
+use TDM\Influx\exceptions\AssetUploadException;
 use Throwable;
 
 /**
@@ -22,7 +22,7 @@ use Throwable;
  */
 class AssetUploadService extends Component
 {
-    private Client $client;
+    protected Client $client;
 
     public function init(): void
     {
@@ -41,17 +41,19 @@ class AssetUploadService extends Component
      * @param string $folderPath   Optional sub-folder path (no leading slash).
      * @param string $conflict     'replace' | 'keepBoth' | 'index' (default).
      *
-     * @return Asset|null  The resulting asset, or null on failure.
+     * @throws AssetUploadException with the actual cause — misconfigured
+     * volume, failed download, or element validation errors. Callers must
+     * not see "no asset" and "upload broke" as the same outcome.
      */
     public function uploadFromUrl(
         string $volumeHandle,
         string $url,
         string $folderPath = '',
         string $conflict = 'index',
-    ): ?Asset {
+    ): Asset {
         $volume = Craft::$app->getVolumes()->getVolumeByHandle($volumeHandle);
         if (!$volume) {
-            throw new InfluxException("Volume '{$volumeHandle}' does not exist.");
+            throw new AssetUploadException("Volume '{$volumeHandle}' does not exist.");
         }
 
         $folder = Craft::$app->getAssets()->ensureFolderByFullPathAndVolume(
@@ -75,9 +77,6 @@ class AssetUploadService extends Component
         }
 
         $tempPath = $this->downloadToTemp($url);
-        if ($tempPath === null) {
-            return null;
-        }
 
         try {
             $asset = new Asset();
@@ -89,11 +88,15 @@ class AssetUploadService extends Component
             $asset->setScenario(Asset::SCENARIO_CREATE);
 
             if (!Craft::$app->getElements()->saveElement($asset, true)) {
-                return null;
+                throw new AssetUploadException(
+                    "Saving asset '{$filename}' failed: " . implode('; ', $asset->getFirstErrors()),
+                );
             }
             return $asset;
-        } catch (Throwable) {
-            return null;
+        } catch (AssetUploadException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw new AssetUploadException("Uploading '{$url}' failed: " . $e->getMessage(), previous: $e);
         } finally {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
@@ -101,7 +104,7 @@ class AssetUploadService extends Component
         }
     }
 
-    private function filenameFor(string $url): string
+    protected function filenameFor(string $url): string
     {
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
         if ($name === '' || $name === false) {
@@ -110,7 +113,11 @@ class AssetUploadService extends Component
         return AssetsHelper::prepareAssetName($name);
     }
 
-    private function downloadToTemp(string $url): ?string
+    /**
+     * @throws AssetUploadException when the download fails or the server
+     * answers with a non-2xx status.
+     */
+    protected function downloadToTemp(string $url): string
     {
         $tempPath = Craft::$app->getPath()->getTempPath() . '/influx-' . uniqid('', true);
         FileHelper::createDirectory(dirname($tempPath));
@@ -120,18 +127,18 @@ class AssetUploadService extends Component
                 'sink'        => $tempPath,
                 'http_errors' => false,
             ]);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
             }
-            return null;
+            throw new AssetUploadException("Downloading '{$url}' failed: " . $e->getMessage(), previous: $e);
         }
 
         if ($response->getStatusCode() >= 300 || !is_file($tempPath)) {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
             }
-            return null;
+            throw new AssetUploadException("Downloading '{$url}' failed with HTTP {$response->getStatusCode()}.");
         }
 
         return $tempPath;

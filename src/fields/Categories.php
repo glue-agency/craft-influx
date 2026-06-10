@@ -6,6 +6,7 @@ use Craft;
 use craft\elements\Category as CategoryElement;
 use craft\elements\db\ElementQueryInterface;
 use craft\helpers\Db;
+use TDM\Influx\sync\FieldContext;
 
 class Categories extends Relation
 {
@@ -32,12 +33,12 @@ class Categories extends Relation
         }
     }
 
-    protected function scopeBySources(ElementQueryInterface $query): void
+    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        if (!$this->craftField) {
+        if (!$context->craftField) {
             return;
         }
-        $source = $this->craftField->source ?? null;
+        $source = $context->craftField->source ?? null;
         if (!is_string($source) || !str_starts_with($source, 'group:')) {
             return;
         }

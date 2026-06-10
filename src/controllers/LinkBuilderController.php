@@ -186,7 +186,7 @@ class LinkBuilderController extends Controller
         ]);
     }
 
-    private function jsonBody(): array
+    protected function jsonBody(): array
     {
         $raw = Craft::$app->getRequest()->getRawBody();
         if ($raw === '') {
@@ -199,7 +199,7 @@ class LinkBuilderController extends Controller
         return $decoded;
     }
 
-    private function assertWriteable(): void
+    protected function assertWriteable(): void
     {
         if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
             throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');

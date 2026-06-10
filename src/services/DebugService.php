@@ -2,13 +2,18 @@
 
 namespace TDM\Influx\services;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
+use TDM\Influx\enums\ItemAction;
+use TDM\Influx\enums\SyncDecision;
 use TDM\Influx\Influx;
 use TDM\Influx\models\OffsetPreset;
 use TDM\Influx\models\Link;
+use TDM\Influx\sync\ItemProcessor;
+use TDM\Influx\sync\ItemResolution;
+use TDM\Influx\sync\RemoteItem;
+use TDM\Influx\sync\SyncContext;
 use TDM\Influx\targets\ElementTargetInterface;
 
 /**
@@ -20,6 +25,18 @@ use TDM\Influx\targets\ElementTargetInterface;
 class DebugService extends Component
 {
     public const DEFAULT_LIMIT = 25;
+
+    /**
+     * The same pipeline {@see SynchronizationService} runs — invoked here
+     * with dry-run contexts and never committed.
+     */
+    protected ItemProcessor $itemProcessor;
+
+    public function init(): void
+    {
+        parent::init();
+        $this->itemProcessor = new ItemProcessor();
+    }
 
     /**
      * Per-site dry-run, yielding events suitable for Server-Sent Events:
@@ -37,7 +54,7 @@ class DebugService extends Component
         $target = $plugin->targets->forLink($link);
 
         $matchAttr = $link->matchAttribute();
-        $matchNode = $matchAttr ? ($link->mappings[$matchAttr]['node'] ?? null) : null;
+        $matchNode = $matchAttr ? ($link->getMappingCollection()->get($matchAttr)?->node) : null;
 
         [$queryParams, $offsetLabel] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
@@ -53,8 +70,14 @@ class DebugService extends Component
 
         $url = $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle);
 
+        // Same iterator the sync run walks — the debug view just stops after
+        // the first page.
+        $firstPage = null;
         try {
-            $data = $plugin->data->fetch($link, $siteHandle, $queryParams);
+            foreach ($plugin->data->pages($link, $siteHandle, $queryParams) as $page) {
+                $firstPage = $page;
+                break;
+            }
         } catch (\Throwable $e) {
             yield [
                 'type' => 'meta',
@@ -76,22 +99,14 @@ class DebugService extends Component
             return;
         }
 
-        $paginatorValue = null;
-        if ($link->paginatorNode) {
-            $next = Hash::get($data, $link->paginatorNode);
-            $paginatorValue = is_string($next) ? $next : null;
-        }
-
-        $list = $plugin->data->rootList($link, $data);
-
         yield [
             'type' => 'meta',
             'data' => [
                 'siteHandle'     => $siteHandle,
                 'url'            => $url,
-                'itemsOnPage'    => count($list),
+                'itemsOnPage'    => $firstPage ? count($firstPage->items) : 0,
                 'paginatorNode'  => $link->paginatorNode,
-                'paginatorValue' => $paginatorValue,
+                'paginatorValue' => $firstPage?->nextUrl,
                 'limit'          => $limit,
                 'matchAttribute' => $matchAttr,
                 'matchNode'      => $matchNode,
@@ -102,13 +117,17 @@ class DebugService extends Component
             ],
         ];
 
+        if (!$firstPage) {
+            return;
+        }
+
         $siteId = $siteHandle
             ? (Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id)
             : null;
 
         $index = 0;
-        foreach (array_slice($list, 0, $limit) as $item) {
-            $row = $this->debugItem($link, $target, $item, $siteId);
+        foreach (array_slice($firstPage->items, 0, $limit) as $item) {
+            $row = $this->debugItem($link, $target, $item->raw(), $siteId);
             $row['index'] = $index++;
             yield ['type' => 'item', 'data' => $row];
         }
@@ -139,20 +158,26 @@ class DebugService extends Component
         return $this->debugItem($link, $target, $item, $siteId);
     }
 
-    private function debugItem(
+    /**
+     * One item through the shared {@see ItemProcessor} pipeline with
+     * `dryRun: true` — resolve and populate run for real (in memory),
+     * commit is never called. This method only presents the result; the
+     * logic is the exact code the sync run executes.
+     */
+    protected function debugItem(
         Link $link,
         ElementTargetInterface $target,
         array $item,
         ?int $siteId,
     ): array {
-        $matchAttr = $link->matchAttribute();
-        $matchNode = $matchAttr ? ($link->mappings[$matchAttr]['node'] ?? null) : null;
-        $matchValue = $link->matchValue($item);
+        $context = new SyncContext(link: $link, target: $target, siteId: $siteId, dryRun: true);
+        $remoteItem = new RemoteItem($item);
 
+        $matchAttr = $link->matchAttribute();
         $row = [
             'matchAttribute' => $matchAttr,
-            'matchNode'      => $matchNode,
-            'matchValue'     => $matchValue,
+            'matchNode'      => $matchAttr ? ($link->getMappingCollection()->get($matchAttr)?->node) : null,
+            'matchValue'     => null,
             'element'        => null,
             'isNew'          => false,
             'action'         => 'would-skip',
@@ -162,174 +187,110 @@ class DebugService extends Component
             'error'          => null,
         ];
 
-        if ($matchValue === null || $matchValue === '') {
-            $row['message'] = "Remote item has no value at match path '"
-                . ($matchNode ?? '?') . "' (match attribute: "
-                . ($matchAttr ?? '?') . ").";
-            return $row;
-        }
-
         try {
-            $element = $target->findByMatchValue($link, $matchValue, $siteId);
+            $resolution = $this->itemProcessor->resolve($context, $remoteItem);
         } catch (\Throwable $e) {
             $row['error'] = 'findByMatchValue: ' . $e->getMessage();
             return $row;
         }
 
-        if ($element) {
-            $row['element'] = $this->describeElement($element);
+        $row['matchValue'] = $resolution->matchValue;
+        if ($resolution->element) {
+            $row['element'] = $this->describeElement($resolution->element);
         }
 
-        switch ($link->decideAction($matchValue, $element)) {
-            case Link::DECISION_SKIP_NO_UPDATE:
-                $row['action'] = 'would-skip';
-                $row['message'] = "'update' not enabled for this link.";
-                break;
-            case Link::DECISION_SKIP_NO_CREATE:
-                $row['action'] = 'would-skip';
-                $row['message'] = "No existing element and 'create' not enabled.";
-                break;
-            case Link::DECISION_UPDATE:
-                $row['action'] = 'would-update';
-                break;
-            case Link::DECISION_CREATE:
-                $row['action'] = 'would-create';
-                $row['isNew'] = true;
-                try {
-                    $element = $target->buildNew($link, $siteId);
-                    $target->assignMatchValue($element, $link, $matchValue);
-                } catch (\Throwable $e) {
-                    $row['error'] = 'buildNew: ' . $e->getMessage();
-                    return $row;
-                }
-                break;
-        }
-
-        if ($element === null) {
+        try {
+            $result = $this->itemProcessor->populate($context, $remoteItem, $resolution);
+        } catch (\Throwable $e) {
+            // populate() only throws from the target's buildNew() — mapping
+            // errors are captured per-row by the applier.
+            $row['isNew'] = $resolution->decision === SyncDecision::Create;
+            $row['action'] = $row['isNew'] ? ItemAction::Created->dryRunLabel() : ItemAction::Updated->dryRunLabel();
+            $row['error'] = 'buildNew: ' . $e->getMessage();
             return $row;
         }
 
-        if ($siteId) {
-            $element->siteId = $siteId;
-        }
+        $row['isNew'] = $result->isNew;
 
-        $row['mappings'] = $this->debugMappings($link, $target, $element, $item, $row['isNew']);
+        if ($result->decision->isSkip()) {
+            $row['action'] = ItemAction::Skipped->dryRunLabel();
+            $row['message'] = $result->message;
 
-        // Existing element with no per-field changes → downgrade to unchanged.
-        if ($row['action'] === 'would-update') {
-            $anyChange = false;
-            foreach ($row['mappings'] as $m) {
-                if (!empty($m['changed'])) {
-                    $anyChange = true;
-                    break;
+            // A skipped-but-existing element still gets its mapping rows
+            // rendered so the user can see what an enabled 'update' would
+            // do — run a preview populate with a forced Update decision
+            // (dry-run, so nothing is written).
+            if ($result->decision === SyncDecision::SkipNoUpdate && $resolution->element !== null) {
+                try {
+                    $preview = $this->itemProcessor->populate(
+                        $context,
+                        $remoteItem,
+                        new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::Update),
+                    );
+                    $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element);
+                } catch (\Throwable $e) {
+                    $row['error'] = $e->getMessage();
                 }
             }
-            if (!$anyChange) {
-                $row['action'] = 'would-unchanged';
-            }
+
+            return $row;
+        }
+
+        $row['action'] = $result->action->dryRunLabel();
+        if ($result->element !== null) {
+            $row['mappings'] = $this->presentMappingResults($result->mappingResults, $result->element);
         }
 
         return $row;
     }
 
     /**
+     * Render {@see MappingResult}s into the Twig/JS-facing row shape —
+     * values described (stringified, truncated), parsed values run through
+     * the Craft field's normalizeValue for display parity with the editor.
+     *
+     * @param list<\TDM\Influx\sync\MappingResult> $results
      * @return list<array>
      */
-    private function debugMappings(Link $link, ElementTargetInterface $target, ElementInterface $element, array $item, bool $isNew): array
+    protected function presentMappingResults(array $results, ElementInterface $element): array
     {
-        $plugin = Influx::getInstance();
-        $fields = $plugin->fields;
         $layout = $element->getFieldLayout();
-
         $rows = [];
 
-        foreach ($link->mappings as $handle => $config) {
-            if (!is_array($config)) {
-                continue;
+        foreach ($results as $result) {
+            $parsedValue = $result->parsedValue;
+            if (!$result->native && $parsedValue !== null) {
+                $craftField = $layout?->getFieldByHandle($result->handle);
+                if ($craftField) {
+                    try {
+                        $parsedValue = $craftField->normalizeValue($parsedValue, $element);
+                    } catch (\Throwable) {
+                        // Display-only nicety; fall back to the raw parse.
+                    }
+                }
             }
 
-            $mappingRow = [
-                'handle'       => $handle,
-                'node'         => $config['node'] ?? null,
-                'default'      => $config['default'] ?? null,
-                'native'       => true,
-                'rawValue'     => $this->describeValue($this->safeHashGet($item, $config['node'] ?? null)),
-                'parsedValue'  => null,
-                'currentValue' => null,
-                'changed'      => null,
-                'note'         => null,
-                'error'        => null,
+            $rows[] = [
+                'handle'       => $result->handle,
+                'node'         => $result->node,
+                'default'      => $result->default,
+                'native'       => $result->native,
+                'rawValue'     => $this->describeValue($result->rawValue),
+                'parsedValue'  => $this->describeValue($parsedValue),
+                'currentValue' => $this->describeValue($result->currentValue),
+                'changed'      => $result->changed,
+                'note'         => $result->note,
+                'error'        => $result->error,
             ];
-
-            if ($target->ownsAttribute($link, $handle)) {
-                $mappingRow['note'] = 'Managed by target.';
-                $rows[] = $mappingRow;
-                continue;
-            }
-
-            $craftField = $layout?->getFieldByHandle($handle);
-
-            if ($craftField === null) {
-                // Native attribute — no strategy parse path, just surface the raw.
-                try {
-                    $mappingRow['currentValue'] = $this->describeValue($element->{$handle} ?? null);
-                } catch (\Throwable) {
-                    $mappingRow['currentValue'] = null;
-                }
-                $mappingRow['changed'] = $isNew ? true : null;
-                $rows[] = $mappingRow;
-                continue;
-            }
-
-            $mappingRow['native'] = false;
-
-            try {
-                $strategy = $fields->forCraftField($craftField);
-                $strategy->setContext($craftField, $handle, $config, $item, $link, $element, dryRun: true);
-                $value = $strategy->parseField();
-                try {
-                    $displayValue = $craftField->normalizeValue($value, $element);
-                } catch (\Throwable) {
-                    $displayValue = $value;
-                }
-                $mappingRow['parsedValue'] = $this->describeValue($displayValue);
-
-                try {
-                    $current = $element->getFieldValue($handle);
-                    $mappingRow['currentValue'] = $this->describeValue($current);
-                } catch (\Throwable) {
-                    $mappingRow['currentValue'] = null;
-                }
-
-                if ($value === null) {
-                    $mappingRow['changed'] = false;
-                    $mappingRow['note'] = 'Strategy returned null — field left untouched.';
-                } else {
-                    $mappingRow['changed'] = $isNew ? true : $strategy->hasChanged($element, $value);
-                }
-            } catch (\Throwable $e) {
-                $mappingRow['error'] = $e->getMessage();
-            }
-
-            $rows[] = $mappingRow;
         }
 
         return $rows;
     }
 
-    private function safeHashGet(array $item, ?string $node): mixed
-    {
-        if ($node === null || $node === '') {
-            return null;
-        }
-        try {
-            return Hash::get($item, $node);
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    private function describeElement(ElementInterface $element): array
+    /**
+     * @return list<array>
+     */
+    protected function describeElement(ElementInterface $element): array
     {
         return [
             'id'        => $element->id,
@@ -344,7 +305,7 @@ class DebugService extends Component
      * a compact string representation. Truncated so a giant CKEditor blob
      * doesn't blow up the page.
      */
-    private function describeValue(mixed $value): ?string
+    protected function describeValue(mixed $value): ?string
     {
         if ($value === null) {
             return null;
