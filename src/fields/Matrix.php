@@ -44,6 +44,15 @@ class Matrix extends Field
         ];
     }
 
+    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    {
+        return [
+            \TDM\Influx\helpers\BuilderSchema::note(
+                \Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
+            ),
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         return $context->mapping->resolve($context->item);

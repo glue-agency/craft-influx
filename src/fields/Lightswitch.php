@@ -45,6 +45,17 @@ class Lightswitch extends Field
         ];
     }
 
+    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    {
+        return [
+            \TDM\Influx\helpers\BuilderSchema::csvText('truthy', \Craft::t('influx', 'Truthy values'), [
+                'placeholder'  => \Craft::t('influx', 'true, 1, yes, on'),
+                'instructions' => \Craft::t('influx', 'Comma-separated. Anything else (incl. null) maps to false.'),
+                'default'      => self::DEFAULT_TRUTHY,
+            ]),
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);

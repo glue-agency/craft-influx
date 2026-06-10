@@ -108,6 +108,41 @@ class Assets extends Field
         return true;
     }
 
+    public function defineExtrasSchema(CraftFieldInterface $field): array
+    {
+        $url = [['handle' => 'mode', 'equals' => 'url']];
+        $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
+
+        return [
+            \TDM\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Value is'), self::modeOptions(), [
+                'default' => 'id',
+            ]),
+            \TDM\Influx\helpers\BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
+                'showIf' => $url,
+            ]),
+            \TDM\Influx\helpers\BuilderSchema::text('volume', Craft::t('influx', 'Target volume'), [
+                'placeholder' => Craft::t('influx', 'Volume handle'),
+                'showIf'      => $uploading,
+            ]),
+            \TDM\Influx\helpers\BuilderSchema::text('folderPath', Craft::t('influx', 'Sub-folder'), [
+                'placeholder' => Craft::t('influx', 'e.g. imports/2024'),
+                'showIf'      => $uploading,
+            ]),
+            \TDM\Influx\helpers\BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
+                'default' => 'index',
+                'showIf'  => $uploading,
+            ]),
+            \TDM\Influx\helpers\BuilderSchema::subFieldMapTable(
+                Craft::t('influx', 'Asset sub-fields'),
+                [
+                    'alt'   => Craft::t('influx', 'Alt text'),
+                    'title' => Craft::t('influx', 'Title'),
+                ],
+                ['instructions' => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).')],
+            ),
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);

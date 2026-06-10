@@ -136,6 +136,23 @@ abstract class Relation extends Field
         return [];
     }
 
+    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    {
+        /** @var \craft\fields\BaseRelationField $field */
+        return [
+            \TDM\Influx\helpers\BuilderSchema::select(
+                'match',
+                Craft::t('influx', 'Match by'),
+                $this->matchOptions($field),
+                ['default' => 'id'],
+            ),
+            \TDM\Influx\helpers\BuilderSchema::lightswitch(
+                'create',
+                Craft::t('influx', 'Create when not found'),
+            ),
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);

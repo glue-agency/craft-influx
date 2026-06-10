@@ -71,10 +71,24 @@ abstract class Field
     }
 
     /**
+     * Declarative form schema for this field type's mapping-extras block —
+     * a list of {@see \TDM\Influx\helpers\BuilderSchema} nodes the SPA
+     * renders generically. Declaring the UI next to the parse logic is what
+     * keeps the Vue side free of per-field-type branches: adding a kind is
+     * a single-PHP-file change.
+     *
+     * Default: no extras.
+     */
+    public function defineExtrasSchema(CraftFieldInterface $field): array
+    {
+        return [];
+    }
+
+    /**
      * Whether this field type contributes a per-field options block to the
      * mapping editor (the "Configure" toggle in {@see MappingExtras.vue}).
-     * Drives the twig `hasExtras` flag on the mapping row so the toggle and
-     * mount point only render when the strategy actually has options to show.
+     * Derived from the declared schema; override only when the toggle must
+     * appear without one.
      */
     public function hasMappingExtras(): bool
     {

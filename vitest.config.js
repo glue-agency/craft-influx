@@ -1,3 +1,4 @@
+import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -6,6 +7,7 @@ import { defineConfig } from 'vitest/config';
  * irrelevant or hostile to the test runner.
  */
 export default defineConfig({
+    plugins: [vue()],
     test: {
         environment: 'happy-dom',
         include: ['src/web/assets/links/src/**/__tests__/*.test.js'],

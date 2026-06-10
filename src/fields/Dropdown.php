@@ -60,6 +60,26 @@ class Dropdown extends Field
         ];
     }
 
+    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    {
+        /** @var \craft\fields\BaseOptionsField $field */
+        $options = [];
+        foreach ($field->options ?? [] as $opt) {
+            if (is_array($opt) && isset($opt['value'])) {
+                $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
+            }
+        }
+
+        return [
+            \TDM\Influx\helpers\BuilderSchema::valueMapTable(
+                'valueMap',
+                \Craft::t('influx', 'Value map'),
+                $options,
+                ['instructions' => \Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.')],
+            ),
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);

@@ -111,12 +111,17 @@ class FieldsService extends Component
     /**
      * UI metadata for a given Craft field — delegated to the matching
      * strategy so each field type owns both parse logic and UI hints.
+     * Ships the declarative extras `schema` (rendered generically by the
+     * SPA's SchemaForm) alongside the legacy kind/labels meta.
      */
     public function metaFor(CraftFieldInterface $field): array
     {
         $strategy = $this->forCraftField($field);
+        $schema = $strategy->defineExtrasSchema($field);
+
         return $strategy->fieldMeta($field) + [
-            'hasExtras' => $strategy->hasMappingExtras(),
+            'schema'    => $schema,
+            'hasExtras' => $schema !== [] || $strategy->hasMappingExtras(),
         ];
     }
 

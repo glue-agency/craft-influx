@@ -69,6 +69,16 @@ class Date extends Field
         return $event->options;
     }
 
+    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    {
+        return [
+            \TDM\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
+                'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
+                'default'      => '',
+            ]),
+        ];
+    }
+
     /**
      * @throws MappingValueException when a present value can't be parsed as
      * a date — malformed data must surface as an error row, not silently

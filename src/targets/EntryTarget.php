@@ -333,6 +333,11 @@ class EntryTarget extends AbstractElementTarget
                     'matchOptions' => $this->authorMatchOptions(),
                     'allowCreate'  => false,
                     'hasExtras'    => true,
+                    'schema'       => [
+                        \TDM\Influx\helpers\BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
+                            'default' => 'id',
+                        ]),
+                    ],
                     'labels'       => \TDM\Influx\fields\Relation::extrasLabels()
                         + \TDM\Influx\fields\Field::commonExtrasLabels(),
                 ],
@@ -353,6 +358,12 @@ class EntryTarget extends AbstractElementTarget
             'kind'          => 'date',
             'hasExtras'     => true,
             'formatOptions' => \TDM\Influx\fields\Date::formatOptions(),
+            'schema'        => [
+                \TDM\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), \TDM\Influx\fields\Date::formatOptions(), [
+                    'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
+                    'default'      => '',
+                ]),
+            ],
             'labels'        => \TDM\Influx\fields\Date::extrasLabels()
                 + \TDM\Influx\fields\Field::commonExtrasLabels(),
         ];
