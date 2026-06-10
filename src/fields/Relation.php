@@ -44,11 +44,6 @@ abstract class Relation extends Field
         ];
     }
 
-    public function hasMappingExtras(): bool
-    {
-        return true;
-    }
-
     /**
      * UI strings rendered inside the relation extras block. Static so the
      * native `author` mapping on {@see \TDM\Influx\targets\EntryTarget} can

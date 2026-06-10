@@ -39,11 +39,6 @@ class Dropdown extends Field
         ];
     }
 
-    public function hasMappingExtras(): bool
-    {
-        return true;
-    }
-
     /**
      * UI strings rendered inside the dropdown/value-map extras block.
      *

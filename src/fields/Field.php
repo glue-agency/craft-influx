@@ -85,17 +85,6 @@ abstract class Field
     }
 
     /**
-     * Whether this field type contributes a per-field options block to the
-     * mapping editor (the "Configure" toggle in {@see MappingExtras.vue}).
-     * Derived from the declared schema; override only when the toggle must
-     * appear without one.
-     */
-    public function hasMappingExtras(): bool
-    {
-        return false;
-    }
-
-    /**
      * UI strings shared by every kind of mapping-extras block — currently
      * just the show/hide toggle copy. Strategies layer their own labels on
      * top via `static::extrasLabels()` (or analogous) when assembling

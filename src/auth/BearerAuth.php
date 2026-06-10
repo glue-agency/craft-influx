@@ -14,7 +14,7 @@ class BearerAuth extends AbstractAuthStrategy
 
     public static function label(): string
     {
-        return 'Bearer token';
+        return Craft::t('influx', 'Bearer token');
     }
 
     public static function editSchema(): array

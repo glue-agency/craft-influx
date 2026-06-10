@@ -27,6 +27,13 @@ class FieldMapping
     /** Fallback value when the node is missing or empty. */
     public mixed $default = null;
 
+    /**
+     * Apply the default even with no node mapped (the "— use default —"
+     * choice in the builder). Without it, a node-less mapping resolves to
+     * null — a typed-but-unactivated default must not write anything.
+     */
+    public bool $useDefault = false;
+
     /** Per-field-type options (`match`, `valueMap`, `truthy`, ...). */
     public array $options = [];
 
@@ -43,6 +50,7 @@ class FieldMapping
         string $handle,
         ?string $node,
         mixed $default,
+        bool $useDefault,
         array $options,
         array $fields,
         array $nativeFields,
@@ -51,6 +59,7 @@ class FieldMapping
         $this->handle = $handle;
         $this->node = $node;
         $this->default = $default;
+        $this->useDefault = $useDefault;
         $this->options = $options;
         $this->fields = $fields;
         $this->nativeFields = $nativeFields;
@@ -65,6 +74,7 @@ class FieldMapping
             handle: $handle,
             node: is_string($node) && $node !== '' ? $node : null,
             default: $config['default'] ?? null,
+            useDefault: !empty($config['useDefault']),
             options: is_array($config['options'] ?? null) ? $config['options'] : [],
             fields: is_array($config['fields'] ?? null) ? $config['fields'] : [],
             nativeFields: is_array($config['nativeFields'] ?? null) ? $config['nativeFields'] : [],
@@ -74,9 +84,14 @@ class FieldMapping
 
     /**
      * Resolve the value this mapping yields for one remote item:
-     * read `node`, fall back to `default` when the node is missing or empty,
-     * and normalize empty results to null ("no data — leave the field
-     * untouched").
+     *
+     *   - node mapped:    read it, falling back to `default` when the node
+     *                     is missing or empty;
+     *   - no node:        `default` applies only when the user explicitly
+     *                     chose "— use default —" ({@see $useDefault}) —
+     *                     otherwise the mapping yields nothing;
+     *   - empty results normalize to null ("no data — leave the field
+     *     untouched").
      *
      * Note the deliberate semantic: an empty-string default resolves to null,
      * not '' (the old fetchSimpleValue let '' through; the target-side
@@ -84,11 +99,19 @@ class FieldMapping
      */
     public function resolve(RemoteItem $item): mixed
     {
-        $value = $this->node !== null ? $item->get($this->node) : null;
-        if ($value === null || $value === '') {
-            $value = $this->default;
+        if ($this->node !== null) {
+            $value = $item->get($this->node);
+            if ($value === null || $value === '') {
+                $value = $this->default;
+            }
+            return ($value === null || $value === '') ? null : $value;
         }
-        return ($value === null || $value === '') ? null : $value;
+
+        if (!$this->useDefault) {
+            return null;
+        }
+
+        return ($this->default === null || $this->default === '') ? null : $this->default;
     }
 
     /**

@@ -103,11 +103,6 @@ class Assets extends Field
         ];
     }
 
-    public function hasMappingExtras(): bool
-    {
-        return true;
-    }
-
     public function defineExtrasSchema(CraftFieldInterface $field): array
     {
         $url = [['handle' => 'mode', 'equals' => 'url']];

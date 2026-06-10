@@ -18,7 +18,7 @@
 
         <div>
             <searchable-select
-                :model-value="mapping.node ?? ''"
+                :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
                 :options="sourceNodeOptions"
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
@@ -62,6 +62,7 @@
             class="influx-mapping-extras-slot"
             :field="field"
             :saved="extrasSaved"
+            :start-expanded="hasMappingData"
             :read-only="false"
             @update:options="onOptionsUpdate"
             @update:nativeFields="onNativeFieldsUpdate"
@@ -111,8 +112,16 @@ export default {
             return this.link.mappings?.[this.field.handle] || {};
         },
 
+        // An extras block exists exactly when the strategy declared a
+        // schema — no separate flag to keep in sync.
         hasExtras() {
-            return !!this.field.fieldMeta?.hasExtras;
+            return (this.field.fieldMeta?.schema || []).length > 0;
+        },
+
+        // Rows the user hasn't mapped yet keep their extras collapsed —
+        // auto-expanding empty option panels just adds noise.
+        hasMappingData() {
+            return Object.keys(this.mapping).length > 0;
         },
 
         // Saved shape MappingExtras consumes for its initial UI state —
@@ -140,10 +149,13 @@ export default {
         },
 
         // SearchableSelect wants a flat [{value,label}] list with the
-        // empty/clear sentinel up top.
+        // empty/clear sentinel up top. `__default__` is a UI-only sentinel:
+        // it round-trips to the mapping's `useDefault` flag, never to the
+        // wire `node`.
         sourceNodeOptions() {
             return [
                 { value: '', label: this.$t('— no mapping —') },
+                { value: '__default__', label: this.$t('— use default —') },
                 ...this.nodeOptions,
             ];
         },
@@ -159,7 +171,16 @@ export default {
 
     methods: {
         onNodeSelect(value) {
-            this.writeMapping('node', value);
+            const handle = this.field.handle;
+            let mappings = this.link.mappings;
+            if (value === '__default__') {
+                mappings = setMappingSlot(mappings, handle, 'node', '');
+                mappings = setMappingSlot(mappings, handle, 'useDefault', true);
+            } else {
+                mappings = setMappingSlot(mappings, handle, 'useDefault', false);
+                mappings = setMappingSlot(mappings, handle, 'node', value);
+            }
+            this.link.mappings = mappings;
         },
 
         onDefaultSelect(value) {

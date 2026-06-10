@@ -5,16 +5,15 @@ namespace TDM\Influx\fields;
 use TDM\Influx\sync\FieldContext;
 
 /**
- * Coerces an arbitrary remote value (string/number/bool) into a boolean using
- * a user-configurable "truthy values" list.
- *
- *   options.truthy: ['true', '1', 'yes', 'on']  // defaults
- *
- * Anything else, incl. null, becomes false.
+ * Coerces an arbitrary remote value (string/number/bool) into a boolean
+ * automatically — no per-mapping configuration. Booleans pass through;
+ * everything else is matched (case-insensitively) against the truthy
+ * spellings feeds actually ship. Anything unrecognized, incl. null,
+ * becomes false.
  */
 class Lightswitch extends Field
 {
-    protected const DEFAULT_TRUTHY = ['true', '1', 'yes', 'on'];
+    protected const TRUTHY_VALUES = ['true', '1', 'yes', 'on'];
 
     public static function craftFieldClass(): ?string
     {
@@ -24,35 +23,7 @@ class Lightswitch extends Field
     public function fieldMeta(\craft\base\FieldInterface $field): array
     {
         return [
-            'kind'   => 'boolean',
-            'labels' => self::extrasLabels() + self::commonExtrasLabels(),
-        ];
-    }
-
-    /**
-     * UI strings rendered inside the boolean extras block. Kept around even
-     * though the extras component no longer mounts for booleans, so the
-     * dormant template branch keeps reading from a single source.
-     *
-     * @return array<string, string>
-     */
-    public static function extrasLabels(): array
-    {
-        return [
-            'truthyLabel'       => \Craft::t('influx', 'Truthy values'),
-            'truthyPlaceholder' => \Craft::t('influx', 'true, 1, yes, on'),
-            'truthyHint'        => \Craft::t('influx', 'Comma-separated. Anything else (incl. null) maps to false.'),
-        ];
-    }
-
-    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
-    {
-        return [
-            \TDM\Influx\helpers\BuilderSchema::csvText('truthy', \Craft::t('influx', 'Truthy values'), [
-                'placeholder'  => \Craft::t('influx', 'true, 1, yes, on'),
-                'instructions' => \Craft::t('influx', 'Comma-separated. Anything else (incl. null) maps to false.'),
-                'default'      => self::DEFAULT_TRUTHY,
-            ]),
+            'kind' => 'boolean',
         ];
     }
 
@@ -63,17 +34,6 @@ class Lightswitch extends Field
             return $raw;
         }
 
-        $truthy = $context->mapping->option('truthy');
-        if (!is_array($truthy)) {
-            $truthy = self::DEFAULT_TRUTHY;
-        }
-
-        $lc = strtolower((string)$raw);
-        foreach ($truthy as $candidate) {
-            if (strtolower((string)$candidate) === $lc) {
-                return true;
-            }
-        }
-        return false;
+        return in_array(strtolower(trim((string)$raw)), self::TRUTHY_VALUES, true);
     }
 }

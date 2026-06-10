@@ -16,7 +16,7 @@ class CustomHeaderAuth extends AbstractAuthStrategy
 
     public static function label(): string
     {
-        return 'Custom header';
+        return Craft::t('influx', 'Custom header');
     }
 
     public static function editSchema(): array

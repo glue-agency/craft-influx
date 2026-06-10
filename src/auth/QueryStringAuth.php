@@ -16,7 +16,7 @@ class QueryStringAuth extends AbstractAuthStrategy
 
     public static function label(): string
     {
-        return 'Query string parameter';
+        return Craft::t('influx', 'Query string parameter');
     }
 
     public static function editSchema(): array

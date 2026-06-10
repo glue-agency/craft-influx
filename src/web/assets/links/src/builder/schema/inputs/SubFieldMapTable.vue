@@ -9,6 +9,7 @@
                     @change="updateRow(sub.handle, 'node', $event.target.value)"
                 >
                     <option value="">{{ $t('— no mapping —') }}</option>
+                    <option value="__default__">{{ $t('— use default —') }}</option>
                     <option v-for="opt in nodeOptions" :key="opt.value" :value="opt.value">
                         {{ opt.label }}
                     </option>
@@ -53,21 +54,30 @@ export default {
     },
 
     methods: {
+        // `__default__` is the same UI-only sentinel MappingRow uses: it
+        // round-trips to the row's `useDefault` flag, never the wire node.
         rowFor(handle) {
             const saved = this.modelValue[handle] || {};
-            return { node: saved.node || '', default: saved.default || '' };
+            return {
+                node: saved.useDefault ? '__default__' : (saved.node || ''),
+                default: saved.default || '',
+            };
         },
 
         updateRow(handle, key, value) {
             const row = { ...this.rowFor(handle), [key]: value };
             const next = { ...this.modelValue };
 
-            if (row.node === '' && row.default === '') {
+            const useDefault = row.node === '__default__';
+            const node = useDefault ? '' : row.node;
+
+            if (node === '' && row.default === '' && !useDefault) {
                 delete next[handle];
             } else {
                 next[handle] = {};
-                if (row.node) next[handle].node = row.node;
+                if (node) next[handle].node = node;
                 if (row.default) next[handle].default = row.default;
+                if (useDefault) next[handle].useDefault = true;
             }
 
             this.$emit('update:modelValue', next);

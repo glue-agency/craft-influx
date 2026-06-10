@@ -20,6 +20,7 @@
  * @typedef {Object} Mapping
  * @property {string} [node] Hash dot-path into the remote item.
  * @property {*} [default] Fallback when the node is missing or empty.
+ * @property {boolean} [useDefault] Apply `default` with no node mapped (the "— use default —" choice); without it a node-less default writes nothing.
  * @property {Object<string, *>} [options] Per-field-type options (match, valueMap, truthy, mode, ...).
  * @property {Object<string, Mapping>} [fields] Recursive sub-mappings for a related element's custom fields.
  * @property {Object<string, Mapping>} [nativeFields] Recursive sub-mappings for a related element's native attrs.
@@ -60,7 +61,7 @@
  * @property {Object<string, string>} [options] For defaultType 'select': value → label.
  * @property {string} [elementType] For defaultType 'element': FQCN to pick from.
  * @property {?string} [fieldClass] FQCN of the Craft field class.
- * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {kind, labels, hasExtras, ...}.
+ * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {kind, schema, labels, ...} — an extras block exists when schema is non-empty.
  */
 
 /**

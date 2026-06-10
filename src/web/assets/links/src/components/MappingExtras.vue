@@ -49,6 +49,8 @@ export default {
     props: {
         field: { type: Object, required: true },
         saved: { type: Object, required: true },
+        // Rows without any saved mapping start collapsed (set by MappingRow).
+        startExpanded: { type: Boolean, default: false },
         readOnly: { type: Boolean, default: false },
     },
 
@@ -56,7 +58,7 @@ export default {
 
     data() {
         return {
-            expanded: true,
+            expanded: this.startExpanded,
             options: { ...(this.saved?.options || {}) },
             nativeFields: { ...(this.saved?.nativeFields || {}) },
         };

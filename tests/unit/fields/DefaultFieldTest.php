@@ -65,6 +65,26 @@ class DefaultFieldTest extends Unit
         $this->assertNull((new DefaultField())->parse($context));
     }
 
+    public function testDefaultAloneIsIgnoredWithoutOptIn(): void
+    {
+        // A typed-but-unactivated default must not write anything — the
+        // user has to pick "— use default —" explicitly.
+        $context = $this->context(
+            feed: ['summary' => 'hello'],
+            mapping: ['default' => 'fallback'],
+        );
+        $this->assertNull((new DefaultField())->parse($context));
+    }
+
+    public function testUseDefaultAppliesTheDefaultWithoutANode(): void
+    {
+        $context = $this->context(
+            feed: [],
+            mapping: ['default' => 'fallback', 'useDefault' => true],
+        );
+        $this->assertSame('fallback', (new DefaultField())->parse($context));
+    }
+
     public function testCraftFieldClassIsNullToActAsFallback(): void
     {
         // DefaultField is only ever returned via FieldsService::$default when

@@ -104,7 +104,14 @@
 }
 
 .influx-mapping-row:last-child { border-bottom: none; }
-.influx-mapping-row .meta { line-height: 1.2; padding-top: 4px; }
+.influx-mapping-row .meta {
+    /* Explicit reset: Craft's CP ships a global .meta (metadata pane)
+       whose padding/background leak in here and push the field name out
+       of alignment with the extras rows below. */
+    line-height: 1.2;
+    padding: 4px 0 0;
+    background: transparent;
+}
 .influx-mapping-row .meta .name { font-weight: 600; }
 .influx-mapping-row .meta .handle { display: block; font-size: 11px; }
 .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
@@ -852,4 +859,18 @@
     padding: 1px 4px;
     border-radius: 3px;
     font-size: 11px;
+}
+
+/* When the saved source node fell out of the fetched sample, the selected
+   item inside the source-node dropdown gets the same warm-amber palette as
+   the missing badge (instead of the usual selection blue) — the selected
+   option IS the missing node. The node select is the row's second grid
+   cell (meta | node | default). */
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected {
+    background: #fdecc8;
+    color: #8a6d00;
+}
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected.highlighted,
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected:hover {
+    background: #f7dca2;
 }

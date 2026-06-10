@@ -11,12 +11,10 @@ use TDM\Influx\sync\RemoteItem;
 use TDM\Influx\Tests\unit\Support\FakeLink;
 
 /**
- * Behaviour spec for the Lightswitch field strategy.
- *
- *   options.truthy: list of values that should coerce to TRUE.
- *                   Default: ['true', '1', 'yes', 'on'].
- *
- * Anything else (null, empty string, "no", numbers other than 1, ...) is FALSE.
+ * Behaviour spec for the Lightswitch field strategy. Coercion is automatic
+ * — booleans pass through, the common truthy spellings ('true', '1', 'yes',
+ * 'on', any casing) resolve to TRUE, and anything else (null, empty string,
+ * "no", numbers other than 1, ...) is FALSE. No per-mapping configuration.
  */
 class LightswitchTest extends Unit
 {
@@ -46,17 +44,12 @@ class LightswitchTest extends Unit
         }
     }
 
-    public function testCustomTruthyListOverridesDefaults(): void
+    public function testLegacyTruthyOptionIsIgnored(): void
     {
-        // With a custom list, the defaults no longer apply: 'yes' is no longer truthy.
+        // Coercion is automatic now — a leftover options.truthy list from an
+        // older config must not change the outcome.
         $context = $this->context(
             feed: ['featured' => 'yes'],
-            mapping: ['node' => 'featured', 'options' => ['truthy' => ['ja']]],
-        );
-        $this->assertFalse((new Lightswitch())->parse($context));
-
-        $context = $this->context(
-            feed: ['featured' => 'ja'],
             mapping: ['node' => 'featured', 'options' => ['truthy' => ['ja']]],
         );
         $this->assertTrue((new Lightswitch())->parse($context));

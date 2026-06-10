@@ -26,11 +26,6 @@ class Matrix extends Field
         ];
     }
 
-    public function hasMappingExtras(): bool
-    {
-        return true;
-    }
-
     /**
      * UI strings rendered inside the matrix extras block (currently just
      * a placeholder until block-shaped mapping ships).

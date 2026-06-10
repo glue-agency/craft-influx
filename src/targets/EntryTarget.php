@@ -332,7 +332,6 @@ class EntryTarget extends AbstractElementTarget
                     'elementType'  => \craft\elements\User::class,
                     'matchOptions' => $this->authorMatchOptions(),
                     'allowCreate'  => false,
-                    'hasExtras'    => true,
                     'schema'       => [
                         \TDM\Influx\helpers\BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
                             'default' => 'id',
@@ -356,7 +355,6 @@ class EntryTarget extends AbstractElementTarget
     {
         return [
             'kind'          => 'date',
-            'hasExtras'     => true,
             'formatOptions' => \TDM\Influx\fields\Date::formatOptions(),
             'schema'        => [
                 \TDM\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), \TDM\Influx\fields\Date::formatOptions(), [
