@@ -148,12 +148,14 @@ abstract class Relation extends Field
                 continue;
             }
             $element = $this->findOne($match, $value);
-            if (!$element && $this->shouldCreate()) {
+            if (!$element && $this->shouldCreate() && !$this->dryRun) {
                 $element = $this->createMissing($value);
             }
             if ($element) {
                 $ids[] = $element->id;
-                $this->populateSubElement($element);
+                if (!$this->dryRun) {
+                    $this->populateSubElement($element);
+                }
             }
         }
 

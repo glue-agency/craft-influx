@@ -10,6 +10,7 @@ use TDM\Influx\events\RegisterEndpointTokensEvent;
 use TDM\Influx\events\RegisterEndpointTokenSuggestionsEvent;
 use TDM\Influx\events\SyncLinkEvent;
 use TDM\Influx\events\SyncItemEvent;
+use TDM\Influx\exceptions\FeedFetchException;
 use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\models\OffsetPreset;
 use TDM\Influx\models\Link;
@@ -52,6 +53,13 @@ class SynchronizationService extends Component
         \craft\fields\PlainText::class,
         \craft\fields\RadioButtons::class,
     ];
+
+    /**
+     * Hard ceiling on pages followed per site, guarding against endless
+     * paginator chains that never repeat a URL. Cycles are caught separately
+     * via a seen-URL set in {@see self::processSite()}.
+     */
+    private const MAX_PAGES = 500;
 
     /**
      * Run a full link sync.
@@ -313,6 +321,12 @@ class SynchronizationService extends Component
         return $layout ? $layout->getCustomFields() : [];
     }
 
+    /**
+     * Fetch the (paginated) feed for one site and process every item.
+     *
+     * @throws FeedFetchException on fetch failures, paginator URL cycles, or
+     * pagination running past {@see self::MAX_PAGES}.
+     */
     private function processSite(
         Link $link,
         ElementTargetInterface $target,
@@ -322,6 +336,9 @@ class SynchronizationService extends Component
     ): void {
         $plugin = Influx::getInstance();
         $data = $plugin->data->fetch($link, $siteHandle, $queryParams);
+
+        $seenUrls = [];
+        $pages = 1;
 
         while (true) {
             foreach ($plugin->data->rootList($link, $data) as $item) {
@@ -335,6 +352,15 @@ class SynchronizationService extends Component
             if (!$nextUrl) {
                 break;
             }
+
+            $urlKey = (string)$nextUrl;
+            if (isset($seenUrls[$urlKey])) {
+                throw new FeedFetchException("Pagination loop detected: '{$urlKey}' was already fetched (paginator node '{$link->paginatorNode}').");
+            }
+            if (++$pages > self::MAX_PAGES) {
+                throw new FeedFetchException('Pagination exceeded ' . self::MAX_PAGES . " pages — aborting (paginator node '{$link->paginatorNode}').");
+            }
+            $seenUrls[$urlKey] = true;
 
             $nextHeaders = [];
             $nextQuery = [];

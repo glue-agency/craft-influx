@@ -78,7 +78,7 @@ class CompareTest extends Unit
             craftField: null,
             fieldHandle: 'featured',
             fieldInfo: ['node' => 'featured'],
-            feedData: ['featured' => true],
+            item: ['featured' => true],
             link: FakeLink::make(),
             element: $this->elementReturning(true),
         );
@@ -93,7 +93,7 @@ class CompareTest extends Unit
             craftField: null,
             fieldHandle: 'summary',
             fieldInfo: ['node' => 'summary'],
-            feedData: [],
+            item: [],
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );

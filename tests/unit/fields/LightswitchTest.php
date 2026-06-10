@@ -85,7 +85,7 @@ class LightswitchTest extends Unit
             craftField: null,
             fieldHandle: 'featured',
             fieldInfo: $mapping,
-            feedData: $feed,
+            item: $feed,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );

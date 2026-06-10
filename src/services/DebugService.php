@@ -285,7 +285,7 @@ class DebugService extends Component
 
             try {
                 $strategy = $fields->forCraftField($craftField);
-                $strategy->setContext($craftField, $handle, $config, $item, $link, $element);
+                $strategy->setContext($craftField, $handle, $config, $item, $link, $element, dryRun: true);
                 $value = $strategy->parseField();
                 try {
                     $displayValue = $craftField->normalizeValue($value, $element);

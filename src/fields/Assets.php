@@ -119,7 +119,9 @@ class Assets extends Field
             return null;
         }
 
-        $this->applySubFields($asset);
+        if (!$this->dryRun) {
+            $this->applySubFields($asset);
+        }
 
         return [$asset->id];
     }
@@ -168,6 +170,12 @@ class Assets extends Field
 
         $opts = $this->fieldInfo['options'] ?? [];
         if (empty($opts['upload']) || empty($opts['volume'])) {
+            return null;
+        }
+
+        if ($this->dryRun) {
+            // Dry-runs must not download/save anything; report "no asset"
+            // rather than uploading one as a side effect.
             return null;
         }
 

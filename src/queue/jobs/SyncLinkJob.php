@@ -4,6 +4,7 @@ namespace TDM\Influx\queue\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use TDM\Influx\exceptions\InfluxException;
 use TDM\Influx\Influx;
 
 /**
@@ -17,12 +18,16 @@ class SyncLinkJob extends BaseJob
     public ?string $offset = null;
     public string $trigger = 'queue';
 
+    /**
+     * @throws InfluxException when the link no longer exists — the job must
+     * fail visibly in the queue instead of silently succeeding.
+     */
     public function execute($queue): void
     {
         $plugin = Influx::getInstance();
         $link = $plugin->links->getLinkByHandle($this->linkHandle);
         if (!$link) {
-            return;
+            throw new InfluxException("Cannot sync link '{$this->linkHandle}' — no link with that handle exists.");
         }
 
         $plugin->synchronization->syncLink($link, $this->offset, $this->trigger);

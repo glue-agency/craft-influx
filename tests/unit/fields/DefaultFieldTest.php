@@ -77,7 +77,7 @@ class DefaultFieldTest extends Unit
             craftField: null,
             fieldHandle: 'summary',
             fieldInfo: $mapping,
-            feedData: $feed,
+            item: $feed,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );

@@ -57,6 +57,13 @@ abstract class Field
 
     protected ?ElementInterface $element = null;
 
+    /**
+     * When true the strategy must be side-effect free: no element saves, no
+     * asset uploads, no created-when-missing relations. Set by
+     * {@see \TDM\Influx\services\DebugService} so dry-runs stay dry.
+     */
+    protected bool $dryRun = false;
+
     public function setContext(
         ?CraftFieldInterface $craftField,
         string $fieldHandle,
@@ -64,6 +71,7 @@ abstract class Field
         array $item,
         Link $link,
         ElementInterface $element,
+        bool $dryRun = false,
     ): void {
         $this->craftField = $craftField;
         $this->fieldHandle = $fieldHandle;
@@ -71,6 +79,7 @@ abstract class Field
         $this->item = $item;
         $this->link = $link;
         $this->element = $element;
+        $this->dryRun = $dryRun;
     }
 
     /**

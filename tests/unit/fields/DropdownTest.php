@@ -87,7 +87,7 @@ class DropdownTest extends Unit
             craftField: null,
             fieldHandle: 'region',
             fieldInfo: $mapping,
-            feedData: $feed,
+            item: $feed,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );
