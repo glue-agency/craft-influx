@@ -4,27 +4,37 @@ namespace TDM\Influx\helpers;
 
 /**
  * Factory helpers for the declarative form-node vocabulary the LinkBuilder
- * SPA renders generically (see `schema/SchemaForm.vue`). A field strategy
- * declares its mapping-extras UI as a list of these nodes from
- * {@see \TDM\Influx\fields\Field::defineExtrasSchema()} — the Vue side has
- * no per-field-type branches, it just renders by node type.
+ * SPA renders generically (see `schema/SchemaForm.vue`). This is the shared
+ * contract for EVERY PHP-declared builder form:
+ *
+ *   - mapping extras, declared by field strategies via
+ *     {@see \TDM\Influx\fields\Field::defineExtrasSchema()} (grid layout);
+ *   - auth strategy fields, declared via
+ *     {@see \TDM\Influx\auth\AuthStrategyInterface::editSchema()} (stacked
+ *     layout on the Authentication tab).
+ *
+ * The Vue side has no per-field-type or per-auth-type branches — it just
+ * renders by node type, so adding a kind/strategy is a PHP-only change.
  *
  * Node shape:
- *   type:         text | select | lightswitch | csvText | valueMapTable |
- *                 subFieldMapTable | note
- *   handle:       key inside the mapping's `options` (or `nativeFields` for
- *                 subFieldMapTable, which writes the recursive channel)
+ *   type:         one of the TYPE_* constants below
+ *   handle:       key inside the form's value object — a mapping's
+ *                 `options`, the link's `auth` slice, ... (TYPE_ELEMENT_SUB_FIELDS
+ *                 is the exception: it writes the mapping's recursive
+ *                 `nativeFields` channel)
  *   label:        translated row label
- *   instructions: translated hint shown under the control (optional)
+ *   instructions: translated hint shown under the control (optional; may
+ *                 contain markup — rendered as HTML)
  *   placeholder:  input placeholder (optional)
- *   default:      initial value when nothing is saved yet (optional)
+ *   default:      display-only initial value when nothing is saved yet
+ *                 (optional; never written until the user touches the control)
  *   options:      for select — flat [{value,label}] or grouped
  *                 [{label, options: [{value,label}]}]
  *   localOptions: for valueMapTable — value → label map of the Craft field's
  *                 own options
- *   subFields:    for subFieldMapTable — handle → label rows
+ *   subFields:    for elementSubFields — one primitive node per row
  *   showIf:       list of {handle, equals?} conditions against the current
- *                 options; omitted `equals` means truthy. All must match.
+ *                 form values; omitted `equals` means truthy. All must match.
  *
  * Loosely modeled on Formie's SchemaHelper, deliberately tiny: ~7 node
  * types instead of 40, one-key conditions instead of an expression language.
@@ -32,11 +42,34 @@ namespace TDM\Influx\helpers;
 class BuilderSchema
 {
     /**
+     * Node types. The backed strings are the JS contract — SchemaForm.vue
+     * dispatches on them — so they must stay stable.
+     */
+    public const TYPE_TEXT = 'text';
+    public const TYPE_CODE = 'code';
+    public const TYPE_SELECT = 'select';
+    public const TYPE_LIGHTSWITCH = 'lightswitch';
+    public const TYPE_VALUE_MAP_TABLE = 'valueMapTable';
+    public const TYPE_ELEMENT_SUB_FIELDS = 'elementSubFields';
+    public const TYPE_NOTE = 'note';
+
+    /**
      * @param array{instructions?: string, placeholder?: string, default?: mixed, showIf?: array} $config
      */
     public static function text(string $handle, string $label, array $config = []): array
     {
-        return self::node('text', $handle, $label, $config);
+        return self::node(self::TYPE_TEXT, $handle, $label, $config);
+    }
+
+    /**
+     * Monospace ("code") text input — for tokens, header names, and other
+     * machine-y values. Same behavior as {@see text()}, different rendering.
+     *
+     * @param array{instructions?: string, placeholder?: string, default?: mixed, showIf?: array} $config
+     */
+    public static function code(string $handle, string $label, array $config = []): array
+    {
+        return self::node(self::TYPE_CODE, $handle, $label, $config);
     }
 
     /**
@@ -45,7 +78,7 @@ class BuilderSchema
      */
     public static function select(string $handle, string $label, array $options, array $config = []): array
     {
-        return self::node('select', $handle, $label, ['options' => $options] + $config);
+        return self::node(self::TYPE_SELECT, $handle, $label, ['options' => $options] + $config);
     }
 
     /**
@@ -53,17 +86,7 @@ class BuilderSchema
      */
     public static function lightswitch(string $handle, string $label, array $config = []): array
     {
-        return self::node('lightswitch', $handle, $label, $config);
-    }
-
-    /**
-     * Comma-separated text input that round-trips a string list option.
-     *
-     * @param array{instructions?: string, placeholder?: string, default?: array, showIf?: array} $config
-     */
-    public static function csvText(string $handle, string $label, array $config = []): array
-    {
-        return self::node('csvText', $handle, $label, $config);
+        return self::node(self::TYPE_LIGHTSWITCH, $handle, $label, $config);
     }
 
     /**
@@ -74,20 +97,25 @@ class BuilderSchema
      */
     public static function valueMapTable(string $handle, string $label, array $localOptions, array $config = []): array
     {
-        return self::node('valueMapTable', $handle, $label, ['localOptions' => $localOptions] + $config);
+        return self::node(self::TYPE_VALUE_MAP_TABLE, $handle, $label, ['localOptions' => $localOptions] + $config);
     }
 
     /**
-     * Node + default rows for a related element's native sub-fields
+     * Source-node + default rows for a related element's native sub-fields
      * (asset alt/title). Writes the mapping's `nativeFields` channel, not
      * `options`.
      *
-     * @param array<string, string> $subFields handle → label
+     * Each sub-field is itself a primitive node — its handle and label name
+     * the row, and its type renders the row's default-value editor (a
+     * {@see text()} sub-field gets a text default, {@see select()} a
+     * dropdown, ...). The source-node select is provided by the table.
+     *
+     * @param list<array> $subFields One node per sub-field row.
      * @param array{instructions?: string, showIf?: array} $config
      */
-    public static function subFieldMapTable(string $label, array $subFields, array $config = []): array
+    public static function elementSubFields(string $label, array $subFields, array $config = []): array
     {
-        return self::node('subFieldMapTable', 'nativeFields', $label, ['subFields' => $subFields] + $config);
+        return self::node(self::TYPE_ELEMENT_SUB_FIELDS, 'nativeFields', $label, ['subFields' => $subFields] + $config);
     }
 
     /**
@@ -95,7 +123,7 @@ class BuilderSchema
      */
     public static function note(string $text): array
     {
-        return ['type' => 'note', 'handle' => '', 'label' => '', 'text' => $text];
+        return ['type' => self::TYPE_NOTE, 'handle' => '', 'label' => '', 'text' => $text];
     }
 
     protected static function node(string $type, string $handle, string $label, array $config): array

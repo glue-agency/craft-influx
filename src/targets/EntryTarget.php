@@ -379,11 +379,12 @@ class EntryTarget extends AbstractElementTarget
     {
         $groups = [
             [
-                'label'   => Craft::t('influx', 'Native'),
+                'label'   => Craft::t('influx', 'User'),
+                'kind'    => 'element',
                 'options' => [
-                    ['value' => 'id',       'label' => Craft::t('influx', 'User ID')],
-                    ['value' => 'username', 'label' => Craft::t('influx', 'Username')],
-                    ['value' => 'email',    'label' => Craft::t('influx', 'Email')],
+                    ['value' => 'id',       'label' => Craft::t('influx', 'ID (id)')],
+                    ['value' => 'username', 'label' => Craft::t('influx', 'Username (username)')],
+                    ['value' => 'email',    'label' => Craft::t('influx', 'Email (email)')],
                 ],
             ],
         ];
@@ -399,7 +400,7 @@ class EntryTarget extends AbstractElementTarget
             }
         }
         if ($customFields) {
-            $groups[] = ['label' => Craft::t('influx', 'Fields'), 'options' => $customFields];
+            $groups[] = ['label' => Craft::t('influx', 'Fields'), 'kind' => 'fields', 'options' => $customFields];
         }
 
         return $groups;

@@ -21,23 +21,24 @@ interface AuthStrategyInterface
 
     /**
      * Human-readable label shown in the CP "Authentication type" dropdown.
-     * Built-ins return English; the controller wraps it in {@see Craft::t}
-     * so plugin translation domains can localize their own strategies.
+     * Return it through `Craft::t()` so your plugin's translation category
+     * applies — nothing downstream re-translates it.
      */
     public static function label(): string;
 
     /**
-     * Field schema rendered by the LinkBuilder SPA's Authentication tab
-     * when this strategy is selected. Each entry shapes as
-     * `{handle, label, instructions?, inputType}` — `inputType` is one of
-     * `'text'` or `'code'` for the moment. Return an empty array when the
-     * strategy needs no extra fields (e.g. a hypothetical "anonymous"
-     * strategy).
+     * Form schema rendered by the LinkBuilder SPA's Authentication tab when
+     * this strategy is selected: a list of
+     * {@see \TDM\Influx\helpers\BuilderSchema} nodes — the same vocabulary
+     * the mapping extras use, rendered by the same generic SchemaForm.
+     * Each node's `handle` keys into the link's `auth` slice. Return an
+     * empty array when the strategy needs no extra fields (e.g. a
+     * hypothetical "anonymous" strategy).
      *
      * Labels / instructions are not auto-translated; return them through
      * `Craft::t()` yourself so your plugin's translation category applies.
      *
-     * @return list<array{handle: string, label: string, instructions?: string, inputType: string}>
+     * @return list<array>
      */
     public static function editSchema(): array;
 

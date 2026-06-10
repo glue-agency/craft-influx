@@ -18,7 +18,9 @@ const assetSchema = [
         { handle: 'mode', equals: 'url' },
         { handle: 'upload' },
     ] },
-    { type: 'subFieldMapTable', handle: 'nativeFields', label: 'Asset sub-fields', subFields: { alt: 'Alt text' } },
+    { type: 'elementSubFields', handle: 'nativeFields', label: 'Asset sub-fields', subFields: [
+        { type: 'text', handle: 'alt', label: 'Alt text' },
+    ] },
 ];
 
 const mountForm = (props = {}) => mount(SchemaForm, {
@@ -38,6 +40,14 @@ describe('SchemaForm', () => {
         expect(wrapper.find('select').element.value).toBe('id');
         // Untouched defaults must never be emitted into the saved options.
         expect(wrapper.emitted('update:options')).toBeUndefined();
+    });
+
+    it('renders code nodes as monospace text inputs', () => {
+        const wrapper = mountForm({
+            schema: [{ type: 'code', handle: 'token', label: 'Token' }],
+        });
+        const input = wrapper.find('input[type="text"]');
+        expect(input.classes()).toContain('code');
     });
 
     it('hides nodes whose showIf conditions fail — including chained ones', async () => {

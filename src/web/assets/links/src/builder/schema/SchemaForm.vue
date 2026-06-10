@@ -13,13 +13,6 @@
                     :read-only="readOnly"
                     @update:model-value="setOption(node, $event)"
                 />
-                <csv-text-input
-                    v-else-if="node.type === 'csvText'"
-                    :node="node"
-                    :model-value="valueFor(node)"
-                    :read-only="readOnly"
-                    @update:model-value="setOption(node, $event)"
-                />
                 <label v-else-if="node.type === 'lightswitch'" class="inline-toggle">
                     <input
                         type="checkbox"
@@ -32,7 +25,7 @@
                     v-else
                     :id="fieldId(node)"
                     type="text"
-                    :class="['text', 'fullwidth', node.inputType === 'code' ? 'code' : null]"
+                    :class="['text', 'fullwidth', node.type === 'code' ? 'code' : null]"
                     :value="valueFor(node) ?? ''"
                     :placeholder="node.placeholder || ''"
                     :disabled="readOnly"
@@ -50,10 +43,10 @@
 
             <!-- Recursive native sub-fields (asset alt/title) — writes the
                  mapping's nativeFields channel, not options -->
-            <div v-else-if="node.type === 'subFieldMapTable'" class="sub-fields">
+            <div v-else-if="node.type === 'elementSubFields'" class="sub-fields">
                 <p class="sub-fields-title">{{ node.label }}</p>
-                <p v-if="node.instructions" class="light">{{ node.instructions }}</p>
-                <sub-field-map-table
+                <p v-if="node.instructions" class="light" v-html="node.instructions" />
+                <element-sub-fields
                     :node="node"
                     :model-value="nativeFields"
                     :node-options="nodeOptions"
@@ -74,8 +67,11 @@
                 </label>
             </div>
 
+            <!-- Instructions render as HTML in both layouts: they're
+                 server-authored BuilderSchema strings (may contain <code>),
+                 never user input. -->
             <div v-else-if="node.type === 'valueMapTable'" class="value-map-node">
-                <p v-if="node.instructions" class="light hint">{{ node.instructions }}</p>
+                <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
                 <value-map-table
                     :node="node"
                     :model-value="valueFor(node) || {}"
@@ -94,23 +90,16 @@
                         :read-only="readOnly"
                         @update:model-value="setOption(node, $event)"
                     />
-                    <csv-text-input
-                        v-else-if="node.type === 'csvText'"
-                        :node="node"
-                        :model-value="valueFor(node)"
-                        :read-only="readOnly"
-                        @update:model-value="setOption(node, $event)"
-                    />
                     <input
                         v-else
                         type="text"
-                        :class="['text', node.inputType === 'code' ? 'code' : null]"
+                        :class="['text', node.type === 'code' ? 'code' : null]"
                         :value="valueFor(node) ?? ''"
                         :placeholder="node.placeholder || ''"
                         :disabled="readOnly"
                         @input="setOption(node, $event.target.value)"
                     >
-                    <p v-if="node.instructions" class="light hint">{{ node.instructions }}</p>
+                    <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
                 </div>
             </div>
         </template>
@@ -118,9 +107,8 @@
 </template>
 
 <script>
-import CsvTextInput from './inputs/CsvTextInput.vue';
 import SelectInput from './inputs/SelectInput.vue';
-import SubFieldMapTable from './inputs/SubFieldMapTable.vue';
+import ElementSubFields from './inputs/ElementSubFields.vue';
 import ValueMapTable from './inputs/ValueMapTable.vue';
 
 /**
@@ -135,13 +123,13 @@ import ValueMapTable from './inputs/ValueMapTable.vue';
 export default {
     name: 'SchemaForm',
 
-    components: { CsvTextInput, SelectInput, SubFieldMapTable, ValueMapTable },
+    components: { SelectInput, ElementSubFields, ValueMapTable },
 
     props: {
         schema: { type: Array, required: true },
         options: { type: Object, required: true },
         nativeFields: { type: Object, default: () => ({}) },
-        // Source-node candidates for subFieldMapTable selects.
+        // Source-node candidates for elementSubFields selects.
         nodeOptions: { type: Array, default: () => [] },
         // 'grid' (mapping-extras rows) or 'stacked' (Craft .field blocks).
         layout: { type: String, default: 'grid' },

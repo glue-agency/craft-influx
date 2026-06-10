@@ -15,11 +15,21 @@
                     </option>
                 </select>
             </div>
+            <!-- The default-value editor renders by the sub-field node's own
+                 type — the same primitives the rest of the schema uses. -->
+            <select-input
+                v-if="sub.type === 'select'"
+                :node="sub"
+                :model-value="rowFor(sub.handle).default"
+                :read-only="readOnly"
+                @update:model-value="updateRow(sub.handle, 'default', $event)"
+            />
             <input
+                v-else
                 type="text"
-                class="text"
+                :class="['text', sub.type === 'code' ? 'code' : null]"
                 :value="rowFor(sub.handle).default"
-                :placeholder="$t('Default')"
+                :placeholder="sub.placeholder || $t('Default')"
                 :disabled="readOnly"
                 @input="updateRow(sub.handle, 'default', $event.target.value)"
             >
@@ -28,14 +38,21 @@
 </template>
 
 <script>
+import SelectInput from './SelectInput.vue';
+
 /**
- * Schema subFieldMapTable node: node + default rows for a related element's
- * native sub-fields (asset alt/title). The wire value is the mapping's
- * recursive `nativeFields` channel — `{handle: {node?, default?}}` — with
- * fully-empty rows dropped.
+ * Schema elementSubFields node: source-node + default rows for a related
+ * element's native sub-fields (asset alt/title). Each sub-field IS a
+ * primitive schema node — its handle/label name the row and its type
+ * renders the default-value editor — while the table contributes the
+ * source-node select and writes the mapping's recursive `nativeFields`
+ * channel: `{handle: {node?, default?, useDefault?}}`, fully-empty rows
+ * dropped.
  */
 export default {
-    name: 'SubFieldMapTable',
+    name: 'ElementSubFields',
+
+    components: { SelectInput },
 
     props: {
         node: { type: Object, required: true },
@@ -47,9 +64,9 @@ export default {
     emits: ['update:modelValue'],
 
     computed: {
+        /** @returns the sub-field nodes (BuilderSchema primitives). */
         subFieldList() {
-            const subs = this.node.subFields || {};
-            return Object.keys(subs).map((handle) => ({ handle, label: subs[handle] }));
+            return this.node.subFields || [];
         },
     },
 

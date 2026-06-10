@@ -472,11 +472,12 @@ class LinkBuilderService extends Component
     }
 
     /**
-     * Per-strategy field schemas consumed by the SPA's Authentication tab.
-     * Each registered strategy declares its own schema via
-     * {@see \TDM\Influx\auth\AuthStrategyInterface::editSchema()}; we just
-     * aggregate them. Strategies with no extra fields (empty schema) are
-     * skipped — the SPA falls back to "no schema" messaging if a stored
+     * Per-strategy form schemas consumed by the SPA's Authentication tab.
+     * Strategies declare {@see \TDM\Influx\helpers\BuilderSchema} nodes
+     * natively via {@see \TDM\Influx\auth\AuthStrategyInterface::editSchema()}
+     * — the same vocabulary the mapping extras use — so this is pure
+     * aggregation. Strategies with no extra fields (empty schema) are
+     * skipped; the SPA falls back to "no schema" messaging if a stored
      * link is using an auth type that's not registered.
      *
      * @return list<array{type: string, schema: list<array>}>
@@ -485,23 +486,11 @@ class LinkBuilderService extends Component
     {
         $out = [];
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
-            $fields = $class::editSchema();
-            if (empty($fields)) {
+            $schema = $class::editSchema();
+            if (empty($schema)) {
                 continue;
             }
-
-            // Translate the strategy's editSchema() vocabulary into the
-            // shared BuilderSchema nodes the SPA's SchemaForm renders —
-            // the same renderer the mapping extras use.
-            $nodes = [];
-            foreach ($fields as $field) {
-                $nodes[] = \TDM\Influx\helpers\BuilderSchema::text($field['handle'], $field['label'], [
-                    'instructions' => $field['instructions'] ?? null,
-                    'inputType'    => $field['inputType'] ?? null,
-                ]);
-            }
-
-            $out[] = ['type' => $type, 'schema' => $nodes];
+            $out[] = ['type' => $type, 'schema' => $schema];
         }
         return $out;
     }

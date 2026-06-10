@@ -67,23 +67,29 @@ abstract class Relation extends Field
      * dynamic query method, so this only widens the *UI surface*, not the
      * underlying matching logic.
      *
-     * Shape is grouped — the Vue dropdown renders each group as an
-     * `<optgroup>` ("Native" first, then "Fields" when there are custom
-     * fields to surface). Empty groups are omitted so a relation field
-     * pointing at an element type without custom fields doesn't render an
-     * empty heading.
+     * Shape is grouped — the Vue dropdown renders each group with a heading
+     * (the related element type's display name first — "Entry", "User",
+     * "Category", ... — then "Fields" when there are custom fields to
+     * surface). Empty groups are omitted so a relation field pointing at an
+     * element type without custom fields doesn't render an empty heading.
      *
-     * @return list<array{label: string, options: list<array{value: string, label: string}>}>
+     * @return list<array{label: string, kind: string, options: list<array{value: string, label: string}>}>
      */
     protected function matchOptions(\craft\fields\BaseRelationField $field): array
     {
+        $elementType = $this->elementType();
+        $nativeLabel = is_subclass_of($elementType, ElementInterface::class)
+            ? $elementType::displayName()
+            : Craft::t('influx', 'Native');
+
         $groups = [
             [
-                'label'   => Craft::t('influx', 'Native'),
+                'label'   => $nativeLabel,
+                'kind'    => 'element',
                 'options' => [
-                    ['value' => 'id',    'label' => Craft::t('influx', 'Element ID')],
-                    ['value' => 'slug',  'label' => Craft::t('influx', 'Slug')],
-                    ['value' => 'title', 'label' => Craft::t('influx', 'Title')],
+                    ['value' => 'id',    'label' => Craft::t('influx', 'ID (id)')],
+                    ['value' => 'slug',  'label' => Craft::t('influx', 'Slug (slug)')],
+                    ['value' => 'title', 'label' => Craft::t('influx', 'Title (title)')],
                 ],
             ],
         ];
@@ -110,6 +116,7 @@ abstract class Relation extends Field
         if ($customFields) {
             $groups[] = [
                 'label'   => Craft::t('influx', 'Fields'),
+                'kind'    => 'fields',
                 'options' => $customFields,
             ];
         }

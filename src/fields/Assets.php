@@ -127,11 +127,11 @@ class Assets extends Field
                 'default' => 'index',
                 'showIf'  => $uploading,
             ]),
-            \TDM\Influx\helpers\BuilderSchema::subFieldMapTable(
+            \TDM\Influx\helpers\BuilderSchema::elementSubFields(
                 Craft::t('influx', 'Asset sub-fields'),
                 [
-                    'alt'   => Craft::t('influx', 'Alt text'),
-                    'title' => Craft::t('influx', 'Title'),
+                    \TDM\Influx\helpers\BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
+                    \TDM\Influx\helpers\BuilderSchema::text('title', Craft::t('influx', 'Title')),
                 ],
                 ['instructions' => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).')],
             ),

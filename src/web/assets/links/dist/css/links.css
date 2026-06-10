@@ -11,9 +11,19 @@
     margin-bottom: 12px;
     border: 1px solid rgba(0, 0, 0, .1);
     border-radius: 5px;
-    overflow: hidden;
+    /* No overflow:hidden here — it clipped the absolutely-positioned
+       SearchableSelect menus opening from rows near the group's edge.
+       The rounded corners are applied to the first/last children below
+       instead. */
     background: #fff;
 }
+
+/* Replacement corner-rounding for the dropped overflow:hidden: the header
+   carries the top radius, the last row the bottom one (its hover/expanded
+   tint would otherwise poke square corners out of the card). */
+.influx-mapping-group-header { border-radius: 4px 4px 0 0; }
+.influx-mapping-group.collapsed .influx-mapping-group-header { border-radius: 4px; }
+.influx-mapping-group .influx-mapping-row:last-child { border-radius: 0 0 4px 4px; }
 
 .influx-mapping-group-header {
     display: flex;
@@ -873,4 +883,18 @@
 .influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected.highlighted,
 .influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected:hover {
     background: #f7dca2;
+}
+
+/* Grouped schema selects (relation/author "Match by"): a select-shaped
+   trigger whose menu borrows the token picker's group + chip visuals.
+   The shared picker-menu class is right-anchored for the + button context;
+   anchor it to the trigger here instead. */
+.influx-grouped-select .influx-tokenized-picker-menu {
+    left: 0;
+    right: auto;
+    min-width: 100%;
+    top: calc(100% + 4px);
+}
+.influx-grouped-select .influx-tokenized-picker-item.selected {
+    background: hsl(208deg, 100%, 96%);
 }
