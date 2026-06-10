@@ -1,7 +1,7 @@
 <template>
     <teleport v-if="mounted && slotEl" :to="slotEl">
         <div class="influx-header-actions">
-            <!-- Fetch sample — single button, label changes with state.
+            <!-- Fetch sample — single button, label changes with ui.
                  Idle: "Fetch sample" with the download data-icon.
                  Fetching: "Fetching…" (button disabled).
                  Fetched: "Refetch sample" (no decoration — Pagination tab
@@ -12,14 +12,14 @@
                 type="button"
                 class="btn influx-fetch-btn"
                 :class="fetchBtnClass"
-                :data-icon="state.sampling ? null : 'download'"
-                :disabled="!canSample || state.sampling"
+                :data-icon="ui.sampling ? null : 'download'"
+                :disabled="!canSample || ui.sampling"
                 :title="fetchTitle"
                 @click="onFetch"
             >
                 {{ fetchLabel }}
                 <span
-                    v-if="state.sampleError"
+                    v-if="ui.sampleError"
                     class="influx-fetch-status"
                     data-state="error"
                     aria-hidden="true"
@@ -36,7 +36,7 @@
                 <a
                     href="#"
                     class="btn submit"
-                    :class="{ disabled: !canSave && !state.saving }"
+                    :class="{ disabled: !canSave && !ui.saving }"
                     role="button"
                     @click.prevent="doSave({ continue: false })"
                 >{{ saveLabel }}</a>
@@ -93,49 +93,49 @@ export default {
         return {
             mounted: false,
             slotEl: null,
-            state: store.state,
+            ui: store.ui,
         };
     },
 
     computed: {
         canSave() {
-            return !!this.state.link && store.isDirty.value && !this.state.saving;
+            return !!this.ui.link && store.isDirty.value && !this.ui.saving;
         },
 
         saveLabel() {
-            return this.state.saving ? this.$t('Saving…') : this.$t('Save');
+            return this.ui.saving ? this.$t('Saving…') : this.$t('Save');
         },
 
         canSample() {
-            const ep = this.state.link?.endpoint;
+            const ep = this.ui.link?.endpoint;
             return typeof ep === 'string' && ep.trim() !== '';
         },
 
         fetchBtnClass() {
-            if (this.state.sampling) return 'is-fetching';
-            if (this.state.sampleError) return 'is-error';
-            if (this.state.sample) return 'is-fetched';
+            if (this.ui.sampling) return 'is-fetching';
+            if (this.ui.sampleError) return 'is-error';
+            if (this.ui.sample) return 'is-fetched';
             return 'is-idle';
         },
 
         fetchStatusDot() {
-            if (this.state.sampling) return null;
-            if (this.state.sampleError) return 'error';
-            if (this.state.sample) return 'success';
+            if (this.ui.sampling) return null;
+            if (this.ui.sampleError) return 'error';
+            if (this.ui.sample) return 'success';
             return null;
         },
 
         fetchLabel() {
-            if (this.state.sampling) return this.$t('Fetching…');
-            if (this.state.sample || this.state.sampleError) return this.$t('Refetch sample');
+            if (this.ui.sampling) return this.$t('Fetching…');
+            if (this.ui.sample || this.ui.sampleError) return this.$t('Refetch sample');
             return this.$t('Fetch sample');
         },
 
         fetchTitle() {
             if (!this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
-            if (this.state.sampling) return this.$t('Fetching sample…');
-            if (this.state.sampleError) return this.$t('Last attempt failed: {message}', { message: this.state.sampleError });
-            if (this.state.sample?.url) return this.$t('Last fetched from {url}', { url: this.state.sample.url });
+            if (this.ui.sampling) return this.$t('Fetching sample…');
+            if (this.ui.sampleError) return this.$t('Last attempt failed: {message}', { message: this.ui.sampleError });
+            if (this.ui.sample?.url) return this.$t('Last fetched from {url}', { url: this.ui.sample.url });
             return this.$t('Hit the configured endpoint and inspect the response');
         },
     },

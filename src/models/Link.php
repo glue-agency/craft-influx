@@ -4,6 +4,7 @@ namespace TDM\Influx\models;
 
 use craft\base\ElementInterface;
 use craft\base\Model;
+use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use TDM\Influx\auth\AuthStrategyInterface;
 use TDM\Influx\enums\SyncDecision;
@@ -242,6 +243,68 @@ class Link extends Model
             }
             return true;
         });
+    }
+
+    /**
+     * Marshal this link into the JSON wire shape the LinkBuilder SPA
+     * consumes — the single authority for that contract (the JS side
+     * documents it in `builder/types.js` and asserts it against the
+     * committed fixture in `tests/fixtures/link-payload.json`).
+     *
+     * Lives next to {@see getConfig()} deliberately: one model, all of its
+     * serialized shapes. Array-y attrs are cast to objects so empty ones
+     * JSON-encode as `{}` (the store treats them as keyed maps, not lists).
+     */
+    public function toBuilderArray(): array
+    {
+        return [
+            'id'              => $this->id,
+            'uid'             => $this->uid,
+            'handle'          => $this->handle ?? '',
+            'name'            => $this->name ?? '',
+            'elementType'     => $this->elementType ?: Entry::class,
+            'elementCriteria' => (object)($this->elementCriteria ?? []),
+            'endpoint'        => $this->endpoint,
+            'itemEndpoint'    => $this->itemEndpoint,
+            'siteEndpoints'   => (object)($this->siteEndpoints ?? []),
+            'offset'          => (object)($this->offset ?? []),
+            'processing'      => array_values($this->processing ?? []),
+            'rootNode'        => $this->rootNode,
+            'paginatorNode'   => $this->paginatorNode,
+            'mappings'        => (object)($this->mappings ?? []),
+            'match'           => (object)($this->match ?? []),
+            'auth'            => (object)($this->auth ?? []),
+            'backup'          => (bool)$this->backup,
+        ];
+    }
+
+    /**
+     * Apply a builder JSON payload onto this link. Mirrors the shape
+     * produced by {@see toBuilderArray()}. Unknown keys are silently
+     * dropped — Yii's `setAttributes(..., $safeOnly = true)` would do this
+     * for us, but we want to coerce a few fields (objects → arrays,
+     * trimming strings) before they hit the model.
+     */
+    public function applyBuilderPayload(array $payload): void
+    {
+        $strOrNull = static fn(mixed $v): ?string => is_string($v) && trim($v) !== '' ? trim($v) : null;
+
+        $this->handle      = (string)($payload['handle'] ?? $this->handle);
+        $this->name        = (string)($payload['name'] ?? $this->name);
+        $this->elementType = (string)($payload['elementType'] ?? $this->elementType);
+
+        $this->elementCriteria = (array)($payload['elementCriteria'] ?? []);
+        $this->endpoint        = $strOrNull($payload['endpoint'] ?? null);
+        $this->itemEndpoint    = $strOrNull($payload['itemEndpoint'] ?? null);
+        $this->siteEndpoints   = (array)($payload['siteEndpoints'] ?? []);
+        $this->offset          = (array)($payload['offset'] ?? []);
+        $this->processing      = array_values((array)($payload['processing'] ?? []));
+        $this->rootNode        = $strOrNull($payload['rootNode'] ?? null);
+        $this->paginatorNode   = $strOrNull($payload['paginatorNode'] ?? null);
+        $this->mappings        = (array)($payload['mappings'] ?? []);
+        $this->match           = (array)($payload['match'] ?? []);
+        $this->auth            = (array)($payload['auth'] ?? []);
+        $this->backup          = (bool)($payload['backup'] ?? false);
     }
 
     /**

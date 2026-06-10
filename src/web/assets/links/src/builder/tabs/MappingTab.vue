@@ -2,22 +2,22 @@
     <div class="influx-tab-mapping">
         <p class="light">{{ $t('For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use the “Fetch sample” button on the Pagination tab to populate the dropdowns with discovered JSON nodes.') }}</p>
 
-        <div v-if="state.mappableError" class="influx-sample-error">
-            <strong>{{ $t('Couldn’t load mappable fields:') }}</strong> {{ state.mappableError }}
+        <div v-if="ui.mappableError" class="influx-sample-error">
+            <strong>{{ $t('Couldn’t load mappable fields:') }}</strong> {{ ui.mappableError }}
         </div>
 
-        <p v-if="state.loading || !state.mappable" class="light">
+        <p v-if="ui.loading || !ui.mappable" class="light">
             {{ $t('Loading mappable fields…') }}
         </p>
 
-        <p v-else-if="!state.mappable.fields.length" class="light">
+        <p v-else-if="!ui.mappable.fields.length" class="light">
             {{ $t('Pick an element type (and a section, for entries) on the General tab to see destination fields here.') }}
         </p>
 
         <template v-else>
             <div class="influx-mapping-list">
                 <mapping-group
-                    v-for="(group, idx) in state.mappable.groups"
+                    v-for="(group, idx) in ui.mappable.groups"
                     :key="group.label + ':' + idx"
                     :group="group"
                     :node-options="nodeOptions"
@@ -27,7 +27,7 @@
             <h2 style="margin-top:24px;">{{ $t('Match key') }}</h2>
             <p class="light">{{ $t('How Influx pairs a remote item with an existing element across sites. The match value is read from the field’s configured source node above, so make sure that field has a mapping.') }}</p>
 
-            <div class="field" :class="{ 'has-errors': state.errors.match?.length }">
+            <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
                 <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="required">*</span></label></div>
                 <div class="instructions">
                     <p v-html="$t('The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.')"></p>
@@ -35,12 +35,12 @@
                 <div class="input ltr">
                     <searchable-select
                         v-model="matchAttribute"
-                        :options="state.mappable.matchOptions"
+                        :options="ui.mappable.matchOptions"
                         :placeholder="$t('Select an attribute…')"
                         :search-placeholder="$t('Search attributes…')"
                     />
                 </div>
-                <field-errors :messages="state.errors.match" />
+                <field-errors :messages="ui.errors.match" />
             </div>
         </template>
     </div>
@@ -70,12 +70,15 @@ export default {
 
     data() {
         return {
-            link: store.raw.link,
-            state: store.state,
+            ui: store.ui,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         // Stable identifier for the criteria signature. Watched below so
         // a section or entry-type change refetches the mappable-fields
         // tree without re-rendering the rest of the SPA.
@@ -94,7 +97,7 @@ export default {
             const savedNodes = Object.keys(mappings)
                 .map(handle => mappings[handle].node)
                 .filter(Boolean);
-            return mergeNodeOptions(store.state.sample?.flatNodes ?? [], savedNodes);
+            return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], savedNodes);
         },
 
         matchAttribute: {

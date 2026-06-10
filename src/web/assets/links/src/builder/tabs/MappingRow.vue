@@ -96,11 +96,14 @@ export default {
 
     data() {
         return {
-            link: store.raw.link,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         // The mapping row in the reactive store. Reading via a computed
         // lets the row react when other code (e.g. extras emits) writes
         // into the same handle's sub-tree.
@@ -131,7 +134,7 @@ export default {
         isMissing() {
             const saved = this.mapping.node;
             if (!saved) return false;
-            const discovered = store.state.sample?.flatNodes;
+            const discovered = store.ui.sample?.flatNodes;
             if (!discovered) return false;
             return !discovered.some(o => o.value === saved);
         },

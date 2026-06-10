@@ -1,5 +1,49 @@
 <template>
-    <div class="influx-schema-form">
+    <!-- Stacked layout: Craft-style .field blocks (heading / instructions /
+         input), used by full-width forms like the Auth tab. -->
+    <div v-if="layout === 'stacked'" class="influx-schema-form is-stacked">
+        <div v-for="(node, idx) in visibleNodes" :key="node.handle || idx" class="field">
+            <div class="heading"><label :for="fieldId(node)">{{ node.label }}</label></div>
+            <div v-if="node.instructions" class="instructions"><p v-html="node.instructions" /></div>
+            <div class="input ltr">
+                <select-input
+                    v-if="node.type === 'select'"
+                    :node="node"
+                    :model-value="valueFor(node)"
+                    :read-only="readOnly"
+                    @update:model-value="setOption(node, $event)"
+                />
+                <csv-text-input
+                    v-else-if="node.type === 'csvText'"
+                    :node="node"
+                    :model-value="valueFor(node)"
+                    :read-only="readOnly"
+                    @update:model-value="setOption(node, $event)"
+                />
+                <label v-else-if="node.type === 'lightswitch'" class="inline-toggle">
+                    <input
+                        type="checkbox"
+                        :checked="!!valueFor(node)"
+                        :disabled="readOnly"
+                        @change="setOption(node, $event.target.checked)"
+                    >
+                </label>
+                <input
+                    v-else
+                    :id="fieldId(node)"
+                    type="text"
+                    :class="['text', 'fullwidth', node.inputType === 'code' ? 'code' : null]"
+                    :value="valueFor(node) ?? ''"
+                    :placeholder="node.placeholder || ''"
+                    :disabled="readOnly"
+                    @input="setOption(node, $event.target.value)"
+                >
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid layout (default): the compact 3-column mapping-extras rows. -->
+    <div v-else class="influx-schema-form">
         <template v-for="(node, idx) in visibleNodes" :key="node.handle || idx">
             <!-- Static explanatory text (e.g. the Matrix stub) -->
             <p v-if="node.type === 'note'" class="light">{{ node.text }}</p>
@@ -60,7 +104,7 @@
                     <input
                         v-else
                         type="text"
-                        class="text"
+                        :class="['text', node.inputType === 'code' ? 'code' : null]"
                         :value="valueFor(node) ?? ''"
                         :placeholder="node.placeholder || ''"
                         :disabled="readOnly"
@@ -99,6 +143,8 @@ export default {
         nativeFields: { type: Object, default: () => ({}) },
         // Source-node candidates for subFieldMapTable selects.
         nodeOptions: { type: Array, default: () => [] },
+        // 'grid' (mapping-extras rows) or 'stacked' (Craft .field blocks).
+        layout: { type: String, default: 'grid' },
         readOnly: { type: Boolean, default: false },
     },
 
@@ -142,6 +188,10 @@ export default {
 
         setOption(node, value) {
             this.$emit('update:options', { ...this.options, [node.handle]: value });
+        },
+
+        fieldId(node) {
+            return `schema-field-${node.handle}`;
         },
     },
 };

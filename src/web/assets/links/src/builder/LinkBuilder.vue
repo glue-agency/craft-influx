@@ -1,13 +1,13 @@
 <template>
-    <div class="influx-link-builder" :class="{ 'is-loading': state.loading }">
-        <p v-if="state.loading" class="light">{{ $t('Loading…') }}</p>
+    <div class="influx-link-builder" :class="{ 'is-loading': ui.loading }">
+        <p v-if="ui.loading" class="light">{{ $t('Loading…') }}</p>
 
-        <div v-else-if="state.loadError" class="influx-link-builder-errors">
-            <p><strong>{{ $t('Couldn’t load this link:') }}</strong> {{ state.loadError }}</p>
+        <div v-else-if="ui.loadError" class="influx-link-builder-errors">
+            <p><strong>{{ $t('Couldn’t load this link:') }}</strong> {{ ui.loadError }}</p>
             <p class="light">{{ $t('Check the Craft logs for the full stack trace, or reload to retry.') }}</p>
         </div>
 
-        <template v-else-if="state.link">
+        <template v-else-if="ui.link">
             <header-actions />
 
             <!-- Content panes. The tab nav is rendered by Craft's cpScreen
@@ -56,7 +56,7 @@ export default {
 
     data() {
         return {
-            state: store.state,
+            ui: store.ui,
         };
     },
 
@@ -75,7 +75,7 @@ export default {
         // server-side validation errors. The tab nav lives outside our
         // Vue tree (rendered by Craft into #content-header), so we reach
         // out via DOM queries.
-        'state.errors': {
+        'ui.errors': {
             deep: true,
             handler(errors) {
                 const tabMap = {
@@ -103,7 +103,7 @@ export default {
         // source watch is more reliable than a string path here.
         let applied = false;
         const stop = this.$watch(
-            () => this.state.link,
+            () => this.ui.link,
             (next) => {
                 if (!next || applied) return;
                 applied = true;
@@ -122,7 +122,7 @@ export default {
         this._saveShortcutHandler = (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault();
-                if (this.state.saving || !this.dirty) return;
+                if (this.ui.saving || !this.dirty) return;
                 store.save({ continueEditing: true });
             }
         };

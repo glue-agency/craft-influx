@@ -93,7 +93,7 @@ export default {
             const saved = Object.values(this.nativeFields)
                 .map((row) => row?.node)
                 .filter(Boolean);
-            return mergeNodeOptions(store.state.sample?.flatNodes ?? [], saved);
+            return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
         },
     },
 

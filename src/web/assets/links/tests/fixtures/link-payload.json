@@ -1,0 +1,25 @@
+{
+    "id": null,
+    "uid": null,
+    "handle": "articles",
+    "name": "Articles",
+    "elementType": "craft\\elements\\Entry",
+    "elementCriteria": [],
+    "endpoint": "https://example.test/articles",
+    "itemEndpoint": null,
+    "siteEndpoints": [],
+    "offset": [],
+    "processing": ["create", "update"],
+    "rootNode": null,
+    "paginatorNode": null,
+    "mappings": {
+        "importId": {
+            "node": "id"
+        }
+    },
+    "match": {
+        "attribute": "importId"
+    },
+    "auth": [],
+    "backup": false
+}

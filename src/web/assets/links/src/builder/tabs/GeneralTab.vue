@@ -158,19 +158,22 @@ export default {
         return {
             // The reactive root from the store. Two-way bindings (v-model)
             // write straight back into the store via this reference.
-            link: store.raw.link,
-            options: store.state.options,
-            state: store.state,
+            options: store.ui.options,
+            ui: store.ui,
             // Local UI flags mirroring the Twig form's lightswitches —
             // flipped off doesn't clear the underlying value, just hides
             // the editor so the user can iterate without losing config.
-            supportsItemEndpoint:  !!store.raw.link.itemEndpoint,
-            supportsOffset:        Object.keys(store.raw.link.offset || {}).length > 0,
-            supportsSiteEndpoints: Object.keys(store.raw.link.siteEndpoints || {}).length > 0,
+            supportsItemEndpoint:  !!store.link.itemEndpoint,
+            supportsOffset:        Object.keys(store.link.offset || {}).length > 0,
+            supportsSiteEndpoints: Object.keys(store.link.siteEndpoints || {}).length > 0,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         section: {
             get() { return this.link.elementCriteria.section || ''; },
             set(v) {
@@ -198,20 +201,20 @@ export default {
         // pulls its own slice; the parent watches the whole map to mark
         // affected tabs.
         errors() {
-            return this.state.errors || {};
+            return this.ui.errors || {};
         },
 
         // Env vars + Craft aliases — text-typed picker items shared by
         // both endpoint inputs (Base + Resource).
         envSuggestions() {
-            return this.state.meta?.envSuggestions || [];
+            return this.ui.meta?.envSuggestions || [];
         },
 
         // The Resource Endpoint picker gets both link-scoped chip tokens
         // ({id}, {slug}, custom-field handles…) and the env / alias text
         // snippets. One combined list keeps the picker UX consistent.
         combinedSuggestions() {
-            return [...(this.state.tokenSuggestions || []), ...this.envSuggestions];
+            return [...(this.ui.tokenSuggestions || []), ...this.envSuggestions];
         },
 
         // Stable signature of the (elementType, section, entryType) tuple.

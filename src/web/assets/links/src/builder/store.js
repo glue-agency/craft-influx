@@ -7,14 +7,18 @@ import * as api from './api.js';
  * needed for a single-screen builder.
  *
  * The store exposes:
- *   - `state`        a read-only proxy of the entire reactive root
- *   - `raw`          the mutable root for v-model bindings (`raw.link.*`)
+ *   - `link`         the editable document — the ONE mutable surface.
+ *                    Always access through the getter (a computed in
+ *                    components): load()/save() replace the underlying
+ *                    object, so capturing it once goes stale.
+ *   - `ui`           read-only proxy of everything else (loading flags,
+ *                    options, sample, errors, …)
  *   - `isDirty`      computed: the link differs from the last loaded/saved
  *                    snapshot
  *   - actions        `load`, `save`, `fetchSample`, `refreshMappableFields`,
  *                    `refreshEndpointTokenSuggestions`
  *
- * Mutation doctrine: components may v-model onto `raw.link.*`; everything
+ * Mutation doctrine: components may v-model onto `link.*`; everything
  * else (async work, redirects, toasts) goes through the actions.
  *
  * Error doctrine: every api.* helper throws ApiError on any failure, so
@@ -200,8 +204,11 @@ async function refreshEndpointTokenSuggestions() {
 }
 
 export const store = {
-    state: readonly(root),
-    raw: root, // for v-model bindings; tab components write here
+    ui: readonly(root),
+    /** The editable document — components v-model onto this (via a computed). */
+    get link() {
+        return root.link;
+    },
     isDirty,
     load,
     save,

@@ -48,7 +48,7 @@ class LinkBuilderService extends Component
                 ?? throw new \yii\web\NotFoundHttpException("Link '{$handle}' not found."));
 
         return [
-            'link'    => $this->serializeLink($link),
+            'link'    => $link->toBuilderArray(),
             'options' => [
                 'elementTypes'      => $this->elementTypeOptions(),
                 'sections'          => $this->sectionOptions(),
@@ -91,7 +91,7 @@ class LinkBuilderService extends Component
             ? ($plugin->links->getLinkByUid($uid) ?? new Link())
             : new Link();
 
-        $this->hydrateLink($link, $payload);
+        $link->applyBuilderPayload($payload);
 
         if (!$plugin->links->saveLink($link)) {
             return [
@@ -101,7 +101,7 @@ class LinkBuilderService extends Component
             ];
         }
 
-        return ['success' => true, 'link' => $this->serializeLink($link)];
+        return ['success' => true, 'link' => $link->toBuilderArray()];
     }
 
     /**
@@ -402,62 +402,6 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    /**
-     * Marshal a Link into the JSON shape the SPA consumes. Mirrors
-     * {@see Link::toProjectConfig()} but flattens the array-y attrs into
-     * the form the Vue store binds to directly.
-     */
-    protected function serializeLink(Link $link): array
-    {
-        return [
-            'id'              => $link->id,
-            'uid'             => $link->uid,
-            'handle'          => $link->handle ?? '',
-            'name'            => $link->name ?? '',
-            'elementType'     => $link->elementType ?: Entry::class,
-            'elementCriteria' => (object)($link->elementCriteria ?? []),
-            'endpoint'        => $link->endpoint,
-            'itemEndpoint'    => $link->itemEndpoint,
-            'siteEndpoints'   => (object)($link->siteEndpoints ?? []),
-            'offset'          => (object)($link->offset ?? []),
-            'processing'      => array_values($link->processing ?? []),
-            'rootNode'        => $link->rootNode,
-            'paginatorNode'   => $link->paginatorNode,
-            'mappings'        => (object)($link->mappings ?? []),
-            'match'           => (object)($link->match ?? []),
-            'auth'            => (object)($link->auth ?? []),
-            'backup'          => (bool)$link->backup,
-        ];
-    }
-
-    /**
-     * Apply a JSON payload onto an existing or fresh Link. Mirrors the
-     * shape produced by `serializeLink()`. Unknown keys are silently
-     * dropped — Yii's `setAttributes(..., $safeOnly = true)` would do this
-     * for us, but we want to coerce a few fields (objects → arrays,
-     * trimming strings) before they hit the model.
-     */
-    protected function hydrateLink(Link $link, array $payload): void
-    {
-        $strOrNull = static fn(mixed $v): ?string => is_string($v) && trim($v) !== '' ? trim($v) : null;
-
-        $link->handle      = (string)($payload['handle'] ?? $link->handle);
-        $link->name        = (string)($payload['name'] ?? $link->name);
-        $link->elementType = (string)($payload['elementType'] ?? $link->elementType);
-
-        $link->elementCriteria = (array)($payload['elementCriteria'] ?? []);
-        $link->endpoint        = $strOrNull($payload['endpoint'] ?? null);
-        $link->itemEndpoint    = $strOrNull($payload['itemEndpoint'] ?? null);
-        $link->siteEndpoints   = (array)($payload['siteEndpoints'] ?? []);
-        $link->offset          = (array)($payload['offset'] ?? []);
-        $link->processing      = array_values((array)($payload['processing'] ?? []));
-        $link->rootNode        = $strOrNull($payload['rootNode'] ?? null);
-        $link->paginatorNode   = $strOrNull($payload['paginatorNode'] ?? null);
-        $link->mappings        = (array)($payload['mappings'] ?? []);
-        $link->match           = (array)($payload['match'] ?? []);
-        $link->auth            = (array)($payload['auth'] ?? []);
-        $link->backup          = (bool)($payload['backup'] ?? false);
-    }
 
     // ------------------------------------------------------------------
     //  Option builders. Internal — the SPA only sees their output
@@ -535,7 +479,7 @@ class LinkBuilderService extends Component
      * skipped — the SPA falls back to "no schema" messaging if a stored
      * link is using an auth type that's not registered.
      *
-     * @return list<array{type: string, fields: list<array{handle: string, label: string, instructions?: string, inputType: string}>}>
+     * @return list<array{type: string, schema: list<array>}>
      */
     protected function authStrategyDefinitions(): array
     {
@@ -545,7 +489,19 @@ class LinkBuilderService extends Component
             if (empty($fields)) {
                 continue;
             }
-            $out[] = ['type' => $type, 'fields' => $fields];
+
+            // Translate the strategy's editSchema() vocabulary into the
+            // shared BuilderSchema nodes the SPA's SchemaForm renders —
+            // the same renderer the mapping extras use.
+            $nodes = [];
+            foreach ($fields as $field) {
+                $nodes[] = \TDM\Influx\helpers\BuilderSchema::text($field['handle'], $field['label'], [
+                    'instructions' => $field['instructions'] ?? null,
+                    'inputType'    => $field['inputType'] ?? null,
+                ]);
+            }
+
+            $out[] = ['type' => $type, 'schema' => $nodes];
         }
         return $out;
     }

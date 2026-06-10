@@ -19,10 +19,10 @@ export default {
 
     components: { LightSwitch },
 
-    data() {
-        return {
-            link: store.raw.link,
-        };
+    computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
     },
 };
 </script>

@@ -62,12 +62,15 @@ export default {
     data() {
         return {
             expanded: true,
-            link: store.raw.link,
-            state: store.state,
+            ui: store.ui,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         mappedCount() {
             return this.group.fields.reduce((count, f) => {
                 return count + (this.link.mappings?.[f.handle]?.node ? 1 : 0);
@@ -77,7 +80,7 @@ export default {
         // Saved source nodes that are no longer present in the latest
         // fetched sample. Only meaningful once a sample has been run.
         missingCount() {
-            const discovered = this.state.sample?.flatNodes;
+            const discovered = this.ui.sample?.flatNodes;
             if (!discovered) return 0;
             const available = new Set(discovered.map(o => o.value));
             return this.group.fields.reduce((count, f) => {

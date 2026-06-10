@@ -14,41 +14,37 @@
             </div>
         </div>
 
-        <template v-if="activeStrategy">
-            <div class="field" v-for="field in activeStrategy.fields" :key="field.handle">
-                <div class="heading"><label :for="`builder-auth-${field.handle}`">{{ field.label }}</label></div>
-                <div v-if="field.instructions" class="instructions"><p v-html="field.instructions" /></div>
-                <div class="input ltr">
-                    <input
-                        :id="`builder-auth-${field.handle}`"
-                        type="text"
-                        :class="['text', 'fullwidth', field.inputType === 'code' ? 'code' : null]"
-                        :value="link.auth?.[field.handle] ?? ''"
-                        @input="writeField(field.handle, $event.target.value)"
-                    />
-                </div>
-            </div>
-        </template>
+        <schema-form
+            v-if="activeStrategy"
+            layout="stacked"
+            :schema="activeStrategy.schema"
+            :options="link.auth || {}"
+            @update:options="writeAuth"
+        />
 
-        <p v-else-if="type && !activeStrategy" class="light">
+        <p v-else-if="type" class="light">
             {{ $t('No SPA-side schema is registered for auth type') }} <code>{{ type }}</code>.
         </p>
 
         <!-- Server-side `validateAuth` errors apply to the whole block
              rather than any single field, so we surface them once below. -->
-        <field-errors :messages="state.errors.auth" />
+        <field-errors :messages="ui.errors.auth" />
     </div>
 </template>
 
 <script>
 import { store } from '../store.js';
+import { pruneEmpty } from '../lib/mappings.js';
 import FieldErrors from '../FieldErrors.vue';
+import SchemaForm from '../schema/SchemaForm.vue';
 
 /**
- * Authentication tab. The auth-type select drives which per-strategy field
- * set renders below. Schemas come through the bootstrap meta (see
- * `LinkBuilderService::authStrategyDefinitions()`); third-party strategies
- * without a schema fall back to the "no SPA-side schema" message.
+ * Authentication tab. The auth-type select drives which per-strategy schema
+ * renders below — the same generic SchemaForm the mapping extras use, in
+ * its stacked (Craft .field block) layout. Schemas come through the
+ * bootstrap options (see `LinkBuilderService::authStrategyDefinitions()`,
+ * which translates each strategy's editSchema() into BuilderSchema nodes);
+ * third-party strategies without one fall back to the message below.
  *
  * Writes flow into `link.auth = { type, ...fields }`. Swapping the type
  * resets the field slot — the old strategy's saved values are dropped on
@@ -58,17 +54,20 @@ import FieldErrors from '../FieldErrors.vue';
 export default {
     name: 'AuthTab',
 
-    components: { FieldErrors },
+    components: { FieldErrors, SchemaForm },
 
     data() {
         return {
-            link: store.raw.link,
-            options: store.state.options,
-            state: store.state,
+            options: store.ui.options,
+            ui: store.ui,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         type: {
             get() { return this.link.auth?.type ?? ''; },
             set(v) {
@@ -90,16 +89,10 @@ export default {
     },
 
     methods: {
-        writeField(handle, value) {
-            // Drop empty values so saved Project Config stays clean —
-            // matches LinkPostNormalizer::auth() behavior.
-            const next = { ...(this.link.auth || {}), type: this.type };
-            if (value === '' || value == null) {
-                delete next[handle];
-            } else {
-                next[handle] = value;
-            }
-            this.link.auth = next;
+        writeAuth(next) {
+            // Drop empty values so saved Project Config stays clean; the
+            // type always rides along.
+            this.link.auth = { ...pruneEmpty(next), type: this.type };
         },
     },
 };

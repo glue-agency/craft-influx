@@ -79,7 +79,7 @@ class LinkBuilderController extends Controller
      *
      *   POST influx/link-builder/save
      *
-     * Body: JSON-serialised link state (see LinkBuilderService::serializeLink()).
+     * Body: JSON-serialised link state (see Link::toBuilderArray()).
      */
     public function actionSave(): Response
     {

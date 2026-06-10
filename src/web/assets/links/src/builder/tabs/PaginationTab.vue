@@ -2,11 +2,11 @@
     <div class="influx-tab-pagination">
         <p class="light" v-html="$t('Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.')"></p>
 
-        <div v-if="state.sampleError" class="influx-sample-error">
-            <strong>{{ $t('Sample failed:') }}</strong> {{ state.sampleError }}
+        <div v-if="ui.sampleError" class="influx-sample-error">
+            <strong>{{ $t('Sample failed:') }}</strong> {{ ui.sampleError }}
         </div>
-        <p v-else-if="state.sample" class="light">
-            {{ $t('Last fetched from') }} <code>{{ state.sample.url }}</code>.
+        <p v-else-if="ui.sample" class="light">
+            {{ $t('Last fetched from') }} <code>{{ ui.sample.url }}</code>.
         </p>
 
         <div class="field">
@@ -39,9 +39,9 @@
             </div>
         </div>
 
-        <div v-if="state.sample?.sampleItem" class="influx-sample-preview">
+        <div v-if="ui.sample?.sampleItem" class="influx-sample-preview">
             <h3>{{ $t('Sample item') }}</h3>
-            <p class="light">{{ $t('First item under') }} <code>{{ state.sample.rootNode ?? $t('— response root —') }}</code>.</p>
+            <p class="light">{{ $t('First item under') }} <code>{{ ui.sample.rootNode ?? $t('— response root —') }}</code>.</p>
             <pre>{{ samplePreviewJson }}</pre>
         </div>
     </div>
@@ -55,12 +55,15 @@ export default {
 
     data() {
         return {
-            link: store.raw.link,
-            state: store.state,
+            ui: store.ui,
         };
     },
 
     computed: {
+        // Through the stable getter — load()/save() replace the underlying
+        // object, so a data() capture would go stale.
+        link() { return store.link; },
+
         canSample() {
             const ep = this.link.endpoint;
             return typeof ep === 'string' && ep.trim() !== '';
@@ -70,7 +73,7 @@ export default {
         // value back in so the user doesn't lose their config when the
         // sample doesn't include it (e.g. they swapped the endpoint).
         rootOptions() {
-            const discovered = this.state.sample?.rootNodeCandidates ?? [];
+            const discovered = this.ui.sample?.rootNodeCandidates ?? [];
             const saved = this.link.rootNode;
             if (saved && !discovered.includes(saved)) {
                 return [saved, ...discovered];
@@ -79,7 +82,7 @@ export default {
         },
 
         paginatorOptions() {
-            const discovered = this.state.sample?.paginatorNodeCandidates ?? [];
+            const discovered = this.ui.sample?.paginatorNodeCandidates ?? [];
             const saved = this.link.paginatorNode;
             if (saved && !discovered.includes(saved)) {
                 return [saved, ...discovered];
@@ -88,7 +91,7 @@ export default {
         },
 
         samplePreviewJson() {
-            const item = this.state.sample?.sampleItem;
+            const item = this.ui.sample?.sampleItem;
             return item ? JSON.stringify(item, null, 2) : '';
         },
     },
