@@ -556,7 +556,8 @@
     border-color: #b9d3f0;
 }
 .influx-tokenized-chip-inline[data-kind="fields"],
-.influx-tokenized-chip-inline[data-kind="custom"] {
+.influx-tokenized-chip-inline[data-kind="custom"],
+.influx-tokenized-chip-inline[data-kind="node"] {
     background: #ececef;
     color: #4a4f57;
     border-color: #d4d6db;
@@ -658,19 +659,6 @@
     padding: 8px 12px;
     border-radius: 4px;
     margin: 0 0 16px;
-}
-.influx-sample-preview {
-    margin-top: 22px;
-}
-.influx-sample-preview pre {
-    background: #f6f7f9;
-    border: 1px solid #d7dfe7;
-    border-radius: 4px;
-    padding: 12px;
-    max-height: 360px;
-    overflow: auto;
-    font-size: 12px;
-    line-height: 1.5;
 }
 
 /* ---------------------------------------------------------------------
@@ -885,16 +873,43 @@
     background: #f7dca2;
 }
 
-/* Grouped schema selects (relation/author "Match by"): a select-shaped
-   trigger whose menu borrows the token picker's group + chip visuals.
-   The shared picker-menu class is right-anchored for the + button context;
-   anchor it to the trigger here instead. */
-.influx-grouped-select .influx-tokenized-picker-menu {
-    left: 0;
-    right: auto;
-    min-width: 100%;
-    top: calc(100% + 4px);
+/* Grouped SearchableSelect (relation/author "Match by"): one scroll region
+   wrapping the per-kind option groups, with token-picker-style headings.
+   The per-group lists must not scroll individually. */
+.influx-searchable-select-scroll {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    padding-bottom: 2px;
 }
-.influx-grouped-select .influx-tokenized-picker-item.selected {
-    background: hsl(208deg, 100%, 96%);
+.influx-searchable-select-scroll .influx-searchable-select-options {
+    overflow-y: visible;
+    flex: none;
+}
+.influx-searchable-select-menu h6 {
+    margin: 8px 14px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8b95a3;
+}
+.influx-searchable-select-scroll h6:first-child {
+    margin-top: 4px;
+}
+
+/* Missing saved node: the selected chip in the source-node dropdown takes
+   the missing-badge amber instead of the node grey. */
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) li.selected .influx-tokenized-chip-inline {
+    background: #fdecc8;
+    color: #8a6d00;
+    border-color: #f0c674;
+}
+
+/* Drop-up: when the viewport has no room below the trigger, the menu
+   anchors above it instead of stretching the document (which dragged the
+   CP sidebar along). The direction is measured per open in
+   SearchableSelect.updateDropDirection(). */
+.influx-searchable-select.drop-up .influx-searchable-select-menu {
+    top: auto;
+    bottom: calc(100% + 4px);
 }

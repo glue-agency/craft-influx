@@ -64,6 +64,7 @@
                     v-model="link.endpoint"
                     :token-groups="envSuggestions"
                     placeholder="https://api.example.com/posts.json"
+                    @blur="onEndpointBlur"
                 />
             </div>
             <field-errors :messages="errors.endpoint" />
@@ -240,6 +241,12 @@ export default {
             const set = new Set(this.link.processing);
             on ? set.add(value) : set.delete(value);
             this.link.processing = Array.from(set);
+        },
+
+        // Auto-fetch the sample once the user is done editing the endpoint
+        // — keyed in the store, so tabbing through without changes is free.
+        onEndpointBlur() {
+            store.evaluateSample();
         },
     },
 };

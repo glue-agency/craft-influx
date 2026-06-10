@@ -2,7 +2,7 @@
     <div
         ref="root"
         class="influx-searchable-select"
-        :class="{ open, disabled, 'has-value': hasValue }"
+        :class="{ open, disabled, 'has-value': hasValue, 'drop-up': dropUp }"
     >
         <button
             type="button"
@@ -56,14 +56,61 @@
                 </button>
             </div>
 
+            <!-- Grouped options: token-picker visuals — h6 group headings and
+                 kind-colored chip items — wrapped in one scroll region. -->
+            <div v-if="filteredOptions.length && isGrouped" class="influx-searchable-select-scroll">
+                <template v-for="(group, gi) in filteredGroups" :key="gi">
+                    <h6 v-if="group.label">{{ group.label }}</h6>
+                    <ul class="influx-searchable-select-options influx-token-group" :data-kind="group.kind || 'custom'">
+                        <li
+                            v-for="opt in group.options"
+                            :key="optionKey(opt, opt._flatIdx)"
+                            role="option"
+                            :data-flat-idx="opt._flatIdx"
+                            :class="{
+                                highlighted: highlightedIndex === opt._flatIdx,
+                                selected: isSelected(opt),
+                                'is-empty': opt.value === '',
+                            }"
+                            :aria-selected="isSelected(opt) ? 'true' : 'false'"
+                            @mousemove="highlightedIndex = opt._flatIdx"
+                            @mousedown.prevent
+                            @click="commit(opt)"
+                        >
+                            <!-- Chips only for kinded groups — label-less
+                                 sentinel groups (— no mapping — etc.) render
+                                 as plain rows. -->
+                            <span
+                                v-if="group.kind && opt.value !== ''"
+                                class="influx-tokenized-chip-inline"
+                                :data-kind="group.kind"
+                                v-html="highlight(opt.label)"
+                            ></span>
+                            <span v-else class="label" v-html="highlight(opt.label)"></span>
+                            <svg
+                                v-if="isSelected(opt)"
+                                class="check"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 12 12"
+                                aria-hidden="true"
+                            >
+                                <path d="M2.5 6.25l2.4 2.4L9.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                            </svg>
+                        </li>
+                    </ul>
+                </template>
+            </div>
+
             <ul
-                v-if="filteredOptions.length"
+                v-else-if="filteredOptions.length"
                 class="influx-searchable-select-options"
             >
                 <li
                     v-for="(opt, idx) in filteredOptions"
                     :key="optionKey(opt, idx)"
                     role="option"
+                    :data-flat-idx="idx"
                     :class="{
                         highlighted: highlightedIndex === idx,
                         selected: isSelected(opt),
@@ -115,9 +162,16 @@
  *   - Click-outside closes the menu.
  *   - Backspace in an empty search box clears the current value.
  *
- * Option shape: { value: string, label: string }. An option with value=''
- * is treated as the "no selection" sentinel and rendered in muted italics
- * — useful for "— no mapping —" / "—" placeholders.
+ * Option shapes:
+ *   - flat:    [{value, label}] — the plain list rendering;
+ *   - grouped: [{label, kind?, options: [{value, label}]}] — rendered with
+ *     the token picker's visuals (h6 group headings, kind-colored chip
+ *     items) while keeping the search + keyboard ergonomics. Labels may
+ *     carry "(handle)" / "<value>" suffixes — they render as escaped text
+ *     (see highlight()), so future value inlining is safe.
+ *
+ * An option with value='' is treated as the "no selection" sentinel and
+ * rendered in muted italics — useful for "— no mapping —" / "—" placeholders.
  */
 export default {
     name: 'SearchableSelect',
@@ -140,13 +194,32 @@ export default {
             open: false,
             query: '',
             highlightedIndex: 0,
+            // Opens the menu above the trigger when the viewport has more
+            // room there than below — measured on every open.
+            dropUp: false,
         };
     },
 
     computed: {
+        isGrouped() {
+            const options = this.options || [];
+            return options.length > 0 && Array.isArray(options[0]?.options);
+        },
+
+        /** Always-grouped view; flat input becomes one label-less group. */
+        groups() {
+            return this.isGrouped
+                ? this.options
+                : [{ label: null, kind: null, options: this.options || [] }];
+        },
+
+        allOptions() {
+            return this.groups.flatMap(g => g.options || []);
+        },
+
         currentOption() {
             const v = this.normalize(this.modelValue);
-            return this.options.find(o => this.normalize(o.value) === v) || null;
+            return this.allOptions.find(o => this.normalize(o.value) === v) || null;
         },
 
         hasValue() {
@@ -163,14 +236,34 @@ export default {
             return this.placeholder || this.$t('Select…');
         },
 
-        filteredOptions() {
+        /**
+         * Groups with their options filtered by the query; empty groups are
+         * dropped. Every surviving option gets a `_flatIdx` so the keyboard
+         * highlight addresses one integer across group boundaries.
+         */
+        filteredGroups() {
             const q = this.query.trim().toLowerCase();
-            if (!q) return this.options;
-            return this.options.filter(o => {
-                if (o.value === '') return false; // hide the "no selection" sentinel during search
-                return (o.label || '').toLowerCase().includes(q)
-                    || String(o.value || '').toLowerCase().includes(q);
-            });
+            const out = [];
+            let flat = 0;
+            for (const group of this.groups) {
+                const options = (group.options || []).filter(o => {
+                    if (!q) return true;
+                    if (o.value === '') return false; // hide the "no selection" sentinel during search
+                    return (o.label || '').toLowerCase().includes(q)
+                        || String(o.value || '').toLowerCase().includes(q);
+                });
+                if (!options.length) continue;
+                out.push({
+                    label: group.label,
+                    kind: group.kind,
+                    options: options.map(o => ({ ...o, _flatIdx: flat++ })),
+                });
+            }
+            return out;
+        },
+
+        filteredOptions() {
+            return this.filteredGroups.flatMap(g => g.options);
         },
     },
 
@@ -225,7 +318,35 @@ export default {
 
         toggle() {
             if (this.disabled) return;
-            this.open = !this.open;
+            if (this.open) {
+                this.close();
+            } else {
+                this.openMenu();
+            }
+        },
+
+        openMenu() {
+            this.updateDropDirection();
+            this.open = true;
+        },
+
+        /**
+         * Flip the menu above the trigger when the space below the viewport
+         * edge can't fit it and there's more room above — otherwise a menu
+         * near the page bottom stretches the document and drags the CP
+         * sidebar along with it.
+         */
+        updateDropDirection() {
+            const root = this.$refs.root;
+            if (!root) {
+                this.dropUp = false;
+                return;
+            }
+            const rect = root.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            // The menu caps at 320px (links.css) + the 4px offset.
+            this.dropUp = spaceBelow < 340 && spaceAbove > spaceBelow;
         },
 
         close() {
@@ -246,16 +367,19 @@ export default {
         },
 
         scrollHighlightedIntoView() {
-            const menu = this.$refs.root?.querySelector('.influx-searchable-select-options');
-            if (!menu) return;
-            const row = menu.children[this.highlightedIndex];
+            const row = this.$refs.root?.querySelector(`li[data-flat-idx="${this.highlightedIndex}"]`);
             if (!row) return;
-            const top = row.offsetTop;
-            const bottom = top + row.offsetHeight;
-            if (top < menu.scrollTop) {
-                menu.scrollTop = top;
-            } else if (bottom > menu.scrollTop + menu.clientHeight) {
-                menu.scrollTop = bottom - menu.clientHeight;
+            // Grouped mode scrolls a wrapper around the per-group lists;
+            // flat mode scrolls the single list itself.
+            const scroller = row.closest('.influx-searchable-select-scroll')
+                || row.closest('.influx-searchable-select-options');
+            if (!scroller) return;
+            const rowRect = row.getBoundingClientRect();
+            const scrollerRect = scroller.getBoundingClientRect();
+            if (rowRect.top < scrollerRect.top) {
+                scroller.scrollTop += rowRect.top - scrollerRect.top;
+            } else if (rowRect.bottom > scrollerRect.bottom) {
+                scroller.scrollTop += rowRect.bottom - scrollerRect.bottom;
             }
         },
 
@@ -264,7 +388,7 @@ export default {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
                 if (!this.open) {
                     e.preventDefault();
-                    this.open = true;
+                    this.openMenu();
                 }
             }
         },

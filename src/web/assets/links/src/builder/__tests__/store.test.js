@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 
 vi.mock('../api.js', () => ({
     bootstrap: vi.fn(),
@@ -33,9 +34,18 @@ const apiError = (message, errors = {}) => {
 
 describe('store', () => {
     beforeEach(async () => {
+        // Fake timers keep the sample auto-fetcher's debounce inert unless
+        // a test advances time explicitly.
+        vi.useFakeTimers();
         vi.clearAllMocks();
         api.bootstrap.mockResolvedValue(bootstrapPayload());
         await store.load('articles');
+        vi.clearAllTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
     });
 
     it('hydrates from bootstrap and reads clean', () => {
@@ -96,5 +106,37 @@ describe('store', () => {
         await store.fetchSample();
         expect(store.ui.sample.flatNodes).toHaveLength(1);
         expect(store.ui.sampleError).toBe(null);
+    });
+
+    it('auto-fetches the sample when the endpoint field settles (blur)', async () => {
+        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+
+        store.link.endpoint = 'https://example.test/auto';
+        await nextTick();
+        expect(api.sample).not.toHaveBeenCalled(); // typing alone never fetches
+
+        await store.evaluateSample();
+        expect(api.sample).toHaveBeenCalledWith(
+            expect.objectContaining({ endpoint: 'https://example.test/auto' }),
+        );
+
+        // Blur without changes is free — the key matches what was fetched.
+        await store.evaluateSample();
+        expect(api.sample).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-fetches the sample when the root node changes', async () => {
+        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+
+        store.link.endpoint = 'https://example.test/root-change';
+        await store.evaluateSample();
+
+        store.link.rootNode = 'data.items';
+        await nextTick(); // root-node watcher evaluates immediately
+
+        expect(api.sample).toHaveBeenCalledTimes(2);
+        expect(api.sample).toHaveBeenLastCalledWith(
+            expect.objectContaining({ rootNode: 'data.items' }),
+        );
     });
 });

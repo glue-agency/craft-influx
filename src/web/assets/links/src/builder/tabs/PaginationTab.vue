@@ -1,7 +1,5 @@
 <template>
     <div class="influx-tab-pagination">
-        <p class="light" v-html="$t('Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.')"></p>
-
         <div v-if="ui.sampleError" class="influx-sample-error">
             <strong>{{ $t('Sample failed:') }}</strong> {{ ui.sampleError }}
         </div>
@@ -12,7 +10,7 @@
         <div class="field">
             <div class="heading"><label for="builder-rootNode">{{ $t('Root node') }}</label></div>
             <div class="instructions">
-                <p>{{ $t('Dot-path to the iterable list inside the response. Leave blank if the response itself is a JSON array.') }}</p>
+                <p>{{ $t('The main node containing every element that needs to be parsed by the mappings.') }}</p>
             </div>
             <div class="input ltr">
                 <div class="select">
@@ -27,7 +25,7 @@
         <div class="field">
             <div class="heading"><label for="builder-paginatorNode">{{ $t('Paginator node') }}</label></div>
             <div class="instructions">
-                <p>{{ $t('Dot-path to the next-page URL for cursor pagination. Leave blank if the response is single-page.') }}</p>
+                <p>{{ $t('The node containing the URL of the next page to fetch.') }}</p>
             </div>
             <div class="input ltr">
                 <div class="select">
@@ -39,11 +37,6 @@
             </div>
         </div>
 
-        <div v-if="ui.sample?.sampleItem" class="influx-sample-preview">
-            <h3>{{ $t('Sample item') }}</h3>
-            <p class="light">{{ $t('First item under') }} <code>{{ ui.sample.rootNode ?? $t('— response root —') }}</code>.</p>
-            <pre>{{ samplePreviewJson }}</pre>
-        </div>
     </div>
 </template>
 
@@ -88,11 +81,6 @@ export default {
                 return [saved, ...discovered];
             }
             return discovered;
-        },
-
-        samplePreviewJson() {
-            const item = this.ui.sample?.sampleItem;
-            return item ? JSON.stringify(item, null, 2) : '';
         },
     },
 

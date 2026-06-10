@@ -112,4 +112,16 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     {
         return [];
     }
+
+    /**
+     * Default matchable natives: only `id` — the one identifier every
+     * Craft element is guaranteed to have. Targets extend with whatever
+     * their element type actually exposes (see {@see EntryTarget}).
+     */
+    public function matchableNativeAttributes(Link $link): array
+    {
+        return [
+            ['value' => 'id', 'label' => Craft::t('influx', 'ID (id)')],
+        ];
+    }
 }

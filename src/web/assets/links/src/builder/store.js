@@ -1,4 +1,4 @@
-import { computed, reactive, readonly } from 'vue';
+import { computed, reactive, readonly, watch } from 'vue';
 import * as api from './api.js';
 
 /**
@@ -78,6 +78,9 @@ async function load(handle) {
         root.mappable = null;
         root.tokenSuggestions = null;
         rememberSnapshot();
+        // Existing links with a configured endpoint prime the sample
+        // immediately — no manual Fetch click per editing session.
+        evaluateSample();
     } catch (e) {
         root.loadError = e.message || 'Failed to load link.';
         console.error('[influx] bootstrap failed', e);
@@ -177,6 +180,7 @@ async function refreshMappableFields() {
  */
 async function fetchSample() {
     if (!root.link || root.sampling) return;
+    const key = sampleKey();
     root.sampling = true;
     root.sampleError = null;
     try {
@@ -190,9 +194,50 @@ async function fetchSample() {
     } catch (e) {
         root.sampleError = e.message || 'Sample fetch failed.';
     } finally {
+        // Recorded even on failure so the auto-fetcher doesn't loop on a
+        // broken endpoint — the manual Fetch button always retries.
+        fetchedSampleKey = key;
         root.sampling = false;
     }
 }
+
+/**
+ * The inputs the sample report materially depends on. Null when there's
+ * nothing to fetch yet.
+ */
+function sampleKey() {
+    const link = root.link;
+    const endpoint = typeof link?.endpoint === 'string' ? link.endpoint.trim() : '';
+    if (!endpoint) return null;
+    return `${endpoint} ${link.rootNode ?? ''}`;
+}
+
+let fetchedSampleKey = null;
+let sampleAutoTimer = null;
+
+/**
+ * Keyed auto-fetch: run the sample when the (endpoint, rootNode) pair
+ * differs from what's already been fetched. Triggered on load, when the
+ * endpoint field loses focus (typing alone never fetches — half-typed
+ * URLs shouldn't hit the network), and by the root-node watcher below.
+ * Re-checks shortly after an in-flight fetch instead of dropping newer
+ * config; save()'s canonical-link swap is a no-op thanks to the key.
+ */
+function evaluateSample() {
+    clearTimeout(sampleAutoTimer);
+    const key = sampleKey();
+    if (!key || key === fetchedSampleKey) return;
+    if (root.sampling) {
+        sampleAutoTimer = setTimeout(evaluateSample, 400);
+        return;
+    }
+    return fetchSample();
+}
+
+// The report's node lists depend on the root node — re-evaluate when it
+// changes. A discrete select change, unlike endpoint typing, so no blur
+// handshake needed.
+watch(() => root.link?.rootNode, () => evaluateSample());
 
 async function refreshEndpointTokenSuggestions() {
     if (!root.link) return;
@@ -213,6 +258,7 @@ export const store = {
     load,
     save,
     fetchSample,
+    evaluateSample,
     refreshMappableFields,
     refreshEndpointTokenSuggestions,
 };

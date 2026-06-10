@@ -103,6 +103,21 @@ interface ElementTargetInterface
      */
     public function assignMatchValue(ElementInterface $element, Link $link, mixed $matchValue): void;
 
+    /**
+     * Native attributes that can serve as a link's match key — the unique
+     * identifiers {@see findByMatchValue()} can sensibly query on. Drives
+     * the element-type group of the Match attribute picker; the custom
+     * fields group is built separately from the layout.
+     *
+     * The base offers only `id` (the one identifier every element has);
+     * targets add what their element type actually exposes for the given
+     * link — e.g. the Entry target adds slug/title only when the resolved
+     * entry type enables them.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public function matchableNativeAttributes(Link $link): array;
+
     public function disable(ElementInterface $element): bool;
 
     public function delete(ElementInterface $element): bool;

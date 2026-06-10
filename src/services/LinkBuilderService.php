@@ -113,7 +113,7 @@ class LinkBuilderService extends Component
      * @return array{
      *   fields: list<array>,
      *   groups: list<array>,
-     *   matchOptions: list<array{value: string, label: string}>,
+     *   matchOptions: list<array{label: ?string, kind: ?string, options: list<array{value: string, label: string}>}>,
      * }
      */
     public function mappableFields(string $elementType, array $criteria): array
@@ -124,11 +124,42 @@ class LinkBuilderService extends Component
         $fields = $target ? $target->getMappableFields($stub) : [];
         $groups = $this->groupMappableFields($fields);
 
-        $matchOptions = [['value' => '', 'label' => Craft::t('influx', '— select a field —')]];
+        // Grouped for the SPA's SearchableSelect: the clear sentinel renders
+        // as a plain row, the target's matchable natives (unique identifiers
+        // only — not every mappable attribute) under the element type's
+        // display name (green `element` chips), custom fields under
+        // "Fields" (gray).
+        $nativeOptions = $target ? $target->matchableNativeAttributes($stub) : [];
+        $fieldOptions = [];
         foreach ($fields as $f) {
-            $matchOptions[] = [
+            if (!empty($f['native'])) {
+                continue;
+            }
+            $fieldOptions[] = [
                 'value' => $f['handle'],
                 'label' => "{$f['name']} ({$f['handle']})",
+            ];
+        }
+
+        $matchOptions = [
+            [
+                'label'   => null,
+                'kind'    => null,
+                'options' => [['value' => '', 'label' => Craft::t('influx', '— select a field —')]],
+            ],
+        ];
+        if ($nativeOptions) {
+            $matchOptions[] = [
+                'label'   => $target ? $target::friendlyName() : Craft::t('influx', 'Native'),
+                'kind'    => 'element',
+                'options' => $nativeOptions,
+            ];
+        }
+        if ($fieldOptions) {
+            $matchOptions[] = [
+                'label'   => Craft::t('influx', 'Fields'),
+                'kind'    => 'fields',
+                'options' => $fieldOptions,
             ];
         }
 

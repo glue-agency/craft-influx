@@ -126,7 +126,10 @@ class DataService extends Component
         $mappingSuggestions = [];
         if (is_array($sampleItem)) {
             foreach ($this->flattenLeafPaths($sampleItem, []) as $path) {
-                $flatNodes[] = ['value' => $path, 'label' => str_replace('.', ' → ', $path)];
+                $flatNodes[] = [
+                    'value' => $path,
+                    'label' => str_replace('.', ' → ', $path) . $this->nodeDataSuffix($sampleItem, $path),
+                ];
             }
 
             foreach ($sampleItem as $key => $value) {
@@ -153,6 +156,64 @@ class DataService extends Component
             'mappingSuggestions'      => $mappingSuggestions,
             'flatNodes'               => $flatNodes,
         ];
+    }
+
+    /**
+     * " <data>" label suffix for a flat node: the sample item's value at
+     * the path, single-line, truncated to 30 chars — so the mapping
+     * dropdowns preview real feed data next to each node. The SPA renders
+     * labels as escaped text, so the angle brackets are safe. Null/empty
+     * values get no suffix.
+     */
+    protected function nodeDataSuffix(array $sampleItem, string $path): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        $value = Hash::get($sampleItem, $path);
+        if ($value === null) {
+            return '';
+        }
+
+        $preview = trim(preg_replace('/\s+/u', ' ', $this->previewValue($value)) ?? '');
+        if ($preview === '') {
+            return '';
+        }
+        if (mb_strlen($preview) > 30) {
+            $preview = mb_substr($preview, 0, 30) . '…';
+        }
+
+        return " <{$preview}>";
+    }
+
+    /**
+     * Single-line preview of a sample value. Arrays/objects collapse to
+     * their first item — `a, …` for lists, `key: value, …` for objects —
+     * recursively, so nested containers still end in something readable.
+     */
+    protected function previewValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_scalar($value)) {
+            return (string)$value;
+        }
+        if (is_array($value)) {
+            if ($value === []) {
+                return '';
+            }
+            $firstKey = array_key_first($value);
+            $first = $this->previewValue($value[$firstKey]);
+            $prefix = is_int($firstKey) ? '' : $firstKey . ': ';
+            $more = count($value) > 1 ? ', …' : '';
+            return $prefix . $first . $more;
+        }
+        return '';
     }
 
     /**

@@ -108,6 +108,39 @@ class EntryTarget extends AbstractElementTarget
         return $entry;
     }
 
+    /**
+     * Adds slug/title on top of the base `id` — but only when the link's
+     * resolved entry type actually enables them (title fields can be
+     * generated via titleFormat, slug fields hidden per type). Unresolved
+     * criteria fall back to id-only.
+     */
+    public function matchableNativeAttributes(Link $link): array
+    {
+        $attributes = parent::matchableNativeAttributes($link);
+
+        $resolved = (new EntryTypeResolver())->tryResolve($link);
+        if (!$resolved) {
+            return $attributes;
+        }
+        [, $entryType] = $resolved;
+
+        if ($entryType->showSlugField) {
+            $attributes[] = ['value' => 'slug', 'label' => Craft::t('influx', 'Slug (slug)')];
+        }
+        if ($entryType->hasTitleField) {
+            // The title's label is user-editable in the entry type's field
+            // layout — surface what the editor actually sees. label()
+            // handles the custom value (site-translated) and the default.
+            $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
+                \craft\fieldlayoutelements\entries\EntryTitleField::class,
+            );
+            $titleLabel = $titleElement?->label() ?: Craft::t('app', 'Title');
+            $attributes[] = ['value' => 'title', 'label' => "{$titleLabel} (title)"];
+        }
+
+        return $attributes;
+    }
+
     public function getMappableFields(Link $link): array
     {
         $fields = $this->nativeFieldDefinitions();

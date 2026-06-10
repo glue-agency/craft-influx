@@ -1,7 +1,5 @@
 <template>
     <div class="influx-tab-mapping">
-        <p class="light">{{ $t('For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use the “Fetch sample” button on the Pagination tab to populate the dropdowns with discovered JSON nodes.') }}</p>
-
         <div v-if="ui.mappableError" class="influx-sample-error">
             <strong>{{ $t('Couldn’t load mappable fields:') }}</strong> {{ ui.mappableError }}
         </div>
@@ -25,13 +23,9 @@
             </div>
 
             <h2 style="margin-top:24px;">{{ $t('Match key') }}</h2>
-            <p class="light">{{ $t('How Influx pairs a remote item with an existing element across sites. The match value is read from the field’s configured source node above, so make sure that field has a mapping.') }}</p>
 
             <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
                 <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="required">*</span></label></div>
-                <div class="instructions">
-                    <p v-html="$t('The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.')"></p>
-                </div>
                 <div class="input ltr">
                     <searchable-select
                         v-model="matchAttribute"

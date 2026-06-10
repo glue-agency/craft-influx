@@ -148,16 +148,25 @@ export default {
             return !discovered.some(o => o.value === saved);
         },
 
-        // SearchableSelect wants a flat [{value,label}] list with the
-        // empty/clear sentinel up top. `__default__` is a UI-only sentinel:
-        // it round-trips to the mapping's `useDefault` flag, never to the
-        // wire `node`.
+        // Grouped for SearchableSelect: the sentinels render as plain rows
+        // up top, the sample-discovered nodes inside a grey "Nodes" group.
+        // `__default__` is a UI-only sentinel: it round-trips to the
+        // mapping's `useDefault` flag, never to the wire `node`.
         sourceNodeOptions() {
-            return [
-                { value: '', label: this.$t('— no mapping —') },
-                { value: '__default__', label: this.$t('— use default —') },
-                ...this.nodeOptions,
+            const groups = [
+                {
+                    label: null,
+                    kind: null,
+                    options: [
+                        { value: '', label: this.$t('— no mapping —') },
+                        { value: '__default__', label: this.$t('— use default —') },
+                    ],
+                },
             ];
+            if (this.nodeOptions.length) {
+                groups.push({ label: this.$t('Nodes'), kind: 'node', options: this.nodeOptions });
+            }
+            return groups;
         },
 
         defaultSelectOptions() {

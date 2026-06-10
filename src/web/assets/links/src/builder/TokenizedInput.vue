@@ -4,6 +4,7 @@
         class="influx-tokenized-input"
         :class="{ disabled }"
         @click="onContainerClick"
+        @focusout="onFocusOut"
     >
         <div class="influx-tokenized-segments">
             <template v-for="seg in segments" :key="seg.id">
@@ -102,7 +103,7 @@ const props = defineProps({
     disabled:    { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'blur']);
 
 // Map of `name → kind` covering every known suggestion. Used by parse to
 // decide whether a `$X` / `@y` match should chip, and to color chips.
@@ -169,6 +170,17 @@ function focusSegment(id, cursorPos) {
         lastFocusedSegId.value = id;
         picker.setCursor(pos);
     });
+}
+
+/**
+ * Component-level blur: the input is many text segments, so a single
+ * segment's focusout only counts when focus actually left the component
+ * (segment-to-segment hops and picker clicks keep it inside).
+ */
+function onFocusOut(e) {
+    if (!rootEl.value?.contains(e.relatedTarget)) {
+        emit('blur');
+    }
 }
 
 function onContainerClick(e) {
