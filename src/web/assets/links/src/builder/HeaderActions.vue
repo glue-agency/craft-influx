@@ -99,7 +99,7 @@ export default {
 
     computed: {
         canSave() {
-            return !!this.state.link && this.state.dirty && !this.state.saving;
+            return !!this.state.link && store.isDirty.value && !this.state.saving;
         },
 
         saveLabel() {

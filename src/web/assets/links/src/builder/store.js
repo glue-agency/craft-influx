@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue';
+import { computed, reactive, readonly } from 'vue';
 import * as api from './api.js';
 
 /**
@@ -8,14 +8,18 @@ import * as api from './api.js';
  *
  * The store exposes:
  *   - `state`        a read-only proxy of the entire reactive root
- *   - `link`         convenience getter for the editable link payload
- *   - actions        `load`, `save`, `refreshMappableFields`,
+ *   - `raw`          the mutable root for v-model bindings (`raw.link.*`)
+ *   - `isDirty`      computed: the link differs from the last loaded/saved
+ *                    snapshot
+ *   - actions        `load`, `save`, `fetchSample`, `refreshMappableFields`,
  *                    `refreshEndpointTokenSuggestions`
  *
- * Mutations happen in the actions only; tab components read `state` and
- * write to `state.link` directly via v-model. The `dirty` flag flips on
- * the first write after load and resets after a successful save — drives
- * the save button's enabled state.
+ * Mutation doctrine: components may v-model onto `raw.link.*`; everything
+ * else (async work, redirects, toasts) goes through the actions.
+ *
+ * Error doctrine: every api.* helper throws ApiError on any failure, so
+ * each action's catch block reads `e.message` / `e.errors` — no response-
+ * shape branching anywhere.
  */
 
 const initial = () => ({
@@ -31,21 +35,28 @@ const initial = () => ({
     loading: false,
     loadError: null,       // fatal error from the bootstrap fetch
     saving: false,
-    dirty: false,
+    savedSnapshot: null,   // JSON of the link as last loaded/saved
     errors: {},            // attribute → message[]
 });
 
 const root = reactive(initial());
 
-let suppressDirty = false;
-const markDirty = () => {
-    if (!suppressDirty) root.dirty = true;
-};
+/**
+ * Derived dirty state: compare the live link against the snapshot taken at
+ * load/save time. No flags to suppress or reset — and reverting an edit by
+ * hand reads as clean again, which an imperative flag can't do.
+ */
+const isDirty = computed(() => {
+    if (!root.link || root.savedSnapshot === null) return false;
+    return JSON.stringify(root.link) !== root.savedSnapshot;
+});
+
+function rememberSnapshot() {
+    root.savedSnapshot = root.link ? JSON.stringify(root.link) : null;
+}
 
 /**
- * Hydrate the SPA. Run once when the root component mounts. Resets dirty
- * (via the suppress flag) since the first reactive write that follows is
- * just the initial assignment, not a user edit.
+ * Hydrate the SPA. Run once when the root component mounts.
  */
 async function load(handle) {
     root.loading = true;
@@ -53,14 +64,8 @@ async function load(handle) {
     root.errors = {};
     try {
         const data = await api.bootstrap(handle);
-        if (data?.ok === false) {
-            // Controller caught an exception and returned a JSON envelope.
-            root.loadError = data.error || 'Failed to load link.';
-            return;
-        }
         api.configureCsrf({ name: data.meta.csrfTokenName, value: data.meta.csrfToken });
 
-        suppressDirty = true;
         root.link    = data.link;
         root.options = data.options;
         root.meta    = data.meta;
@@ -68,11 +73,9 @@ async function load(handle) {
         // tab activation re-fetches against the new link.
         root.mappable = null;
         root.tokenSuggestions = null;
-        root.dirty = false;
-        suppressDirty = false;
+        rememberSnapshot();
     } catch (e) {
-        const body = e.body || {};
-        root.loadError = body.error || e.message || 'Failed to load link.';
+        root.loadError = e.message || 'Failed to load link.';
         console.error('[influx] bootstrap failed', e);
     } finally {
         root.loading = false;
@@ -80,32 +83,21 @@ async function load(handle) {
 }
 
 /**
- * Persist the current link state. On validation failure the server returns
- * `{ok: false, errors}` — we store the errors but don't clear `dirty` since
- * the user still has unsaved changes.
- */
-/**
  * Persist the current link state. Centralizes the post-save UX so every
  * trigger (Cmd+S, the save button, Save-and-continue) shares the same
  * redirect / toast behavior:
  *   - new link → redirect to its real edit URL (must reload to drop the `new` route)
  *   - plain save → return to /influx/links unless `continueEditing` is set
- *   - validation errors → store on state.errors and surface a top toast
+ *   - validation errors → ApiError carries them; stored on state.errors
+ *     plus a top toast. The snapshot stays put, so the link reads dirty.
  */
 async function save(options = {}) {
     const { continueEditing = false } = options;
-    if (root.saving || !root.link) return { ok: false };
+    if (root.saving || !root.link) return { success: false };
     root.saving = true;
     root.errors = {};
     try {
         const result = await api.save(root.link);
-        if (!result.ok) {
-            root.errors = result.errors || {};
-            if (window.Craft?.cp?.displayError) {
-                Craft.cp.displayError(Craft.t('influx', "Couldn't save link."));
-            }
-            return { ok: false, errors: root.errors };
-        }
 
         const wasNew = !!(root.meta && root.meta.isNew);
         const savedHandle = result.link?.handle;
@@ -113,10 +105,8 @@ async function save(options = {}) {
         // Replace the local link with the server's canonical version
         // before any redirect — covers the case where the server applied
         // a normalisation (e.g. trimmed a handle).
-        suppressDirty = true;
         root.link = result.link;
-        root.dirty = false;
-        suppressDirty = false;
+        rememberSnapshot();
 
         if (window.Craft?.cp?.displayNotice) {
             Craft.cp.displayNotice(Craft.t('influx', 'Link saved.'));
@@ -128,15 +118,21 @@ async function save(options = {}) {
             window.location.href = Craft.getCpUrl(
                 `influx/links/${encodeURIComponent(savedHandle)}/edit`,
             );
-            return { ok: true, redirected: true };
+            return { success: true, redirected: true };
         }
 
         if (!continueEditing) {
             window.location.href = Craft.getCpUrl('influx/links');
-            return { ok: true, redirected: true };
+            return { success: true, redirected: true };
         }
 
-        return { ok: true };
+        return { success: true };
+    } catch (e) {
+        root.errors = e.errors || {};
+        if (window.Craft?.cp?.displayError) {
+            Craft.cp.displayError(e.message || Craft.t('influx', "Couldn't save link."));
+        }
+        return { success: false, errors: root.errors };
     } finally {
         root.saving = false;
     }
@@ -162,8 +158,7 @@ async function refreshMappableFields() {
     try {
         root.mappable = await api.mappableFields(elementType, root.link.elementCriteria || {});
     } catch (e) {
-        const msg = e.body?.message || e.message || 'Failed to load mappable fields.';
-        root.mappableError = msg;
+        root.mappableError = e.message || 'Failed to load mappable fields.';
         // Make the failure visible in dev tools even when the tab UI is
         // hidden — easier to diagnose 4xx responses from the server.
         console.error('[influx] mappable-fields fetch failed', e);
@@ -173,8 +168,8 @@ async function refreshMappableFields() {
 /**
  * Hit the configured endpoint and stash the inspection report — root /
  * paginator candidates, flat node list, mapping suggestions. The
- * Pagination and (later) Mapping tabs read from the same report so a
- * single fetch primes both.
+ * Pagination and Mapping tabs read from the same report so a single
+ * fetch primes both.
  */
 async function fetchSample() {
     if (!root.link || root.sampling) return;
@@ -187,13 +182,9 @@ async function fetchSample() {
             paginatorNode: root.link.paginatorNode,
             auth:          root.link.auth,
         });
-        if (result.ok) {
-            root.sample = result.report;
-        } else {
-            root.sampleError = result.message || 'Sample fetch failed.';
-        }
+        root.sample = result.report;
     } catch (e) {
-        root.sampleError = e.body?.message || e.message || 'Sample fetch failed.';
+        root.sampleError = e.message || 'Sample fetch failed.';
     } finally {
         root.sampling = false;
     }
@@ -208,22 +199,13 @@ async function refreshEndpointTokenSuggestions() {
     root.tokenSuggestions = suggestions;
 }
 
-/**
- * Mark the store dirty. Tab components don't need to call this directly —
- * v-model writes hit `state.link.*` which is reactive, and we install a
- * proxy-style watcher inside the root component to flip the flag.
- */
-function touch() {
-    markDirty();
-}
-
 export const store = {
     state: readonly(root),
     raw: root, // for v-model bindings; tab components write here
+    isDirty,
     load,
     save,
     fetchSample,
     refreshMappableFields,
     refreshEndpointTokenSuggestions,
-    touch,
 };

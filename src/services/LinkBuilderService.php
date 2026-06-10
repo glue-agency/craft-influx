@@ -75,12 +75,12 @@ class LinkBuilderService extends Component
 
     /**
      * Persist a link from the SPA payload. Returns the saved link's
-     * serialized state on success or a list of attribute → messages on
-     * failure. Never throws on validation failure — that's a 200 with an
-     * `errors` payload from the controller's perspective.
+     * serialized state on success, or the unified failure envelope
+     * (`{success: false, message, errors}`) on validation failure — never throws
+     * for validation; the controller turns the envelope into a 400.
      *
      * @param array $payload Raw JSON body posted by the SPA.
-     * @return array{ok: true, link: array}|array{ok: false, errors: array<string, string[]>}
+     * @return array{success: true, link: array}|array{success: false, message: string, errors: array<string, string[]>}
      */
     public function save(array $payload): array
     {
@@ -94,10 +94,14 @@ class LinkBuilderService extends Component
         $this->hydrateLink($link, $payload);
 
         if (!$plugin->links->saveLink($link)) {
-            return ['ok' => false, 'errors' => $link->getErrors()];
+            return [
+                'success' => false,
+                'message' => Craft::t('influx', 'Couldn’t save link.'),
+                'errors'  => $link->getErrors(),
+            ];
         }
 
-        return ['ok' => true, 'link' => $this->serializeLink($link)];
+        return ['success' => true, 'link' => $this->serializeLink($link)];
     }
 
     /**
@@ -149,17 +153,17 @@ class LinkBuilderService extends Component
      * SPA's current state, so users can fetch a sample mid-edit without
      * having to save first.
      *
-     * Returns `{ok: true, report: ...}` on success or `{ok: false, message: ...}`
+     * Returns `{success: true, report: ...}` on success or `{success: false, message: ...}`
      * on failure (network, bad JSON, missing rootNode, ...). Never throws — the
      * UI surface needs the message inline.
      *
-     * @return array{ok: true, report: array}|array{ok: false, message: string}
+     * @return array{success: true, report: array}|array{success: false, message: string}
      */
     public function sample(array $payload): array
     {
         $endpoint = $this->emptyToNull($payload['endpoint'] ?? null);
         if (!$endpoint) {
-            return ['ok' => false, 'message' => Craft::t('influx', 'Set a list endpoint first.')];
+            return ['success' => false, 'message' => Craft::t('influx', 'Set a list endpoint first.')];
         }
 
         $link = new Link([
@@ -175,10 +179,10 @@ class LinkBuilderService extends Component
         try {
             $report = Influx::getInstance()->data->inspect($link);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'message' => $e->getMessage()];
+            return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        return ['ok' => true, 'report' => $report];
+        return ['success' => true, 'report' => $report];
     }
 
     protected function emptyToNull(mixed $v): ?string

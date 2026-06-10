@@ -61,23 +61,15 @@ export default {
     },
 
     computed: {
-        // Stringified snapshot used by the dirty-watcher below — string
-        // compare beats a deep watcher when the tree is shallow JSON.
-        linkSnapshot() {
-            return this.state.link ? JSON.stringify(this.state.link) : null;
+        // Derived in the store by comparing against the snapshot taken at
+        // load/save time — no imperative flag, so reverting an edit reads
+        // as clean again.
+        dirty() {
+            return store.isDirty.value;
         },
     },
 
     watch: {
-        // Any user edit to the link payload trips dirty exactly once. The
-        // store's load()/save() actions use their own suppress flag to
-        // bypass this when they swap the link in from a fresh fetch.
-        linkSnapshot(next, prev) {
-            if (prev != null && next != null && next !== prev) {
-                store.touch();
-            }
-        },
-
         // Mark cpScreen tabs with `.error` (Craft's CP CSS turns them red
         // and adds the warning icon) whenever the related attribute has
         // server-side validation errors. The tab nav lives outside our
@@ -130,7 +122,7 @@ export default {
         this._saveShortcutHandler = (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault();
-                if (this.state.saving || !this.state.dirty) return;
+                if (this.state.saving || !this.dirty) return;
                 store.save({ continueEditing: true });
             }
         };
@@ -138,7 +130,7 @@ export default {
 
         // beforeunload guard — every other CP screen does this.
         this._beforeUnloadHandler = (e) => {
-            if (!this.state.dirty) return;
+            if (!this.dirty) return;
             e.preventDefault();
             e.returnValue = '';
             return '';

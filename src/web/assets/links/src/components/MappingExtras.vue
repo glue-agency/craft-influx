@@ -205,6 +205,9 @@
 </template>
 
 <script>
+import { store } from '../builder/store.js';
+import { mergeNodeOptions, pruneEmpty } from '../builder/lib/mappings.js';
+
 export default {
     name: 'MappingExtras',
 
@@ -226,8 +229,6 @@ export default {
             nativeFields: this.buildInitialNativeFields(),
             valueMap: this.buildInitialValueMap(),
             truthyText: this.buildInitialTruthy(),
-            nodeOptions: [],
-            _sampleHandler: null,
         };
     },
 
@@ -261,19 +262,20 @@ export default {
             return (this.field.fieldMeta && this.field.fieldMeta.matchOptions) || [];
         },
 
-    },
-
-    created() {
-        // Seed source-node options with any saved sub-field paths so the
-        // dropdowns can render before the user fetches a fresh sample.
-        const seen = new Set();
-        for (const sub of this.subFieldList) {
-            const saved = this.options.subFields?.[sub.handle]?.node;
-            if (saved && !seen.has(saved)) {
-                this.nodeOptions.push({ value: saved, label: saved.replace(/\./g, ' → ') });
-                seen.add(saved);
+        /**
+         * Source-node candidates for the sub-field dropdowns: the latest
+         * Fetch-sample nodes straight off the store (reactive — no event
+         * bus), merged with any saved sub-field paths so the dropdowns
+         * render before a sample has been fetched.
+         */
+        nodeOptions() {
+            const saved = [];
+            for (const sub of this.subFieldList) {
+                const current = this.nativeFields[sub.handle]?.node;
+                if (current) saved.push(current);
             }
-        }
+            return mergeNodeOptions(store.state.sample?.flatNodes ?? [], saved);
+        },
     },
 
     watch: {
@@ -282,14 +284,7 @@ export default {
         options: {
             deep: true,
             handler() {
-                const trimmed = {};
-                for (const k of Object.keys(this.options)) {
-                    const v = this.options[k];
-                    if (v === '' || v === null || v === undefined || v === false) continue;
-                    if (typeof v === 'object' && !Object.keys(v).length) continue;
-                    trimmed[k] = v;
-                }
-                this.$emit('update:options', trimmed);
+                this.$emit('update:options', pruneEmpty(this.options));
             },
         },
         nativeFields: {
@@ -306,17 +301,6 @@ export default {
                 this.$emit('update:nativeFields', out);
             },
         },
-    },
-
-    mounted() {
-        this._sampleHandler = (e) => this.onSampleFetched(e.detail || {});
-        window.addEventListener('influx:sample-fetched', this._sampleHandler);
-    },
-
-    beforeUnmount() {
-        if (this._sampleHandler) {
-            window.removeEventListener('influx:sample-fetched', this._sampleHandler);
-        }
     },
 
     methods: {

@@ -3,10 +3,30 @@
  * token from the page's bootstrap meta (rendered server-side into the host
  * template) so we never have to hard-code CP paths into the JS.
  *
- * Every helper returns the parsed JSON body — errors throw with the raw
- * Response attached, so callers can branch on `e.response.status` when they
- * care to.
+ * Every helper returns the parsed JSON body on success. EVERY failure —
+ * non-2xx transport status or a `{success: false}` body — throws one
+ * ApiError, so callers never branch on response shapes.
  */
+
+/**
+ * The single failure type every api.* helper throws. Normalizes the
+ * server's `{success: false, message, errors?}` envelope and raw transport
+ * failures into one shape:
+ *
+ *   e.message — human-readable summary (server message when available)
+ *   e.errors  — attribute → message[] validation errors (empty when none)
+ *   e.status  — HTTP status (0 when the request never completed)
+ *   e.body    — the raw parsed body, for anything exotic
+ */
+export class ApiError extends Error {
+    constructor(message, { status = 0, errors = {}, body = null } = {}) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+        this.errors = errors;
+        this.body = body;
+    }
+}
 
 let actionUrls = null;
 let csrfTokenName = null;
@@ -73,11 +93,11 @@ async function request(url, init) {
         }
     }
 
-    if (!res.ok) {
-        const error = new Error(`Request failed (${res.status})`);
-        error.response = res;
-        error.body = body;
-        throw error;
+    if (!res.ok || body?.success === false) {
+        throw new ApiError(
+            body?.message || body?.error || `Request failed (${res.status})`,
+            { status: res.status, errors: body?.errors || {}, body },
+        );
     }
 
     return body;

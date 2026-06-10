@@ -74,6 +74,7 @@ import MappingExtras from '../../components/MappingExtras.vue';
 import ElementPicker from '../ElementPicker.vue';
 import SearchableSelect from '../SearchableSelect.vue';
 import { store } from '../store.js';
+import { setMappingSlot } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab. Renders the field name, source-node select,
@@ -111,11 +112,15 @@ export default {
             return !!this.field.fieldMeta?.hasExtras;
         },
 
-        // Saved shape MappingExtras consumes — its `created()` hook reads
-        // saved.options for the initial UI state and we never re-pass a
-        // different identity after mount, so emits-only flow stays clean.
+        // Saved shape MappingExtras consumes for its initial UI state —
+        // we never re-pass a different identity after mount, so the
+        // emits-only flow stays clean. `nativeFields` rides along so
+        // saved asset sub-field mappings re-hydrate on edit.
         extrasSaved() {
-            return { options: this.mapping.options || {} };
+            return {
+                options: this.mapping.options || {},
+                nativeFields: this.mapping.nativeFields || {},
+            };
         },
 
         // The saved source node is no longer in the fetched sample. Compares
@@ -179,28 +184,11 @@ export default {
 
         /**
          * Write one slot of the mapping row, dropping empty values so the
-         * saved Project Config doesn't fill up with noise.
+         * saved Project Config doesn't fill up with noise. The pruning
+         * rules live in lib/mappings.js where they're unit-tested.
          */
         writeMapping(key, value) {
-            const handle = this.field.handle;
-            const current = { ...(this.link.mappings?.[handle] || {}) };
-
-            const isEmpty = value === '' || value === null || value === undefined
-                || (typeof value === 'object' && value !== null && Object.keys(value).length === 0);
-
-            if (isEmpty) {
-                delete current[key];
-            } else {
-                current[key] = value;
-            }
-
-            const mappings = { ...this.link.mappings };
-            if (Object.keys(current).length === 0) {
-                delete mappings[handle];
-            } else {
-                mappings[handle] = current;
-            }
-            this.link.mappings = mappings;
+            this.link.mappings = setMappingSlot(this.link.mappings, this.field.handle, key, value);
         },
     },
 };

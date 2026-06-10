@@ -51,6 +51,7 @@ import MappingGroup from './MappingGroup.vue';
 import FieldErrors from '../FieldErrors.vue';
 import SearchableSelect from '../SearchableSelect.vue';
 import { store } from '../store.js';
+import { mergeNodeOptions } from '../lib/mappings.js';
 
 /**
  * Orchestrates the Mapping tab: lazy-loads the mappable-fields tree from
@@ -84,23 +85,16 @@ export default {
         },
 
         nodeOptions() {
-            const discovered = store.state.sample?.flatNodes ?? [];
             // Merge saved-but-not-discovered mapping nodes so a row whose
             // node fell out of the sample still has a legible selected
             // option. The row-level missing badge (driven by isMissing in
             // MappingRow) tells the user the node isn't in the latest
             // sample — the dropdown itself stays a plain picker.
-            const seen = new Set(discovered.map(o => o.value));
-            const extras = [];
             const mappings = this.link.mappings || {};
-            for (const handle of Object.keys(mappings)) {
-                const node = mappings[handle].node;
-                if (node && !seen.has(node)) {
-                    extras.push({ value: node, label: node.replace(/\./g, ' → ') });
-                    seen.add(node);
-                }
-            }
-            return [...discovered, ...extras];
+            const savedNodes = Object.keys(mappings)
+                .map(handle => mappings[handle].node)
+                .filter(Boolean);
+            return mergeNodeOptions(store.state.sample?.flatNodes ?? [], savedNodes);
         },
 
         matchAttribute: {

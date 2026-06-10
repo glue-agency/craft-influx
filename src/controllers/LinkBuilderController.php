@@ -30,8 +30,9 @@ class LinkBuilderController extends Controller
 
     /**
      * Wrap the standard runAction so any uncaught exception comes back as
-     * a JSON `{error, type}` envelope instead of an HTML 500. The SPA
-     * surfaces the message inline — much friendlier than a blank screen.
+     * a JSON `{success: false, message}` envelope instead of an HTML 500. The
+     * SPA's ApiError normalizes on `message` — every failure path in this
+     * controller must use that key.
      */
     public function runAction($id, $params = [])
     {
@@ -41,17 +42,17 @@ class LinkBuilderController extends Controller
             // HTTP-shaped errors (404, 403, …) keep their status code.
             Craft::$app->getResponse()->setStatusCode($e->statusCode);
             return $this->asJson([
-                'ok'    => false,
-                'error' => $e->getMessage(),
-                'type'  => (new \ReflectionClass($e))->getShortName(),
+                'success' => false,
+                'message' => $e->getMessage(),
+                'type'    => (new \ReflectionClass($e))->getShortName(),
             ]);
         } catch (\Throwable $e) {
             Craft::error($e, __METHOD__);
             Craft::$app->getResponse()->setStatusCode(500);
             return $this->asJson([
-                'ok'    => false,
-                'error' => $e->getMessage(),
-                'type'  => (new \ReflectionClass($e))->getShortName(),
+                'success' => false,
+                'message' => $e->getMessage(),
+                'type'    => (new \ReflectionClass($e))->getShortName(),
             ]);
         }
     }
@@ -88,6 +89,12 @@ class LinkBuilderController extends Controller
 
         $payload = $this->jsonBody();
         $result = Influx::getInstance()->linkBuilder->save($payload);
+
+        if (!($result['success'] ?? false)) {
+            // Transport status and body agree: validation failures are 400s,
+            // so the SPA's single error path handles them like any failure.
+            Craft::$app->getResponse()->setStatusCode(400);
+        }
 
         return $this->asJson($result);
     }
@@ -132,9 +139,13 @@ class LinkBuilderController extends Controller
         $this->requireAcceptsJson();
 
         $payload = $this->jsonBody();
-        return $this->asJson(
-            Influx::getInstance()->linkBuilder->sample($payload),
-        );
+        $result = Influx::getInstance()->linkBuilder->sample($payload);
+
+        if (!($result['success'] ?? false)) {
+            Craft::$app->getResponse()->setStatusCode(400);
+        }
+
+        return $this->asJson($result);
     }
 
     /**
