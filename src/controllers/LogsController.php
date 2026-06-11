@@ -3,8 +3,8 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
-use craft\helpers\Cp;
 use craft\web\Controller;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
@@ -160,7 +160,7 @@ class LogsController extends Controller
             if ($item->elementId) {
                 $el = Craft::$app->getElements()->getElementById($item->elementId);
                 if ($el) {
-                    $elementHtml = Cp::elementChipHtml($el, ['hyperlink' => true]);
+                    $elementHtml = Compat::elementChipHtml($el, ['hyperlink' => true]);
                 } else {
                     $elementHtml = '<span class="light">#' . $item->elementId . ' (gone)</span>';
                 }

@@ -8,6 +8,7 @@ use craft\elements\Entry;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -124,7 +125,7 @@ class EntryTarget extends AbstractElementTarget
         }
         [, $entryType] = $resolved;
 
-        if ($entryType->showSlugField) {
+        if (Compat::entryTypeShowsSlugField($entryType)) {
             $attributes[] = ['value' => 'slug', 'label' => Craft::t('influx', 'Slug (slug)')];
         }
         if ($entryType->hasTitleField) {
@@ -239,7 +240,7 @@ class EntryTarget extends AbstractElementTarget
         }
 
         /** @var Entry $element */
-        $element->setAuthorIds([$user->id]);
+        Compat::setEntryAuthor($element, $user->id);
         return true;
     }
 

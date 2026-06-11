@@ -33,13 +33,7 @@
     {% if links is empty %}
         <div class="zilch">
             <p>{{ "No links yet."|t("influx") }}</p>
-            {% if not readOnly %}
-                <p>
-                    <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
-                        {{ "Create your first link"|t("influx") }}
-                    </a>
-                </p>
-            {% else %}
+            {% if readOnly %}
                 <p class="light">{{ "Administrative changes are disallowed in this environment."|t("influx") }}</p>
             {% endif %}
         </div>

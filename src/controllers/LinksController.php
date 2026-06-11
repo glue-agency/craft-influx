@@ -4,8 +4,8 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\elements\Entry;
-use craft\helpers\Cp;
 use craft\web\Controller;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -227,7 +227,7 @@ class LinksController extends Controller
         // handle (if any). Save is wired through the JSON endpoint inside
         // the Vue layer — Craft's standard cpScreen form submit is bypassed.
         //
-        // The empty `additionalButtonsHtml` ensures cpScreen renders its
+        // The empty additional-buttons HTML ensures cpScreen renders its
         // `#action-buttons` header slot so the SPA can teleport its
         // top-right buttons (Fetch sample, Save) into it.
         $response = $this->asCpScreen()
@@ -245,11 +245,12 @@ class LinksController extends Controller
                 'authentication' => ['label' => Craft::t('influx', 'Authentication'), 'url' => '#authentication'],
                 'settings'       => ['label' => Craft::t('influx', 'Settings'),       'url' => '#settings'],
             ])
-            ->additionalButtonsHtml('<div data-influx-actions-slot></div>')
             ->contentTemplate('influx/links/_builder', ['link' => $link]);
 
+        Compat::additionalButtonsHtml($response, '<div data-influx-actions-slot></div>');
+
         if ($this->readOnly) {
-            $response->noticeHtml(Cp::readOnlyNoticeHtml());
+            Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
         } elseif (!$isNew && $link->uid) {
             $response->addAltAction(Craft::t('app', 'Delete'), [
                 'action'      => 'influx/links/delete',

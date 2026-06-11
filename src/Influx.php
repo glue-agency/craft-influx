@@ -31,6 +31,7 @@ use GlueAgency\Influx\services\CooldownService;
 use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\BackupService;
 use GlueAgency\Influx\services\DebugService;
+use GlueAgency\Influx\web\twig\InfluxTwigExtension;
 
 /**
  * Influx plugin.
@@ -91,6 +92,7 @@ class Influx extends Plugin
             $this->registerControllers();
             $this->registerCpRoutes();
             $this->registerCpTemplateRoots();
+            $this->registerTwigExtensions();
             $this->registerEntrySyncButton();
             $this->registerGarbageCollection();
         });
@@ -179,6 +181,11 @@ class Influx extends Plugin
                 $event->roots['influx'] = __DIR__ . '/templates';
             },
         );
+    }
+
+    protected function registerTwigExtensions(): void
+    {
+        Craft::$app->getView()->registerTwigExtension(new InfluxTwigExtension());
     }
 
     /**

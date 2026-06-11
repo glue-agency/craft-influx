@@ -100,7 +100,7 @@
                         {% if item.elementId %}
                             {% set el = craft.app.elements.getElementById(item.elementId) %}
                             {% if el %}
-                                {{ elementChip(el, { hyperlink: true }) }}
+                                {{ influxElementChip(el, { hyperlink: true }) }}
                             {% else %}
                                 <span class="light">#{{ item.elementId }} ({{ "gone"|t("influx") }})</span>
                             {% endif %}

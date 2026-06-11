@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -105,7 +106,8 @@ abstract class AbstractElementTarget implements ElementTargetInterface
 
     public function deleteForSite(ElementInterface $element, int $siteId): bool
     {
-        return Craft::$app->getElements()->deleteElementForSite($element, $siteId);
+        Compat::deleteElementForSite($element, $siteId);
+        return true;
     }
 
     public function getMappableFields(Link $link): array

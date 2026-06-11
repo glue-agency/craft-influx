@@ -4,9 +4,9 @@
     "type": "craft-plugin",
     "license": "mit",
     "require": {
-        "php": ">=8.2",
-        "craftcms/cms": "^5.0",
-        "cakephp/utility": "^5.0"
+        "php": ">=8.1",
+        "craftcms/cms": "^4.0|^5.0",
+        "cakephp/utility": "^3.3.12|^4.0|^5.0"
     },
     "require-dev": {
         "codeception/codeception": "^5.0",

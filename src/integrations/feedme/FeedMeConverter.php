@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\integrations\feedme;
 
 use Craft;
 use craft\helpers\StringHelper;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
 
 /**
@@ -540,11 +541,11 @@ class FeedMeConverter
 
     protected function sectionHandleById(int $id): ?string
     {
-        return Craft::$app->getEntries()->getSectionById($id)?->handle;
+        return Compat::getSectionById($id)?->handle;
     }
 
     protected function entryTypeHandleById(int $id): ?string
     {
-        return Craft::$app->getEntries()->getEntryTypeById($id)?->handle;
+        return Compat::getEntryTypeById($id)?->handle;
     }
 }

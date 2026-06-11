@@ -6,6 +6,7 @@ use Craft;
 use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\Json;
+use GlueAgency\Influx\console\ConsoleOutputCompatTrait;
 use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
 use GlueAgency\Influx\Influx;
 use yii\console\ExitCode;
@@ -28,6 +29,8 @@ use yii\console\ExitCode;
  */
 class ImportFeedMeController extends Controller
 {
+    use ConsoleOutputCompatTrait;
+
     /** Import every feed in the table. */
     public bool $all = false;
 

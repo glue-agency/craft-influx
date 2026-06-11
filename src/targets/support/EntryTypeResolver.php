@@ -2,10 +2,10 @@
 
 namespace GlueAgency\Influx\targets\support;
 
-use Craft;
 use craft\models\EntryType;
 use craft\models\Section;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
 
 /**
@@ -33,13 +33,12 @@ class EntryTypeResolver
                 "Link '{$link->handle}' must declare elementCriteria.section for Entry targets.",
             );
 
-        // Craft 5: sections moved to the Entries service.
-        $section = Craft::$app->getEntries()->getSectionByHandle($sectionHandle)
+        $section = Compat::getSectionByHandle($sectionHandle)
             ?? throw new InfluxException("Section '{$sectionHandle}' does not exist.");
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
 
-        // Craft 5: entry types are global. Resolve by handle, but make sure
+        // Entry types are global in Craft 5. Resolve by handle, but make sure
         // the chosen type is actually attached to the configured section.
         $sectionEntryTypes = $section->getEntryTypes();
         $entryType = null;
@@ -80,7 +79,7 @@ class EntryTypeResolver
             return null;
         }
 
-        $section = Craft::$app->getEntries()->getSectionByHandle($sectionHandle);
+        $section = Compat::getSectionByHandle($sectionHandle);
         if (!$section) {
             return null;
         }

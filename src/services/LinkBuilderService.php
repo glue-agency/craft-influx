@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\elements\Entry;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 
@@ -454,7 +455,7 @@ class LinkBuilderService extends Component
     protected function sectionOptions(): array
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— select —')]];
-        foreach (Craft::$app->getEntries()->getAllSections() as $section) {
+        foreach (Compat::getAllSections() as $section) {
             $out[] = ['value' => $section->handle, 'label' => $section->name];
         }
         return $out;
@@ -463,7 +464,7 @@ class LinkBuilderService extends Component
     protected function sectionEntryTypes(): array
     {
         $out = [];
-        foreach (Craft::$app->getEntries()->getAllSections() as $section) {
+        foreach (Compat::getAllSections() as $section) {
             $types = [];
             foreach ($section->getEntryTypes() as $type) {
                 $types[$type->handle] = $type->name;

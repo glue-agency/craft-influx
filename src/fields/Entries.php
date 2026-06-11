@@ -7,6 +7,7 @@ use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\Entry as EntryElement;
 use craft\helpers\Db;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -32,18 +33,17 @@ class Entries extends Relation
     protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
     {
         $sources = $field->sources ?? '*';
-        $entriesService = Craft::$app->getEntries();
 
         $sections = [];
         if ($sources === '*' || !is_array($sources)) {
-            $sections = $entriesService->getAllSections();
+            $sections = Compat::getAllSections();
         } else {
             foreach ($sources as $source) {
                 if (!is_string($source) || !str_starts_with($source, 'section:')) {
                     continue;
                 }
                 [, $uid] = explode(':', $source);
-                $section = $entriesService->getSectionByUid($uid);
+                $section = Compat::getSectionByUid($uid);
                 if ($section) {
                     $sections[] = $section;
                 }
