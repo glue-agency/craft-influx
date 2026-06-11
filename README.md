@@ -38,6 +38,22 @@ composer require tdm/craft-influx
 ./craft influx/sync news --ago=hour    # use a named "ago" preset
 ```
 
+### Migrating from Feed Me
+
+Existing [Feed Me](https://github.com/craftcms/feed-me) feeds can be converted to Influx links. The command reads the `feedme_feeds` table directly, so Feed Me doesn't need to be enabled — just installed at some point:
+
+```bash
+./craft influx/import-feed-me            # list available feeds
+./craft influx/import-feed-me 1,3        # import specific feeds
+./craft influx/import-feed-me --all      # import everything
+./craft influx/import-feed-me 1 --dry-run  # preview the link config without saving
+./craft influx/import-feed-me 1 --force    # save even when the link doesn't validate
+```
+
+The conversion is best-effort: everything that can't be carried over (Matrix block mappings, parent entries, non-JSON feed types, ...) is reported as a warning so you can finish the link in the builder.
+
+Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical across those majors except for a few renamed handles (e.g. `authorId` → `authorIds`), which the importer accepts interchangeably since rows of different vintages coexist after upgrades.
+
 ## Concepts
 
 ### Targets
@@ -84,6 +100,15 @@ Hook into any stage:
 - `SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Append token" picker
 - `TargetsService::EVENT_REGISTER_TARGETS`
 - `MappingService::EVENT_REGISTER_MAPPINGS`
+
+### Integrations
+
+Code that exists to play nice with *other* plugins lives under `src/integrations/`, one sub-namespace per plugin:
+
+- `integrations/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
+- `integrations/calendar` *(planned)* — an `EventTarget` for Solspace Calendar's Event element type, registered when the plugin is installed.
+
+Anything in there treats the other plugin as optional: integrations read its tables or registered services defensively and never make Influx depend on it being installed.
 
 ## Design decisions
 
