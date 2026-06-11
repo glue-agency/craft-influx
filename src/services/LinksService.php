@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
@@ -8,10 +8,10 @@ use craft\base\ElementInterface;
 use craft\db\Query;
 use craft\events\ConfigEvent;
 use craft\helpers\Db;
-use TDM\Influx\db\Table;
-use TDM\Influx\events\LinkEvent;
-use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\db\Table;
+use GlueAgency\Influx\events\LinkEvent;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
 use yii\base\InvalidConfigException;
 
 /**
@@ -25,7 +25,7 @@ use yii\base\InvalidConfigException;
  *
  *  - Project Config is the *deployment* channel: saving a link writes to
  *    `influx.links.{uid}` in PC, and `handleChangedLink` / `handleDeletedLink`
- *    (wired in {@see \TDM\Influx\Influx::registerProjectConfigEventListeners()})
+ *    (wired in {@see \GlueAgency\Influx\Influx::registerProjectConfigEventListeners()})
  *    react to those changes by upserting/deleting the DB row. This means
  *    `project-config/apply` after pulling YAML on a fresh environment seeds
  *    the DB; nothing else needs to run.

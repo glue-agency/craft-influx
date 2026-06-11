@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\controllers;
+namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\helpers\Cp;
 use craft\web\Controller;
-use TDM\Influx\Influx;
-use TDM\Influx\records\Log as LogRecord;
-use TDM\Influx\records\LogItem as LogItemRecord;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 

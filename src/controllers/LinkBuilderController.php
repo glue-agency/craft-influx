@@ -1,17 +1,17 @@
 <?php
 
-namespace TDM\Influx\controllers;
+namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\Influx;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
 
 /**
  * JSON CP routes powering the LinkBuilder Vue SPA. Thin layer over
- * {@see \TDM\Influx\services\LinkBuilderService} — request guards, body
+ * {@see \GlueAgency\Influx\services\LinkBuilderService} — request guards, body
  * parsing, and JSON wrapping; everything else lives in the service so it
  * can be reused from console / queue contexts too.
  *

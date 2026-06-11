@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
-use TDM\Influx\enums\ItemAction;
-use TDM\Influx\enums\SyncDecision;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncDecision;
 
 /**
  * Everything that happened (or, on a dry run, would happen) to one remote

@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
-use TDM\Influx\sync\FieldContext;
-use TDM\Influx\sync\SubElementApplier;
+use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\SubElementApplier;
 
 /**
  * Maps a remote-item node onto a Craft Assets field.
@@ -109,29 +109,29 @@ class Assets extends Field
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
         return [
-            \TDM\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Value is'), self::modeOptions(), [
+            \GlueAgency\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Value is'), self::modeOptions(), [
                 'default' => 'id',
             ]),
-            \TDM\Influx\helpers\BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
+            \GlueAgency\Influx\helpers\BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
                 'showIf' => $url,
             ]),
-            \TDM\Influx\helpers\BuilderSchema::text('volume', Craft::t('influx', 'Target volume'), [
+            \GlueAgency\Influx\helpers\BuilderSchema::text('volume', Craft::t('influx', 'Target volume'), [
                 'placeholder' => Craft::t('influx', 'Volume handle'),
                 'showIf'      => $uploading,
             ]),
-            \TDM\Influx\helpers\BuilderSchema::text('folderPath', Craft::t('influx', 'Sub-folder'), [
+            \GlueAgency\Influx\helpers\BuilderSchema::text('folderPath', Craft::t('influx', 'Sub-folder'), [
                 'placeholder' => Craft::t('influx', 'e.g. imports/2024'),
                 'showIf'      => $uploading,
             ]),
-            \TDM\Influx\helpers\BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
+            \GlueAgency\Influx\helpers\BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
                 'default' => 'index',
                 'showIf'  => $uploading,
             ]),
-            \TDM\Influx\helpers\BuilderSchema::elementSubFields(
+            \GlueAgency\Influx\helpers\BuilderSchema::elementSubFields(
                 Craft::t('influx', 'Asset sub-fields'),
                 [
-                    \TDM\Influx\helpers\BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
-                    \TDM\Influx\helpers\BuilderSchema::text('title', Craft::t('influx', 'Title')),
+                    \GlueAgency\Influx\helpers\BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
+                    \GlueAgency\Influx\helpers\BuilderSchema::text('title', Craft::t('influx', 'Title')),
                 ],
                 ['instructions' => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).')],
             ),
@@ -208,7 +208,7 @@ class Assets extends Field
             return null;
         }
 
-        return \TDM\Influx\Influx::getInstance()->assetUpload->uploadFromUrl(
+        return \GlueAgency\Influx\Influx::getInstance()->assetUpload->uploadFromUrl(
             volumeHandle: (string)$context->mapping->option('volume'),
             url: $url,
             folderPath: (string)$context->mapping->option('folderPath', ''),

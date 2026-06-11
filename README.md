@@ -21,7 +21,7 @@ FeedMe carries a lot of historical surface area (XML, CSV, complex UIs, project-
 ## Installation
 
 ```bash
-composer require tdm/craft-influx
+composer require glue-agency/craft-influx
 ./craft plugin/install influx
 ```
 
@@ -61,7 +61,7 @@ Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical 
 A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`). Third-party plugins register their own:
 
 ```php
-use TDM\Influx\services\TargetsService;
+use GlueAgency\Influx\services\TargetsService;
 
 Event::on(
     TargetsService::class,

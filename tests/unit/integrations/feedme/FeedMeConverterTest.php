@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\integrations\feedme;
+namespace GlueAgency\Influx\Tests\unit\integrations\feedme;
 
 use Codeception\Test\Unit;
-use TDM\Influx\integrations\feedme\FeedMeConversion;
-use TDM\Influx\integrations\feedme\FeedMeConverter;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\integrations\feedme\FeedMeConversion;
+use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Feed Me → Influx conversion spec.

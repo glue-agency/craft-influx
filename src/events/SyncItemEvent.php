@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use craft\base\ElementInterface;
 use craft\events\ModelEvent;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Fired around the processing of a single remote item.

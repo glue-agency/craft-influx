@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 /**
  * What {@see MappingApplier::apply()} did to one element: the aggregate

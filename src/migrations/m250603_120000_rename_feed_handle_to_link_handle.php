@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\migrations;
+namespace GlueAgency\Influx\migrations;
 
 use craft\db\Migration;
-use TDM\Influx\db\Table;
+use GlueAgency\Influx\db\Table;
 
 /**
  * Rename influx_logs.feedHandle to linkHandle (Feed → Link rename).

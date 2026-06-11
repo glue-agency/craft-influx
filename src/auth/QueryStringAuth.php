@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\auth;
+namespace GlueAgency\Influx\auth;
 
 use Craft;
 use craft\helpers\App;
-use TDM\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\BuilderSchema;
 
 class QueryStringAuth extends AbstractAuthStrategy
 {

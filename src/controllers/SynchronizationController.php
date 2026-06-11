@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\controllers;
+namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
-use TDM\Influx\Influx;
-use TDM\Influx\queue\jobs\SyncLinkJob;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\queue\jobs\SyncLinkJob;
 use yii\web\BadRequestHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;

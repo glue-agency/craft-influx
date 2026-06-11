@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use craft\base\FieldInterface as CraftFieldInterface;
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\FieldContext;
 
 /**
  * Per-Craft-field-type mapping strategy. One concrete subclass per `craft\fields\*`
@@ -11,11 +11,11 @@ use TDM\Influx\sync\FieldContext;
  * else falls through to {@see DefaultField}.
  *
  * Strategies are stateless shared singletons (see
- * {@see \TDM\Influx\services\FieldsService}): everything a call needs travels
+ * {@see \GlueAgency\Influx\services\FieldsService}): everything a call needs travels
  * in an immutable {@see FieldContext}, so the sub-mapping recursion can safely
  * re-enter the same instance.
  *
- * Lifecycle, driven by {@see \TDM\Influx\sync\MappingApplier}:
+ * Lifecycle, driven by {@see \GlueAgency\Influx\sync\MappingApplier}:
  *
  *   $value = $strategy->parse($context);
  *   if ($value !== null && $strategy->hasChanged($context, $value)) {
@@ -32,7 +32,7 @@ abstract class Field
      * register as the generic fallback (only {@see DefaultField} should).
      *
      * Subclasses may also point at a base class (e.g. `BaseOptionsField`)
-     * to cover a whole family — {@see \TDM\Influx\services\FieldsService}
+     * to cover a whole family — {@see \GlueAgency\Influx\services\FieldsService}
      * walks the parent chain on lookup.
      */
     public static function craftFieldClass(): ?string
@@ -57,7 +57,7 @@ abstract class Field
 
     /**
      * UI-side metadata for the mapping editor. Targets call this through
-     * {@see \TDM\Influx\services\FieldsService::metaFor()} when building the
+     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()} when building the
      * mappable-fields list, so per-field-type UI hints (asset sub-fields,
      * dropdown options, relation element type, ...) live next to the parse
      * logic instead of in a giant if-chain on the target.
@@ -72,7 +72,7 @@ abstract class Field
 
     /**
      * Declarative form schema for this field type's mapping-extras block —
-     * a list of {@see \TDM\Influx\helpers\BuilderSchema} nodes the SPA
+     * a list of {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes the SPA
      * renders generically. Declaring the UI next to the parse logic is what
      * keeps the Vue side free of per-field-type branches: adding a kind is
      * a single-PHP-file change.

@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\targets;
+namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
@@ -8,10 +8,10 @@ use craft\elements\Entry;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
-use TDM\Influx\models\FieldMapping;
-use TDM\Influx\models\Link;
-use TDM\Influx\sync\RemoteItem;
-use TDM\Influx\targets\support\EntryTypeResolver;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\targets\support\EntryTypeResolver;
 
 /**
  * Default target for craft\elements\Entry.
@@ -177,7 +177,7 @@ class EntryTarget extends AbstractElementTarget
                     'group'       => $tabName,
                     'defaultType' => 'text',
                     'fieldClass'  => $field::class,
-                    'fieldMeta'   => \TDM\Influx\Influx::getInstance()->fields->metaFor($field),
+                    'fieldMeta'   => \GlueAgency\Influx\Influx::getInstance()->fields->metaFor($field),
                 ];
             }
         }
@@ -366,12 +366,12 @@ class EntryTarget extends AbstractElementTarget
                     'matchOptions' => $this->authorMatchOptions(),
                     'allowCreate'  => false,
                     'schema'       => [
-                        \TDM\Influx\helpers\BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
+                        \GlueAgency\Influx\helpers\BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
                             'default' => 'id',
                         ]),
                     ],
-                    'labels'       => \TDM\Influx\fields\Relation::extrasLabels()
-                        + \TDM\Influx\fields\Field::commonExtrasLabels(),
+                    'labels'       => \GlueAgency\Influx\fields\Relation::extrasLabels()
+                        + \GlueAgency\Influx\fields\Field::commonExtrasLabels(),
                 ],
             ],
         ];
@@ -379,7 +379,7 @@ class EntryTarget extends AbstractElementTarget
 
     /**
      * Shared meta for postDate/expiryDate so the date extras block reads
-     * its preset list and labels from {@see \TDM\Influx\fields\Date}, same
+     * its preset list and labels from {@see \GlueAgency\Influx\fields\Date}, same
      * as the custom Date field strategy.
      *
      * @return array<string, mixed>
@@ -388,15 +388,15 @@ class EntryTarget extends AbstractElementTarget
     {
         return [
             'kind'          => 'date',
-            'formatOptions' => \TDM\Influx\fields\Date::formatOptions(),
+            'formatOptions' => \GlueAgency\Influx\fields\Date::formatOptions(),
             'schema'        => [
-                \TDM\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), \TDM\Influx\fields\Date::formatOptions(), [
+                \GlueAgency\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), \GlueAgency\Influx\fields\Date::formatOptions(), [
                     'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
                     'default'      => '',
                 ]),
             ],
-            'labels'        => \TDM\Influx\fields\Date::extrasLabels()
-                + \TDM\Influx\fields\Field::commonExtrasLabels(),
+            'labels'        => \GlueAgency\Influx\fields\Date::extrasLabels()
+                + \GlueAgency\Influx\fields\Field::commonExtrasLabels(),
         ];
     }
 

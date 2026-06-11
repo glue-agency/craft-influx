@@ -1,17 +1,17 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Cake\Utility\Hash;
 use Craft;
 use craft\base\Component;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use TDM\Influx\data\EndpointResolver;
-use TDM\Influx\data\PagedFeed;
-use TDM\Influx\models\Link;
-use TDM\Influx\exceptions\FeedFetchException;
-use TDM\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\data\EndpointResolver;
+use GlueAgency\Influx\data\PagedFeed;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\exceptions\InfluxException;
 
 /**
  * Fetches JSON from a link's endpoint. JSON only by design.

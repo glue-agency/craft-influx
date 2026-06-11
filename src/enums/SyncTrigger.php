@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\enums;
+namespace GlueAgency\Influx\enums;
 
 /**
  * What kicked off a sync run. Stored verbatim on the log record's `trigger`

@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\FieldContext;
 
 /**
  * Placeholder strategy for Craft's Matrix field. A real implementation is a
@@ -42,7 +42,7 @@ class Matrix extends Field
     public function defineExtrasSchema(\craft\base\FieldInterface $field): array
     {
         return [
-            \TDM\Influx\helpers\BuilderSchema::note(
+            \GlueAgency\Influx\helpers\BuilderSchema::note(
                 \Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
             ),
         ];

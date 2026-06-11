@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use yii\base\Event;
 
 /**
  * Fired once, lazily, when the field-strategy registry is first asked for
  * its registered classes. Listeners can append, override, or filter
- * {@see \TDM\Influx\fields\Field} subclasses.
+ * {@see \GlueAgency\Influx\fields\Field} subclasses.
  *
  * The list is keyed only by Craft field FQCN at registration time — adding
  * a new strategy with the same `craftFieldClass()` as a built-in
@@ -23,6 +23,6 @@ use yii\base\Event;
  */
 class RegisterFieldsEvent extends Event
 {
-    /** @var class-string<\TDM\Influx\fields\Field>[] */
+    /** @var class-string<\GlueAgency\Influx\fields\Field>[] */
     public array $fields = [];
 }

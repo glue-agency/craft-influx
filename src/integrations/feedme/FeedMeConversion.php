@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\integrations\feedme;
+namespace GlueAgency\Influx\integrations\feedme;
 
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Result of converting one Feed Me feed into an Influx link: the (unsaved)

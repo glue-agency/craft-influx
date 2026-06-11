@@ -1,20 +1,20 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
-use TDM\Influx\enums\ItemAction;
-use TDM\Influx\enums\SyncDecision;
-use TDM\Influx\Influx;
-use TDM\Influx\models\OffsetPreset;
-use TDM\Influx\models\Link;
-use TDM\Influx\sync\ItemProcessor;
-use TDM\Influx\sync\ItemResolution;
-use TDM\Influx\sync\RemoteItem;
-use TDM\Influx\sync\SyncContext;
-use TDM\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\OffsetPreset;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\ItemProcessor;
+use GlueAgency\Influx\sync\ItemResolution;
+use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\SyncContext;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * Strict dry-run inspector for a link. Mirrors what SynchronizationService
@@ -249,7 +249,7 @@ class DebugService extends Component
      * values described (stringified, truncated), parsed values run through
      * the Craft field's normalizeValue for display parity with the editor.
      *
-     * @param list<\TDM\Influx\sync\MappingResult> $results
+     * @param list<\GlueAgency\Influx\sync\MappingResult> $results
      * @return list<array>
      */
     protected function presentMappingResults(array $results, ElementInterface $element): array

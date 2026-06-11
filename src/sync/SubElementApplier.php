@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\Influx;
 
 /**
  * Applies a parent mapping's sub-mappings (`nativeFields` and `fields`) to a
@@ -11,8 +11,8 @@ use TDM\Influx\Influx;
  *
  * Never saves: whether the touched element gets persisted is the caller's
  * explicit, dry-run-aware decision
- * ({@see \TDM\Influx\fields\Relation::populateSubElement()},
- * {@see \TDM\Influx\fields\Assets::applySubFields()}). Keeping persistence
+ * ({@see \GlueAgency\Influx\fields\Relation::populateSubElement()},
+ * {@see \GlueAgency\Influx\fields\Assets::applySubFields()}). Keeping persistence
  * out of the walker is what lets the debug dry-run share the exact same
  * code path without side effects.
  *
@@ -28,7 +28,7 @@ class SubElementApplier
 {
     /**
      * @return bool Whether any sub-mapping wrote to the element.
-     * @throws \TDM\Influx\exceptions\MappingDepthException on runaway recursion
+     * @throws \GlueAgency\Influx\exceptions\MappingDepthException on runaway recursion
      */
     public function apply(ElementInterface $element, FieldContext $parentContext): bool
     {

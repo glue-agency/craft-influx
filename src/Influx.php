@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx;
+namespace GlueAgency\Influx;
 
 use Craft;
 use craft\base\Model;
@@ -17,20 +17,20 @@ use craft\services\ProjectConfig as ProjectConfigService;
 use craft\web\UrlManager;
 use craft\web\View;
 use yii\base\Event;
-use TDM\Influx\models\Settings;
-use TDM\Influx\services\AuthService;
-use TDM\Influx\services\EndpointTokensService;
-use TDM\Influx\services\LinkBuilderService;
-use TDM\Influx\services\LinksService;
-use TDM\Influx\services\DataService;
-use TDM\Influx\services\FieldsService;
-use TDM\Influx\services\SynchronizationService;
-use TDM\Influx\services\LogsService;
-use TDM\Influx\services\TargetsService;
-use TDM\Influx\services\CooldownService;
-use TDM\Influx\services\AssetUploadService;
-use TDM\Influx\services\BackupService;
-use TDM\Influx\services\DebugService;
+use GlueAgency\Influx\models\Settings;
+use GlueAgency\Influx\services\AuthService;
+use GlueAgency\Influx\services\EndpointTokensService;
+use GlueAgency\Influx\services\LinkBuilderService;
+use GlueAgency\Influx\services\LinksService;
+use GlueAgency\Influx\services\DataService;
+use GlueAgency\Influx\services\FieldsService;
+use GlueAgency\Influx\services\SynchronizationService;
+use GlueAgency\Influx\services\LogsService;
+use GlueAgency\Influx\services\TargetsService;
+use GlueAgency\Influx\services\CooldownService;
+use GlueAgency\Influx\services\AssetUploadService;
+use GlueAgency\Influx\services\BackupService;
+use GlueAgency\Influx\services\DebugService;
 
 /**
  * Influx plugin.
@@ -131,11 +131,11 @@ class Influx extends Plugin
     protected function registerControllers(): void
     {
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
-            $this->controllerNamespace = 'TDM\\Influx\\console\\controllers';
+            $this->controllerNamespace = 'GlueAgency\\Influx\\console\\controllers';
             return;
         }
 
-        $this->controllerNamespace = 'TDM\\Influx\\controllers';
+        $this->controllerNamespace = 'GlueAgency\\Influx\\controllers';
     }
 
     protected function registerCpRoutes(): void

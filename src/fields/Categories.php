@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\elements\Category as CategoryElement;
 use craft\elements\db\ElementQueryInterface;
 use craft\helpers\Db;
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\FieldContext;
 
 class Categories extends Relation
 {

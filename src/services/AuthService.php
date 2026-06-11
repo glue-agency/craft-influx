@@ -1,14 +1,14 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
-use TDM\Influx\auth\AuthStrategyInterface;
-use TDM\Influx\auth\BearerAuth;
-use TDM\Influx\auth\CustomHeaderAuth;
-use TDM\Influx\auth\QueryStringAuth;
-use TDM\Influx\events\RegisterAuthTypesEvent;
-use TDM\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\auth\AuthStrategyInterface;
+use GlueAgency\Influx\auth\BearerAuth;
+use GlueAgency\Influx\auth\CustomHeaderAuth;
+use GlueAgency\Influx\auth\QueryStringAuth;
+use GlueAgency\Influx\events\RegisterAuthTypesEvent;
+use GlueAgency\Influx\exceptions\InfluxException;
 
 /**
  * Registry of auth strategies. Mirrors the shape of {@see TargetsService} and

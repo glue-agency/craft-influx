@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\helpers;
+namespace GlueAgency\Influx\helpers;
 
 /**
  * Factory helpers for the declarative form-node vocabulary the LinkBuilder
@@ -8,9 +8,9 @@ namespace TDM\Influx\helpers;
  * contract for EVERY PHP-declared builder form:
  *
  *   - mapping extras, declared by field strategies via
- *     {@see \TDM\Influx\fields\Field::defineExtrasSchema()} (grid layout);
+ *     {@see \GlueAgency\Influx\fields\Field::defineExtrasSchema()} (grid layout);
  *   - auth strategy fields, declared via
- *     {@see \TDM\Influx\auth\AuthStrategyInterface::editSchema()} (stacked
+ *     {@see \GlueAgency\Influx\auth\AuthStrategyInterface::editSchema()} (stacked
  *     layout on the Authentication tab).
  *
  * The Vue side has no per-field-type or per-auth-type branches — it just

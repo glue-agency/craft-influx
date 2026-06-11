@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\auth;
+namespace GlueAgency\Influx\auth;
 
 use craft\base\Model;
 
@@ -9,7 +9,7 @@ use craft\base\Model;
  * validation can live in `defineRules()` and reuse the framework's standard
  * validators instead of a hand-rolled closure-based protocol.
  *
- * The {@see \TDM\Influx\services\AuthService} builds a strategy via
+ * The {@see \GlueAgency\Influx\services\AuthService} builds a strategy via
  * `new $class($config)`, where `$config` is the link's `auth` slice — the
  * `type` key is stripped here so it doesn't get assigned as a property.
  */

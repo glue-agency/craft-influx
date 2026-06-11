@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\models;
+namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
-use TDM\Influx\models\Link;
-use TDM\Influx\Tests\unit\Support\FakeLink;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
  * Contract test for the LinkBuilder wire shape. PHP is the authority

@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
-use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Per-element manual-sync rate limiter, backed by Craft's cache.

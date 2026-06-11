@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\migrations;
+namespace GlueAgency\Influx\migrations;
 
 use Craft;
 use craft\db\Migration;
 use craft\helpers\Db;
-use TDM\Influx\db\Table;
-use TDM\Influx\services\LinksService;
+use GlueAgency\Influx\db\Table;
+use GlueAgency\Influx\services\LinksService;
 
 /**
  * Create the `influx_links` table and seed it from Project Config.

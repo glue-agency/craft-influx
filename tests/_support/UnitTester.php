@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\Tests;
+namespace GlueAgency\Influx\Tests;
 
 use Codeception\Actor;
 

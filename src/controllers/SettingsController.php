@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\controllers;
+namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\Influx;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
 

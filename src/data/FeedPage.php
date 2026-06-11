@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\data;
+namespace GlueAgency\Influx\data;
 
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * One fetched page of a paginated feed, as yielded by {@see PagedFeed}.

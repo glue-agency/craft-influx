@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\Support;
+namespace GlueAgency\Influx\Tests\unit\Support;
 
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Lightweight Link factory for unit tests. Skips validation so we can build

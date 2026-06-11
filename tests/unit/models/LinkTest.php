@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\models;
+namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
-use TDM\Influx\models\Link;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * Link model behaviour spec — the bits the sync engine relies on.

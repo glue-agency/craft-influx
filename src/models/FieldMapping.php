@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\models;
+namespace GlueAgency\Influx\models;
 
 use Cake\Utility\Hash;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * One entry of a link's `mappings` config, typed. The persisted shape stays

@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\console\controllers;
+namespace GlueAgency\Influx\console\controllers;
 
 use Craft;
 use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\Json;
-use TDM\Influx\integrations\feedme\FeedMeConverter;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
+use GlueAgency\Influx\Influx;
 use yii\console\ExitCode;
 
 /**

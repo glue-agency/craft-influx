@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
 use craft\elements\Entry;
-use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Orchestrates the data that the LinkBuilder Vue SPA needs to render and
@@ -14,7 +14,7 @@ use TDM\Influx\models\Link;
  * forth between the JSON shape the SPA speaks and the model/Project-Config
  * shape that the storage layer expects.
  *
- * The controller layer ({@see \TDM\Influx\controllers\LinkBuilderController})
+ * The controller layer ({@see \GlueAgency\Influx\controllers\LinkBuilderController})
  * stays thin — request-method enforcement, JSON in/out, and delegating
  * everything else here. Keeping the heavy lifting in a service means
  * console commands, queue jobs, or other plugins can call the same surface
@@ -504,8 +504,8 @@ class LinkBuilderService extends Component
 
     /**
      * Per-strategy form schemas consumed by the SPA's Authentication tab.
-     * Strategies declare {@see \TDM\Influx\helpers\BuilderSchema} nodes
-     * natively via {@see \TDM\Influx\auth\AuthStrategyInterface::editSchema()}
+     * Strategies declare {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes
+     * natively via {@see \GlueAgency\Influx\auth\AuthStrategyInterface::editSchema()}
      * — the same vocabulary the mapping extras use — so this is pure
      * aggregation. Strategies with no extra fields (empty schema) are
      * skipped; the SPA falls back to "no schema" messaging if a stored

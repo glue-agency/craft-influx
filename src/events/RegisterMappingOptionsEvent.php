@@ -1,18 +1,18 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use yii\base\Event;
 
 /**
- * Fired by every static method on a {@see \TDM\Influx\fields\Field} strategy
+ * Fired by every static method on a {@see \GlueAgency\Influx\fields\Field} strategy
  * that exposes a UI-facing option list — the date-format presets, the asset
  * mode / conflict dropdowns, etc. Listeners receive the default set and may
  * append, replace, or filter it before it reaches the mapping editor.
  *
  *   Event::on(
- *       \TDM\Influx\fields\Date::class,
- *       \TDM\Influx\fields\Date::EVENT_REGISTER_FORMAT_OPTIONS,
+ *       \GlueAgency\Influx\fields\Date::class,
+ *       \GlueAgency\Influx\fields\Date::EVENT_REGISTER_FORMAT_OPTIONS,
  *       function (RegisterMappingOptionsEvent $event) {
  *           $event->options[] = ['value' => 'd.m.Y', 'label' => 'DE date'];
  *       }

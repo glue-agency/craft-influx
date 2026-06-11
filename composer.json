@@ -1,5 +1,5 @@
 {
-    "name": "tdm/craft-influx",
+    "name": "glue-agency/craft-influx",
     "description": "Connects Craft elements to external JSON APIs. Links are stored in Project Config.",
     "type": "craft-plugin",
     "license": "mit",
@@ -14,20 +14,20 @@
     },
     "autoload": {
         "psr-4": {
-            "TDM\\Influx\\": "src/"
+            "GlueAgency\\Influx\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "TDM\\Influx\\Tests\\": "tests/"
+            "GlueAgency\\Influx\\Tests\\": "tests/"
         }
     },
     "extra": {
         "handle": "influx",
         "name": "Influx",
-        "developer": "Thomas De Marez",
+        "developer": "Glue Agency",
         "documentationUrl": "",
-        "class": "TDM\\Influx\\Influx"
+        "class": "GlueAgency\\Influx\\Influx"
     },
     "config": {
         "sort-packages": true,

@@ -1,15 +1,15 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
 use craft\helpers\Db;
-use TDM\Influx\enums\ItemAction;
-use TDM\Influx\enums\SyncTrigger;
-use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
-use TDM\Influx\records\Log as LogRecord;
-use TDM\Influx\records\LogItem as LogItemRecord;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\records\LogItem as LogItemRecord;
 
 /**
  * Thin wrapper around the log records. SynchronizationService opens a run

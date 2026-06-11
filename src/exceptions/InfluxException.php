@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\exceptions;
+namespace GlueAgency\Influx\exceptions;
 
 class InfluxException extends \RuntimeException
 {

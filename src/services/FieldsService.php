@@ -1,23 +1,23 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
 use craft\base\FieldInterface as CraftFieldInterface;
-use TDM\Influx\events\RegisterFieldsEvent;
-use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\fields\Assets;
-use TDM\Influx\fields\Categories;
-use TDM\Influx\fields\Date;
-use TDM\Influx\fields\DefaultField;
-use TDM\Influx\fields\Dropdown;
-use TDM\Influx\fields\Entries;
-use TDM\Influx\fields\Field;
-use TDM\Influx\fields\Lightswitch;
-use TDM\Influx\fields\Matrix;
-use TDM\Influx\fields\RichText;
-use TDM\Influx\fields\Tags;
-use TDM\Influx\fields\Users;
+use GlueAgency\Influx\events\RegisterFieldsEvent;
+use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\fields\Assets;
+use GlueAgency\Influx\fields\Categories;
+use GlueAgency\Influx\fields\Date;
+use GlueAgency\Influx\fields\DefaultField;
+use GlueAgency\Influx\fields\Dropdown;
+use GlueAgency\Influx\fields\Entries;
+use GlueAgency\Influx\fields\Field;
+use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\fields\Matrix;
+use GlueAgency\Influx\fields\RichText;
+use GlueAgency\Influx\fields\Tags;
+use GlueAgency\Influx\fields\Users;
 
 /**
  * Registry of per-Craft-field-type mapping strategies. Built-ins are seeded

@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use craft\events\ModelEvent;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Fired around create/save/delete of a Link configuration.

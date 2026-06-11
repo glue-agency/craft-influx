@@ -1,15 +1,15 @@
 <?php
 
-namespace TDM\Influx\records;
+namespace GlueAgency\Influx\records;
 
 use craft\db\ActiveRecord;
-use TDM\Influx\db\Table;
+use GlueAgency\Influx\db\Table;
 
 /**
  * Database row for an Influx link.
  *
  * The `influx_links` table is the runtime source of truth — all reads in
- * {@see \TDM\Influx\services\LinksService} go through a plain query against
+ * {@see \GlueAgency\Influx\services\LinksService} go through a plain query against
  * this table. Project Config exists only as a deployment channel: saves
  * write to PC, and the PC change listeners upsert this row.
  *

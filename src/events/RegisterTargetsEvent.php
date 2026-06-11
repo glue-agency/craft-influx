@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use yii\base\Event;
 
 /**
  * Fired once, lazily, when the targets registry is first asked for its
- * registered targets. Listeners can append new {@see \TDM\Influx\targets\ElementTargetInterface}
+ * registered targets. Listeners can append new {@see \GlueAgency\Influx\targets\ElementTargetInterface}
  * implementations, replace built-ins (by re-adding under the same element type),
  * or remove them entirely by filtering the array.
  *
@@ -20,6 +20,6 @@ use yii\base\Event;
  */
 class RegisterTargetsEvent extends Event
 {
-    /** @var class-string<\TDM\Influx\targets\ElementTargetInterface>[] */
+    /** @var class-string<\GlueAgency\Influx\targets\ElementTargetInterface>[] */
     public array $targets = [];
 }

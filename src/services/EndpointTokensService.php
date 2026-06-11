@@ -1,14 +1,14 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
-use TDM\Influx\events\RegisterEndpointTokensEvent;
-use TDM\Influx\events\RegisterEndpointTokenSuggestionsEvent;
-use TDM\Influx\models\Link;
-use TDM\Influx\targets\support\EntryTypeResolver;
+use GlueAgency\Influx\events\RegisterEndpointTokensEvent;
+use GlueAgency\Influx\events\RegisterEndpointTokenSuggestionsEvent;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\support\EntryTypeResolver;
 
 /**
  * Builds the `{token}` substitution map for a link's Resource Endpoint URL

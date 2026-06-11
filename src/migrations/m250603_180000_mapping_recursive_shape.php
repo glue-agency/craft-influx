@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\migrations;
+namespace GlueAgency\Influx\migrations;
 
 use Craft;
 use craft\db\Migration;
 use craft\helpers\ProjectConfig;
-use TDM\Influx\services\LinksService;
+use GlueAgency\Influx\services\LinksService;
 
 /**
  * Migrate the Project Config mappings shape to its recursive form.

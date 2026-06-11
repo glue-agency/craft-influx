@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\records;
+namespace GlueAgency\Influx\records;
 
 use craft\db\ActiveRecord;
-use TDM\Influx\db\Table;
+use GlueAgency\Influx\db\Table;
 
 /**
  * @property int $id

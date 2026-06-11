@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\exceptions;
+namespace GlueAgency\Influx\exceptions;
 
 /**
  * Thrown by field strategies when a remote value is present but malformed

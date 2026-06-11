@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\models;
+namespace GlueAgency\Influx\models;
 
 /**
  * Sliding-window preset for incremental syncs:

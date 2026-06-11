@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\fields\Date as DateField;
 use craft\helpers\DateTimeHelper;
-use TDM\Influx\events\RegisterMappingOptionsEvent;
-use TDM\Influx\exceptions\MappingValueException;
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
+use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\sync\FieldContext;
 use yii\base\Event;
 
 class Date extends Field
@@ -72,7 +72,7 @@ class Date extends Field
     public function defineExtrasSchema(\craft\base\FieldInterface $field): array
     {
         return [
-            \TDM\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
+            \GlueAgency\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
                 'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
                 'default'      => '',
             ]),

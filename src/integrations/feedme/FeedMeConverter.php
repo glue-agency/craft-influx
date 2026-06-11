@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\integrations\feedme;
+namespace GlueAgency\Influx\integrations\feedme;
 
 use Craft;
 use craft\helpers\StringHelper;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Converts a craftcms/feed-me feed (a row from the `feedme_feeds` table) into

@@ -1,15 +1,15 @@
 <?php
 
-namespace TDM\Influx\models;
+namespace GlueAgency\Influx\models;
 
 use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
-use TDM\Influx\auth\AuthStrategyInterface;
-use TDM\Influx\enums\SyncDecision;
-use TDM\Influx\Influx;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\auth\AuthStrategyInterface;
+use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * An Influx link: one configured connection between Craft and an external
@@ -75,7 +75,7 @@ class Link extends Model
     /**
      * Endpoint pattern for syncing a single remote resource. Used by the
      * per-element "Sync from remote" button. Tokens substituted at sync-time
-     * are built by {@see \TDM\Influx\services\SynchronizationService::tokensForElement()}:
+     * are built by {@see \GlueAgency\Influx\services\SynchronizationService::tokensForElement()}:
      * `{id}`, `{status}`, `{slug}`, `{site.id}`, `{site.handle}`,
      * `{site.locale}`, plus any Dropdown/Email/Number/PlainText/RadioButtons
      * custom field referenced by its handle.
@@ -310,8 +310,8 @@ class Link extends Model
     /**
      * Mutates the given header / query arrays to add this link's auth
      * credentials. The actual rule per auth type lives on the strategy
-     * classes in {@see \TDM\Influx\auth}, dispatched via
-     * {@see \TDM\Influx\services\AuthService}.
+     * classes in {@see \GlueAgency\Influx\auth}, dispatched via
+     * {@see \GlueAgency\Influx\services\AuthService}.
      */
     public function applyAuth(array &$headers, array &$query): void
     {
@@ -324,7 +324,7 @@ class Link extends Model
      * the plugin isn't bootstrapped (e.g. in standalone unit tests that
      * never set auth on the link, so the lookup is never reached).
      */
-    protected function authService(): ?\TDM\Influx\services\AuthService
+    protected function authService(): ?\GlueAgency\Influx\services\AuthService
     {
         return Influx::getInstance()?->auth;
     }
@@ -377,8 +377,8 @@ class Link extends Model
     /**
      * Decide what a sync run should do with one remote item given its match
      * value and the element (if any) that was found for it. Used by both
-     * {@see \TDM\Influx\services\SynchronizationService::processItem()} for
-     * the real run and {@see \TDM\Influx\services\DebugService::debugItem()}
+     * {@see \GlueAgency\Influx\services\SynchronizationService::processItem()} for
+     * the real run and {@see \GlueAgency\Influx\services\DebugService::debugItem()}
      * for the dry-run inspector, so both stay aligned on the rule.
      */
     public function decideAction(mixed $matchValue, ?ElementInterface $element): SyncDecision

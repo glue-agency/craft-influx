@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\db;
+namespace GlueAgency\Influx\db;
 
 class Table
 {

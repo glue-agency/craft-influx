@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use Cake\Utility\Hash;
 

@@ -1,9 +1,9 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\Influx;
 
 /**
  * Walks the link's mappings against one remote item and writes the resolved

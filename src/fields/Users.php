@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\elements\User as UserElement;

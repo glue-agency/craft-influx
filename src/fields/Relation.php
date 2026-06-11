@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\models\FieldLayout;
-use TDM\Influx\sync\FieldContext;
-use TDM\Influx\sync\SubElementApplier;
+use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\SubElementApplier;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -46,7 +46,7 @@ abstract class Relation extends Field
 
     /**
      * UI strings rendered inside the relation extras block. Static so the
-     * native `author` mapping on {@see \TDM\Influx\targets\EntryTarget} can
+     * native `author` mapping on {@see \GlueAgency\Influx\targets\EntryTarget} can
      * reuse the exact same set without building a field instance.
      *
      * @return array<string, string>
@@ -142,13 +142,13 @@ abstract class Relation extends Field
     {
         /** @var \craft\fields\BaseRelationField $field */
         return [
-            \TDM\Influx\helpers\BuilderSchema::select(
+            \GlueAgency\Influx\helpers\BuilderSchema::select(
                 'match',
                 Craft::t('influx', 'Match by'),
                 $this->matchOptions($field),
                 ['default' => 'id'],
             ),
-            \TDM\Influx\helpers\BuilderSchema::lightswitch(
+            \GlueAgency\Influx\helpers\BuilderSchema::lightswitch(
                 'create',
                 Craft::t('influx', 'Create when not found'),
             ),

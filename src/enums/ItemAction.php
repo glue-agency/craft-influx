@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\enums;
+namespace GlueAgency\Influx\enums;
 
 /**
  * Outcome of processing one remote item. Stored verbatim on log-item rows

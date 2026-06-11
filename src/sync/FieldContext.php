@@ -1,18 +1,18 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
-use TDM\Influx\exceptions\MappingDepthException;
-use TDM\Influx\models\FieldMapping;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\exceptions\MappingDepthException;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Everything a field strategy needs to parse one mapping for one remote item.
  * Replaces the old setContext()/parseField() temporal coupling: strategy
  * instances are shared singletons (see
- * {@see \TDM\Influx\services\FieldsService}), so per-call state must travel
+ * {@see \GlueAgency\Influx\services\FieldsService}), so per-call state must travel
  * with the call, not live on the instance — the sub-mapping recursion
  * (relation → sub-fields → relation) re-enters the same instances. Treat a
  * context as read-only; derive a new one via {@see descend()}.

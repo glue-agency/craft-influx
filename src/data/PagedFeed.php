@@ -1,14 +1,14 @@
 <?php
 
-namespace TDM\Influx\data;
+namespace GlueAgency\Influx\data;
 
 use Cake\Utility\Hash;
 use Craft;
 use craft\helpers\UrlHelper;
-use TDM\Influx\exceptions\FeedFetchException;
-use TDM\Influx\models\Link;
-use TDM\Influx\services\DataService;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\services\DataService;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * Lazily-paginated view over a link's feed: each iteration yields one

@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
-use TDM\Influx\enums\SyncTrigger;
-use TDM\Influx\models\Link;
-use TDM\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * Everything that's constant for the duration of one (link, site) run:

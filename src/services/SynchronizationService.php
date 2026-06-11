@@ -1,26 +1,26 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
-use TDM\Influx\enums\ItemAction;
-use TDM\Influx\enums\SyncDecision;
-use TDM\Influx\enums\SyncTrigger;
-use TDM\Influx\Influx;
-use TDM\Influx\events\SyncLinkEvent;
-use TDM\Influx\events\SyncItemEvent;
-use TDM\Influx\exceptions\FeedFetchException;
-use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\OffsetPreset;
-use TDM\Influx\models\Link;
-use TDM\Influx\records\Log as LogRecord;
-use TDM\Influx\sync\ItemProcessor;
-use TDM\Influx\sync\ItemSyncResult;
-use TDM\Influx\sync\RemoteItem;
-use TDM\Influx\sync\SyncContext;
-use TDM\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\events\SyncLinkEvent;
+use GlueAgency\Influx\events\SyncItemEvent;
+use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\models\OffsetPreset;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\sync\ItemProcessor;
+use GlueAgency\Influx\sync\ItemSyncResult;
+use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\SyncContext;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * Owns the full sync lifecycle for a link:
@@ -166,7 +166,7 @@ class SynchronizationService extends Component
     /**
      * Walk every page of the feed for one site and process every item.
      * Pagination mechanics (fetching, cycle guards, URL normalization) live
-     * in {@see \TDM\Influx\data\PagedFeed}.
+     * in {@see \GlueAgency\Influx\data\PagedFeed}.
      *
      * @throws FeedFetchException on fetch failures, paginator URL cycles, or
      * runaway pagination.

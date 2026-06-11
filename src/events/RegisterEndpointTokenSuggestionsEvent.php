@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\models\Link;
 use yii\base\Event;
 
 /**

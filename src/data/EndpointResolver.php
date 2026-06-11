@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\data;
+namespace GlueAgency\Influx\data;
 
 use craft\helpers\App;
-use TDM\Influx\exceptions\FeedFetchException;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Resolves a link's configured endpoints into concrete URLs ready to hand

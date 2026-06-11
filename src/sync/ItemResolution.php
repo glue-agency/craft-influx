@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
-use TDM\Influx\enums\SyncDecision;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Output of {@see ItemProcessor::resolve()} — what one remote item matched

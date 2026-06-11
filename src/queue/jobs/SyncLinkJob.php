@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\queue\jobs;
+namespace GlueAgency\Influx\queue\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
-use TDM\Influx\enums\SyncTrigger;
-use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\Influx;
 
 /**
  * Queue job that runs a full link sync. CP-side triggers push this job so the

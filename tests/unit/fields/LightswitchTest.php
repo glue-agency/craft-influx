@@ -1,14 +1,14 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\fields;
+namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
-use TDM\Influx\fields\Lightswitch;
-use TDM\Influx\models\FieldMapping;
-use TDM\Influx\sync\FieldContext;
-use TDM\Influx\sync\RemoteItem;
-use TDM\Influx\Tests\unit\Support\FakeLink;
+use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
  * Behaviour spec for the Lightswitch field strategy. Coercion is automatic

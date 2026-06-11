@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\models;
+namespace GlueAgency\Influx\models;
 
 use craft\base\Model;
 

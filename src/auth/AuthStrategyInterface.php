@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\auth;
+namespace GlueAgency\Influx\auth;
 
 /**
  * Per-auth-type strategy. One concrete class per shape currently stored under
  * `Link::$auth` — bearer / custom header / query-string. Adding a new auth
  * type means writing a new strategy and registering it through
- * {@see \TDM\Influx\services\AuthService}; no other code needs to learn the
+ * {@see \GlueAgency\Influx\services\AuthService}; no other code needs to learn the
  * difference.
  *
  * Strategies are stateful value objects: they're constructed with the
@@ -29,7 +29,7 @@ interface AuthStrategyInterface
     /**
      * Form schema rendered by the LinkBuilder SPA's Authentication tab when
      * this strategy is selected: a list of
-     * {@see \TDM\Influx\helpers\BuilderSchema} nodes — the same vocabulary
+     * {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes — the same vocabulary
      * the mapping extras use, rendered by the same generic SchemaForm.
      * Each node's `handle` keys into the link's `auth` slice. Return an
      * empty array when the strategy needs no extra fields (e.g. a

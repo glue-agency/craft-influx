@@ -1,4 +1,4 @@
-namespace: TDM\Influx\Tests
+namespace: GlueAgency\Influx\Tests
 paths:
     tests: tests
     output: tests/_output

@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
@@ -9,12 +9,12 @@ use craft\errors\AssetException;
 use craft\helpers\Assets as AssetsHelper;
 use craft\helpers\FileHelper;
 use GuzzleHttp\Client;
-use TDM\Influx\exceptions\AssetUploadException;
+use GlueAgency\Influx\exceptions\AssetUploadException;
 use Throwable;
 
 /**
  * Downloads a remote URL and saves it into a Craft volume as an Asset.
- * Extracted from {@see \TDM\Influx\fields\Assets} so the field strategy
+ * Extracted from {@see \GlueAgency\Influx\fields\Assets} so the field strategy
  * stays focused on shaping the mapping, not on HTTP / disk I/O.
  *
  * Lookup by URL falls back to upload only when explicitly enabled — that's

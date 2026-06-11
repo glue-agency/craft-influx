@@ -1,18 +1,18 @@
 <?php
 
-namespace TDM\Influx\targets\support;
+namespace GlueAgency\Influx\targets\support;
 
 use Craft;
 use craft\models\EntryType;
 use craft\models\Section;
-use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\models\Link;
 
 /**
  * Resolves a link's `elementCriteria` (section/type handles) to the actual
  * Section + EntryType pair. This resolution used to exist three times —
- * {@see \TDM\Influx\targets\EntryTarget::buildNew()},
- * {@see \TDM\Influx\targets\EntryTarget::getMappableFields()} and the
+ * {@see \GlueAgency\Influx\targets\EntryTarget::buildNew()},
+ * {@see \GlueAgency\Influx\targets\EntryTarget::getMappableFields()} and the
  * endpoint-token field walker — each one free to drift from the others.
  */
 class EntryTypeResolver

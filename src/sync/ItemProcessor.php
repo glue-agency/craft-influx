@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\sync;
+namespace GlueAgency\Influx\sync;
 
 use Craft;
-use TDM\Influx\enums\ItemAction;
-use TDM\Influx\enums\SyncDecision;
-use TDM\Influx\models\Link;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\models\Link;
 
 /**
  * The per-item pipeline, in three phases that exist exactly once for both
@@ -20,7 +20,7 @@ use TDM\Influx\models\Link;
  *                          changed.
  *
  * The phase boundaries are deliberately the seams where
- * {@see \TDM\Influx\services\SynchronizationService} fires its item events,
+ * {@see \GlueAgency\Influx\services\SynchronizationService} fires its item events,
  * so events stay on the service while the logic lives here. Dry-run safety
  * is structural: the debug inspector simply never calls commit(), and the
  * dryRun flag rides the context into every field strategy.

@@ -1,12 +1,12 @@
 <?php
 
-namespace TDM\Influx\targets;
+namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
-use TDM\Influx\models\FieldMapping;
-use TDM\Influx\models\Link;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\RemoteItem;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {

@@ -1,15 +1,15 @@
 <?php
 
-namespace TDM\Influx\controllers;
+namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\elements\Entry;
 use craft\helpers\Cp;
 use craft\web\Controller;
-use TDM\Influx\Influx;
-use TDM\Influx\models\Link;
-use TDM\Influx\records\Log as LogRecord;
-use TDM\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\web\assets\links\LinksAsset;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -86,7 +86,7 @@ class LinksController extends Controller
         $link = Influx::getInstance()->links->getLinkByHandle($handle)
             ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
 
-        $limit = (int)Craft::$app->getRequest()->getQueryParam('limit', \TDM\Influx\services\DebugService::DEFAULT_LIMIT);
+        $limit = (int)Craft::$app->getRequest()->getQueryParam('limit', \GlueAgency\Influx\services\DebugService::DEFAULT_LIMIT);
         $limit = max(1, min($limit, 500));
 
         $siteHandles = $link->siteHandles();
@@ -126,7 +126,7 @@ class LinksController extends Controller
             ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
 
         $request = Craft::$app->getRequest();
-        $limit = max(1, min((int)$request->getQueryParam('limit', \TDM\Influx\services\DebugService::DEFAULT_LIMIT), 500));
+        $limit = max(1, min((int)$request->getQueryParam('limit', \GlueAgency\Influx\services\DebugService::DEFAULT_LIMIT), 500));
 
         $siteHandle = $request->getQueryParam('site') ?: null;
         if ($siteHandle !== null && !in_array($siteHandle, $link->siteHandles(), true)) {

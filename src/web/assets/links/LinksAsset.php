@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\web\assets\links;
+namespace GlueAgency\Influx\web\assets\links;
 
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;

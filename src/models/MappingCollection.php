@@ -1,6 +1,6 @@
 <?php
 
-namespace TDM\Influx\models;
+namespace GlueAgency\Influx\models;
 
 /**
  * Typed view over a link's `mappings` config: field handle → {@see FieldMapping}.

@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\FieldContext;
 
 /**
  * Strategy for craft\htmlfield\HtmlField-based fields (Redactor, CKEditor, …).

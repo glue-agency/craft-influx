@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\targets;
+namespace GlueAgency\Influx\targets;
 
 use craft\base\ElementInterface;
-use TDM\Influx\models\FieldMapping;
-use TDM\Influx\models\Link;
-use TDM\Influx\sync\RemoteItem;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * Adapter that lets the sync engine talk to any element type. One

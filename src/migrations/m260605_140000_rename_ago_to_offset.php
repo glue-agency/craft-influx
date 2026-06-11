@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\migrations;
+namespace GlueAgency\Influx\migrations;
 
 use Craft;
 use craft\db\Migration;
-use TDM\Influx\db\Table;
-use TDM\Influx\services\LinksService;
+use GlueAgency\Influx\db\Table;
+use GlueAgency\Influx\services\LinksService;
 
 /**
  * Catch-up migration for environments that ran `m260605_120000` before the

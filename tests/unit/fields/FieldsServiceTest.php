@@ -1,17 +1,17 @@
 <?php
 
-namespace TDM\Influx\Tests\unit\fields;
+namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
-use TDM\Influx\fields\Assets;
-use TDM\Influx\fields\Categories;
-use TDM\Influx\fields\DefaultField;
-use TDM\Influx\fields\Dropdown;
-use TDM\Influx\fields\Entries;
-use TDM\Influx\fields\Lightswitch;
-use TDM\Influx\fields\Tags;
-use TDM\Influx\fields\Users;
-use TDM\Influx\services\FieldsService;
+use GlueAgency\Influx\fields\Assets;
+use GlueAgency\Influx\fields\Categories;
+use GlueAgency\Influx\fields\DefaultField;
+use GlueAgency\Influx\fields\Dropdown;
+use GlueAgency\Influx\fields\Entries;
+use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\fields\Tags;
+use GlueAgency\Influx\fields\Users;
+use GlueAgency\Influx\services\FieldsService;
 
 /**
  * Registry behaviour spec.

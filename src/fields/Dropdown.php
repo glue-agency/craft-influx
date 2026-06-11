@@ -1,8 +1,8 @@
 <?php
 
-namespace TDM\Influx\fields;
+namespace GlueAgency\Influx\fields;
 
-use TDM\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\FieldContext;
 
 /**
  * Option-based fields: Dropdown, RadioButtons, Checkboxes, MultiSelect.
@@ -66,7 +66,7 @@ class Dropdown extends Field
         }
 
         return [
-            \TDM\Influx\helpers\BuilderSchema::valueMapTable(
+            \GlueAgency\Influx\helpers\BuilderSchema::valueMapTable(
                 'valueMap',
                 \Craft::t('influx', 'Value map'),
                 $options,

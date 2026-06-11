@@ -1,14 +1,14 @@
 <?php
 
-namespace TDM\Influx\services;
+namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
-use TDM\Influx\events\RegisterTargetsEvent;
-use TDM\Influx\exceptions\InfluxException;
-use TDM\Influx\models\Link;
-use TDM\Influx\targets\ElementTargetInterface;
-use TDM\Influx\targets\EntryTarget;
+use GlueAgency\Influx\events\RegisterTargetsEvent;
+use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\targets\EntryTarget;
 
 /**
  * Registry of element-target adapters. Built-ins are seeded into the

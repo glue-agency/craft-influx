@@ -1,13 +1,13 @@
 <?php
 
-namespace TDM\Influx\events;
+namespace GlueAgency\Influx\events;
 
 use yii\base\Event;
 
 /**
  * Fired once, lazily, when the auth registry is first asked to resolve a
  * link's auth config. Listeners can append, override, or filter
- * {@see \TDM\Influx\auth\AuthStrategyInterface} implementations.
+ * {@see \GlueAgency\Influx\auth\AuthStrategyInterface} implementations.
  *
  * Each registered class declares its discriminator via `::type()`. Adding a
  * new strategy with the same `type()` as a built-in effectively replaces it.
@@ -22,6 +22,6 @@ use yii\base\Event;
  */
 class RegisterAuthTypesEvent extends Event
 {
-    /** @var class-string<\TDM\Influx\auth\AuthStrategyInterface>[] */
+    /** @var class-string<\GlueAgency\Influx\auth\AuthStrategyInterface>[] */
     public array $authTypes = [];
 }

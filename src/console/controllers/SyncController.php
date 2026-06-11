@@ -1,11 +1,11 @@
 <?php
 
-namespace TDM\Influx\console\controllers;
+namespace GlueAgency\Influx\console\controllers;
 
 use Craft;
 use craft\console\Controller;
-use TDM\Influx\enums\SyncTrigger;
-use TDM\Influx\Influx;
+use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\Influx;
 use yii\console\ExitCode;
 
 /**

@@ -1,10 +1,10 @@
 <?php
 
-namespace TDM\Influx\enums;
+namespace GlueAgency\Influx\enums;
 
 /**
  * What a sync run should do with one remote item, decided by
- * {@see \TDM\Influx\models\Link::decideAction()}.
+ * {@see \GlueAgency\Influx\models\Link::decideAction()}.
  *
  * Create/Update intentionally share strings with the corresponding processing
  * flags since they name the same action; the Skip* values name the reason a
