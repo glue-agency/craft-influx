@@ -57,7 +57,11 @@ export function serializeSegments(segments) {
  * mutation with the serialized value (feeds v-model upward).
  */
 export function useTokenSegments({ onChange }) {
-    const segments = ref([]);
+    // Never empty: parse always yields a trailing text segment, and the
+    // initial state must honor that too — the component skips setFromValue()
+    // when the model value is already '' and relies on a text segment being
+    // there to render an input and land manual picks.
+    const segments = ref(parseSegments('', {}));
 
     const serialize = () => serializeSegments(segments.value);
     const emitChange = () => onChange(serialize());

@@ -1,9 +1,10 @@
 <template>
-    <!-- Grouped options (relation/author match-by): the shared
-         SearchableSelect — search + keyboard nav, rendered with the token
-         picker's group headings and kind-colored chips. -->
+    <!-- Grouped options (relation/author match-by) and opted-in flat lists
+         (mapping extras): the shared SearchableSelect — keyboard nav, the
+         token picker's group headings and kind-colored chips, search box
+         auto-hidden on short lists. -->
     <searchable-select
-        v-if="grouped"
+        v-if="grouped || searchable"
         :model-value="modelValue ?? ''"
         :options="node.options || []"
         placeholder="—"
@@ -36,6 +37,11 @@ export default {
     props: {
         node: { type: Object, required: true },
         modelValue: { type: [String, Number], default: '' },
+        // Render flat option lists with SearchableSelect instead of the
+        // native select — the mapping-extras rows opt in so every control
+        // shares the node select's chrome; the stacked Auth-tab layout
+        // keeps native selects.
+        searchable: { type: Boolean, default: false },
         readOnly: { type: Boolean, default: false },
     },
 

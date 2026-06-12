@@ -80,7 +80,8 @@ class FeedMeConverterTest extends Unit
             ],
         ])->link;
 
-        $this->assertArrayHasKey('status', $link->mappings);
+        // `enabled` passes through unchanged — Influx maps it natively too.
+        $this->assertArrayHasKey('enabled', $link->mappings);
         $this->assertArrayHasKey('author', $link->mappings);
         $this->assertSame('author.id', $link->mappings['author']['node']);
         $this->assertSame(['match' => 'id'], $link->mappings['author']['options']);

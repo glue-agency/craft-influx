@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
+use craft\base\ElementInterface;
 use craft\elements\Category as CategoryElement;
 use craft\elements\db\ElementQueryInterface;
 use craft\helpers\Db;
@@ -48,5 +49,35 @@ class Categories extends Relation
             /** @phpstan-ignore-next-line */
             $query->groupId($id);
         }
+    }
+
+    /**
+     * Create the category in the field's configured group when the extras'
+     * "Create when not found" toggle is on. Mirrors {@see Tags} but without
+     * its auto-create default — categories are usually curated, so creation
+     * stays opt-in.
+     */
+    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
+    {
+        if (!$context->craftField) {
+            return null;
+        }
+        $source = $context->craftField->source ?? null;
+        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+            return null;
+        }
+        [, $uid] = explode(':', $source);
+        $groupId = Db::idByUid('{{%categorygroups}}', $uid);
+        if (!$groupId) {
+            return null;
+        }
+
+        $category = new CategoryElement();
+        $category->groupId = $groupId;
+        $category->title = (string)$value;
+        if (!Craft::$app->getElements()->saveElement($category, true)) {
+            return null;
+        }
+        return $category;
     }
 }

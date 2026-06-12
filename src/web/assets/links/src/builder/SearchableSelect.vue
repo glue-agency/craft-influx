@@ -27,7 +27,7 @@
             class="influx-searchable-select-menu"
             role="listbox"
         >
-            <div class="influx-searchable-select-search">
+            <div v-if="showSearch" class="influx-searchable-select-search">
                 <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                     <circle cx="5" cy="5" r="3.25" stroke="currentColor" stroke-width="1.2" fill="none"/>
                     <path d="M7.5 7.5l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -217,6 +217,13 @@ export default {
             return this.groups.flatMap(g => g.options || []);
         },
 
+        // Short enum lists (mapping-extras "Value is" etc.) scan faster
+        // than they search — the box only earns its row once the list is
+        // long enough that scrubbing by eye gets old.
+        showSearch() {
+            return this.allOptions.length > 7;
+        },
+
         currentOption() {
             const v = this.normalize(this.modelValue);
             return this.allOptions.find(o => this.normalize(o.value) === v) || null;
@@ -284,7 +291,7 @@ export default {
                 const selectedIdx = this.filteredOptions.findIndex(o => this.isSelected(o));
                 this.highlightedIndex = selectedIdx >= 0 ? selectedIdx : 0;
                 this.$nextTick(() => {
-                    this.$refs.searchInput?.focus();
+                    if (this.showSearch) this.$refs.searchInput?.focus();
                     this.scrollHighlightedIntoView();
                 });
             }
@@ -385,11 +392,26 @@ export default {
 
         onTriggerKeydown(e) {
             if (this.disabled) return;
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
-                if (!this.open) {
+            if (!this.open) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     this.openMenu();
                 }
+                return;
+            }
+            // No search box (short list) → focus stays on the trigger, so
+            // it owns the menu keys the search input handles otherwise.
+            if (this.showSearch) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this.moveHighlight(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this.moveHighlight(-1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const opt = this.filteredOptions[this.highlightedIndex];
+                if (opt) this.commit(opt);
             }
         },
 

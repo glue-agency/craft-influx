@@ -54,8 +54,8 @@ describe('setMappingSlot', () => {
 });
 
 describe('nodeOption', () => {
-    it('renders dot paths with arrows', () => {
-        expect(nodeOption('meta.author.id')).toEqual({ value: 'meta.author.id', label: 'meta → author → id' });
+    it('keeps the raw dot syntax so search-by-path matches', () => {
+        expect(nodeOption('meta.author.id')).toEqual({ value: 'meta.author.id', label: 'meta.author.id' });
     });
 });
 
@@ -66,7 +66,7 @@ describe('mergeNodeOptions', () => {
             .toEqual([
                 { value: 'id', label: 'id' },
                 { value: 'title', label: 'title' },
-                { value: 'meta.slug', label: 'meta → slug' },
+                { value: 'meta.slug', label: 'meta.slug' },
             ]);
     });
 

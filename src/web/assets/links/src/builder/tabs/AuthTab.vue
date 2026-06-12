@@ -19,6 +19,7 @@
             layout="stacked"
             :schema="activeStrategy.schema"
             :options="link.auth || {}"
+            :token-groups="envSuggestions"
             @update:options="writeAuth"
         />
 
@@ -85,6 +86,12 @@ export default {
         activeStrategy() {
             const defs = this.options.authStrategies || [];
             return defs.find(d => d.type === this.type) || null;
+        },
+
+        // Env vars + Craft aliases for tokenInput schema nodes — the
+        // same picker items the endpoint inputs use.
+        envSuggestions() {
+            return this.ui.meta?.envSuggestions || [];
         },
     },
 

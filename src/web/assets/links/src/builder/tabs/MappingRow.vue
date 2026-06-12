@@ -13,7 +13,22 @@
                 {{ $t('missing mapping') }}
             </span>
 
-            <code class="handle light">{{ field.handle }}</code>
+            <!-- The extras toggle rides on the handle line so the expanded
+                 options start right below the source-node select instead of
+                 being pushed down by a separate toggle row. -->
+            <span class="meta-sub">
+                <code class="handle light">{{ field.handle }}</code>
+                <button
+                    v-if="hasExtras"
+                    type="button"
+                    class="extras-toggle"
+                    :aria-expanded="extrasExpanded ? 'true' : 'false'"
+                    @click="extrasExpanded = !extrasExpanded"
+                >
+                    <span class="chevron">{{ extrasExpanded ? '▼' : '▶' }}</span>
+                    {{ extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure }}
+                </button>
+            </span>
         </div>
 
         <div>
@@ -62,7 +77,7 @@
             class="influx-mapping-extras-slot"
             :field="field"
             :saved="extrasSaved"
-            :start-expanded="hasMappingData"
+            :expanded="extrasExpanded"
             :read-only="false"
             @update:options="onOptionsUpdate"
             @update:nativeFields="onNativeFieldsUpdate"
@@ -97,6 +112,9 @@ export default {
 
     data() {
         return {
+            // Rows with a saved mapping start with their extras open —
+            // same seed the extras component used when it owned the toggle.
+            extrasExpanded: Object.keys(store.link.mappings?.[this.field.handle] || {}).length > 0,
         };
     },
 
@@ -116,6 +134,17 @@ export default {
         // schema — no separate flag to keep in sync.
         hasExtras() {
             return (this.field.fieldMeta?.schema || []).length > 0;
+        },
+
+        // Toggle copy ships translated through fieldMeta.labels (the shared
+        // commonExtrasLabels set); fall back to the raw strings for metas
+        // that don't carry labels.
+        toggleLabels() {
+            const labels = this.field.fieldMeta?.labels || {};
+            return {
+                configure: labels.configure || 'Configure',
+                hideOptions: labels.hideOptions || 'Hide options',
+            };
         },
 
         // Rows the user hasn't mapped yet keep their extras collapsed —

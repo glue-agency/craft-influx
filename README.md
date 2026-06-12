@@ -43,11 +43,11 @@ composer require glue-agency/craft-influx
 Existing [Feed Me](https://github.com/craftcms/feed-me) feeds can be converted to Influx links. The command reads the `feedme_feeds` table directly, so Feed Me doesn't need to be enabled — just installed at some point:
 
 ```bash
-./craft influx/import-feed-me            # list available feeds
-./craft influx/import-feed-me 1,3        # import specific feeds
-./craft influx/import-feed-me --all      # import everything
-./craft influx/import-feed-me 1 --dry-run  # preview the link config without saving
-./craft influx/import-feed-me 1 --force    # save even when the link doesn't validate
+./craft influx/feed-me            # list available feeds
+./craft influx/feed-me 1,3        # import specific feeds
+./craft influx/feed-me --all      # import everything
+./craft influx/feed-me 1 --dry-run  # preview the link config without saving
+./craft influx/feed-me 1 --force    # save even when the link doesn't validate
 ```
 
 The conversion is best-effort: everything that can't be carried over (Matrix block mappings, parent entries, non-JSON feed types, ...) is reported as a warning so you can finish the link in the builder.

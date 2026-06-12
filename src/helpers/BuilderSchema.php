@@ -47,6 +47,7 @@ class BuilderSchema
      */
     public const TYPE_TEXT = 'text';
     public const TYPE_CODE = 'code';
+    public const TYPE_TOKEN_INPUT = 'tokenInput';
     public const TYPE_SELECT = 'select';
     public const TYPE_LIGHTSWITCH = 'lightswitch';
     public const TYPE_VALUE_MAP_TABLE = 'valueMapTable';
@@ -70,6 +71,20 @@ class BuilderSchema
     public static function code(string $handle, string $label, array $config = []): array
     {
         return self::node(self::TYPE_CODE, $handle, $label, $config);
+    }
+
+    /**
+     * Text input with token chips (the SPA's TokenizedInput) — for values
+     * that reference `.env` variables (`$VAR`), Craft aliases (`@alias`),
+     * or any custom token group the consuming form supplies. PHP consumers
+     * of env/alias values must run them through
+     * `craft\helpers\App::parseEnv()`.
+     *
+     * @param array{instructions?: string, placeholder?: string, default?: mixed, showIf?: array} $config
+     */
+    public static function tokenInput(string $handle, string $label, array $config = []): array
+    {
+        return self::node(self::TYPE_TOKEN_INPUT, $handle, $label, $config);
     }
 
     /**

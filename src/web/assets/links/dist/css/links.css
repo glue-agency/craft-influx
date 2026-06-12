@@ -1,9 +1,3 @@
-/* Fetch-sample button state colors */
-.btn.influx-fetch-success { color: #008549 !important; }
-.btn.influx-fetch-success::before { color: #008549 !important; }
-.btn.influx-fetch-error { color: #cf1124 !important; }
-.btn.influx-fetch-error::before { color: #cf1124 !important; }
-
 /* Mapping list */
 .influx-mapping-list { margin-top: 12px; }
 
@@ -107,8 +101,8 @@
 .influx-mapping-row .influx-mapping-extras-slot { grid-column: 1 / -1; }
 
 /* Light gray tint applied to the whole row only while the user has the
-   extras open. Collapsed state stays unstyled — just the plain "Configure"
-   toggle in the slot below the field controls. */
+   extras open. Collapsed state stays unstyled — the "Configure" toggle
+   rides on the handle line inside the meta column. */
 .influx-mapping-row.has-extras:has(.influx-mapping-extras[data-expanded="true"]) {
     background: #f8f9fb;
 }
@@ -123,7 +117,27 @@
     background: transparent;
 }
 .influx-mapping-row .meta .name { font-weight: 600; }
-.influx-mapping-row .meta .handle { display: block; font-size: 11px; }
+.influx-mapping-row .meta .meta-sub { display: block; font-size: 11px; }
+.influx-mapping-row .meta .handle { font-size: 11px; }
+
+/* Expand/collapse for the per-field options, inline after the handle so
+   the expanded extras (and their first control) sit directly under the
+   source-node select. */
+.influx-mapping-row .meta .extras-toggle {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-left: 8px;
+    cursor: pointer;
+    color: #364d6b;
+    font-size: 11px;
+}
+.influx-mapping-row .meta .extras-toggle:hover { color: #1f3454; }
+.influx-mapping-row .meta .extras-toggle .chevron {
+    display: inline-block;
+    margin-right: 3px;
+    font-size: 9px;
+}
 .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
 
 .influx-auto-badge {
@@ -157,11 +171,21 @@
     vertical-align: middle;
 }
 
-.influx-mapping-row[data-missing="true"] .influx-missing-badge { display: inline-block; }
+.influx-mapping-row[data-missing="true"] > .meta .influx-missing-badge { display: inline-block; }
 .influx-mapping-row[data-missing="true"],
 .influx-mapping-row.has-extras[data-missing="true"]:has(.influx-mapping-extras[data-expanded="true"]) {
     background: #fff9ea;
 }
+
+/* Sub-fields are independent mappings: the parent row's missing tint stops
+   above them, and each row flags (and tints) only its own missing node. */
+.influx-mapping-row[data-missing="true"] .influx-schema-form .sub-fields {
+    background: #fff;
+}
+.influx-schema-form .sub-field-row[data-missing="true"] {
+    background: #fff9ea;
+}
+.sub-field-row[data-missing="true"] .influx-missing-badge { display: inline-block; }
 
 .influx-mapping-headings {
     display: grid;
@@ -284,6 +308,13 @@
 }
 .influx-tokenized-input.disabled {
     background: #f7f9fc;
+}
+/* Inside an editable-table cell (site endpoints) the cell already draws
+   the border — flatten the control so it doesn't read as a box-in-a-box. */
+.influx-site-endpoints table.editable .influx-tokenized-input {
+    border: none;
+    border-radius: 0;
+    background: transparent;
 }
 
 .influx-tokenized-segments {
@@ -631,26 +662,23 @@
     gap: 8px;
 }
 
-/* Fetch sample button — standard Craft button; the only state-specific
-   styling is a small red dot in the top-right corner when the last
-   attempt failed. Idle / fetched states rely on the label change alone. */
-.influx-fetch-btn {
-    position: relative;
-}
+/* Fetch sample button — standard Craft button whose data-icon carries the
+   state: download (idle), spinning refresh (fetching), green check
+   (fetched), red cross (error). The label updates alongside; see
+   HeaderActions.vue. */
 .influx-fetch-btn.is-fetching {
     color: var(--medium-text-color, #6b7280);
     cursor: progress;
 }
-.influx-fetch-status {
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--cp-bg-color, #fff);
+.influx-fetch-btn.is-fetching::before {
+    animation: influx-fetch-spin 1s linear infinite;
 }
-.influx-fetch-status[data-state="error"] { background: hsl(0deg, 70%, 52%); }
+.influx-fetch-btn.is-fetched::before { color: #008549; }
+.influx-fetch-btn.is-error::before { color: #cf1124; }
+
+@keyframes influx-fetch-spin {
+    to { transform: rotate(360deg); }
+}
 
 .influx-sample-error {
     background: #fdecec;

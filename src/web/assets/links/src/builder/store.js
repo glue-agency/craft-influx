@@ -193,6 +193,11 @@ async function fetchSample() {
         root.sample = result.report;
     } catch (e) {
         root.sampleError = e.message || 'Sample fetch failed.';
+        // No inline error block anywhere — failures surface as a native CP
+        // toast, plus the header button's error state via `sampleError`.
+        if (window.Craft?.cp?.displayError) {
+            Craft.cp.displayError(Craft.t('influx', 'Sample failed: {message}', { message: root.sampleError }));
+        }
     } finally {
         // Recorded even on failure so the auto-fetcher doesn't loop on a
         // broken endpoint — the manual Fetch button always retries.

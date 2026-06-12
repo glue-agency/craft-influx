@@ -13,7 +13,8 @@ use GlueAgency\Influx\sync\FieldContext;
  */
 class Lightswitch extends Field
 {
-    protected const TRUTHY_VALUES = ['true', '1', 'yes', 'on'];
+    /** Referenced by {@see \GlueAgency\Influx\targets\EntryTarget::parseEnabled()} too — keep public. */
+    public const TRUTHY_VALUES = ['true', '1', 'yes', 'on'];
 
     public static function craftFieldClass(): ?string
     {

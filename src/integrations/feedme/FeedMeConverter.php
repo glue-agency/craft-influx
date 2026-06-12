@@ -56,7 +56,6 @@ class FeedMeConverter
      * vintages coexist in upgraded installs, so both are accepted.
      */
     protected const NATIVE_HANDLE_MAP = [
-        'enabled'   => 'status',
         'authorId'  => 'author',
         'authorIds' => 'author',
     ];

@@ -1,29 +1,27 @@
 <template>
     <teleport v-if="mounted && slotEl" :to="slotEl">
         <div class="influx-header-actions">
-            <!-- Fetch sample — single button, label changes with ui.
-                 Idle: "Fetch sample" with the download data-icon.
-                 Fetching: "Fetching…" (button disabled).
-                 Fetched: "Refetch sample" (no decoration — Pagination tab
-                          surfaces the populated dropdowns).
-                 Error: "Refetch sample" + small red status dot, error
-                        message in the title tooltip. -->
+            <!-- Fetch sample — single button whose icon carries the state.
+                 Idle: download (cloud) icon, "Fetch sample".
+                 Fetching: spinning refresh icon, "Fetching sample"
+                           (button disabled).
+                 Fetched: green check icon, "Sample fetched"; hovering
+                          swaps the label to "Refetch sample".
+                 Error: red cross icon, "Fetch failed"; hovering swaps the
+                        label to "Refetch sample", error message in the
+                        title tooltip. -->
             <button
                 type="button"
                 class="btn influx-fetch-btn"
                 :class="fetchBtnClass"
-                :data-icon="ui.sampling ? null : 'download'"
+                :data-icon="fetchIcon"
                 :disabled="!canSample || ui.sampling"
                 :title="fetchTitle"
                 @click="onFetch"
+                @mouseenter="fetchHovered = true"
+                @mouseleave="fetchHovered = false"
             >
                 {{ fetchLabel }}
-                <span
-                    v-if="ui.sampleError"
-                    class="influx-fetch-status"
-                    data-state="error"
-                    aria-hidden="true"
-                ></span>
             </button>
 
             <!-- Save split-button. Native Craft `.btngroup.submit.first`
@@ -45,7 +43,6 @@
                     ref="menuBtn"
                     type="button"
                     class="btn submit menubtn"
-                    data-icon="settings"
                     :aria-label="$t('More save options')"
                 ></button>
 
@@ -94,6 +91,7 @@ export default {
             mounted: false,
             slotEl: null,
             ui: store.ui,
+            fetchHovered: false,
         };
     },
 
@@ -118,16 +116,26 @@ export default {
             return 'is-idle';
         },
 
-        fetchStatusDot() {
-            if (this.ui.sampling) return null;
-            if (this.ui.sampleError) return 'error';
-            if (this.ui.sample) return 'success';
-            return null;
+        // Ligature names that exist in both the Craft 4 and Craft 5 icon
+        // fonts ("refresh"/"remove" are legacy aliases in Craft 5). The
+        // fonts have no cloud-check/cloud-cross glyph, so the fetched and
+        // error states fall back to a plain check/cross, colored via the
+        // is-fetched / is-error classes.
+        fetchIcon() {
+            if (this.ui.sampling) return 'refresh';
+            if (this.ui.sampleError) return 'remove';
+            if (this.ui.sample) return 'check';
+            return 'download';
         },
 
         fetchLabel() {
-            if (this.ui.sampling) return this.$t('Fetching…');
-            if (this.ui.sample || this.ui.sampleError) return this.$t('Refetch sample');
+            if (this.ui.sampling) return this.$t('Fetching sample');
+            if (this.ui.sampleError) {
+                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Fetch failed');
+            }
+            if (this.ui.sample) {
+                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Sample fetched');
+            }
             return this.$t('Fetch sample');
         },
 

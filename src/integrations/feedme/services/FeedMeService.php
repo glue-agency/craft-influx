@@ -1,95 +1,52 @@
 <?php
 
-namespace GlueAgency\Influx\console\controllers;
+namespace GlueAgency\Influx\integrations\feedme\services;
 
 use Craft;
-use craft\console\Controller;
+use craft\base\Component;
 use craft\db\Query;
+use craft\helpers\Console;
 use craft\helpers\Json;
-use GlueAgency\Influx\console\ConsoleOutputCompatTrait;
 use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
 use GlueAgency\Influx\Influx;
-use yii\console\ExitCode;
+use InvalidArgumentException;
 
 /**
- * `./craft influx/import-feed-me` — convert craftcms/feed-me feeds into
- * Influx links.
- *
- *   ./craft influx/import-feed-me                # list available feeds
- *   ./craft influx/import-feed-me 1,3            # import specific feeds
- *   ./craft influx/import-feed-me --all          # import everything
- *   ./craft influx/import-feed-me 1 --dry-run    # preview the link config without saving
- *   ./craft influx/import-feed-me 1 --force      # save even when the link doesn't validate
+ * Converts craftcms/feed-me feeds into Influx links — the engine behind the
+ * `influx/feed-me` console command.
  *
  * Reads straight from the `feedme_feeds` table, so Feed Me only needs to be
  * (or have been) installed — the plugin itself doesn't have to be enabled.
- * The conversion is best-effort: anything that couldn't be carried over is
- * printed as a warning, and `--force` lets you save a half-converted link to
- * finish in the link builder.
+ * Progress and results are written to the console via {@see Console}.
  */
-class ImportFeedMeController extends Controller
+class FeedMeService extends Component
 {
-    use ConsoleOutputCompatTrait;
-
-    /** Import every feed in the table. */
-    public bool $all = false;
-
-    /** Print the converted link config instead of saving. */
-    public bool $dryRun = false;
-
-    /** Save links even when they fail validation (finish them in the builder). */
-    public bool $force = false;
-
-    public function options($actionID): array
+    /**
+     * Whether the `feedme_feeds` table exists — i.e. Feed Me is (or has at
+     * some point been) installed on this site.
+     */
+    public function isInstalled(): bool
     {
-        return array_merge(parent::options($actionID), ['all', 'dryRun', 'force']);
-    }
-
-    public function optionAliases(): array
-    {
-        return array_merge(parent::optionAliases(), ['a' => 'all', 'f' => 'force']);
-    }
-
-    public function actionIndex(string $feedIds = ''): int
-    {
-        if (!Craft::$app->getDb()->tableExists('{{%feedme_feeds}}')) {
-            $this->failure('The `feedme_feeds` table does not exist — is Feed Me installed on this site?');
-            return ExitCode::UNAVAILABLE;
-        }
-
-        $feeds = $this->fetchFeeds($feedIds);
-        if ($feeds === null) {
-            return ExitCode::USAGE;
-        }
-        if (empty($feeds)) {
-            $this->stdout("No matching Feed Me feeds found.\n");
-            return ExitCode::OK;
-        }
-
-        // No selection: list what's available instead of importing everything.
-        if (!$this->all && $feedIds === '') {
-            $this->listFeeds($feeds);
-            return ExitCode::OK;
-        }
-
-        return $this->importFeeds($feeds);
+        return Craft::$app->getDb()->tableExists('{{%feedme_feeds}}');
     }
 
     /**
-     * Load the requested `feedme_feeds` rows, or null on unusable input.
-     * No ids + no --all returns every row (the caller lists them).
+     * Load the requested `feedme_feeds` rows.
+     * No ids + `$all = false` returns every row (callers list them).
+     *
+     * @return array[]
+     * @throws InvalidArgumentException when no usable ids are passed or an id doesn't exist
      */
-    protected function fetchFeeds(string $feedIds): ?array
+    public function fetchFeeds(string $feedIds = '', bool $all = false): array
     {
         $query = (new Query())
             ->from('{{%feedme_feeds}}')
             ->orderBy(['id' => SORT_ASC]);
 
-        if (!$this->all && $feedIds !== '') {
+        if (!$all && $feedIds !== '') {
             $ids = array_filter(array_map('intval', explode(',', $feedIds)));
             if (empty($ids)) {
-                $this->stderr("Pass one or more numeric feed ids, or --all\n");
-                return null;
+                throw new InvalidArgumentException('Pass one or more numeric feed ids, or --all');
             }
             $query->where(['id' => $ids]);
 
@@ -97,8 +54,7 @@ class ImportFeedMeController extends Controller
             $found = array_column($feeds, 'id');
             $missing = array_diff($ids, array_map('intval', $found));
             if ($missing) {
-                $this->stderr('Feed id(s) not found: ' . implode(', ', $missing) . "\n");
-                return null;
+                throw new InvalidArgumentException('Feed id(s) not found: ' . implode(', ', $missing));
             }
             return $feeds;
         }
@@ -109,10 +65,10 @@ class ImportFeedMeController extends Controller
     /**
      * Print the feeds available for import.
      */
-    protected function listFeeds(array $feeds): void
+    public function listFeeds(array $feeds): void
     {
         $this->stdout("Available Feed Me feeds:\n\n");
-        $this->table(
+        Console::table(
             ['ID', 'Name', 'Type', 'Element', 'URL'],
             array_map(fn(array $feed) => [
                 $feed['id'],
@@ -122,13 +78,15 @@ class ImportFeedMeController extends Controller
                 $feed['feedUrl'],
             ], $feeds),
         );
-        $this->tip('Import with `influx/import-feed-me <ids>` or `influx/import-feed-me --all`.');
+        $this->tip('Import with `influx/feed-me <ids>` or `influx/feed-me --all`.');
     }
 
     /**
-     * Convert and (unless --dry-run) save each feed as an Influx link.
+     * Convert and (unless `$dryRun`) save each feed as an Influx link.
+     *
+     * @return array{imported: int, failed: int}
      */
-    protected function importFeeds(array $feeds): int
+    public function importFeeds(array $feeds, bool $dryRun = false, bool $force = false): array
     {
         $plugin = Influx::getInstance();
         $converter = new FeedMeConverter();
@@ -152,14 +110,14 @@ class ImportFeedMeController extends Controller
                 $this->warning($warning);
             }
 
-            if ($this->dryRun) {
+            if ($dryRun) {
                 $this->stdout("  Link “{$link->handle}” (dry run):\n");
                 $this->stdout(Json::encode($link->getConfig(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
                 $imported++;
                 continue;
             }
 
-            if ($plugin->links->saveLink($link, !$this->force)) {
+            if ($plugin->links->saveLink($link, !$force)) {
                 $this->success("Imported as link “{$link->handle}”.");
                 $imported++;
                 continue;
@@ -168,15 +126,15 @@ class ImportFeedMeController extends Controller
             $failed++;
             $this->failure("Link “{$link->handle}” failed validation and was not saved:");
             foreach ($link->getErrorSummary(true) as $error) {
-                $this->stderr("  - {$error}\n");
+                Console::stderr("  - {$error}\n");
             }
             $this->tip('Re-run with `--force` to save it anyway and finish it in the link builder.');
         }
 
-        $verb = $this->dryRun ? 'converted (dry run)' : 'imported';
+        $verb = $dryRun ? 'converted (dry run)' : 'imported';
         $this->stdout("\n{$imported} feed(s) {$verb}, {$failed} failed.\n");
 
-        return $failed === 0 ? ExitCode::OK : ExitCode::UNSPECIFIED_ERROR;
+        return ['imported' => $imported, 'failed' => $failed];
     }
 
     /**
@@ -194,5 +152,35 @@ class ImportFeedMeController extends Controller
             $i++;
         }
         return "{$handle}{$i}";
+    }
+
+    /**
+     * Write to stdout, optionally ANSI-formatted — a service-context stand-in
+     * for `craft\console\Controller::stdout()`.
+     */
+    protected function stdout(string $string, int ...$format): void
+    {
+        Console::stdout($format ? Console::ansiFormat($string, $format) : $string);
+    }
+
+    /** Emoji output helpers, matching {@see \GlueAgency\Influx\console\ConsoleOutputCompatTrait}. */
+    protected function success(string $message): void
+    {
+        $this->stdout("✅ {$message}\n", Console::FG_GREEN);
+    }
+
+    protected function failure(string $message): void
+    {
+        $this->stdout("❌ {$message}\n", Console::FG_RED);
+    }
+
+    protected function warning(string $message): void
+    {
+        $this->stdout("⚠️ {$message}\n", Console::FG_YELLOW);
+    }
+
+    protected function tip(string $message): void
+    {
+        $this->stdout("💡 {$message}\n", Console::FG_YELLOW);
     }
 }

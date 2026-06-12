@@ -1,39 +1,40 @@
 <template>
     <div class="influx-tab-pagination">
-        <div v-if="ui.sampleError" class="influx-sample-error">
-            <strong>{{ $t('Sample failed:') }}</strong> {{ ui.sampleError }}
-        </div>
-        <p v-else-if="ui.sample" class="light">
+        <p v-if="ui.sample" class="light">
             {{ $t('Last fetched from') }} <code>{{ ui.sample.url }}</code>.
         </p>
 
         <div class="field">
-            <div class="heading"><label for="builder-rootNode">{{ $t('Root node') }}</label></div>
+            <div class="heading"><label>{{ $t('Root node') }}</label></div>
             <div class="instructions">
                 <p>{{ $t('The main node containing every element that needs to be parsed by the mappings.') }}</p>
             </div>
             <div class="input ltr">
-                <div class="select">
-                    <select id="builder-rootNode" v-model="link.rootNode">
-                        <option :value="null">{{ $t('— response root —') }}</option>
-                        <option v-for="opt in rootOptions" :key="opt" :value="opt">{{ opt }}</option>
-                    </select>
-                </div>
+                <searchable-select
+                    :model-value="link.rootNode ?? ''"
+                    :options="rootNodeOptions"
+                    :placeholder="$t('— response root —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    @update:model-value="link.rootNode = $event || null"
+                />
             </div>
         </div>
 
         <div class="field">
-            <div class="heading"><label for="builder-paginatorNode">{{ $t('Paginator node') }}</label></div>
+            <div class="heading"><label>{{ $t('Paginator node') }}</label></div>
             <div class="instructions">
                 <p>{{ $t('The node containing the URL of the next page to fetch.') }}</p>
             </div>
             <div class="input ltr">
-                <div class="select">
-                    <select id="builder-paginatorNode" v-model="link.paginatorNode">
-                        <option :value="null">{{ $t('— no paginator —') }}</option>
-                        <option v-for="opt in paginatorOptions" :key="opt" :value="opt">{{ opt }}</option>
-                    </select>
-                </div>
+                <searchable-select
+                    :model-value="link.paginatorNode ?? ''"
+                    :options="paginatorNodeOptions"
+                    :placeholder="$t('— no paginator —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    @update:model-value="link.paginatorNode = $event || null"
+                />
             </div>
         </div>
 
@@ -41,10 +42,14 @@
 </template>
 
 <script>
+import SearchableSelect from '../SearchableSelect.vue';
 import { store } from '../store.js';
+import { mergeNodeOptions } from '../lib/mappings.js';
 
 export default {
     name: 'PaginationTab',
+
+    components: { SearchableSelect },
 
     data() {
         return {
@@ -57,36 +62,43 @@ export default {
         // object, so a data() capture would go stale.
         link() { return store.link; },
 
-        canSample() {
-            const ep = this.link.endpoint;
-            return typeof ep === 'string' && ep.trim() !== '';
+        // Same grouped shape as the mapping rows' source-node select: the
+        // "no selection" sentinel as a plain row up top, the sample-
+        // discovered candidates inside a "Nodes" chip group. Saved-but-not-
+        // discovered values are merged back in so the user doesn't lose
+        // their config when the sample doesn't include them (e.g. they
+        // swapped the endpoint).
+        rootNodeOptions() {
+            return this.nodeGroups(
+                this.$t('— response root —'),
+                this.ui.sample?.rootNodeCandidates ?? [],
+                this.link.rootNode,
+            );
         },
 
-        // Root + paginator dropdowns: merge any saved-but-not-discovered
-        // value back in so the user doesn't lose their config when the
-        // sample doesn't include it (e.g. they swapped the endpoint).
-        rootOptions() {
-            const discovered = this.ui.sample?.rootNodeCandidates ?? [];
-            const saved = this.link.rootNode;
-            if (saved && !discovered.includes(saved)) {
-                return [saved, ...discovered];
-            }
-            return discovered;
-        },
-
-        paginatorOptions() {
-            const discovered = this.ui.sample?.paginatorNodeCandidates ?? [];
-            const saved = this.link.paginatorNode;
-            if (saved && !discovered.includes(saved)) {
-                return [saved, ...discovered];
-            }
-            return discovered;
+        paginatorNodeOptions() {
+            return this.nodeGroups(
+                this.$t('— no paginator —'),
+                this.ui.sample?.paginatorNodeCandidates ?? [],
+                this.link.paginatorNode,
+            );
         },
     },
 
     methods: {
-        onFetch() {
-            store.fetchSample();
+        nodeGroups(sentinelLabel, candidates, saved) {
+            const groups = [
+                {
+                    label: null,
+                    kind: null,
+                    options: [{ value: '', label: sentinelLabel }],
+                },
+            ];
+            const options = mergeNodeOptions(candidates, saved ? [saved] : []);
+            if (options.length) {
+                groups.push({ label: this.$t('Nodes'), kind: 'node', options });
+            }
+            return groups;
         },
     },
 };

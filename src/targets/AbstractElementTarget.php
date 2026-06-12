@@ -34,9 +34,9 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * Default native-attribute apply: resolve the remote value (`node` then
      * `default`) and assign it via setAttribute, falling back to setFieldValue
      * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
-     * methods first to translate values that aren't directly settable (e.g.
-     * Entry's `status` → `enabled`) — see the convention documented on
-     * {@see ElementTargetInterface::applyNativeAttribute()}.
+     * methods first to translate values that aren't directly assignable (e.g.
+     * coercing Entry's `enabled` to a bool) — see the convention documented
+     * on {@see ElementTargetInterface::applyNativeAttribute()}.
      *
      * Returns true when a write happened, so the sync engine can flag the
      * element as changed.

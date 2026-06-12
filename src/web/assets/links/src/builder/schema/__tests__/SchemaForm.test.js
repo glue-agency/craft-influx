@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SchemaForm from '../SchemaForm.vue';
+import SearchableSelect from '../../SearchableSelect.vue';
 
 /**
  * Locks in the renderer contract for PHP-declared schemas (BuilderSchema):
@@ -28,7 +29,7 @@ const mountForm = (props = {}) => mount(SchemaForm, {
         schema: assetSchema,
         options: {},
         nativeFields: {},
-        nodeOptions: [{ value: 'images.0.alt', label: 'images → 0 → alt' }],
+        nodeOptions: [{ value: 'images.0.alt', label: 'images.0.alt' }],
         ...props,
     },
     global: { mocks: { $t: (s) => s } },
@@ -37,7 +38,11 @@ const mountForm = (props = {}) => mount(SchemaForm, {
 describe('SchemaForm', () => {
     it('renders by node type and applies display-only defaults', () => {
         const wrapper = mountForm();
-        expect(wrapper.find('select').element.value).toBe('id');
+        // Grid-layout selects render as SearchableSelect (the node select's
+        // chrome); the default value resolves to its option label.
+        const select = wrapper.findComponent(SearchableSelect);
+        expect(select.props('modelValue')).toBe('id');
+        expect(select.find('.influx-searchable-select-trigger .value').text()).toBe('Asset ID');
         // Untouched defaults must never be emitted into the saved options.
         expect(wrapper.emitted('update:options')).toBeUndefined();
     });
@@ -72,8 +77,9 @@ describe('SchemaForm', () => {
 
     it('routes sub-field rows through the nativeFields channel', async () => {
         const wrapper = mountForm();
-        const select = wrapper.findAll('select').at(-1);
-        await select.setValue('images.0.alt');
+        // The sub-field source-node control is a SearchableSelect now.
+        const select = wrapper.findAllComponents(SearchableSelect).at(-1);
+        select.vm.$emit('update:modelValue', 'images.0.alt');
 
         expect(wrapper.emitted('update:nativeFields').at(-1))
             .toEqual([{ alt: { node: 'images.0.alt' } }]);

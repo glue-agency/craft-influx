@@ -22,7 +22,8 @@
                 />
             </div>
 
-            <h2 style="margin-top:24px;">{{ $t('Match key') }}</h2>
+            <hr>
+            <h2>{{ $t('Match key') }}</h2>
 
             <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
                 <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="required">*</span></label></div>

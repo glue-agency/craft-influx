@@ -118,7 +118,7 @@
             <div class="instructions">
                 <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
             </div>
-            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" />
+            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" />
         </div>
 
         <hr>
@@ -126,16 +126,19 @@
 
         <div class="field">
             <div class="instructions"><p>{{ $t('What the sync engine is allowed to do.') }}</p></div>
+            <!-- Craft draws the visible box on the label via the
+                 `input.checkbox + label` sibling selector, so the input
+                 must precede the label — nesting it inside leaves the
+                 (opacity-0) native checkbox invisible. -->
             <ul class="checkbox-group">
                 <li v-for="opt in options.processingActions" :key="opt.value">
-                    <label>
-                        <input type="checkbox"
-                               class="checkbox"
-                               :value="opt.value"
-                               :checked="link.processing.includes(opt.value)"
-                               @change="toggleProcessing(opt.value, $event.target.checked)" />
-                        {{ opt.label }}
-                    </label>
+                    <input type="checkbox"
+                           class="checkbox"
+                           :id="`builder-processing-${opt.value}`"
+                           :value="opt.value"
+                           :checked="link.processing.includes(opt.value)"
+                           @change="toggleProcessing(opt.value, $event.target.checked)" />
+                    <label :for="`builder-processing-${opt.value}`">{{ opt.label }}</label>
                 </li>
             </ul>
         </div>

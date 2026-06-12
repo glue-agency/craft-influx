@@ -16,8 +16,9 @@ use GlueAgency\Influx\sync\SubElementApplier;
  *
  * In `id` mode the value is treated as an existing asset id. In `url` mode
  * we look up an asset whose `getUrl()` matches verbatim, optionally
- * downloading it into a volume when `options.upload` is enabled (matches
- * FeedMe's `options.upload` path).
+ * downloading it when `options.upload` is enabled (matches FeedMe's
+ * `options.upload` path). Uploads land in the field's own configured
+ * upload location — never a separate mapping option.
  *
  * Sub-field values (alt/title) are written back to the matched asset itself,
  * mirroring how FeedMe handles asset sub-fields.
@@ -55,12 +56,8 @@ class Assets extends Field
     public static function extrasLabels(): array
     {
         return [
-            'valueIs'              => Craft::t('influx', 'Value is'),
+            'valueIs'              => Craft::t('influx', 'Match by'),
             'uploadToggle'         => Craft::t('influx', 'Download & upload missing files'),
-            'targetVolume'         => Craft::t('influx', 'Target volume'),
-            'targetVolumePh'       => Craft::t('influx', 'Volume handle'),
-            'subFolder'            => Craft::t('influx', 'Sub-folder'),
-            'subFolderPh'          => Craft::t('influx', 'e.g. imports/2024'),
             'onConflict'           => Craft::t('influx', 'On conflict'),
             'subFieldsTitle'       => Craft::t('influx', 'Asset sub-fields'),
             'subFieldsHint'        => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).'),
@@ -70,7 +67,7 @@ class Assets extends Field
     }
 
     /**
-     * Options for the "Value is" dropdown — whether the remote node carries
+     * Options for the "Match by" dropdown — whether the remote node carries
      * an asset id (default) or a URL we look up / optionally download.
      *
      * @return list<array{value: string, label: string}>
@@ -97,9 +94,8 @@ class Assets extends Field
         // Same story as {@see modeOptions()} — each value maps to a fixed
         // branch in the upload helper, so the list is intentionally closed.
         return [
-            ['value' => 'index',    'label' => Craft::t('influx', 'Reuse existing')],
-            ['value' => 'keepBoth', 'label' => Craft::t('influx', 'Keep both (rename)')],
-            ['value' => 'replace',  'label' => Craft::t('influx', 'Replace')],
+            ['value' => 'index',   'label' => Craft::t('influx', 'Reuse existing')],
+            ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
         ];
     }
 
@@ -109,19 +105,11 @@ class Assets extends Field
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Value is'), self::modeOptions(), [
+            \GlueAgency\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Match by'), self::modeOptions(), [
                 'default' => 'id',
             ]),
             \GlueAgency\Influx\helpers\BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
                 'showIf' => $url,
-            ]),
-            \GlueAgency\Influx\helpers\BuilderSchema::text('volume', Craft::t('influx', 'Target volume'), [
-                'placeholder' => Craft::t('influx', 'Volume handle'),
-                'showIf'      => $uploading,
-            ]),
-            \GlueAgency\Influx\helpers\BuilderSchema::text('folderPath', Craft::t('influx', 'Sub-folder'), [
-                'placeholder' => Craft::t('influx', 'e.g. imports/2024'),
-                'showIf'      => $uploading,
             ]),
             \GlueAgency\Influx\helpers\BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
                 'default' => 'index',
@@ -133,7 +121,6 @@ class Assets extends Field
                     \GlueAgency\Influx\helpers\BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
                     \GlueAgency\Influx\helpers\BuilderSchema::text('title', Craft::t('influx', 'Title')),
                 ],
-                ['instructions' => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).')],
             ),
         ];
     }
@@ -181,13 +168,13 @@ class Assets extends Field
     }
 
     /**
-     * Resolve a remote URL to a Craft Asset, optionally downloading it into
-     * the configured volume when no existing asset matches.
+     * Resolve a remote URL to a Craft Asset, optionally downloading it when
+     * no existing asset matches. The destination isn't a mapping option —
+     * the Assets field already declares where its files live, so the upload
+     * goes to the field's own configured location (see uploadLocation()).
      *
-     *   options.upload:     bool        — turn on download/upload behaviour
-     *   options.volume:     string      — target volume handle
-     *   options.folderPath: string      — sub-folder under the volume root
-     *   options.conflict:   replace|keepBoth|index (default: index)
+     *   options.upload:   bool — turn on download/upload behaviour
+     *   options.conflict: replace|index (default: index)
      */
     protected function resolveByUrl(FieldContext $context, string $url): ?Asset
     {
@@ -198,7 +185,7 @@ class Assets extends Field
             return $existing;
         }
 
-        if (!$context->mapping->option('upload') || !$context->mapping->option('volume')) {
+        if (!$context->mapping->option('upload')) {
             return null;
         }
 
@@ -208,12 +195,57 @@ class Assets extends Field
             return null;
         }
 
+        [$volume, $subpath] = $this->uploadLocation($context);
+        if (!$volume) {
+            return null;
+        }
+
         return \GlueAgency\Influx\Influx::getInstance()->assetUpload->uploadFromUrl(
-            volumeHandle: (string)$context->mapping->option('volume'),
+            volumeHandle: $volume->handle,
             url: $url,
-            folderPath: (string)$context->mapping->option('folderPath', ''),
+            folderPath: $subpath,
             conflict: (string)$context->mapping->option('conflict', 'index'),
         );
+    }
+
+    /**
+     * Upload destination derived from the field's own settings — the
+     * restricted location when the field is locked to a single folder, the
+     * default upload location otherwise. Mirrors where a CP user's manual
+     * upload through this field would land.
+     *
+     * @return array{0: ?\craft\models\Volume, 1: string} Volume (null when
+     * the field has no resolvable volume source) and rendered subpath.
+     */
+    protected function uploadLocation(FieldContext $context): array
+    {
+        $field = $context->craftField;
+        if (!$field instanceof \craft\fields\Assets) {
+            return [null, ''];
+        }
+
+        $source = $field->restrictLocation ? $field->restrictedLocationSource : $field->defaultUploadLocationSource;
+        $subpath = $field->restrictLocation ? $field->restrictedLocationSubpath : $field->defaultUploadLocationSubpath;
+
+        $volume = null;
+        if (is_string($source) && str_starts_with($source, 'volume:')) {
+            $volume = Craft::$app->getVolumes()->getVolumeByUid(substr($source, 7));
+        }
+
+        $subpath = (string)($subpath ?? '');
+        if ($subpath !== '') {
+            try {
+                // Subpaths may be object templates ({slug}, …) rendered
+                // against the element being synced — same as a CP upload.
+                $subpath = Craft::$app->getView()->renderObjectTemplate($subpath, $context->element);
+            } catch (\Throwable) {
+                // A failing dynamic subpath shouldn't kill the sync run —
+                // fall back to the volume root.
+                $subpath = '';
+            }
+        }
+
+        return [$volume, trim($subpath, '/')];
     }
 
     protected function matchExistingByUrl(string $url): ?Asset

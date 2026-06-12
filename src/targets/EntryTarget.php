@@ -8,6 +8,7 @@ use craft\elements\Entry;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
+use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -255,18 +256,24 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
-     * Translate the `status` mapping to the underlying `enabled` flag (status
-     * is a derived attribute computed from enabled + postDate + expiryDate;
-     * the sync engine can't set it directly).
+     * Coerce the mapped value into the `enabled` flag. (`status` itself is
+     * derived by Craft from enabled + postDate + expiryDate and can't be set
+     * directly — that's why the native mappable is `enabled`, not `status`.)
+     * Truthy spellings follow the Lightswitch field strategy.
      */
-    protected function parseStatus(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseEnabled(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
         if ($value === null) {
             return false;
         }
 
-        $element->enabled = !in_array(strtolower((string)$value), ['disabled', 'false', '0'], true);
+        if (is_bool($value)) {
+            $element->enabled = $value;
+            return true;
+        }
+
+        $element->enabled = in_array(strtolower(trim((string)$value)), Lightswitch::TRUTHY_VALUES, true);
         return true;
     }
 
@@ -332,16 +339,14 @@ class EntryTarget extends AbstractElementTarget
             ['handle' => 'title', 'name' => Craft::t('app', 'Title'), 'native' => true, 'group' => $native, 'defaultType' => 'text'],
             ['handle' => 'slug',  'name' => Craft::t('app', 'Slug'),  'native' => true, 'group' => $native, 'defaultType' => 'text'],
             [
-                'handle' => 'status',
-                'name'   => Craft::t('app', 'Status'),
+                'handle' => 'enabled',
+                'name'   => Craft::t('app', 'Enabled'),
                 'native' => true,
                 'group'  => $native,
                 'defaultType' => 'select',
                 'options' => [
-                    Entry::STATUS_LIVE    => Craft::t('app', 'Live'),
-                    Entry::STATUS_PENDING => Craft::t('app', 'Pending'),
-                    Entry::STATUS_EXPIRED => Craft::t('app', 'Expired'),
-                    'disabled'            => Craft::t('app', 'Disabled'),
+                    'true'  => Craft::t('app', 'Enabled'),
+                    'false' => Craft::t('app', 'Disabled'),
                 ],
             ],
             [

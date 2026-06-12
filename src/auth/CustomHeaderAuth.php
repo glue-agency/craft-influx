@@ -26,8 +26,8 @@ class CustomHeaderAuth extends AbstractAuthStrategy
             BuilderSchema::code('header', Craft::t('influx', 'Header name'), [
                 'instructions' => Craft::t('influx', 'e.g. <code>X-API-Key</code>.'),
             ]),
-            BuilderSchema::code('token', Craft::t('influx', 'Token'), [
-                'instructions' => Craft::t('influx', 'Used verbatim as the header value.'),
+            BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
+                'instructions' => Craft::t('influx', 'Used as the header value. Supports <code>$ENV_VAR</code> and <code>@alias</code> references.'),
             ]),
         ];
     }

@@ -12,6 +12,7 @@ use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * Fetches JSON from a link's endpoint. JSON only by design.
@@ -128,7 +129,7 @@ class DataService extends Component
             foreach ($this->flattenLeafPaths($sampleItem, []) as $path) {
                 $flatNodes[] = [
                     'value' => $path,
-                    'label' => str_replace('.', ' → ', $path) . $this->nodeDataSuffix($sampleItem, $path),
+                    'label' => $path . $this->nodeDataSuffix($sampleItem, $path),
                 ];
             }
 
@@ -171,7 +172,9 @@ class DataService extends Component
             return '';
         }
 
-        $value = Hash::get($sampleItem, $path);
+        // Resolve exactly the way the sync pipeline will — collapsed list
+        // hops included — so the preview shows what a mapping would read.
+        $value = (new RemoteItem($sampleItem))->get($path);
         if ($value === null) {
             return '';
         }
@@ -218,8 +221,13 @@ class DataService extends Component
 
     /**
      * Walk a sample item and return every leaf-path as a dot-separated string.
-     * Lists of objects expose only their first element's leaves (paths use
-     * the parent key, not the numeric index, to keep mappings stable).
+     *
+     * Nested objects contribute their leaves only. List-valued keys are
+     * nodes themselves (relation mappings consume whole arrays) and, when
+     * they hold objects, additionally expose their element leaves under the
+     * parent key with the index collapsed away (`directors.role.key`) —
+     * {@see \GlueAgency\Influx\sync\RemoteItem::get()} fans such reads out
+     * over every list element at sync time.
      *
      * @return list<string>
      */
@@ -243,12 +251,25 @@ class DataService extends Component
                 continue;
             }
             $childPrefix = array_merge($prefix, [$key]);
+
+            // Nested object: only its leaves are nodes.
             if (is_array($child) && !empty($child) && !array_is_list($child)) {
                 foreach ($this->flattenLeafPaths($child, $childPrefix) as $p) {
                     $paths[] = $p;
                 }
-            } else {
-                $paths[] = implode('.', $childPrefix);
+                continue;
+            }
+
+            $paths[] = implode('.', $childPrefix);
+
+            if (is_array($child) && $this->looksLikeListOfObjects($child)) {
+                // Lists of objects expose their first element's leaves under
+                // the parent key itself — the index collapses away entirely
+                // ('directors.full_name'); RemoteItem fans the read out over
+                // every element at sync time.
+                foreach ($this->flattenLeafPaths($child[0], $childPrefix) as $p) {
+                    $paths[] = $p;
+                }
             }
         }
         return $paths;

@@ -31,6 +31,7 @@ use GlueAgency\Influx\services\CooldownService;
 use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\BackupService;
 use GlueAgency\Influx\services\DebugService;
+use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
 use GlueAgency\Influx\web\twig\InfluxTwigExtension;
 
 /**
@@ -50,6 +51,7 @@ use GlueAgency\Influx\web\twig\InfluxTwigExtension;
  * @property DebugService $debug
  * @property AuthService $auth
  * @property EndpointTokensService $endpointTokens
+ * @property FeedMeService $feedMe
  */
 class Influx extends Plugin
 {
@@ -76,6 +78,7 @@ class Influx extends Plugin
                 'debug'           => DebugService::class,
                 'auth'            => AuthService::class,
                 'endpointTokens'  => EndpointTokensService::class,
+                'feedMe'          => FeedMeService::class,
             ],
         ];
     }

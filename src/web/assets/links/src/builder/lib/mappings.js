@@ -57,13 +57,14 @@ export function setMappingSlot(mappings, handle, key, value) {
 }
 
 /**
- * Render a node path as a select option ('meta.id' → 'meta → id').
+ * Render a node path as a select option. The label keeps the raw dot
+ * syntax ('meta.id') so typing a dot-path into the dropdown search matches.
  *
  * @param {string} value
  * @returns {import('../types.js').SelectOption}
  */
 export function nodeOption(value) {
-    return { value, label: String(value).replace(/\./g, ' → ') };
+    return { value, label: String(value) };
 }
 
 /**

@@ -1,26 +1,35 @@
 <template>
     <div class="sub-field-rows">
-        <div class="sub-field-row" v-for="sub in subFieldList" :key="sub.handle">
-            <label>{{ sub.label }}</label>
-            <div class="select">
-                <select
-                    :value="rowFor(sub.handle).node"
-                    :disabled="readOnly"
-                    @change="updateRow(sub.handle, 'node', $event.target.value)"
-                >
-                    <option value="">{{ $t('— no mapping —') }}</option>
-                    <option value="__default__">{{ $t('— use default —') }}</option>
-                    <option v-for="opt in nodeOptions" :key="opt.value" :value="opt.value">
-                        {{ opt.label }}
-                    </option>
-                </select>
-            </div>
+        <div
+            class="sub-field-row"
+            v-for="sub in subFieldList"
+            :key="sub.handle"
+            :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
+        >
+            <label>
+                {{ sub.label }}
+                <span v-if="isMissing(sub.handle)"
+                      class="influx-missing-badge"
+                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
+                    {{ $t('missing mapping') }}
+                </span>
+            </label>
+            <searchable-select
+                :model-value="rowFor(sub.handle).node"
+                :options="sourceNodeOptions"
+                :placeholder="$t('— no mapping —')"
+                :search-placeholder="$t('Search nodes…')"
+                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                :disabled="readOnly"
+                @update:model-value="updateRow(sub.handle, 'node', $event)"
+            />
             <!-- The default-value editor renders by the sub-field node's own
                  type — the same primitives the rest of the schema uses. -->
             <select-input
                 v-if="sub.type === 'select'"
                 :node="sub"
                 :model-value="rowFor(sub.handle).default"
+                searchable
                 :read-only="readOnly"
                 @update:model-value="updateRow(sub.handle, 'default', $event)"
             />
@@ -29,7 +38,7 @@
                 type="text"
                 :class="['text', sub.type === 'code' ? 'code' : null]"
                 :value="rowFor(sub.handle).default"
-                :placeholder="sub.placeholder || $t('Default')"
+                :placeholder="sub.placeholder || '—'"
                 :disabled="readOnly"
                 @input="updateRow(sub.handle, 'default', $event.target.value)"
             >
@@ -38,6 +47,7 @@
 </template>
 
 <script>
+import SearchableSelect from '../../SearchableSelect.vue';
 import SelectInput from './SelectInput.vue';
 
 /**
@@ -48,16 +58,24 @@ import SelectInput from './SelectInput.vue';
  * source-node select and writes the mapping's recursive `nativeFields`
  * channel: `{handle: {node?, default?, useDefault?}}`, fully-empty rows
  * dropped.
+ *
+ * Each row carries its own missing-mapping state (saved node no longer in
+ * the fetched sample) — independent of the parent mapping row's.
  */
 export default {
     name: 'ElementSubFields',
 
-    components: { SelectInput },
+    components: { SearchableSelect, SelectInput },
 
     props: {
         node: { type: Object, required: true },
         modelValue: { type: Object, default: () => ({}) },
         nodeOptions: { type: Array, default: () => [] },
+        // The sample's discovered flatNodes — the "is the node still live"
+        // signal. Null when no sample has been fetched (nothing is missing
+        // then). Distinct from nodeOptions, which re-adds saved-but-missing
+        // values for dropdown legibility.
+        discoveredNodes: { type: Array, default: null },
         readOnly: { type: Boolean, default: false },
     },
 
@@ -67,6 +85,25 @@ export default {
         /** @returns the sub-field nodes (BuilderSchema primitives). */
         subFieldList() {
             return this.node.subFields || [];
+        },
+
+        // Same grouped shape as MappingRow's source-node select: sentinels
+        // as plain rows up top, sample nodes inside a grey "Nodes" group.
+        sourceNodeOptions() {
+            const groups = [
+                {
+                    label: null,
+                    kind: null,
+                    options: [
+                        { value: '', label: this.$t('— no mapping —') },
+                        { value: '__default__', label: this.$t('— use default —') },
+                    ],
+                },
+            ];
+            if (this.nodeOptions.length) {
+                groups.push({ label: this.$t('Nodes'), kind: 'node', options: this.nodeOptions });
+            }
+            return groups;
         },
     },
 
@@ -79,6 +116,13 @@ export default {
                 node: saved.useDefault ? '__default__' : (saved.node || ''),
                 default: saved.default || '',
             };
+        },
+
+        isMissing(handle) {
+            const saved = this.modelValue[handle]?.node;
+            if (!saved) return false;
+            if (!this.discoveredNodes) return false;
+            return !this.discoveredNodes.some(o => o.value === saved);
         },
 
         updateRow(handle, key, value) {

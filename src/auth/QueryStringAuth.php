@@ -26,8 +26,8 @@ class QueryStringAuth extends AbstractAuthStrategy
             BuilderSchema::code('param', Craft::t('influx', 'Parameter name'), [
                 'instructions' => Craft::t('influx', 'e.g. <code>api_key</code>.'),
             ]),
-            BuilderSchema::code('token', Craft::t('influx', 'Token'), [
-                'instructions' => Craft::t('influx', 'Appended to every request as the parameter value.'),
+            BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
+                'instructions' => Craft::t('influx', 'Appended to every request as the parameter value. Supports <code>$ENV_VAR</code> and <code>@alias</code> references.'),
             ]),
         ];
     }

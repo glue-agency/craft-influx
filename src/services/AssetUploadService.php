@@ -39,7 +39,7 @@ class AssetUploadService extends Component
      * @param string $volumeHandle The Craft volume to upload into.
      * @param string $url          Fully-qualified URL to download.
      * @param string $folderPath   Optional sub-folder path (no leading slash).
-     * @param string $conflict     'replace' | 'keepBoth' | 'index' (default).
+     * @param string $conflict     'replace' | 'index' (default).
      *
      * @throws AssetUploadException with the actual cause — misconfigured
      * volume, failed download, or element validation errors. Callers must

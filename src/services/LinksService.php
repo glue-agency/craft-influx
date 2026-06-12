@@ -131,15 +131,15 @@ class LinksService extends Component
     {
         $isNew = !$link->id;
 
+        // Hygiene, not validation — runs on forced saves too, so the stored
+        // config never carries handles the target can't map.
+        $this->pruneUnknownMappings($link);
+
         if ($runValidation && !$link->validate()) {
             Craft::info(
                 'Link not saved due to validation errors: ' . json_encode($link->getErrors()),
                 __METHOD__,
             );
-            return false;
-        }
-
-        if ($runValidation && !$this->validateMappingHandles($link)) {
             return false;
         }
 
@@ -182,25 +182,27 @@ class LinksService extends Component
     }
 
     /**
-     * Every mapping handle must be one the target reports as mappable — a
-     * typo'd native handle ('Slug') would otherwise silently fall through to
-     * setFieldValue at sync time and never write anything.
+     * Drop mapping entries whose handle the target doesn't report as
+     * mappable — stale natives after a rename, or custom fields removed from
+     * the entry type's layout. Pruning at save time keeps the stored config
+     * (Project Config YAML + DB row) in lockstep with the target's field
+     * surface; re-adding a field simply makes its handle mappable again.
      *
-     * Only enforced when the target's field surface includes custom fields:
+     * Only applied when the target's field surface includes custom fields:
      * a natives-only list means the link's criteria didn't resolve (no
-     * section/type yet), and rejecting stored custom-field mappings on a
-     * half-configured link would block legitimate edits.
+     * section/type yet), and pruning then would throw away every
+     * custom-field mapping on a half-configured link.
      */
-    protected function validateMappingHandles(Link $link): bool
+    protected function pruneUnknownMappings(Link $link): void
     {
         $target = Influx::getInstance()->targets->forLink($link);
         if (!$target) {
-            return true;
+            return;
         }
 
         $mappable = $target->getMappableFields($link);
         if (empty($mappable)) {
-            return true;
+            return;
         }
 
         $known = [];
@@ -212,16 +214,19 @@ class LinksService extends Component
             }
         }
         if (!$hasCustomFields) {
-            return true;
+            return;
         }
 
-        foreach ($link->getMappingCollection() as $handle => $mapping) {
-            if (!isset($known[$handle])) {
-                $link->addError('mappings', "Mapping handle '{$handle}' is not a mappable field for this link.");
-            }
+        $unknown = array_diff_key($link->mappings, $known);
+        if (empty($unknown)) {
+            return;
         }
 
-        return !$link->hasErrors('mappings');
+        $link->mappings = array_intersect_key($link->mappings, $known);
+        Craft::info(
+            "Dropped unmappable mapping handle(s) on link '{$link->handle}': " . implode(', ', array_keys($unknown)),
+            __METHOD__,
+        );
     }
 
     /**

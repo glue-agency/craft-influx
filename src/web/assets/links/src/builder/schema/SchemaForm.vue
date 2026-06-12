@@ -21,6 +21,14 @@
                         @change="setOption(node, $event.target.checked)"
                     >
                 </label>
+                <tokenized-input
+                    v-else-if="node.type === 'tokenInput'"
+                    :model-value="valueFor(node) ?? ''"
+                    :token-groups="tokenGroups"
+                    :placeholder="node.placeholder || ''"
+                    :disabled="readOnly"
+                    @update:model-value="setOption(node, $event)"
+                />
                 <input
                     v-else
                     :id="fieldId(node)"
@@ -50,6 +58,7 @@
                     :node="node"
                     :model-value="nativeFields"
                     :node-options="nodeOptions"
+                    :discovered-nodes="discoveredNodes"
                     :read-only="readOnly"
                     @update:model-value="$emit('update:nativeFields', $event)"
                 />
@@ -87,7 +96,16 @@
                         v-if="node.type === 'select'"
                         :node="node"
                         :model-value="valueFor(node)"
+                        searchable
                         :read-only="readOnly"
+                        @update:model-value="setOption(node, $event)"
+                    />
+                    <tokenized-input
+                        v-else-if="node.type === 'tokenInput'"
+                        :model-value="valueFor(node) ?? ''"
+                        :token-groups="tokenGroups"
+                        :placeholder="node.placeholder || ''"
+                        :disabled="readOnly"
                         @update:model-value="setOption(node, $event)"
                     />
                     <input
@@ -110,6 +128,7 @@
 import SelectInput from './inputs/SelectInput.vue';
 import ElementSubFields from './inputs/ElementSubFields.vue';
 import ValueMapTable from './inputs/ValueMapTable.vue';
+import TokenizedInput from '../TokenizedInput.vue';
 
 /**
  * Generic renderer for the declarative form-node schema PHP strategies
@@ -123,7 +142,7 @@ import ValueMapTable from './inputs/ValueMapTable.vue';
 export default {
     name: 'SchemaForm',
 
-    components: { SelectInput, ElementSubFields, ValueMapTable },
+    components: { SelectInput, ElementSubFields, ValueMapTable, TokenizedInput },
 
     props: {
         schema: { type: Array, required: true },
@@ -131,6 +150,11 @@ export default {
         nativeFields: { type: Object, default: () => ({}) },
         // Source-node candidates for elementSubFields selects.
         nodeOptions: { type: Array, default: () => [] },
+        // The sample's discovered flatNodes, for per-sub-field missing
+        // detection. Null until a sample has been fetched.
+        discoveredNodes: { type: Array, default: null },
+        // Suggestion groups for tokenInput nodes (env vars / aliases / custom tokens).
+        tokenGroups: { type: Array, default: () => [] },
         // 'grid' (mapping-extras rows) or 'stacked' (Craft .field blocks).
         layout: { type: String, default: 'grid' },
         readOnly: { type: Boolean, default: false },
@@ -201,7 +225,39 @@ export default {
     padding: 6px 0;
 }
 
-.influx-schema-form .row > label,
+/* Option rows (Value is, date format, …) stack Craft-style — heading
+   label above the control — with both sitting on the source-node column,
+   so the control lines up edge-for-edge with the node select in the
+   mapping row above. The field-name gutter stays empty: these are
+   options *of* that field, not siblings. */
+.influx-schema-form .row {
+    gap: 0 12px;
+}
+
+/* The first option row hugs the mapping controls above — the toggle no
+   longer occupies a line between them, so only a sliver of air is needed
+   to read as "directly under the node select". */
+.influx-schema-form > .row:first-child {
+    padding-top: 2px;
+}
+
+.influx-schema-form .row > label:not(.inline-toggle) {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: inherit;
+    padding: 0 0 5px;
+    line-height: 1.2;
+}
+
+.influx-schema-form .row > .control {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+/* Sub-field rows mirror the parent mapping rows instead — label in the
+   field-name column, node select + default in their own columns. */
 .influx-schema-form .sub-field-row > label {
     font-size: 13px;
     font-weight: normal;
@@ -218,24 +274,26 @@ export default {
     padding-top: 0;
 }
 
-.influx-schema-form input[type="text"],
+/* TokenizedInput's inner segments size to their content (field-sizing) —
+   forcing them full-width would wrap every empty segment onto its own row. */
+.influx-schema-form input[type="text"]:not(.influx-tokenized-text),
 .influx-schema-form .select select {
     width: 100%;
 }
 
 .influx-schema-form .sub-fields {
-    margin-top: 6px;
-    border-top: 1px dashed rgba(0, 0, 0, .08);
-    padding-top: 6px;
+    margin-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, .08);
+    padding-top: 10px;
 }
 
 .influx-schema-form .sub-fields-title {
-    padding: 0 0 4px;
+    padding: 0 0 6px;
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: .04em;
-    color: #777;
+    letter-spacing: .05em;
+    color: #596673;
 }
 
 .influx-schema-form .sub-fields > .light {
