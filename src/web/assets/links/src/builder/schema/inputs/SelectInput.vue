@@ -3,11 +3,15 @@
          (mapping extras): the shared SearchableSelect — keyboard nav, the
          token picker's group headings and kind-colored chips, search box
          auto-hidden on short lists. -->
+    <!-- Schema selects are closed enums: every option — including a
+         value='' entry like the date format's "Auto-detect" — is a real,
+         labeled choice, never a no-selection placeholder. -->
     <searchable-select
         v-if="grouped || searchable"
         :model-value="modelValue ?? ''"
         :options="node.options || []"
         placeholder="—"
+        empty-is-value
         :disabled="readOnly"
         @update:model-value="$emit('update:modelValue', $event)"
     />

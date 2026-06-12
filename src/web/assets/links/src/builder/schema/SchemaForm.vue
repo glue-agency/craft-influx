@@ -43,29 +43,19 @@
         </div>
     </div>
 
-    <!-- Grid layout (default): the compact 3-column mapping-extras rows. -->
+    <!-- Grid layout (default): the extras share the mapping rows' column
+         grid, with everything placed on the source-node column onward.
+         Two dedicated structures: the field's own options (Match by, …)
+         grouped in one bordered fieldset card, then element sub-field
+         mappings as nested collapsible groups reusing the main list's
+         group chrome. -->
     <div v-else class="influx-schema-form">
-        <template v-for="(node, idx) in visibleNodes" :key="node.handle || idx">
-            <!-- Static explanatory text (e.g. the Matrix stub) -->
-            <p v-if="node.type === 'note'" class="light">{{ node.text }}</p>
+        <div v-if="optionNodes.length" class="extras-options" role="group">
+            <template v-for="(node, idx) in optionNodes" :key="node.handle || idx">
+                <!-- Static explanatory text (e.g. the Matrix stub) -->
+                <p v-if="node.type === 'note'" class="light">{{ node.text }}</p>
 
-            <!-- Recursive native sub-fields (asset alt/title) — writes the
-                 mapping's nativeFields channel, not options -->
-            <div v-else-if="node.type === 'elementSubFields'" class="sub-fields">
-                <p class="sub-fields-title">{{ node.label }}</p>
-                <p v-if="node.instructions" class="light" v-html="node.instructions" />
-                <element-sub-fields
-                    :node="node"
-                    :model-value="nativeFields"
-                    :node-options="nodeOptions"
-                    :discovered-nodes="discoveredNodes"
-                    :read-only="readOnly"
-                    @update:model-value="$emit('update:nativeFields', $event)"
-                />
-            </div>
-
-            <div v-else-if="node.type === 'lightswitch'" class="row">
-                <label class="inline-toggle">
+                <label v-else-if="node.type === 'lightswitch'" class="inline-toggle">
                     <input
                         type="checkbox"
                         :checked="!!valueFor(node)"
@@ -74,24 +64,22 @@
                     >
                     {{ node.label }}
                 </label>
-            </div>
 
-            <!-- Instructions render as HTML in both layouts: they're
-                 server-authored BuilderSchema strings (may contain <code>),
-                 never user input. -->
-            <div v-else-if="node.type === 'valueMapTable'" class="value-map-node">
-                <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
-                <value-map-table
-                    :node="node"
-                    :model-value="valueFor(node) || {}"
-                    :read-only="readOnly"
-                    @update:model-value="setOption(node, $event)"
-                />
-            </div>
+                <!-- Instructions render as HTML in both layouts: they're
+                     server-authored BuilderSchema strings (may contain
+                     <code>), never user input. -->
+                <div v-else-if="node.type === 'valueMapTable'" class="value-map-node">
+                    <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
+                    <value-map-table
+                        :node="node"
+                        :model-value="valueFor(node) || {}"
+                        :read-only="readOnly"
+                        @update:model-value="setOption(node, $event)"
+                    />
+                </div>
 
-            <div v-else class="row">
-                <label>{{ node.label }}</label>
-                <div class="control">
+                <div v-else class="option">
+                    <label>{{ node.label }}</label>
                     <select-input
                         v-if="node.type === 'select'"
                         :node="node"
@@ -119,8 +107,22 @@
                     >
                     <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
                 </div>
-            </div>
-        </template>
+            </template>
+        </div>
+
+        <!-- Recursive native sub-fields (asset alt/title) — writes the
+             mapping's nativeFields channel, not options. Rendered after
+             the options fieldset as their own group cards. -->
+        <element-sub-fields
+            v-for="(node, idx) in subFieldNodes"
+            :key="'subfields-' + (node.handle || idx)"
+            :node="node"
+            :model-value="nativeFields"
+            :node-options="nodeOptions"
+            :discovered-nodes="discoveredNodes"
+            :read-only="readOnly"
+            @update:model-value="$emit('update:nativeFields', $event)"
+        />
     </div>
 </template>
 
@@ -176,6 +178,17 @@ export default {
                 ),
             );
         },
+
+        /** The field's own options (Match by, conflict, …) — everything
+         *  except sub-field mapping groups. */
+        optionNodes() {
+            return this.visibleNodes.filter((node) => node.type !== 'elementSubFields');
+        },
+
+        /** Sub-field mapping nodes, rendered as nested group cards. */
+        subFieldNodes() {
+            return this.visibleNodes.filter((node) => node.type === 'elementSubFields');
+        },
     },
 
     methods: {
@@ -215,63 +228,90 @@ export default {
    the parent mapping row's 3-column grid so labels and controls line up
    with the Field / Source-node / Default-value columns above. */
 
-.influx-schema-form .row,
+/* The form itself sits on the mapping rows' column grid: everything —
+   the options fieldset and the sub-field groups — starts at the
+   source-node column's left edge and runs to the row's right edge. The
+   field-name column stays empty: these are details *of* the field above,
+   not siblings. */
+.influx-schema-form {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    gap: 0 12px;
+}
+
+.influx-schema-form > * {
+    grid-column: 2 / -1;
+    min-width: 0;
+}
+
 .influx-schema-form .sub-field-row,
 .influx-schema-form .value-map-row {
     display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.4fr) minmax(140px, 1fr);
     gap: 12px;
     align-items: start;
     padding: 6px 0;
 }
 
-/* Option rows (Value is, date format, …) stack Craft-style — heading
-   label above the control — with both sitting on the source-node column,
-   so the control lines up edge-for-edge with the node select in the
-   mapping row above. The field-name gutter stays empty: these are
-   options *of* that field, not siblings. */
-.influx-schema-form .row {
-    gap: 0 12px;
-}
-
-/* The first option row hugs the mapping controls above — the toggle no
-   longer occupies a line between them, so only a sliver of air is needed
-   to read as "directly under the node select". */
-.influx-schema-form > .row:first-child {
-    padding-top: 2px;
-}
-
-.influx-schema-form .row > label:not(.inline-toggle) {
+/* The options fieldset — one bordered card grouping the field's own
+   options (Match by, Download toggle, On conflict, …). Small-caps labels
+   above full-width controls, mirroring the mockup while keeping Craft's
+   quiet chrome. */
+.influx-schema-form .extras-options {
+    /* Column 2 only — the card's edges line up with the source-node
+       select above it, instead of stretching under the default column. */
     grid-column: 2;
-    grid-row: 1;
-    font-size: 13px;
+    margin: 6px 0 0;
+    padding: 10px 12px 12px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, .1);
+    border-radius: 5px;
+}
+
+.influx-schema-form .extras-options .option > label {
+    display: block;
+    font-size: 11px;
     font-weight: 600;
-    color: inherit;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #8a96a3;
     padding: 0 0 5px;
     line-height: 1.2;
 }
 
-.influx-schema-form .row > .control {
-    grid-column: 2;
-    grid-row: 2;
+.influx-schema-form .extras-options > * + * {
+    margin-top: 10px;
 }
 
-/* Sub-field rows mirror the parent mapping rows instead — label in the
-   field-name column, node select + default in their own columns. */
-.influx-schema-form .sub-field-row > label {
+.influx-schema-form .extras-options .inline-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
-    font-weight: normal;
+}
+
+/* Sub-field rows mirror the parent mapping rows — label in the first
+   column, node select + default in their own columns. No chevron gutter
+   here: sub-fields never collapse individually. The min-width puts a
+   floor under the fit-content() track below so very short labels don't
+   collapse the column. */
+.influx-schema-form .sub-field-row > label {
+    min-width: 100px;
+    font-size: 13px;
+    font-weight: 600;
     color: inherit;
     padding-top: 6px;
     line-height: 1.2;
 }
 
-.influx-schema-form .row > .inline-toggle {
-    grid-column: 2 / -1;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding-top: 0;
+/* Same handle treatment as the parent rows' meta: own line, lightened —
+   reference info, not something to read on every pass. */
+.influx-schema-form .sub-field-row > label .handle {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: normal;
+    color: #9aa5b1;
 }
 
 /* TokenizedInput's inner segments size to their content (field-sizing) —
@@ -281,28 +321,54 @@ export default {
     width: 100%;
 }
 
-.influx-schema-form .sub-fields {
-    margin-top: 10px;
-    border-top: 1px solid rgba(0, 0, 0, .08);
-    padding-top: 10px;
+/* Sub-field mapping groups reuse the main list's .influx-mapping-group
+   chrome (white card, clickable header, mapped/missing pills) — defined
+   in links.css. Only the nested-context spacing lives here. */
+.influx-schema-form .influx-mapping-group {
+    margin: 10px 0 6px;
 }
 
-.influx-schema-form .sub-fields-title {
-    padding: 0 0 6px;
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: #596673;
+/* One shared grid for the sub-fields card body: the label column shrinks
+   to its widest label/handle (capped) so the node select and default
+   value get every spare pixel. Rows join the shared tracks via subgrid,
+   staying aligned despite the content sizing; their fixed template above
+   is the no-subgrid fallback. */
+.influx-schema-form .influx-subfields-group > .influx-mapping-group-body {
+    display: grid;
+    grid-template-columns: fit-content(200px) minmax(200px, 1.4fr) minmax(140px, 1fr);
+    column-gap: 12px;
 }
 
-.influx-schema-form .sub-fields > .light {
-    padding: 0 0 6px;
+.influx-schema-form .influx-subfields-group.collapsed > .influx-mapping-group-body {
+    display: none;
+}
+
+.influx-schema-form .influx-subfields-group .sub-fields-hint,
+.influx-schema-form .influx-subfields-group .sub-field-row {
+    grid-column: 1 / -1;
+}
+
+.influx-schema-form .influx-subfields-group .sub-field-row {
+    grid-template-columns: subgrid;
+}
+
+.influx-schema-form .influx-mapping-group .sub-field-row {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+
+.influx-schema-form .influx-mapping-group .sub-field-row:last-child {
+    border-bottom: none;
+}
+
+.influx-schema-form .influx-mapping-group .sub-fields-hint {
+    padding: 6px 12px 0;
     font-size: 12px;
+    margin: 0;
 }
 
 .influx-schema-form .value-map-row {
-    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) auto;
+    grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) auto;
 }
 
 .influx-schema-form .value-map-target {

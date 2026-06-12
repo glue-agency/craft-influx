@@ -4,7 +4,30 @@
          :data-field-handle="field.handle"
          :data-missing="isMissing ? 'true' : 'false'"
     >
-        <div class="meta">
+        <!-- The whole meta cell toggles the extras: the chevron button has
+             no handler of its own — its (mouse or keyboard) click bubbles
+             up to the cell, so there's exactly one toggle path while the
+             button keeps carrying focus and aria-expanded. -->
+        <div class="meta"
+             :class="{ 'is-toggleable': hasExtras }"
+             @click="toggleExtras"
+        >
+            <!-- Disclosure chevron in the row's left gutter — same visual
+                 vocabulary as the group headers. Every row reserves the
+                 gutter so field names align whether or not a chevron
+                 exists. -->
+            <button
+                v-if="hasExtras"
+                type="button"
+                class="extras-chevron"
+                :class="{ collapsed: !extrasExpanded }"
+                :aria-expanded="extrasExpanded ? 'true' : 'false'"
+                :aria-label="extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure"
+                :title="extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure"
+            >
+                <span aria-hidden="true">▼</span>
+            </button>
+
             <span class="name">{{ field.name }}</span>
 
             <span v-if="isMissing"
@@ -13,22 +36,7 @@
                 {{ $t('missing mapping') }}
             </span>
 
-            <!-- The extras toggle rides on the handle line so the expanded
-                 options start right below the source-node select instead of
-                 being pushed down by a separate toggle row. -->
-            <span class="meta-sub">
-                <code class="handle light">{{ field.handle }}</code>
-                <button
-                    v-if="hasExtras"
-                    type="button"
-                    class="extras-toggle"
-                    :aria-expanded="extrasExpanded ? 'true' : 'false'"
-                    @click="extrasExpanded = !extrasExpanded"
-                >
-                    <span class="chevron">{{ extrasExpanded ? '▼' : '▶' }}</span>
-                    {{ extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure }}
-                </button>
-            </span>
+            <code class="handle light">{{ field.handle }}</code>
         </div>
 
         <div>
@@ -208,6 +216,11 @@ export default {
     },
 
     methods: {
+        toggleExtras() {
+            if (!this.hasExtras) return;
+            this.extrasExpanded = !this.extrasExpanded;
+        },
+
         onNodeSelect(value) {
             const handle = this.field.handle;
             let mappings = this.link.mappings;

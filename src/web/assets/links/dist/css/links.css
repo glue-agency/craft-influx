@@ -111,33 +111,57 @@
 .influx-mapping-row .meta {
     /* Explicit reset: Craft's CP ships a global .meta (metadata pane)
        whose padding/background leak in here and push the field name out
-       of alignment with the extras rows below. */
+       of alignment with the extras rows below.
+       The 22px left gutter hosts the disclosure chevron; rows without
+       extras keep the gutter empty so every field name shares one
+       alignment edge. */
+    position: relative;
     line-height: 1.2;
-    padding: 4px 0 0;
+    padding: 4px 0 0 22px;
     background: transparent;
 }
-.influx-mapping-row .meta .name { font-weight: 600; }
-.influx-mapping-row .meta .meta-sub { display: block; font-size: 11px; }
-.influx-mapping-row .meta .handle { font-size: 11px; }
+/* Rows with extras: the whole meta cell is the expand/collapse target —
+   a bigger hit area than the chevron alone. Text stays selectable (the
+   handle is copy-paste material); a stray toggle costs nothing. */
+.influx-mapping-row .meta.is-toggleable { cursor: pointer; }
+.influx-mapping-row .meta.is-toggleable:hover .extras-chevron { color: #333; }
+.influx-mapping-row .meta.is-toggleable:hover .name { color: #0b69a3; }
 
-/* Expand/collapse for the per-field options, inline after the handle so
-   the expanded extras (and their first control) sit directly under the
-   source-node select. */
-.influx-mapping-row .meta .extras-toggle {
+.influx-mapping-row .meta .name { font-weight: 600; }
+.influx-mapping-row .meta .handle {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    /* Lighter than Craft's .light gray — the handle is reference info,
+       not something to read on every pass. */
+    color: #9aa5b1;
+}
+
+/* Disclosure chevron for the per-field options — sits in the meta gutter,
+   left of the field name. Mirrors the group headers' chevron (same glyph,
+   same -90° collapse rotation) so expand/collapse reads as one gesture
+   across the whole mapping tree. */
+.influx-mapping-row .meta .extras-chevron {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
     background: none;
     border: 0;
-    padding: 0;
-    margin-left: 8px;
     cursor: pointer;
-    color: #364d6b;
+    color: #888;
     font-size: 11px;
+    line-height: 16px;
+    text-align: left;
 }
-.influx-mapping-row .meta .extras-toggle:hover { color: #1f3454; }
-.influx-mapping-row .meta .extras-toggle .chevron {
+.influx-mapping-row .meta .extras-chevron:hover { color: #333; }
+.influx-mapping-row .meta .extras-chevron span {
     display: inline-block;
-    margin-right: 3px;
-    font-size: 9px;
+    transition: transform .15s ease;
 }
+.influx-mapping-row .meta .extras-chevron.collapsed span { transform: rotate(-90deg); }
 .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
 
 .influx-auto-badge {
@@ -175,13 +199,14 @@
 .influx-mapping-row[data-missing="true"],
 .influx-mapping-row.has-extras[data-missing="true"]:has(.influx-mapping-extras[data-expanded="true"]) {
     background: #fff9ea;
+    /* Orange rail flagging the row needs attention — inset shadow instead
+       of border-left so the grid columns stay aligned with healthy rows. */
+    box-shadow: inset 3px 0 0 #ed8936;
 }
 
-/* Sub-fields are independent mappings: the parent row's missing tint stops
-   above them, and each row flags (and tints) only its own missing node. */
-.influx-mapping-row[data-missing="true"] .influx-schema-form .sub-fields {
-    background: #fff;
-}
+/* Sub-fields are independent mappings rendered as a nested group card —
+   its own white background (from .influx-mapping-group) stops the parent
+   row's missing tint; each row flags only its own missing node. */
 .influx-schema-form .sub-field-row[data-missing="true"] {
     background: #fff9ea;
 }
@@ -198,6 +223,10 @@
     text-transform: uppercase;
     letter-spacing: .04em;
 }
+
+/* The Field heading shares the rows' chevron gutter so it stays flush
+   with the field names below. */
+.influx-mapping-headings > div:first-child { padding-left: 22px; }
 
 /* Inner layout of the extras (rows, header, sub-fields, value-maps) lives
    in the Vue component's scoped style. links.css only positions the slot. */

@@ -1,47 +1,82 @@
 <template>
-    <div class="sub-field-rows">
-        <div
-            class="sub-field-row"
-            v-for="sub in subFieldList"
-            :key="sub.handle"
-            :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
-        >
-            <label>
-                {{ sub.label }}
-                <span v-if="isMissing(sub.handle)"
-                      class="influx-missing-badge"
-                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
-                    {{ $t('missing mapping') }}
-                </span>
-            </label>
-            <searchable-select
-                :model-value="rowFor(sub.handle).node"
-                :options="sourceNodeOptions"
-                :placeholder="$t('— no mapping —')"
-                :search-placeholder="$t('Search nodes…')"
-                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
-                :disabled="readOnly"
-                @update:model-value="updateRow(sub.handle, 'node', $event)"
-            />
-            <!-- The default-value editor renders by the sub-field node's own
-                 type — the same primitives the rest of the schema uses. -->
-            <select-input
-                v-if="sub.type === 'select'"
-                :node="sub"
-                :model-value="rowFor(sub.handle).default"
-                searchable
-                :read-only="readOnly"
-                @update:model-value="updateRow(sub.handle, 'default', $event)"
-            />
-            <input
-                v-else
-                type="text"
-                :class="['text', sub.type === 'code' ? 'code' : null]"
-                :value="rowFor(sub.handle).default"
-                :placeholder="sub.placeholder || '—'"
-                :disabled="readOnly"
-                @input="updateRow(sub.handle, 'default', $event.target.value)"
+    <!-- Same group chrome as the main field list (MappingGroup): white
+         card, clickable header with chevron + mapped/missing pills. Sub-
+         field mappings ARE mappings, so they get the same furniture. -->
+    <div class="influx-mapping-group influx-subfields-group" :class="{ collapsed: !expanded }">
+        <div class="influx-mapping-group-header"
+             role="button"
+             tabindex="0"
+             :aria-expanded="expanded ? 'true' : 'false'"
+             @click="expanded = !expanded"
+             @keydown.enter.prevent="expanded = !expanded"
+             @keydown.space.prevent="expanded = !expanded">
+            <span class="chevron" aria-hidden="true">▼</span>
+            <span class="label">{{ node.label }}</span>
+
+            <span class="pill pill-mapped"
+                  :data-mapped="mappedCount"
+                  :title="$t('Sub-fields with an active source node')">
+                <span class="num">{{ mappedCount }}</span>&nbsp;{{ $t('mapped') }}
+            </span>
+
+            <span v-if="missingCount > 0"
+                  class="pill pill-missing"
+                  :data-missing="missingCount"
+                  :title="$t('Sub-fields whose saved source node is no longer in the fetched sample')">
+                <span class="num">{{ missingCount }}</span>&nbsp;{{ $t('missing') }}
+            </span>
+
+            <span class="pill pill-count" :title="$t('Total sub-fields in this group')">{{ subFieldList.length }}</span>
+        </div>
+
+        <div class="influx-mapping-group-body">
+            <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
+
+            <div
+                class="sub-field-row"
+                v-for="sub in subFieldList"
+                :key="sub.handle"
+                :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
             >
+                <label>
+                    {{ sub.label }}
+                    <span v-if="isMissing(sub.handle)"
+                          class="influx-missing-badge"
+                          :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
+                        {{ $t('missing mapping') }}
+                    </span>
+                    <code class="handle light">{{ sub.handle }}</code>
+                </label>
+                <searchable-select
+                    :model-value="rowFor(sub.handle).node"
+                    :options="sourceNodeOptions"
+                    :placeholder="$t('— no mapping —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    :disabled="readOnly"
+                    @update:model-value="updateRow(sub.handle, 'node', $event)"
+                />
+                <!-- The default-value editor renders by the sub-field node's
+                     own type — the same primitives the rest of the schema
+                     uses. -->
+                <select-input
+                    v-if="sub.type === 'select'"
+                    :node="sub"
+                    :model-value="rowFor(sub.handle).default"
+                    searchable
+                    :read-only="readOnly"
+                    @update:model-value="updateRow(sub.handle, 'default', $event)"
+                />
+                <input
+                    v-else
+                    type="text"
+                    :class="['text', sub.type === 'code' ? 'code' : null]"
+                    :value="rowFor(sub.handle).default"
+                    :placeholder="sub.placeholder || '—'"
+                    :disabled="readOnly"
+                    @input="updateRow(sub.handle, 'default', $event.target.value)"
+                >
+            </div>
         </div>
     </div>
 </template>
@@ -81,10 +116,30 @@ export default {
 
     emits: ['update:modelValue'],
 
+    data() {
+        return {
+            expanded: true,
+        };
+    },
+
     computed: {
         /** @returns the sub-field nodes (BuilderSchema primitives). */
         subFieldList() {
             return this.node.subFields || [];
+        },
+
+        /** Sub-fields with an active source node — the header's pill. */
+        mappedCount() {
+            return this.subFieldList.reduce((count, sub) => {
+                return count + (this.modelValue[sub.handle]?.node ? 1 : 0);
+            }, 0);
+        },
+
+        /** Saved sub-field nodes no longer present in the latest sample. */
+        missingCount() {
+            return this.subFieldList.reduce((count, sub) => {
+                return count + (this.isMissing(sub.handle) ? 1 : 0);
+            }, 0);
         },
 
         // Same grouped shape as MappingRow's source-node select: sentinels

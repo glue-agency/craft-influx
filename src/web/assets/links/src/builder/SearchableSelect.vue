@@ -70,7 +70,7 @@
                             :class="{
                                 highlighted: highlightedIndex === opt._flatIdx,
                                 selected: isSelected(opt),
-                                'is-empty': opt.value === '',
+                                'is-empty': opt.value === '' && !emptyIsValue,
                             }"
                             :aria-selected="isSelected(opt) ? 'true' : 'false'"
                             @mousemove="highlightedIndex = opt._flatIdx"
@@ -114,7 +114,7 @@
                     :class="{
                         highlighted: highlightedIndex === idx,
                         selected: isSelected(opt),
-                        'is-empty': opt.value === '',
+                        'is-empty': opt.value === '' && !emptyIsValue,
                     }"
                     :aria-selected="isSelected(opt) ? 'true' : 'false'"
                     @mousemove="highlightedIndex = idx"
@@ -184,6 +184,11 @@ export default {
         // Shown inside the dropdown when the option list is empty AND the
         // user hasn't typed a query (different from the "no matches" copy).
         emptyLabel: { type: String, default: '' },
+        // Treat value='' as a real, labeled choice (e.g. the date format's
+        // "Auto-detect" default) instead of the no-selection placeholder
+        // sentinel: the trigger shows its label as a value, the option
+        // renders like any other, and it stays findable during search.
+        emptyIsValue: { type: Boolean, default: false },
         disabled: { type: Boolean, default: false },
     },
 
@@ -231,7 +236,8 @@ export default {
 
         hasValue() {
             const v = this.normalize(this.modelValue);
-            return v !== '' && v !== null && v !== undefined;
+            if (v !== '' && v !== null && v !== undefined) return true;
+            return this.emptyIsValue && this.currentOption !== null;
         },
 
         displayLabel() {
@@ -255,7 +261,9 @@ export default {
             for (const group of this.groups) {
                 const options = (group.options || []).filter(o => {
                     if (!q) return true;
-                    if (o.value === '') return false; // hide the "no selection" sentinel during search
+                    // Hide the "no selection" sentinel during search — unless
+                    // '' is a real choice, then it matches by label like any.
+                    if (o.value === '' && !this.emptyIsValue) return false;
                     return (o.label || '').toLowerCase().includes(q)
                         || String(o.value || '').toLowerCase().includes(q);
                 });
