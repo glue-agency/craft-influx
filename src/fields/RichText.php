@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\fields;
 
 use GlueAgency\Influx\sync\FieldContext;
+use Throwable;
 
 /**
  * Strategy for craft\htmlfield\HtmlField-based fields (Redactor, CKEditor, …).
@@ -33,18 +34,21 @@ class RichText extends Field
         if ($incoming === null || $incoming === '') {
             return false;
         }
+
         if ($context->craftField === null) {
             return parent::hasChanged($context, $incoming);
         }
+
         try {
             $current = $context->element->getFieldValue($context->handle);
             $currentRaw = is_a($current, 'craft\htmlfield\HtmlFieldData')
                 ? $current->getRawContent()
-                : (string)($current ?? '');
-            $serialized = (string)($context->craftField->serializeValue($incoming, $context->element) ?? '');
-        } catch (\Throwable) {
+                : (string) ($current ?? '');
+            $serialized = (string) ($context->craftField->serializeValue($incoming, $context->element) ?? '');
+        } catch (Throwable) {
             return parent::hasChanged($context, $incoming);
         }
+
         return $currentRaw !== $serialized;
     }
 }

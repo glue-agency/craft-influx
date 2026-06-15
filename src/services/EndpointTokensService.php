@@ -5,6 +5,11 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
+use craft\fields\Dropdown;
+use craft\fields\Email;
+use craft\fields\Number;
+use craft\fields\PlainText;
+use craft\fields\RadioButtons;
 use GlueAgency\Influx\events\RegisterEndpointTokensEvent;
 use GlueAgency\Influx\events\RegisterEndpointTokenSuggestionsEvent;
 use GlueAgency\Influx\models\Link;
@@ -39,11 +44,11 @@ class EndpointTokensService extends Component
      * {@see self::suggestions()} (edit-screen picker).
      */
     protected const TOKEN_FIELD_TYPES = [
-        \craft\fields\Dropdown::class,
-        \craft\fields\Email::class,
-        \craft\fields\Number::class,
-        \craft\fields\PlainText::class,
-        \craft\fields\RadioButtons::class,
+        Dropdown::class,
+        Email::class,
+        Number::class,
+        PlainText::class,
+        RadioButtons::class,
     ];
 
     /**
@@ -67,34 +72,39 @@ class EndpointTokensService extends Component
 
         foreach (['id', 'status', 'slug'] as $attr) {
             $v = $element->$attr ?? null;
+
             if (is_scalar($v) && $v !== '') {
-                $tokens[$attr] = (string)$v;
+                $tokens[$attr] = (string) $v;
             }
         }
 
         $site = $siteHandle
             ? Craft::$app->getSites()->getSiteByHandle($siteHandle)
             : (method_exists($element, 'getSite') ? $element->getSite() : null);
+
         if ($site) {
-            $tokens['site.id']     = (string)$site->id;
+            $tokens['site.id'] = (string) $site->id;
             $tokens['site.handle'] = $site->handle;
             $tokens['site.locale'] = $site->language;
         }
 
         if (method_exists($element, 'getFieldLayout')) {
             $layout = $element->getFieldLayout();
+
             if ($layout) {
                 foreach ($layout->getCustomFields() as $field) {
-                    if (!in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
+                    if (! in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
                         continue;
                     }
                     $handle = $field->handle;
+
                     if (isset($tokens[$handle])) {
                         continue;
                     }
                     $v = $element->getFieldValue($handle);
-                    if ($v !== null && (string)$v !== '') {
-                        $tokens[$handle] = (string)$v;
+
+                    if ($v !== null && (string) $v !== '') {
+                        $tokens[$handle] = (string) $v;
                     }
                 }
             }
@@ -147,8 +157,9 @@ class EndpointTokensService extends Component
         ];
 
         $fieldItems = [];
+
         foreach ($this->customFieldsForLink($link) as $field) {
-            if (!in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
+            if (! in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
                 continue;
             }
             $fieldItems[] = [
@@ -156,6 +167,7 @@ class EndpointTokensService extends Component
                 'hint' => $field->name,
             ];
         }
+
         if ($fieldItems) {
             $suggestions[] = [
                 'kind'  => 'fields',
@@ -186,7 +198,8 @@ class EndpointTokensService extends Component
     protected function customFieldsForLink(Link $link): array
     {
         $resolved = (new EntryTypeResolver())->tryResolve($link);
-        if (!$resolved) {
+
+        if (! $resolved) {
             return [];
         }
 

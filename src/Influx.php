@@ -5,34 +5,34 @@ namespace GlueAgency\Influx;
 use Craft;
 use craft\base\Model;
 use craft\base\Plugin;
+use craft\elements\Entry;
 use craft\events\DefineHtmlEvent;
-use craft\events\RegisterUrlRulesEvent;
-use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RebuildConfigEvent;
+use craft\events\RegisterTemplateRootsEvent;
+use craft\events\RegisterUrlRulesEvent;
 use craft\helpers\Html;
 use craft\helpers\UrlHelper;
-use craft\elements\Entry;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\web\UrlManager;
 use craft\web\View;
-use yii\base\Event;
+use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
 use GlueAgency\Influx\models\Settings;
+use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\AuthService;
+use GlueAgency\Influx\services\BackupService;
+use GlueAgency\Influx\services\CooldownService;
+use GlueAgency\Influx\services\DataService;
+use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\services\EndpointTokensService;
+use GlueAgency\Influx\services\FieldsService;
 use GlueAgency\Influx\services\LinkBuilderService;
 use GlueAgency\Influx\services\LinksService;
-use GlueAgency\Influx\services\DataService;
-use GlueAgency\Influx\services\FieldsService;
-use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\services\LogsService;
+use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\services\TargetsService;
-use GlueAgency\Influx\services\CooldownService;
-use GlueAgency\Influx\services\AssetUploadService;
-use GlueAgency\Influx\services\BackupService;
-use GlueAgency\Influx\services\DebugService;
-use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
 use GlueAgency\Influx\web\twig\InfluxTwigExtension;
+use yii\base\Event;
 
 /**
  * Influx plugin.
@@ -91,7 +91,7 @@ class Influx extends Plugin
 
         $this->registerProjectConfigEventListeners();
 
-        Craft::$app->onInit(function () {
+        Craft::$app->onInit(function() {
             $this->registerControllers();
             $this->registerCpRoutes();
             $this->registerCpTemplateRoots();
@@ -137,6 +137,7 @@ class Influx extends Plugin
     {
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
             $this->controllerNamespace = 'GlueAgency\\Influx\\console\\controllers';
+
             return;
         }
 
@@ -148,29 +149,29 @@ class Influx extends Plugin
         Event::on(
             UrlManager::class,
             UrlManager::EVENT_REGISTER_CP_URL_RULES,
-            function (RegisterUrlRulesEvent $event) {
-                $event->rules['influx']                                = 'influx/links/index';
-                $event->rules['influx/links']                          = 'influx/links/index';
-                $event->rules['influx/links/new']                      = 'influx/links/edit';
-                $event->rules['influx/links/<handle:[\w\-]+>']         = 'influx/links/view';
-                $event->rules['influx/links/<handle:[\w\-]+>/edit']    = 'influx/links/edit';
-                $event->rules['influx/links/<handle:[\w\-]+>/debug']        = 'influx/links/debug';
+            function(RegisterUrlRulesEvent $event) {
+                $event->rules['influx'] = 'influx/links/index';
+                $event->rules['influx/links'] = 'influx/links/index';
+                $event->rules['influx/links/new'] = 'influx/links/edit';
+                $event->rules['influx/links/<handle:[\w\-]+>'] = 'influx/links/view';
+                $event->rules['influx/links/<handle:[\w\-]+>/edit'] = 'influx/links/edit';
+                $event->rules['influx/links/<handle:[\w\-]+>/debug'] = 'influx/links/debug';
                 $event->rules['influx/links/<handle:[\w\-]+>/debug/stream'] = 'influx/links/debug-stream';
 
                 // LinkBuilder SPA — JSON CP routes
-                $event->rules['influx/link-builder/bootstrap']                  = 'influx/link-builder/bootstrap';
-                $event->rules['influx/link-builder/save']                       = 'influx/link-builder/save';
-                $event->rules['influx/link-builder/sample']                     = 'influx/link-builder/sample';
-                $event->rules['influx/link-builder/mappable-fields']            = 'influx/link-builder/mappable-fields';
+                $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';
+                $event->rules['influx/link-builder/save'] = 'influx/link-builder/save';
+                $event->rules['influx/link-builder/sample'] = 'influx/link-builder/sample';
+                $event->rules['influx/link-builder/mappable-fields'] = 'influx/link-builder/mappable-fields';
                 $event->rules['influx/link-builder/endpoint-token-suggestions'] = 'influx/link-builder/endpoint-token-suggestions';
-                $event->rules['influx/link-builder/render-element-select']      = 'influx/link-builder/render-element-select';
+                $event->rules['influx/link-builder/render-element-select'] = 'influx/link-builder/render-element-select';
 
-                $event->rules['influx/logs']                           = 'influx/logs/index';
-                $event->rules['influx/logs/<id:\d+>']                  = 'influx/logs/view';
-                $event->rules['influx/logs/<id:\d+>/stream']           = 'influx/logs/stream';
-                $event->rules['influx/logs/items/<id:\d+>']            = 'influx/logs/item';
+                $event->rules['influx/logs'] = 'influx/logs/index';
+                $event->rules['influx/logs/<id:\d+>'] = 'influx/logs/view';
+                $event->rules['influx/logs/<id:\d+>/stream'] = 'influx/logs/stream';
+                $event->rules['influx/logs/items/<id:\d+>'] = 'influx/logs/item';
 
-                $event->rules['influx/settings']                       = 'influx/settings/edit';
+                $event->rules['influx/settings'] = 'influx/settings/edit';
             },
         );
     }
@@ -180,7 +181,7 @@ class Influx extends Plugin
         Event::on(
             View::class,
             View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
-            function (RegisterTemplateRootsEvent $event) {
+            function(RegisterTemplateRootsEvent $event) {
                 $event->roots['influx'] = __DIR__ . '/templates';
             },
         );
@@ -210,8 +211,9 @@ class Influx extends Plugin
         Event::on(
             ProjectConfigService::class,
             ProjectConfigService::EVENT_REBUILD,
-            function (RebuildConfigEvent $event) {
+            function(RebuildConfigEvent $event) {
                 $links = [];
+
                 foreach ($this->links->getAllLinks() as $link) {
                     if ($link->uid) {
                         $links[$link->uid] = $link->getConfig();
@@ -229,8 +231,9 @@ class Influx extends Plugin
      */
     protected function registerGarbageCollection(): void
     {
-        Event::on(Gc::class, Gc::EVENT_RUN, function () {
-            $days = (int)$this->getSettings()->logRetentionDays;
+        Event::on(Gc::class, Gc::EVENT_RUN, function() {
+            $days = (int) $this->getSettings()->logRetentionDays;
+
             if ($days > 0) {
                 $this->logs->deleteOlderThan($days);
             }
@@ -243,12 +246,13 @@ class Influx extends Plugin
      */
     protected function registerEntrySyncButton(): void
     {
-        Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function (DefineHtmlEvent $event) {
+        Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
             /** @var Entry $element */
             $element = $event->sender;
 
             $link = $this->links->findLinkForElement($element);
-            if (!$link || !$link->itemEndpoint) {
+
+            if (! $link || ! $link->itemEndpoint) {
                 return;
             }
 
@@ -260,7 +264,7 @@ class Influx extends Plugin
                 'post',
                 ['class' => 'inline-block'],
             );
-            $event->html .= Html::hiddenInput('elementId', (string)$element->id);
+            $event->html .= Html::hiddenInput('elementId', (string) $element->id);
             $event->html .= Html::submitButton(Craft::t('influx', 'Sync from remote'), [
                 'class'    => array_filter(['btn', $disabled ? 'disabled' : null]),
                 'disabled' => $disabled,

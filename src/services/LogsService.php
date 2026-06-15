@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
 use craft\helpers\Db;
+use DateTime;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
@@ -29,7 +30,7 @@ class LogsService extends Component
         $log->trigger = $trigger->value;
         $log->siteHandle = $siteHandle;
         $log->status = 'running';
-        $log->startedAt = Db::prepareDateForDb(new \DateTime());
+        $log->startedAt = Db::prepareDateForDb(new DateTime());
 
         if ($this->loggingEnabled()) {
             $log->save(false);
@@ -46,14 +47,14 @@ class LogsService extends Component
         ?string $message = null,
         ?array $payload = null,
     ): void {
-        if (!$log->id) {
+        if (! $log->id) {
             return;
         }
 
         $item = new LogItemRecord();
         $item->logId = $log->id;
         $item->elementId = $elementId;
-        $item->matchValue = $matchValue !== null ? (string)$matchValue : null;
+        $item->matchValue = $matchValue !== null ? (string) $matchValue : null;
         $item->action = $action->value;
         $item->message = $message;
         $item->payload = $payload !== null ? json_encode($payload) : null;
@@ -62,16 +63,17 @@ class LogsService extends Component
         $counterAttr = $action->counterAttribute();
 
         if ($counterAttr) {
-            $log->$counterAttr = (int)$log->$counterAttr + 1;
+            $log->$counterAttr = (int) $log->$counterAttr + 1;
         }
-        $log->itemsSeen = (int)$log->itemsSeen + 1;
+        $log->itemsSeen = (int) $log->itemsSeen + 1;
         $log->save(false);
     }
 
     public function finish(LogRecord $log): void
     {
         $log->status = 'ok';
-        $log->finishedAt = Db::prepareDateForDb(new \DateTime());
+        $log->finishedAt = Db::prepareDateForDb(new DateTime());
+
         if ($log->id) {
             $log->save(false);
         }
@@ -81,10 +83,34 @@ class LogsService extends Component
     {
         $log->status = 'error';
         $log->error = $error;
-        $log->finishedAt = Db::prepareDateForDb(new \DateTime());
+        $log->finishedAt = Db::prepareDateForDb(new DateTime());
+
         if ($log->id) {
             $log->save(false);
         }
+    }
+
+    /**
+     * Most recent log per link handle, keyed by handle — powers the "last
+     * run" column on the links index. One newest-first query, keeping the
+     * first (newest) row seen for each handle.
+     *
+     * @return array<string, LogRecord>
+     */
+    public function lastRunPerLink(): array
+    {
+        $out = [];
+        $logs = LogRecord::find()
+            ->orderBy(['startedAt' => SORT_DESC])
+            ->all();
+
+        foreach ($logs as $log) {
+            if (! isset($out[$log->linkHandle])) {
+                $out[$log->linkHandle] = $log;
+            }
+        }
+
+        return $out;
     }
 
     public function clear(): int
@@ -102,7 +128,8 @@ class LogsService extends Component
         if ($days <= 0) {
             return 0;
         }
-        $cutoff = (new \DateTime())->modify("-{$days} days");
+        $cutoff = (new DateTime())->modify("-{$days} days");
+
         return LogRecord::deleteAll([
             '<', 'startedAt', Db::prepareDateForDb($cutoff),
         ]);
@@ -110,6 +137,6 @@ class LogsService extends Component
 
     protected function loggingEnabled(): bool
     {
-        return (bool)Influx::getInstance()->getSettings()->loggingEnabled;
+        return (bool) Influx::getInstance()->getSettings()->loggingEnabled;
     }
 }

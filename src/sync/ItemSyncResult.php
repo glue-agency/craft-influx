@@ -61,11 +61,13 @@ class ItemSyncResult
     public function mappingErrors(): array
     {
         $errors = [];
+
         foreach ($this->mappingResults as $result) {
             if ($result->error !== null) {
                 $errors[$result->handle] = $result->error;
             }
         }
+
         return $errors;
     }
 }

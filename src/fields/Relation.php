@@ -4,10 +4,14 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\db\ElementQueryInterface;
+use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
+use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\SubElementApplier;
+use Throwable;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -33,9 +37,9 @@ abstract class Relation extends Field
      */
     abstract protected function elementType(): string;
 
-    public function fieldMeta(\craft\base\FieldInterface $field): array
+    public function fieldMeta(CraftFieldInterface $field): array
     {
-        /** @var \craft\fields\BaseRelationField $field */
+        /** @var BaseRelationField $field */
         return [
             'kind'         => 'relation',
             'elementType'  => $field::elementType(),
@@ -54,8 +58,8 @@ abstract class Relation extends Field
     public static function extrasLabels(): array
     {
         return [
-            'matchBy'        => Craft::t('influx', 'Match by'),
-            'createMissing'  => Craft::t('influx', 'Create when not found'),
+            'matchBy'       => Craft::t('influx', 'Match by'),
+            'createMissing' => Craft::t('influx', 'Create when not found'),
         ];
     }
 
@@ -75,7 +79,7 @@ abstract class Relation extends Field
      *
      * @return list<array{label: string, kind: string, options: list<array{value: string, label: string}>}>
      */
-    protected function matchOptions(\craft\fields\BaseRelationField $field): array
+    protected function matchOptions(BaseRelationField $field): array
     {
         $elementType = $this->elementType();
         $nativeLabel = is_subclass_of($elementType, ElementInterface::class)
@@ -96,12 +100,15 @@ abstract class Relation extends Field
 
         $customFields = [];
         $seen = ['id' => true, 'slug' => true, 'title' => true];
+
         foreach ($this->sourceFieldLayouts($field) as $layout) {
-            if (!$layout instanceof FieldLayout) {
+            if (! $layout instanceof FieldLayout) {
                 continue;
             }
+
             foreach ($layout->getCustomFields() as $customField) {
                 $handle = $customField->handle;
+
                 if (isset($seen[$handle])) {
                     continue;
                 }
@@ -133,22 +140,22 @@ abstract class Relation extends Field
      *
      * @return iterable<FieldLayout|null>
      */
-    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
     {
         return [];
     }
 
-    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    public function defineExtrasSchema(CraftFieldInterface $field): array
     {
-        /** @var \craft\fields\BaseRelationField $field */
+        /** @var BaseRelationField $field */
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::select(
+            BuilderSchema::select(
                 'match',
                 Craft::t('influx', 'Match by'),
                 $this->matchOptions($field),
                 ['default' => 'id'],
             ),
-            \GlueAgency\Influx\helpers\BuilderSchema::lightswitch(
+            BuilderSchema::lightswitch(
                 'create',
                 Craft::t('influx', 'Create when not found'),
             ),
@@ -158,22 +165,26 @@ abstract class Relation extends Field
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
+
         if ($raw === null || $raw === '') {
             return null;
         }
 
-        $match = (string)$context->mapping->option('match', 'id');
+        $match = (string) $context->mapping->option('match', 'id');
         $values = is_array($raw) ? $raw : [$raw];
 
         $ids = [];
+
         foreach ($values as $value) {
             if ($value === null || $value === '') {
                 continue;
             }
             $element = $this->findOne($context, $match, $value);
-            if (!$element && !$context->dryRun && $this->shouldCreate($context)) {
+
+            if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
             }
+
             if ($element) {
                 $ids[] = $element->id;
                 $this->populateSubElement($context, $element);
@@ -185,23 +196,25 @@ abstract class Relation extends Field
 
     public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
-        if (!is_array($incoming)) {
+        if (! is_array($incoming)) {
             return true;
         }
+
         try {
             $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return true;
         }
         sort($currentIds);
         $incoming = array_values($incoming);
         sort($incoming);
+
         return $currentIds !== $incoming;
     }
 
     protected function shouldCreate(FieldContext $context): bool
     {
-        return !empty($context->mapping->option('create'));
+        return ! empty($context->mapping->option('create'));
     }
 
     /**
@@ -215,7 +228,7 @@ abstract class Relation extends Field
         $query = $class::find()->status(null);
 
         match ($match) {
-            'id'    => $query->id((int)$value),
+            'id'    => $query->id((int) $value),
             'title' => $query->title($value),
             'slug'  => $query->slug($value),
             default => $query->$match($value),
@@ -262,6 +275,7 @@ abstract class Relation extends Field
         if ($context->dryRun) {
             return;
         }
+
         if ((new SubElementApplier())->apply($element, $context)) {
             Craft::$app->getElements()->saveElement($element, false);
         }

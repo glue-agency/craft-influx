@@ -344,12 +344,23 @@ export default {
 }
 
 .influx-schema-form .influx-subfields-group .sub-fields-hint,
+.influx-schema-form .influx-subfields-group .influx-mapping-headings,
 .influx-schema-form .influx-subfields-group .sub-field-row {
     grid-column: 1 / -1;
 }
 
+.influx-schema-form .influx-subfields-group .influx-mapping-headings,
 .influx-schema-form .influx-subfields-group .sub-field-row {
+    /* Fixed template first as the no-subgrid fallback; subgrid joins the
+       headings and rows to the card body's content-sized tracks. */
+    grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.4fr) minmax(140px, 1fr);
     grid-template-columns: subgrid;
+}
+
+/* Sub-field rows have no chevron gutter, so the Field heading doesn't
+   need the 22px inset the main list's headings carry. */
+.influx-schema-form .influx-subfields-group .influx-mapping-headings > div:first-child {
+    padding-left: 0;
 }
 
 .influx-schema-form .influx-mapping-group .sub-field-row {

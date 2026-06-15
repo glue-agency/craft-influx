@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
+use craft\fields\BaseOptionsField;
 use GlueAgency\Influx\fields\Dropdown;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
@@ -26,7 +27,7 @@ class DropdownTest extends Unit
     public function testCraftFieldClassIsBaseOptionsField(): void
     {
         $this->assertSame(
-            \craft\fields\BaseOptionsField::class,
+            BaseOptionsField::class,
             Dropdown::craftFieldClass(),
             'Registering against BaseOptionsField is what lets Dropdown/Radio/Checkboxes/MultiSelect share the strategy.',
         );
@@ -46,7 +47,7 @@ class DropdownTest extends Unit
         $context = $this->context(
             feed: ['region' => 'EN'],
             mapping: [
-                'node' => 'region',
+                'node'    => 'region',
                 'options' => ['valueMap' => ['EN' => 'english', 'NL' => 'dutch']],
             ],
         );
@@ -58,7 +59,7 @@ class DropdownTest extends Unit
         $context = $this->context(
             feed: ['region' => 'south'],
             mapping: [
-                'node' => 'region',
+                'node'    => 'region',
                 'options' => ['valueMap' => ['EN' => 'english']],
             ],
         );

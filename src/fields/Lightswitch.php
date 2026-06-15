@@ -2,6 +2,8 @@
 
 namespace GlueAgency\Influx\fields;
 
+use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fields\Lightswitch as CraftLightswitchField;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -18,10 +20,10 @@ class Lightswitch extends Field
 
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Lightswitch::class;
+        return CraftLightswitchField::class;
     }
 
-    public function fieldMeta(\craft\base\FieldInterface $field): array
+    public function fieldMeta(CraftFieldInterface $field): array
     {
         return [
             'kind' => 'boolean',
@@ -31,10 +33,11 @@ class Lightswitch extends Field
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
+
         if (is_bool($raw)) {
             return $raw;
         }
 
-        return in_array(strtolower(trim((string)$raw)), self::TRUTHY_VALUES, true);
+        return in_array(strtolower(trim((string) $raw)), self::TRUTHY_VALUES, true);
     }
 }

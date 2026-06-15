@@ -54,6 +54,7 @@ class LinkBuilderPayloadTest extends Unit
     protected function fixture(): array
     {
         $path = dirname(__DIR__, 3) . '/src/web/assets/links/tests/fixtures/link-payload.json';
+
         return json_decode(file_get_contents($path), true);
     }
 }

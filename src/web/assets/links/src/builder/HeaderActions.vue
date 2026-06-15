@@ -105,7 +105,16 @@ export default {
         },
 
         canSample() {
-            const ep = this.ui.link?.endpoint;
+            const link = this.ui.link;
+            if (!link) return false;
+            // Site-specific mode samples against the first filled site
+            // endpoint (the base endpoint is hidden there) — mirrors the
+            // store's sampleEndpoint() resolution.
+            if (this.ui.siteEndpointsMode) {
+                return Object.values(link.siteEndpoints || {})
+                    .some((url) => typeof url === 'string' && url.trim() !== '');
+            }
+            const ep = link.endpoint;
             return typeof ep === 'string' && ep.trim() !== '';
         },
 

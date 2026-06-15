@@ -5,16 +5,20 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
+use DateTimeInterface;
+use Generator;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\models\OffsetPreset;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\models\OffsetPreset;
 use GlueAgency\Influx\sync\ItemProcessor;
 use GlueAgency\Influx\sync\ItemResolution;
 use GlueAgency\Influx\sync\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
+use Throwable;
 
 /**
  * Strict dry-run inspector for a link. Mirrors what SynchronizationService
@@ -48,7 +52,7 @@ class DebugService extends Component
      * The generator finishes naturally when the first page is exhausted or the
      * limit is reached; callers should send their own "done" sentinel.
      */
-    public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): \Generator
+    public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): Generator
     {
         $plugin = Influx::getInstance();
         $target = $plugin->targets->forLink($link);
@@ -58,13 +62,14 @@ class DebugService extends Component
 
         [$queryParams, $offsetLabel] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
-        if (!$target) {
+        if (! $target) {
             yield [
                 'type' => 'error',
                 'data' => [
                     'message' => "No element target registered for '{$link->elementType}'.",
                 ],
             ];
+
             return;
         }
 
@@ -73,29 +78,32 @@ class DebugService extends Component
         // Same iterator the sync run walks — the debug view just stops after
         // the first page.
         $firstPage = null;
+
         try {
             foreach ($plugin->data->pages($link, $siteHandle, $queryParams) as $page) {
                 $firstPage = $page;
+
                 break;
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             yield [
                 'type' => 'meta',
                 'data' => [
-                    'siteHandle'    => $siteHandle,
-                    'url'           => $url,
-                    'itemsOnPage'   => 0,
-                    'paginatorNode' => $link->paginatorNode,
+                    'siteHandle'     => $siteHandle,
+                    'url'            => $url,
+                    'itemsOnPage'    => 0,
+                    'paginatorNode'  => $link->paginatorNode,
                     'paginatorValue' => null,
-                    'limit'         => $limit,
+                    'limit'          => $limit,
                     'matchAttribute' => $matchAttr,
-                    'matchNode'     => $matchNode,
-                    'offset'        => $offset,
-                    'offsetLabel'   => $offsetLabel,
-                    'offsetQuery'   => $queryParams,
-                    'error'         => $e->getMessage(),
+                    'matchNode'      => $matchNode,
+                    'offset'         => $offset,
+                    'offsetLabel'    => $offsetLabel,
+                    'offsetQuery'    => $queryParams,
+                    'error'          => $e->getMessage(),
                 ],
             ];
+
             return;
         }
 
@@ -117,7 +125,7 @@ class DebugService extends Component
             ],
         ];
 
-        if (!$firstPage) {
+        if (! $firstPage) {
             return;
         }
 
@@ -126,6 +134,7 @@ class DebugService extends Component
             : null;
 
         $index = 0;
+
         foreach (array_slice($firstPage->items, 0, $limit) as $item) {
             $row = $this->debugItem($link, $target, $item->raw(), $siteId);
             $row['index'] = $index++;
@@ -141,7 +150,8 @@ class DebugService extends Component
     public function inspectItem(Link $link, array $item, ?int $siteId = null): array
     {
         $target = Influx::getInstance()->targets->forLink($link);
-        if (!$target) {
+
+        if (! $target) {
             return [
                 'matchAttribute' => $link->matchAttribute(),
                 'matchNode'      => null,
@@ -155,6 +165,7 @@ class DebugService extends Component
                 'error'          => "No element target registered for '{$link->elementType}'.",
             ];
         }
+
         return $this->debugItem($link, $target, $item, $siteId);
     }
 
@@ -189,24 +200,27 @@ class DebugService extends Component
 
         try {
             $resolution = $this->itemProcessor->resolve($context, $remoteItem);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $row['error'] = 'findByMatchValue: ' . $e->getMessage();
+
             return $row;
         }
 
         $row['matchValue'] = $resolution->matchValue;
+
         if ($resolution->element) {
             $row['element'] = $this->describeElement($resolution->element);
         }
 
         try {
             $result = $this->itemProcessor->populate($context, $remoteItem, $resolution);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // populate() only throws from the target's buildNew() — mapping
             // errors are captured per-row by the applier.
             $row['isNew'] = $resolution->decision === SyncDecision::Create;
             $row['action'] = $row['isNew'] ? ItemAction::Created->dryRunLabel() : ItemAction::Updated->dryRunLabel();
             $row['error'] = 'buildNew: ' . $e->getMessage();
+
             return $row;
         }
 
@@ -228,7 +242,7 @@ class DebugService extends Component
                         new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::Update),
                     );
                     $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     $row['error'] = $e->getMessage();
                 }
             }
@@ -237,6 +251,7 @@ class DebugService extends Component
         }
 
         $row['action'] = $result->action->dryRunLabel();
+
         if ($result->element !== null) {
             $row['mappings'] = $this->presentMappingResults($result->mappingResults, $result->element);
         }
@@ -259,12 +274,14 @@ class DebugService extends Component
 
         foreach ($results as $result) {
             $parsedValue = $result->parsedValue;
-            if (!$result->native && $parsedValue !== null) {
+
+            if (! $result->native && $parsedValue !== null) {
                 $craftField = $layout?->getFieldByHandle($result->handle);
+
                 if ($craftField) {
                     try {
                         $parsedValue = $craftField->normalizeValue($parsedValue, $element);
-                    } catch (\Throwable) {
+                    } catch (Throwable) {
                         // Display-only nicety; fall back to the raw parse.
                     }
                 }
@@ -294,7 +311,7 @@ class DebugService extends Component
     {
         return [
             'id'        => $element->id,
-            'title'     => (string)($element->title ?? '#' . $element->id),
+            'title'     => (string) ($element->title ?? '#' . $element->id),
             'cpEditUrl' => $element->getCpEditUrl(),
             'siteId'    => $element->siteId,
         ];
@@ -310,25 +327,29 @@ class DebugService extends Component
         if ($value === null) {
             return null;
         }
+
         if (is_scalar($value)) {
-            $str = (string)$value;
-        } elseif ($value instanceof \DateTimeInterface) {
+            $str = (string) $value;
+        } elseif ($value instanceof DateTimeInterface) {
             $str = $value->format('Y-m-d H:i:s');
-        } elseif ($value instanceof \craft\elements\db\ElementQueryInterface) {
+        } elseif ($value instanceof ElementQueryInterface) {
             $ids = [];
+
             try {
                 $ids = $value->ids();
-            } catch (\Throwable) {
+            } catch (Throwable) {
             }
             $str = '[' . implode(', ', array_map('strval', $ids)) . ']';
         } elseif (is_object($value) && method_exists($value, '__toString')) {
-            $str = (string)$value;
+            $str = (string) $value;
         } else {
             $str = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '';
         }
+
         if (strlen($str) > 500) {
             $str = substr($str, 0, 500) . '…';
         }
+
         return $str;
     }
 }

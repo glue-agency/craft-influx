@@ -21,10 +21,12 @@ class CooldownService extends Component
     public function remaining(Link $link, ElementInterface $element): int
     {
         $until = Craft::$app->getCache()->get($this->key($link, $element));
-        if (!$until) {
+
+        if (! $until) {
             return 0;
         }
-        $diff = (int)$until - time();
+        $diff = (int) $until - time();
+
         return max(0, $diff);
     }
 

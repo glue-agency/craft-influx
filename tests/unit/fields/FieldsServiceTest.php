@@ -3,6 +3,17 @@
 namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
+use craft\fields\Assets as CraftAssetsField;
+use craft\fields\BaseOptionsField;
+use craft\fields\Categories as CraftCategoriesField;
+use craft\fields\Checkboxes;
+use craft\fields\Entries as CraftEntriesField;
+use craft\fields\Lightswitch as CraftLightswitchField;
+use craft\fields\MultiSelect;
+use craft\fields\PlainText;
+use craft\fields\RadioButtons;
+use craft\fields\Tags as CraftTagsField;
+use craft\fields\Users as CraftUsersField;
 use GlueAgency\Influx\fields\Assets;
 use GlueAgency\Influx\fields\Categories;
 use GlueAgency\Influx\fields\DefaultField;
@@ -31,21 +42,21 @@ class FieldsServiceTest extends Unit
 
         $byFqcn = $service->all();
 
-        $this->assertArrayHasKey(\craft\fields\Assets::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\Lightswitch::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\BaseOptionsField::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\Entries::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\Users::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\Categories::class, $byFqcn);
-        $this->assertArrayHasKey(\craft\fields\Tags::class, $byFqcn);
+        $this->assertArrayHasKey(CraftAssetsField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftLightswitchField::class, $byFqcn);
+        $this->assertArrayHasKey(BaseOptionsField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftEntriesField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftUsersField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftCategoriesField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftTagsField::class, $byFqcn);
 
-        $this->assertInstanceOf(Assets::class,      $byFqcn[\craft\fields\Assets::class]);
-        $this->assertInstanceOf(Lightswitch::class, $byFqcn[\craft\fields\Lightswitch::class]);
-        $this->assertInstanceOf(Dropdown::class,    $byFqcn[\craft\fields\BaseOptionsField::class]);
-        $this->assertInstanceOf(Entries::class,     $byFqcn[\craft\fields\Entries::class]);
-        $this->assertInstanceOf(Users::class,       $byFqcn[\craft\fields\Users::class]);
-        $this->assertInstanceOf(Categories::class,  $byFqcn[\craft\fields\Categories::class]);
-        $this->assertInstanceOf(Tags::class,        $byFqcn[\craft\fields\Tags::class]);
+        $this->assertInstanceOf(Assets::class,      $byFqcn[CraftAssetsField::class]);
+        $this->assertInstanceOf(Lightswitch::class, $byFqcn[CraftLightswitchField::class]);
+        $this->assertInstanceOf(Dropdown::class,    $byFqcn[BaseOptionsField::class]);
+        $this->assertInstanceOf(Entries::class,     $byFqcn[CraftEntriesField::class]);
+        $this->assertInstanceOf(Users::class,       $byFqcn[CraftUsersField::class]);
+        $this->assertInstanceOf(Categories::class,  $byFqcn[CraftCategoriesField::class]);
+        $this->assertInstanceOf(Tags::class,        $byFqcn[CraftTagsField::class]);
     }
 
     public function testParentChainResolutionDispatchesDropdownVariants(): void
@@ -55,17 +66,17 @@ class FieldsServiceTest extends Unit
 
         // craft\fields\RadioButtons extends BaseOptionsField — we shouldn't
         // need a separate strategy for each option-based subclass.
-        $field = $this->createMock(\craft\fields\RadioButtons::class);
+        $field = $this->createMock(RadioButtons::class);
         $this->assertInstanceOf(
             Dropdown::class,
             $service->forCraftField($field),
             'RadioButtons should resolve through BaseOptionsField to the Dropdown strategy.',
         );
 
-        $field = $this->createMock(\craft\fields\Checkboxes::class);
+        $field = $this->createMock(Checkboxes::class);
         $this->assertInstanceOf(Dropdown::class, $service->forCraftField($field));
 
-        $field = $this->createMock(\craft\fields\MultiSelect::class);
+        $field = $this->createMock(MultiSelect::class);
         $this->assertInstanceOf(Dropdown::class, $service->forCraftField($field));
     }
 
@@ -74,7 +85,7 @@ class FieldsServiceTest extends Unit
         $service = new FieldsService();
         $service->init();
 
-        $field = $this->createMock(\craft\fields\PlainText::class);
+        $field = $this->createMock(PlainText::class);
         $this->assertInstanceOf(
             DefaultField::class,
             $service->forCraftField($field),
@@ -90,7 +101,7 @@ class FieldsServiceTest extends Unit
         // Replace the built-in Lightswitch handler.
         $service->registerClass(LightswitchOverride::class);
 
-        $field = $this->createMock(\craft\fields\Lightswitch::class);
+        $field = $this->createMock(CraftLightswitchField::class);
         $this->assertInstanceOf(LightswitchOverride::class, $service->forCraftField($field));
     }
 }
@@ -100,6 +111,6 @@ class LightswitchOverride extends Lightswitch
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Lightswitch::class;
+        return CraftLightswitchField::class;
     }
 }

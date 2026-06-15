@@ -36,7 +36,7 @@ class FeedMeConverterTest extends Unit
         $link = $this->convert([
             'primaryElement' => 'data/items',
             'paginationNode' => 'meta/next',
-            'fieldMapping' => ['body' => ['node' => 'content/rendered', 'default' => '']],
+            'fieldMapping'   => ['body' => ['node' => 'content/rendered', 'default' => '']],
         ])->link;
 
         $this->assertSame('data.items', $link->rootNode);
@@ -132,6 +132,151 @@ class FeedMeConverterTest extends Unit
         $this->assertSame(['match' => 'slug'], $link->mappings['relatedEntries']['options']);
     }
 
+    public function testLegacyColumnMatchOptionsAreNormalized(): void
+    {
+        // Feed Me ≤5 stored relation match values as content-table column
+        // names: `field_<handle>` for custom fields, `elements.id` for id.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries'    => ['node' => 'related/code', 'options' => ['match' => 'field_fiona_import_id']],
+                'relatedCategories' => ['node' => 'cats/id', 'options' => ['match' => 'elements.id']],
+            ],
+        ], knownFields: ['fiona_import_id'])->link;
+
+        $this->assertSame(['match' => 'fiona_import_id'], $link->mappings['relatedEntries']['options']);
+        $this->assertSame(['match' => 'id'], $link->mappings['relatedCategories']['options']);
+    }
+
+    public function testLegacyColumnMatchStripsCraft37ColumnSuffix(): void
+    {
+        // Fields created on Craft 3.7+ carry a random column suffix —
+        // `field_<handle>_<suffix>` — which only strips when the result
+        // resolves to a real field.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries' => ['node' => 'related/code', 'options' => ['match' => 'field_importCode_lcfqejjv']],
+            ],
+        ], knownFields: ['importCode'])->link;
+
+        $this->assertSame(['match' => 'importCode'], $link->mappings['relatedEntries']['options']);
+    }
+
+    public function testFieldGenuinelyNamedWithFieldPrefixSurvives(): void
+    {
+        // A Feed Me 6 row can hold a bare handle that happens to start with
+        // `field_`; when that exact field exists the value stays untouched.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries' => ['node' => 'related/code', 'options' => ['match' => 'field_custom']],
+            ],
+        ], knownFields: ['field_custom'])->link;
+
+        $this->assertSame(['match' => 'field_custom'], $link->mappings['relatedEntries']['options']);
+    }
+
+    public function testUnresolvableLegacyMatchStillStripsButWarns(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries' => ['node' => 'related/code', 'options' => ['match' => 'field_goneField']],
+            ],
+        ]);
+
+        $this->assertSame(['match' => 'goneField'], $conversion->link->mappings['relatedEntries']['options']);
+        $this->assertWarningMatching('/goneField.*verify the Match by/i', $conversion);
+    }
+
+    public function testCreateGroupIdsTranslateToHandles(): void
+    {
+        // Feed Me's create-target (`group.sectionId` / `group.typeId`)
+        // carries raw DB ids — environment-specific, so the YAML-stable
+        // form is handles. The stub resolves section 2 → 'news' and entry
+        // type 4 → 'article'.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries' => [
+                    'node'    => 'related/slug',
+                    'options' => [
+                        'match'  => 'slug',
+                        'create' => '1',
+                        'group'  => ['sectionId' => '2', 'typeId' => '4'],
+                    ],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(
+            ['match' => 'slug', 'create' => '1', 'group' => ['section' => 'news', 'type' => 'article']],
+            $link->mappings['relatedEntries']['options'],
+        );
+    }
+
+    public function testUnresolvableCreateGroupIdsAreDroppedWithWarning(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'relatedEntries' => [
+                    'node'    => 'related/slug',
+                    'options' => ['create' => '1', 'group' => ['sectionId' => '99', 'typeId' => '77']],
+                ],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('group', $conversion->link->mappings['relatedEntries']['options']);
+        $this->assertWarningMatching('/section id 99/', $conversion);
+        $this->assertWarningMatching('/entry type id 77/', $conversion);
+    }
+
+    public function testAssetOptionsTranslateToInfluxVocabulary(): void
+    {
+        // Feed Me: match filename|id (default filename) + upload + conflict
+        // (index|replace|create). Influx: mode id|url + upload + conflict
+        // (index|replace). The upload toggle's visibility keys off
+        // `mode === 'url'`, so the mode translation is what keeps a
+        // migrated mapping's upload behaviour alive in the builder.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'heroImage' => [
+                    'field'   => 'craft\fields\Assets',
+                    'node'    => 'image/url',
+                    'options' => ['match' => 'filename', 'upload' => 1, 'conflict' => 'index'],
+                ],
+                'byId' => [
+                    'field'   => 'craft\fields\Assets',
+                    'node'    => 'image/id',
+                    'options' => ['match' => 'id'],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(
+            ['upload' => 1, 'conflict' => 'index', 'mode' => 'url'],
+            $link->mappings['heroImage']['options'],
+        );
+        // id matching is Influx's default mode — no options survive.
+        $this->assertArrayNotHasKey('options', $link->mappings['byId']);
+    }
+
+    public function testAssetKeepBothAndFilenameNodeAreDroppedWithWarning(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'heroImage' => [
+                    'field'   => 'craft\fields\Assets',
+                    'node'    => 'image/url',
+                    'options' => ['upload' => 1, 'conflict' => 'create', 'filenameNode' => 'image/name'],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            ['upload' => 1, 'mode' => 'url'],
+            $conversion->link->mappings['heroImage']['options'],
+        );
+        $this->assertWarningMatching('/Keep both/', $conversion);
+        $this->assertWarningMatching('/filenameNode/', $conversion);
+    }
+
     public function testUnsupportedNativesAreDroppedWithWarning(): void
     {
         $conversion = $this->convert([
@@ -165,9 +310,9 @@ class FeedMeConverterTest extends Unit
         $link = $this->convert([
             'fieldMapping' => [
                 'relatedEntries' => [
-                    'node' => 'related/slug',
+                    'node'    => 'related/slug',
                     'options' => ['match' => 'slug', 'create' => '1'],
-                    'fields' => [
+                    'fields'  => [
                         'summary' => ['node' => 'related/summary', 'default' => ''],
                         'ignored' => ['node' => 'noimport', 'default' => ''],
                     ],
@@ -202,7 +347,7 @@ class FeedMeConverterTest extends Unit
     public function testFirstUsableUniqueBecomesTheMatchAttribute(): void
     {
         $conversion = $this->convert([
-            'fieldUnique' => ['id' => '', 'importId' => 1, 'title' => 1],
+            'fieldUnique'  => ['id' => '', 'importId' => 1, 'title' => 1],
             'fieldMapping' => [
                 'importId' => ['node' => 'external_id', 'default' => ''],
                 'title'    => ['attribute' => 1, 'node' => 'title', 'default' => ''],
@@ -246,10 +391,10 @@ class FeedMeConverterTest extends Unit
     public function testJsonColumnsDecodeFromRawDbStrings(): void
     {
         $link = $this->convert([
-            'elementGroup' => json_encode(['craft\elements\Entry' => ['section' => 2, 'entryType' => 4]]),
+            'elementGroup'    => json_encode(['craft\elements\Entry' => ['section' => 2, 'entryType' => 4]]),
             'duplicateHandle' => json_encode(['add']),
-            'fieldMapping' => json_encode(['title' => ['attribute' => 1, 'node' => 'title', 'default' => '']]),
-            'fieldUnique' => json_encode(['title' => 1]),
+            'fieldMapping'    => json_encode(['title' => ['attribute' => 1, 'node' => 'title', 'default' => '']]),
+            'fieldUnique'     => json_encode(['title' => 1]),
         ])->link;
 
         $this->assertSame(['section' => 'news', 'type' => 'article'], $link->elementCriteria);
@@ -268,40 +413,49 @@ class FeedMeConverterTest extends Unit
      * Run a feed row (sane defaults, overridable) through a converter with
      * stubbed Craft lookups.
      */
-    protected function convert(array $overrides = [], bool $multiSite = false): FeedMeConversion
+    protected function convert(array $overrides = [], bool $multiSite = false, array $knownFields = []): FeedMeConversion
     {
         $feed = array_merge([
-            'id' => 1,
-            'name' => 'News articles',
-            'feedUrl' => 'https://example.test/feed.json',
-            'feedType' => 'json',
-            'primaryElement' => null,
-            'elementType' => 'craft\elements\Entry',
-            'elementGroup' => ['craft\elements\Entry' => ['section' => 2, 'entryType' => 4]],
-            'siteId' => '',
-            'singleton' => 0,
+            'id'              => 1,
+            'name'            => 'News articles',
+            'feedUrl'         => 'https://example.test/feed.json',
+            'feedType'        => 'json',
+            'primaryElement'  => null,
+            'elementType'     => 'craft\elements\Entry',
+            'elementGroup'    => ['craft\elements\Entry' => ['section' => 2, 'entryType' => 4]],
+            'siteId'          => '',
+            'singleton'       => 0,
             'duplicateHandle' => ['add', 'update'],
-            'paginationNode' => null,
-            'fieldMapping' => [
+            'paginationNode'  => null,
+            'fieldMapping'    => [
                 'title'    => ['attribute' => 1, 'node' => 'title', 'default' => ''],
                 'importId' => ['node' => 'external_id', 'default' => ''],
             ],
-            'fieldUnique' => ['importId' => 1],
-            'backup' => 1,
+            'fieldUnique'    => ['importId' => 1],
+            'backup'         => 1,
             'setEmptyValues' => 0,
         ], $overrides);
 
-        return $this->converter($multiSite)->convert($feed);
+        return $this->converter($multiSite, $knownFields)->convert($feed);
     }
 
-    protected function converter(bool $multiSite): FeedMeConverter
+    protected function converter(bool $multiSite, array $knownFields = []): FeedMeConverter
     {
-        return new class($multiSite) extends FeedMeConverter {
+        return new class($multiSite, $knownFields) extends FeedMeConverter {
             protected bool $multiSite = false;
 
-            public function __construct(bool $multiSite)
+            /** @var string[] field handles that "exist" in the stub install */
+            protected array $knownFields = [];
+
+            public function __construct(bool $multiSite, array $knownFields)
             {
                 $this->multiSite = $multiSite;
+                $this->knownFields = $knownFields;
+            }
+
+            protected function fieldExistsByHandle(string $handle): bool
+            {
+                return in_array($handle, $this->knownFields, true);
             }
 
             protected function handleFromName(string $name): string
@@ -312,6 +466,7 @@ class FeedMeConverterTest extends Unit
                 $handle = preg_replace('/^[^a-z]+/', '', $handle);
                 $words = array_values(array_filter(explode(' ', $handle)));
                 $first = array_shift($words) ?? '';
+
                 return $first . implode('', array_map('ucfirst', $words));
             }
 
@@ -342,6 +497,7 @@ class FeedMeConverterTest extends Unit
         foreach ($conversion->warnings as $warning) {
             if (preg_match($pattern, $warning)) {
                 $this->assertTrue(true);
+
                 return;
             }
         }

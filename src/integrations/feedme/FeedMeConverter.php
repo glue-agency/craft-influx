@@ -12,8 +12,8 @@ use GlueAgency\Influx\models\Link;
  * an Influx {@see Link}.
  *
  * The conversion is best-effort by design: the two plugins overlap heavily —
- * Influx's mapping options (`match`, `create`, `group.sectionId`, ...)
- * deliberately mirror Feed Me's — but not perfectly. Whatever can't be
+ * Influx's mapping options (`match`, `create`, `group`, ...) deliberately
+ * mirror Feed Me's — but not perfectly. Whatever can't be
  * carried over (Matrix block mappings, parent entries, non-JSON feed types,
  * ...) is reported as a warning on the {@see FeedMeConversion} so the user
  * can finish the link in the builder instead of silently losing config.
@@ -31,12 +31,14 @@ use GlueAgency\Influx\models\Link;
  * One converter covers Feed Me 4 (Craft 3), 5 (Craft 4) and 6 (Craft 5)
  * deliberately — no per-version importer. The stored feed shape is identical
  * across all three majors (schema, elementGroup, duplicateHandle flags,
- * sentinel nodes, option keys all match); the only divergence is the entry
- * author native handle (`authorId` through v5, `authorIds` since v6). And
- * because Feed Me never rewrites `fieldMapping` JSON on upgrade, a v6
+ * sentinel nodes, option keys all match); the divergences are the entry
+ * author native handle (`authorId` through v5, `authorIds` since v6) and the
+ * relation `options.match` value format (raw content-table column names
+ * through v5 — see {@see normalizeMatchOption()} — bare handles since v6).
+ * And because Feed Me never rewrites `fieldMapping` JSON on upgrade, a v6
  * install routinely still holds rows saved by v4/v5 — the vintage is a
  * property of the row, not of the installed version, so version detection
- * would key off the wrong thing anyway. Both handles are simply accepted.
+ * would key off the wrong thing anyway. All formats are simply accepted.
  *
  * Craft lookups (sections, entry types, sites) live in protected methods so
  * the unit suite — which runs without a Craft boot — can stub them out.
@@ -121,15 +123,16 @@ class FeedMeConverter
         $this->warnings = [];
 
         $link = new Link();
-        $link->name = (string)($feed['name'] ?? '');
+        $link->name = (string) ($feed['name'] ?? '');
         $link->handle = $this->deriveHandle($feed);
-        $link->elementType = ltrim((string)($feed['elementType'] ?? ''), '\\');
-        $link->backup = !empty($feed['backup']);
+        $link->elementType = ltrim((string) ($feed['elementType'] ?? ''), '\\');
+        $link->backup = ! empty($feed['backup']);
 
         $this->convertFeedType($feed);
         $this->convertEndpoint($feed, $link);
 
         $link->rootNode = $this->nodeToDotPath($feed['primaryElement'] ?? null);
+
         if ($link->rootNode !== null) {
             $this->warn("Feed Me locates the primary element '{$link->rootNode}' by name anywhere in the document; Influx needs the full dot-path from the response root. Verify the root node.");
         }
@@ -140,10 +143,11 @@ class FeedMeConverter
         $link->mappings = $this->convertMappings($this->decode($feed['fieldMapping'] ?? null), true);
         $link->match = $this->convertMatch($this->decode($feed['fieldUnique'] ?? null), $link->mappings);
 
-        if (!empty($feed['singleton'])) {
+        if (! empty($feed['singleton'])) {
             $this->warn('Feed is a singleton; Influx has no singleton mode — the match attribute decides which element each item updates.');
         }
-        if (!empty($feed['setEmptyValues'])) {
+
+        if (! empty($feed['setEmptyValues'])) {
             $this->warn('"Set empty values" is not supported; Influx leaves fields untouched when the feed has no data for them.');
         }
 
@@ -157,11 +161,13 @@ class FeedMeConverter
      */
     protected function deriveHandle(array $feed): string
     {
-        $handle = $this->handleFromName((string)($feed['name'] ?? ''));
+        $handle = $this->handleFromName((string) ($feed['name'] ?? ''));
+
         if ($handle !== '') {
             return $handle;
         }
-        return 'feed' . (string)($feed['id'] ?? '');
+
+        return 'feed' . (string) ($feed['id'] ?? '');
     }
 
     /**
@@ -170,7 +176,8 @@ class FeedMeConverter
      */
     protected function convertFeedType(array $feed): void
     {
-        $feedType = (string)($feed['feedType'] ?? '');
+        $feedType = (string) ($feed['feedType'] ?? '');
+
         if ($feedType !== '' && $feedType !== 'json') {
             $this->warn("Feed type is '{$feedType}' but Influx only consumes JSON APIs. The link will not sync until the endpoint returns JSON.");
         }
@@ -184,14 +191,16 @@ class FeedMeConverter
      */
     protected function convertEndpoint(array $feed, Link $link): void
     {
-        $feedUrl = (string)($feed['feedUrl'] ?? '');
-        $siteId = (int)($feed['siteId'] ?? 0);
+        $feedUrl = (string) ($feed['feedUrl'] ?? '');
+        $siteId = (int) ($feed['siteId'] ?? 0);
 
         if ($siteId && $this->isMultiSite()) {
             $siteHandle = $this->siteHandleById($siteId);
+
             if ($siteHandle !== null) {
                 $link->siteEndpoints = [$siteHandle => $feedUrl];
                 $this->warn("Feed targeted site '{$siteHandle}'; converted to a site endpoint so the link only writes that site. Add more site endpoints if needed.");
+
                 return;
             }
             $this->warn("Feed targeted site id {$siteId}, which no longer exists; using a default endpoint instead.");
@@ -215,18 +224,21 @@ class FeedMeConverter
             if ($elementType !== '') {
                 $this->warn("Element type '{$elementType}' has no built-in Influx target; element criteria were not converted.");
             }
+
             return [];
         }
 
-        if (!is_array($settings)) {
+        if (! is_array($settings)) {
             return [];
         }
 
         $criteria = [];
 
-        $sectionId = (int)($settings['section'] ?? 0);
+        $sectionId = (int) ($settings['section'] ?? 0);
+
         if ($sectionId) {
             $sectionHandle = $this->sectionHandleById($sectionId);
+
             if ($sectionHandle !== null) {
                 $criteria['section'] = $sectionHandle;
             } else {
@@ -234,9 +246,11 @@ class FeedMeConverter
             }
         }
 
-        $entryTypeId = (int)($settings['entryType'] ?? 0);
+        $entryTypeId = (int) ($settings['entryType'] ?? 0);
+
         if ($entryTypeId) {
             $typeHandle = $this->entryTypeHandleById($entryTypeId);
+
             if ($typeHandle !== null) {
                 $criteria['type'] = $typeHandle;
             } else {
@@ -259,16 +273,20 @@ class FeedMeConverter
         $processing = [];
 
         foreach ($duplicateHandle as $flag) {
-            if (!is_string($flag)) {
+            if (! is_string($flag)) {
                 continue;
             }
+
             if (isset(self::PROCESSING_MAP[$flag])) {
                 $processing[] = self::PROCESSING_MAP[$flag];
+
                 continue;
             }
+
             if ($flag === 'disableForSite') {
                 $processing[] = Link::PROCESSING_DISABLE;
                 $this->warn("'Disable missing elements for site' is not supported; approximated to 'disable'.");
+
                 continue;
             }
             $this->warn("Unknown duplicate handling flag '{$flag}' was dropped.");
@@ -278,6 +296,7 @@ class FeedMeConverter
 
         if (empty($processing)) {
             $this->warn("Feed had no duplicate handling flags; defaulted to 'create' + 'update'.");
+
             return [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE];
         }
 
@@ -299,13 +318,14 @@ class FeedMeConverter
         $mappings = [];
 
         foreach ($fieldMapping as $handle => $info) {
-            if (!is_array($info)) {
+            if (! is_array($info)) {
                 continue;
             }
 
-            if ($topLevel && !empty($info['attribute'])) {
+            if ($topLevel && ! empty($info['attribute'])) {
                 if (in_array($handle, self::UNSUPPORTED_NATIVE_HANDLES, true)) {
                     $this->warn("Native attribute mapping '{$handle}' has no Influx counterpart and was dropped.");
+
                     continue;
                 }
                 $handle = self::NATIVE_HANDLE_MAP[$handle] ?? $handle;
@@ -313,10 +333,12 @@ class FeedMeConverter
 
             if (isset($info['blocks'])) {
                 $this->warn("Matrix field '{$handle}' was dropped — Influx does not support Matrix block mapping yet.");
+
                 continue;
             }
 
-            $mapping = $this->convertMapping((string)$handle, $info);
+            $mapping = $this->convertMapping((string) $handle, $info);
+
             if ($mapping !== null) {
                 $mappings[$handle] = $mapping;
             }
@@ -356,8 +378,16 @@ class FeedMeConverter
         }
 
         $options = is_array($info['options'] ?? null) ? $this->cleanOptions($info['options']) : [];
-        $options = $this->translateDateFormat($handle, $options);
-        if (!empty($options)) {
+
+        if (ltrim((string) ($info['field'] ?? ''), '\\') === 'craft\fields\Assets') {
+            $options = $this->translateAssetOptions($handle, $options);
+        } else {
+            $options = $this->translateDateFormat($handle, $options);
+            $options = $this->normalizeMatchOption($handle, $options);
+            $options = $this->translateCreateGroup($handle, $options);
+        }
+
+        if (! empty($options)) {
             $mapping['options'] = $options;
         }
 
@@ -365,7 +395,8 @@ class FeedMeConverter
         // Me only maps custom fields there, which is Influx's `fields` key.
         if (is_array($info['fields'] ?? null)) {
             $subMappings = $this->convertMappings($info['fields'], false);
-            if (!empty($subMappings)) {
+
+            if (! empty($subMappings)) {
                 $mapping['fields'] = $subMappings;
             }
         }
@@ -384,12 +415,15 @@ class FeedMeConverter
     protected function convertMatch(array $fieldUnique, array $mappings): array
     {
         $uniques = [];
+
         foreach ($fieldUnique as $handle => $flag) {
             if (empty($flag)) {
                 continue;
             }
+
             if (in_array($handle, self::UNSUPPORTED_NATIVE_HANDLES, true)) {
                 $this->warn("Unique identifier '{$handle}' cannot be matched by Influx; pick a different match attribute in the builder.");
+
                 continue;
             }
             $uniques[] = self::NATIVE_HANDLE_MAP[$handle] ?? $handle;
@@ -397,10 +431,12 @@ class FeedMeConverter
 
         if (empty($uniques)) {
             $this->warn('No usable unique identifier was found; set the match attribute in the builder.');
+
             return [];
         }
 
         $attribute = array_shift($uniques);
+
         if ($uniques) {
             $this->warn('Influx matches on a single attribute; using \'' . $attribute . '\' and ignoring: ' . implode(', ', $uniques) . '.');
         }
@@ -418,9 +454,10 @@ class FeedMeConverter
      */
     protected function nodeToDotPath(mixed $node): ?string
     {
-        if (!is_string($node) || trim($node) === '') {
+        if (! is_string($node) || trim($node) === '') {
             return null;
         }
+
         return strtr(trim($node, '/'), '/', '.');
     }
 
@@ -435,9 +472,11 @@ class FeedMeConverter
         if (is_array($default) && array_is_list($default) && count($default) === 1) {
             $default = $default[0];
         }
+
         if ($default === null || $default === '' || $default === []) {
             return null;
         }
+
         return $default;
     }
 
@@ -452,25 +491,174 @@ class FeedMeConverter
     protected function translateDateFormat(string $handle, array $options): array
     {
         $match = $options['match'] ?? null;
-        if (!is_string($match)) {
+
+        if (! is_string($match)) {
             return $options;
         }
 
         if ($match === 'milliseconds') {
             unset($options['match']);
             $this->warn("Date mapping '{$handle}' parsed millisecond timestamps, which Influx does not support; the value will go through auto-detection instead.");
+
             return $options;
         }
 
-        if (!array_key_exists($match, self::DATE_FORMAT_MAP)) {
+        if (! array_key_exists($match, self::DATE_FORMAT_MAP)) {
             return $options;
         }
 
         unset($options['match']);
         $format = self::DATE_FORMAT_MAP[$match];
+
         if ($format !== '') {
             $options['format'] = $format;
             $this->warn("Date format '{$match}' on '{$handle}' was approximated to '{$format}'; verify it against the feed's date strings.");
+        }
+
+        return $options;
+    }
+
+    /**
+     * Feed Me asset mappings speak a different option vocabulary than
+     * Influx's Assets strategy: `match` ('filename'|'id', default
+     * 'filename') instead of `mode` ('id'|'url'), plus `conflict: 'create'`
+     * ("keep both") and `filenameNode`, which Influx dropped/never had.
+     * Without this translation a migrated mapping never enters the
+     * URL-lookup/upload branch — and the builder never shows the upload
+     * toggle, because its visibility keys off `mode === 'url'`.
+     *
+     * `upload` itself carries over untouched (same key, same meaning).
+     * Influx only honors it in url mode; Feed Me likewise treated uploads
+     * as URL-data, even when matching by id, so upload forces url mode.
+     */
+    protected function translateAssetOptions(string $handle, array $options): array
+    {
+        $match = $options['match'] ?? 'filename';
+        unset($options['match']);
+
+        $upload = ! empty($options['upload']);
+
+        if ($match === 'id' && ! $upload) {
+            // Influx's default mode is already 'id' — nothing to write.
+        } else {
+            $options['mode'] = 'url';
+
+            if ($match === 'id') {
+                $this->warn("Asset mapping '{$handle}' matched by id but had uploads enabled; converted to URL mode, which expects the feed to carry asset URLs.");
+            }
+        }
+
+        if (($options['conflict'] ?? null) === 'create') {
+            unset($options['conflict']);
+            $this->warn("Asset conflict mode 'Keep both' on '{$handle}' is not supported; existing assets will be reused instead.");
+        }
+
+        if (! empty($options['filenameNode'])) {
+            $this->warn("Asset option 'filenameNode' on '{$handle}' is not supported; Influx derives filenames from the URL.");
+        }
+        unset($options['filenameNode']);
+
+        return $options;
+    }
+
+    /**
+     * Feed Me 3.0.0-beta.26 through 5.x stored relation `options.match`
+     * values for custom fields as raw content-table column names — it fed
+     * them straight into a SQL `where` on the lookup query. That means
+     * `field_<handle>`, and for fields created on Craft 3.7+ (which assigns
+     * every new field a random column suffix) `field_<handle>_<suffix>`;
+     * the native id match was stored as `elements.id`. Feed Me 6 (Craft 5,
+     * no content table) switched to bare handles.
+     *
+     * Influx matches through element query params and setFieldValue(), which
+     * take bare handles on every Craft version — so the column dressing is
+     * translated away here. Handles are verified against the install's real
+     * fields so a field genuinely named `field_*` survives, and the
+     * column-suffix strip only happens when it lands on an existing field.
+     */
+    protected function normalizeMatchOption(string $handle, array $options): array
+    {
+        $match = $options['match'] ?? null;
+
+        if (! is_string($match) || $match === '') {
+            return $options;
+        }
+
+        if ($match === 'elements.id') {
+            $options['match'] = 'id';
+
+            return $options;
+        }
+
+        if (! str_starts_with($match, 'field_') || $this->fieldExistsByHandle($match)) {
+            return $options;
+        }
+
+        $bare = substr($match, strlen('field_'));
+
+        if (! $this->fieldExistsByHandle($bare)) {
+            $stripped = preg_replace('/_[a-z0-9]{8}$/i', '', $bare);
+
+            if ($stripped !== $bare && $this->fieldExistsByHandle($stripped)) {
+                $bare = $stripped;
+            } else {
+                $this->warn("Match option '{$match}' on '{$handle}' was converted to '{$bare}', but no field with that handle exists; verify the Match by setting in the builder.");
+            }
+        }
+
+        $options['match'] = $bare;
+
+        return $options;
+    }
+
+    /**
+     * Feed Me's "create entries if they do not exist" target —
+     * `options.group.{sectionId,typeId}` — carries raw DB ids. Those are
+     * environment-specific (sections and entry types are identified by
+     * UID/handle in Project Config, ids differ per install), so the ids
+     * are swapped for handles (`group.{section,type}`) here, while the
+     * migration still runs in the environment the ids belong to.
+     * {@see \GlueAgency\Influx\fields\Entries::createTarget()} resolves the
+     * handles back to ids at sync time.
+     */
+    protected function translateCreateGroup(string $handle, array $options): array
+    {
+        $group = $options['group'] ?? null;
+
+        if (! is_array($group)) {
+            return $options;
+        }
+
+        $sectionId = (int) ($group['sectionId'] ?? 0);
+
+        if ($sectionId) {
+            unset($group['sectionId']);
+            $sectionHandle = $this->sectionHandleById($sectionId);
+
+            if ($sectionHandle !== null) {
+                $group['section'] = $sectionHandle;
+            } else {
+                $this->warn("Create-target section id {$sectionId} on '{$handle}' no longer exists; pick a section in the builder.");
+            }
+        }
+
+        $typeId = (int) ($group['typeId'] ?? 0);
+
+        if ($typeId) {
+            unset($group['typeId']);
+            $typeHandle = $this->entryTypeHandleById($typeId);
+
+            if ($typeHandle !== null) {
+                $group['type'] = $typeHandle;
+            } else {
+                $this->warn("Create-target entry type id {$typeId} on '{$handle}' no longer exists; the section's first entry type will be used.");
+            }
+        }
+
+        if (empty($group)) {
+            unset($options['group']);
+        } else {
+            $options['group'] = $group;
         }
 
         return $options;
@@ -486,15 +674,18 @@ class FeedMeConverter
     protected function cleanOptions(array $options): array
     {
         $clean = [];
+
         foreach ($options as $key => $value) {
             if (is_array($value)) {
                 $value = $this->cleanOptions($value);
             }
+
             if ($value === '' || $value === null || $value === []) {
                 continue;
             }
             $clean[$key] = $value;
         }
+
         return $clean;
     }
 
@@ -507,10 +698,13 @@ class FeedMeConverter
         if (is_array($value)) {
             return $value;
         }
+
         if (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
+
             return is_array($decoded) ? $decoded : [];
         }
+
         return [];
     }
 
@@ -546,5 +740,10 @@ class FeedMeConverter
     protected function entryTypeHandleById(int $id): ?string
     {
         return Compat::getEntryTypeById($id)?->handle;
+    }
+
+    protected function fieldExistsByHandle(string $handle): bool
+    {
+        return Craft::$app->getFields()->getFieldByHandle($handle) !== null;
     }
 }

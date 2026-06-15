@@ -25,10 +25,10 @@ enum ItemAction: string
     public function counterAttribute(): ?string
     {
         return match ($this) {
-            self::Created => 'itemsCreated',
-            self::Updated => 'itemsUpdated',
+            self::Created   => 'itemsCreated',
+            self::Updated   => 'itemsUpdated',
             self::Unchanged => 'itemsUnchanged',
-            self::Skipped => 'itemsSkipped',
+            self::Skipped   => 'itemsSkipped',
             self::Disabled, self::Deleted, self::DeletedForSite => 'itemsDeleted',
             self::Error => null,
         };
@@ -42,13 +42,13 @@ enum ItemAction: string
     public function dryRunLabel(): string
     {
         return match ($this) {
-            self::Created => 'would-create',
-            self::Updated => 'would-update',
-            self::Unchanged => 'would-unchanged',
-            self::Skipped => 'would-skip',
-            self::Error => 'error',
-            self::Disabled => 'would-disable',
-            self::Deleted => 'would-delete',
+            self::Created        => 'would-create',
+            self::Updated        => 'would-update',
+            self::Unchanged      => 'would-unchanged',
+            self::Skipped        => 'would-skip',
+            self::Error          => 'error',
+            self::Disabled       => 'would-disable',
+            self::Deleted        => 'would-delete',
             self::DeletedForSite => 'would-delete-for-site',
         };
     }

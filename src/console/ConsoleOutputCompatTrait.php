@@ -20,8 +20,10 @@ trait ConsoleOutputCompatTrait
     {
         if (method_exists(parent::class, 'success')) {
             parent::success($message);
+
             return;
         }
+
         $this->stdout("✅ {$message}\n", Console::FG_GREEN);
     }
 
@@ -29,8 +31,10 @@ trait ConsoleOutputCompatTrait
     {
         if (method_exists(parent::class, 'failure')) {
             parent::failure($message);
+
             return;
         }
+
         $this->stdout("❌ {$message}\n", Console::FG_RED);
     }
 
@@ -38,8 +42,10 @@ trait ConsoleOutputCompatTrait
     {
         if (method_exists(parent::class, 'tip')) {
             parent::tip($message);
+
             return;
         }
+
         $this->stdout("💡 {$message}\n", Console::FG_YELLOW);
     }
 
@@ -47,8 +53,10 @@ trait ConsoleOutputCompatTrait
     {
         if (method_exists(parent::class, 'warning')) {
             parent::warning($message);
+
             return;
         }
+
         $this->stdout("⚠️ {$message}\n", Console::FG_YELLOW);
     }
 }

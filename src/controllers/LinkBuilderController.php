@@ -5,8 +5,11 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\web\Controller;
 use GlueAgency\Influx\Influx;
+use ReflectionClass;
+use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
+use yii\web\HttpException;
 use yii\web\Response;
 
 /**
@@ -25,6 +28,7 @@ class LinkBuilderController extends Controller
     public function beforeAction($action): bool
     {
         $this->requirePermission('accessPlugin-influx');
+
         return parent::beforeAction($action);
     }
 
@@ -38,21 +42,23 @@ class LinkBuilderController extends Controller
     {
         try {
             return parent::runAction($id, $params);
-        } catch (\yii\web\HttpException $e) {
+        } catch (HttpException $e) {
             // HTTP-shaped errors (404, 403, …) keep their status code.
             Craft::$app->getResponse()->setStatusCode($e->statusCode);
+
             return $this->asJson([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'type'    => (new \ReflectionClass($e))->getShortName(),
+                'type'    => (new ReflectionClass($e))->getShortName(),
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Craft::error($e, __METHOD__);
             Craft::$app->getResponse()->setStatusCode(500);
+
             return $this->asJson([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'type'    => (new \ReflectionClass($e))->getShortName(),
+                'type'    => (new ReflectionClass($e))->getShortName(),
             ]);
         }
     }
@@ -66,8 +72,8 @@ class LinkBuilderController extends Controller
     {
         $this->requireAcceptsJson();
 
-        $handle = Craft::$app->getRequest()->getQueryParam('handle') ?: null;
-        $readOnly = !Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+        $handle = Craft::$app->getRequest()->getQueryParam('handle');
+        $readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
 
         return $this->asJson(
             Influx::getInstance()->linkBuilder->bootstrap($handle, $readOnly),
@@ -90,9 +96,7 @@ class LinkBuilderController extends Controller
         $payload = $this->jsonBody();
         $result = Influx::getInstance()->linkBuilder->save($payload);
 
-        if (!($result['success'] ?? false)) {
-            // Transport status and body agree: validation failures are 400s,
-            // so the SPA's single error path handles them like any failure.
+        if (! ($result['success'] ?? false)) {
             Craft::$app->getResponse()->setStatusCode(400);
         }
 
@@ -111,10 +115,10 @@ class LinkBuilderController extends Controller
         $this->requireAcceptsJson();
 
         $request = Craft::$app->getRequest();
-        $elementType = (string)$request->getQueryParam('elementType', '');
-        $criteria = (array)$request->getQueryParam('criteria', []);
+        $elementType = $request->getQueryParam('elementType');
+        $criteria = $request->getQueryParam('criteria', []);
 
-        if ($elementType === '') {
+        if (! $elementType) {
             throw new BadRequestHttpException('elementType is required.');
         }
 
@@ -141,7 +145,7 @@ class LinkBuilderController extends Controller
         $payload = $this->jsonBody();
         $result = Influx::getInstance()->linkBuilder->sample($payload);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             Craft::$app->getResponse()->setStatusCode(400);
         }
 
@@ -162,10 +166,10 @@ class LinkBuilderController extends Controller
         $this->requireAcceptsJson();
 
         $request = Craft::$app->getRequest();
-        $elementType = (string)$request->getQueryParam('elementType', '');
-        $ids = (array)$request->getQueryParam('ids', []);
+        $elementType = $request->getQueryParam('elementType');
+        $ids = $request->getQueryParam('ids', []);
 
-        if ($elementType === '') {
+        if (! $elementType) {
             throw new BadRequestHttpException('elementType is required.');
         }
 
@@ -185,10 +189,10 @@ class LinkBuilderController extends Controller
         $this->requireAcceptsJson();
 
         $request = Craft::$app->getRequest();
-        $elementType = (string)$request->getQueryParam('elementType', '');
-        $criteria = (array)$request->getQueryParam('criteria', []);
+        $elementType = $request->getQueryParam('elementType');
+        $criteria = $request->getQueryParam('criteria', []);
 
-        if ($elementType === '') {
+        if (! $elementType) {
             throw new BadRequestHttpException('elementType is required.');
         }
 
@@ -200,19 +204,22 @@ class LinkBuilderController extends Controller
     protected function jsonBody(): array
     {
         $raw = Craft::$app->getRequest()->getRawBody();
+
         if ($raw === '') {
             return [];
         }
         $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
+
+        if (! is_array($decoded)) {
             throw new BadRequestHttpException('Request body must be a JSON object.');
         }
+
         return $decoded;
     }
 
     protected function assertWriteable(): void
     {
-        if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+        if (! Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
             throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');
         }
     }

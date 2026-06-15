@@ -5,8 +5,12 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
+use craft\fields\Assets as CraftAssetsField;
+use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\SubElementApplier;
+use Throwable;
 
 /**
  * Maps a remote-item node onto a Craft Assets field.
@@ -27,12 +31,12 @@ class Assets extends Field
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Assets::class;
+        return CraftAssetsField::class;
     }
 
     public function fieldMeta(CraftFieldInterface $field): array
     {
-        /** @var \craft\fields\Assets $field */
+        /** @var CraftAssetsField $field */
         return [
             'kind'         => 'asset',
             'allowedKinds' => $field->allowedKinds ?? null,
@@ -56,13 +60,13 @@ class Assets extends Field
     public static function extrasLabels(): array
     {
         return [
-            'valueIs'              => Craft::t('influx', 'Match by'),
-            'uploadToggle'         => Craft::t('influx', 'Download & upload missing files'),
-            'onConflict'           => Craft::t('influx', 'On conflict'),
-            'subFieldsTitle'       => Craft::t('influx', 'Asset sub-fields'),
-            'subFieldsHint'        => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).'),
-            'noMapping'            => Craft::t('influx', '— no mapping —'),
-            'defaultPh'            => Craft::t('influx', 'Default'),
+            'valueIs'        => Craft::t('influx', 'Match by'),
+            'uploadToggle'   => Craft::t('influx', 'Download & upload missing files'),
+            'onConflict'     => Craft::t('influx', 'On conflict'),
+            'subFieldsTitle' => Craft::t('influx', 'Asset sub-fields'),
+            'subFieldsHint'  => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).'),
+            'noMapping'      => Craft::t('influx', '— no mapping —'),
+            'defaultPh'      => Craft::t('influx', 'Default'),
         ];
     }
 
@@ -105,21 +109,21 @@ class Assets extends Field
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::select('mode', Craft::t('influx', 'Match by'), self::modeOptions(), [
+            BuilderSchema::select('mode', Craft::t('influx', 'Match by'), self::modeOptions(), [
                 'default' => 'id',
             ]),
-            \GlueAgency\Influx\helpers\BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
+            BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
                 'showIf' => $url,
             ]),
-            \GlueAgency\Influx\helpers\BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
+            BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
                 'default' => 'index',
                 'showIf'  => $uploading,
             ]),
-            \GlueAgency\Influx\helpers\BuilderSchema::elementSubFields(
+            BuilderSchema::elementSubFields(
                 Craft::t('influx', 'Asset sub-fields'),
                 [
-                    \GlueAgency\Influx\helpers\BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
-                    \GlueAgency\Influx\helpers\BuilderSchema::text('title', Craft::t('influx', 'Title')),
+                    BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
+                    BuilderSchema::text('title', Craft::t('influx', 'Title')),
                 ],
             ),
         ];
@@ -128,13 +132,15 @@ class Assets extends Field
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
+
         if ($raw === null || $raw === '') {
             return null;
         }
 
         $mode = $context->mapping->option('mode', 'id');
-        $asset = $mode === 'url' ? $this->resolveByUrl($context, (string)$raw) : $this->findById($raw);
-        if (!$asset) {
+        $asset = $mode === 'url' ? $this->resolveByUrl($context, (string) $raw) : $this->findById($raw);
+
+        if (! $asset) {
             return null;
         }
 
@@ -145,26 +151,29 @@ class Assets extends Field
 
     public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
-        if (!is_array($incoming)) {
+        if (! is_array($incoming)) {
             return true;
         }
+
         try {
             $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return true;
         }
         sort($currentIds);
         $incomingSorted = $incoming;
         sort($incomingSorted);
+
         return $currentIds !== $incomingSorted;
     }
 
     protected function findById(mixed $raw): ?Asset
     {
-        if (!is_numeric($raw)) {
+        if (! is_numeric($raw)) {
             return null;
         }
-        return Asset::find()->id((int)$raw)->status(null)->one();
+
+        return Asset::find()->id((int) $raw)->status(null)->one();
     }
 
     /**
@@ -181,11 +190,12 @@ class Assets extends Field
         // First try matching an existing asset by url() — cheap and avoids
         // pointless re-uploads when the source already lives in Craft.
         $existing = $this->matchExistingByUrl($url);
+
         if ($existing) {
             return $existing;
         }
 
-        if (!$context->mapping->option('upload')) {
+        if (! $context->mapping->option('upload')) {
             return null;
         }
 
@@ -196,15 +206,16 @@ class Assets extends Field
         }
 
         [$volume, $subpath] = $this->uploadLocation($context);
-        if (!$volume) {
+
+        if (! $volume) {
             return null;
         }
 
-        return \GlueAgency\Influx\Influx::getInstance()->assetUpload->uploadFromUrl(
+        return Influx::getInstance()->assetUpload->uploadFromUrl(
             volumeHandle: $volume->handle,
             url: $url,
             folderPath: $subpath,
-            conflict: (string)$context->mapping->option('conflict', 'index'),
+            conflict: (string) $context->mapping->option('conflict', 'index'),
         );
     }
 
@@ -220,7 +231,8 @@ class Assets extends Field
     protected function uploadLocation(FieldContext $context): array
     {
         $field = $context->craftField;
-        if (!$field instanceof \craft\fields\Assets) {
+
+        if (! $field instanceof CraftAssetsField) {
             return [null, ''];
         }
 
@@ -228,17 +240,19 @@ class Assets extends Field
         $subpath = $field->restrictLocation ? $field->restrictedLocationSubpath : $field->defaultUploadLocationSubpath;
 
         $volume = null;
+
         if (is_string($source) && str_starts_with($source, 'volume:')) {
             $volume = Craft::$app->getVolumes()->getVolumeByUid(substr($source, 7));
         }
 
-        $subpath = (string)($subpath ?? '');
+        $subpath = (string) ($subpath ?? '');
+
         if ($subpath !== '') {
             try {
                 // Subpaths may be object templates ({slug}, …) rendered
                 // against the element being synced — same as a CP upload.
                 $subpath = Craft::$app->getView()->renderObjectTemplate($subpath, $context->element);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // A failing dynamic subpath shouldn't kill the sync run —
                 // fall back to the volume root.
                 $subpath = '';
@@ -252,19 +266,22 @@ class Assets extends Field
     {
         // Match by filename first — much faster than enumerating volumes.
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
+
         if ($name === '' || $name === false) {
             return null;
         }
         $asset = Asset::find()->filename($name)->status(null)->one();
+
         if ($asset) {
             try {
                 if ($asset->getUrl() === $url) {
                     return $asset;
                 }
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // Volume might not expose URLs — fall through.
             }
         }
+
         return $asset; // best-effort: same filename, possibly different host
     }
 
@@ -278,6 +295,7 @@ class Assets extends Field
         if ($context->dryRun) {
             return;
         }
+
         if ((new SubElementApplier())->apply($asset, $context)) {
             Craft::$app->getElements()->saveElement($asset, false);
         }

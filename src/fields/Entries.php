@@ -5,7 +5,9 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
-use craft\elements\Entry as EntryElement;
+use craft\elements\Entry as CraftEntryElement;
+use craft\fields\BaseRelationField;
+use craft\fields\Entries as CraftEntriesField;
 use craft\helpers\Db;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\sync\FieldContext;
@@ -16,34 +18,43 @@ use GlueAgency\Influx\sync\FieldContext;
  * Extras (under options):
  *   match:  'id' | 'title' | 'slug' | <any unique attr / field handle>
  *   create: bool        (create a new Entry when no match is found)
- *   group:  { sectionId, typeId }  (where to create — required when create=true)
+ *   group:  { section, type }  (where to create — required when create=true)
+ *
+ * `group.section` / `group.type` are handles: section and entry-type ids
+ * differ per environment (they're not part of Project Config), so the
+ * stored config must carry the stable identifier and resolve it at sync
+ * time. Legacy `group.sectionId` / `group.typeId` ids (the raw shape Feed
+ * Me stored) are still honored for configs written before the handle
+ * format existed — valid only in the environment they were written in.
  */
 class Entries extends Relation
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Entries::class;
+        return CraftEntriesField::class;
     }
 
     protected function elementType(): string
     {
-        return EntryElement::class;
+        return CraftEntryElement::class;
     }
 
-    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
     {
         $sources = $field->sources ?? '*';
 
         $sections = [];
-        if ($sources === '*' || !is_array($sources)) {
+
+        if ($sources === '*' || ! is_array($sources)) {
             $sections = Compat::getAllSections();
         } else {
             foreach ($sources as $source) {
-                if (!is_string($source) || !str_starts_with($source, 'section:')) {
+                if (! is_string($source) || ! str_starts_with($source, 'section:')) {
                     continue;
                 }
                 [, $uid] = explode(':', $source);
                 $section = Compat::getSectionByUid($uid);
+
                 if ($section) {
                     $sections[] = $section;
                 }
@@ -60,25 +71,29 @@ class Entries extends Relation
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
         // Constrain by the Craft field's configured sources (section UIDs).
-        if (!$context->craftField) {
+        if (! $context->craftField) {
             return;
         }
         $sources = $context->craftField->sources ?? '*';
-        if ($sources === '*' || !is_array($sources)) {
+
+        if ($sources === '*' || ! is_array($sources)) {
             return;
         }
 
         $sectionIds = [];
+
         foreach ($sources as $source) {
             if (str_starts_with($source, 'section:')) {
                 [, $uid] = explode(':', $source);
                 $id = Db::idByUid('{{%sections}}', $uid);
+
                 if ($id) {
                     $sectionIds[] = $id;
                 }
             }
         }
-        if (!empty($sectionIds)) {
+
+        if (! empty($sectionIds)) {
             /** @phpstan-ignore-next-line — Entries query exposes sectionId */
             $query->sectionId($sectionIds);
         }
@@ -86,22 +101,72 @@ class Entries extends Relation
 
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
-        $sectionId = $context->mapping->option('group.sectionId');
-        $typeId = $context->mapping->option('group.typeId');
-        if (!$sectionId || !$typeId) {
+        [$sectionId, $typeId] = $this->createTarget($context);
+
+        if (! $sectionId || ! $typeId) {
             // Without an explicit target we'd be guessing — bail rather than
             // dropping the entry into the first section we find.
             return null;
         }
 
-        $entry = new EntryElement();
-        $entry->sectionId = (int)$sectionId;
-        $entry->typeId = (int)$typeId;
-        $entry->title = (string)$value;
+        $entry = new CraftEntryElement();
+        $entry->sectionId = $sectionId;
+        $entry->typeId = $typeId;
+        $entry->title = (string) $value;
 
-        if (!Craft::$app->getElements()->saveElement($entry, true)) {
+        if (! Craft::$app->getElements()->saveElement($entry, true)) {
             return null;
         }
+
         return $entry;
+    }
+
+    /**
+     * Resolve the create-target section/type ids for this environment.
+     * Handles (`group.section` / `group.type`) take precedence — they're
+     * the environment-stable form. Legacy ids (`group.sectionId` /
+     * `group.typeId`) are the fallback. A resolvable section without a
+     * resolvable type defaults to the section's first entry type, same as
+     * a new entry in the CP.
+     *
+     * @return array{0: ?int, 1: ?int}
+     */
+    protected function createTarget(FieldContext $context): array
+    {
+        $section = null;
+
+        $sectionHandle = $context->mapping->option('group.section');
+
+        if (is_string($sectionHandle) && $sectionHandle !== '') {
+            $section = Compat::getSectionByHandle($sectionHandle);
+        }
+
+        if (! $section && ($sectionId = (int) $context->mapping->option('group.sectionId'))) {
+            $section = Compat::getSectionById($sectionId);
+        }
+
+        if (! $section) {
+            return [null, null];
+        }
+
+        $types = $section->getEntryTypes();
+        $typeHandle = $context->mapping->option('group.type');
+        $legacyTypeId = (int) $context->mapping->option('group.typeId');
+
+        foreach ($types as $type) {
+            if (is_string($typeHandle) && $typeHandle !== '' && $type->handle === $typeHandle) {
+                return [(int) $section->id, (int) $type->id];
+            }
+        }
+
+        foreach ($types as $type) {
+            if ($legacyTypeId && (int) $type->id === $legacyTypeId) {
+                return [(int) $section->id, (int) $type->id];
+            }
+        }
+
+        $first = $types[0] ?? null;
+
+        return [(int) $section->id, $first ? (int) $first->id : null];
     }
 }

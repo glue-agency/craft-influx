@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\migrations;
 use Craft;
 use craft\db\Migration;
 use craft\helpers\Db;
+use DateTime;
 use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\services\LinksService;
 
@@ -59,14 +60,15 @@ class m260605_120000_create_influx_links_table extends Migration
         $links = $pc->get(LinksService::CONFIG_LINKS_KEY) ?? [];
 
         if (is_array($links)) {
-            $now = Db::prepareDateForDb(new \DateTime());
+            $now = Db::prepareDateForDb(new DateTime());
+
             foreach ($links as $uid => $config) {
-                if (!is_array($config)) {
+                if (! is_array($config)) {
                     continue;
                 }
 
                 if (array_key_exists('ago', $config)) {
-                    if (!isset($config['offset'])) {
+                    if (! isset($config['offset'])) {
                         $config['offset'] = $config['ago'];
                     }
                     unset($config['ago']);
@@ -100,6 +102,7 @@ class m260605_120000_create_influx_links_table extends Migration
     public function safeDown(): bool
     {
         $this->dropTableIfExists(Table::LINKS);
+
         return true;
     }
 }

@@ -36,39 +36,39 @@ class Install extends Migration
         $this->createIndex(null, Table::LINKS, ['elementType']);
 
         $this->createTable(Table::LOGS, [
-            'id'           => $this->primaryKey(),
-            'linkHandle'   => $this->string(100)->notNull(),
-            'trigger'      => $this->string(30)->notNull(),    // console | cp | element | queue
-            'siteHandle'   => $this->string(100)->null(),
-            'status'       => $this->string(20)->notNull(),    // running | ok | error
-            'itemsSeen'    => $this->integer()->defaultValue(0),
-            'itemsCreated' => $this->integer()->defaultValue(0),
-            'itemsUpdated' => $this->integer()->defaultValue(0),
+            'id'             => $this->primaryKey(),
+            'linkHandle'     => $this->string(100)->notNull(),
+            'trigger'        => $this->string(30)->notNull(),    // console | cp | element | queue
+            'siteHandle'     => $this->string(100)->null(),
+            'status'         => $this->string(20)->notNull(),    // running | ok | error
+            'itemsSeen'      => $this->integer()->defaultValue(0),
+            'itemsCreated'   => $this->integer()->defaultValue(0),
+            'itemsUpdated'   => $this->integer()->defaultValue(0),
             'itemsUnchanged' => $this->integer()->defaultValue(0),
-            'itemsSkipped' => $this->integer()->defaultValue(0),
-            'itemsDeleted' => $this->integer()->defaultValue(0),
-            'startedAt'    => $this->dateTime()->notNull(),
-            'finishedAt'   => $this->dateTime()->null(),
-            'error'        => $this->text()->null(),
-            'dateCreated'  => $this->dateTime()->notNull(),
-            'dateUpdated'  => $this->dateTime()->notNull(),
-            'uid'          => $this->uid(),
+            'itemsSkipped'   => $this->integer()->defaultValue(0),
+            'itemsDeleted'   => $this->integer()->defaultValue(0),
+            'startedAt'      => $this->dateTime()->notNull(),
+            'finishedAt'     => $this->dateTime()->null(),
+            'error'          => $this->text()->null(),
+            'dateCreated'    => $this->dateTime()->notNull(),
+            'dateUpdated'    => $this->dateTime()->notNull(),
+            'uid'            => $this->uid(),
         ]);
 
         $this->createIndex(null, Table::LOGS, ['linkHandle']);
         $this->createIndex(null, Table::LOGS, ['startedAt']);
 
         $this->createTable(Table::LOG_ITEMS, [
-            'id'         => $this->primaryKey(),
-            'logId'      => $this->integer()->notNull(),
-            'elementId'  => $this->integer()->null(),
-            'matchValue' => $this->string(255)->null(),
-            'action'     => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
-            'message'    => $this->text()->null(),
-            'payload'    => $this->longText()->null(),    // raw remote item JSON (optional)
+            'id'          => $this->primaryKey(),
+            'logId'       => $this->integer()->notNull(),
+            'elementId'   => $this->integer()->null(),
+            'matchValue'  => $this->string(255)->null(),
+            'action'      => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
+            'message'     => $this->text()->null(),
+            'payload'     => $this->longText()->null(),    // raw remote item JSON (optional)
             'dateCreated' => $this->dateTime()->notNull(),
             'dateUpdated' => $this->dateTime()->notNull(),
-            'uid'        => $this->uid(),
+            'uid'         => $this->uid(),
         ]);
 
         $this->createIndex(null, Table::LOG_ITEMS, ['logId']);
@@ -92,6 +92,7 @@ class Install extends Migration
         $this->dropTableIfExists(Table::LOG_ITEMS);
         $this->dropTableIfExists(Table::LOGS);
         $this->dropTableIfExists(Table::LINKS);
+
         return true;
     }
 }

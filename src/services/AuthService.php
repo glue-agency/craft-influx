@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
 use GlueAgency\Influx\auth\AuthStrategyInterface;
+use GlueAgency\Influx\auth\BasicAuth;
 use GlueAgency\Influx\auth\BearerAuth;
 use GlueAgency\Influx\auth\CustomHeaderAuth;
 use GlueAgency\Influx\auth\QueryStringAuth;
@@ -45,6 +46,7 @@ class AuthService extends Component
     protected function defaultStrategies(): array
     {
         return [
+            BasicAuth::class,
             BearerAuth::class,
             CustomHeaderAuth::class,
             QueryStringAuth::class,
@@ -67,7 +69,7 @@ class AuthService extends Component
 
     protected function registerOne(string $class): void
     {
-        if (!is_subclass_of($class, AuthStrategyInterface::class)) {
+        if (! is_subclass_of($class, AuthStrategyInterface::class)) {
             throw new InfluxException("'{$class}' must implement " . AuthStrategyInterface::class . '.');
         }
         $this->strategies[$class::type()] = $class;
@@ -79,6 +81,7 @@ class AuthService extends Component
     public function knownTypes(): array
     {
         $this->ensureLoaded();
+
         return array_keys($this->strategies);
     }
 
@@ -92,6 +95,7 @@ class AuthService extends Component
     public function strategies(): array
     {
         $this->ensureLoaded();
+
         return $this->strategies;
     }
 
@@ -105,13 +109,16 @@ class AuthService extends Component
         $this->ensureLoaded();
 
         $type = $config['type'] ?? null;
-        if (!is_string($type) || $type === '') {
+
+        if (! is_string($type) || $type === '') {
             return null;
         }
         $class = $this->strategies[$type] ?? null;
-        if (!$class) {
+
+        if (! $class) {
             return null;
         }
+
         return new $class($config);
     }
 

@@ -3,27 +3,30 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
-use craft\elements\User as UserElement;
+use craft\elements\User as CraftUserElement;
+use craft\fields\BaseRelationField;
+use craft\fields\Users as CraftUsersField;
 
 class Users extends Relation
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Users::class;
+        return CraftUsersField::class;
     }
 
     protected function elementType(): string
     {
-        return UserElement::class;
+        return CraftUserElement::class;
     }
 
     /**
      * Users share a single global field layout in Craft 5 — there's no
      * per-source layout to walk, so we yield it once.
      */
-    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
     {
-        $layout = Craft::$app->getFields()->getLayoutByType(UserElement::class);
+        $layout = Craft::$app->getFields()->getLayoutByType(CraftUserElement::class);
+
         if ($layout) {
             yield $layout;
         }

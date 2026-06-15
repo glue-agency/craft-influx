@@ -5,9 +5,13 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\elements\Entry;
+use craft\helpers\StringHelper;
+use craft\web\twig\variables\Cp;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use Throwable;
+use yii\web\NotFoundHttpException;
 
 /**
  * Orchestrates the data that the LinkBuilder Vue SPA needs to render and
@@ -40,13 +44,18 @@ class LinkBuilderService extends Component
         $plugin = Influx::getInstance();
         $isNew = ($handle === null);
 
-        $link = $isNew
-            ? new Link([
+        if ($isNew) {
+            $link = new Link([
                 'elementType' => Entry::class,
                 'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
-            ])
-            : ($plugin->links->getLinkByHandle($handle)
-                ?? throw new \yii\web\NotFoundHttpException("Link '{$handle}' not found."));
+            ]);
+        } else {
+            $link = $plugin->links->getLinkByHandle($handle);
+
+            if (! $link) {
+                throw new NotFoundHttpException("Link '{$handle}' not found.");
+            }
+        }
 
         return [
             'link'    => $link->toBuilderArray(),
@@ -59,12 +68,12 @@ class LinkBuilderService extends Component
                 'authTypes'         => $this->authTypeOptions(),
                 'authStrategies'    => $this->authStrategyDefinitions(),
             ],
-            'meta'    => [
-                'isNew'        => $isNew,
-                'readOnly'     => $readOnly,
-                'handle'       => $link->handle ?: null,
+            'meta' => [
+                'isNew'         => $isNew,
+                'readOnly'      => $readOnly,
+                'handle'        => $link->handle ?: null,
                 'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
-                'csrfToken'    => Craft::$app->getRequest()->getCsrfToken(),
+                'csrfToken'     => Craft::$app->getRequest()->getCsrfToken(),
                 // Environment-variable + Craft-alias suggestions for the
                 // endpoint pickers. Same shape as `tokenSuggestions` but
                 // each item is `type: 'text'` — selecting one drops the
@@ -94,7 +103,7 @@ class LinkBuilderService extends Component
 
         $link->applyBuilderPayload($payload);
 
-        if (!$plugin->links->saveLink($link)) {
+        if (! $plugin->links->saveLink($link)) {
             return [
                 'success' => false,
                 'message' => Craft::t('influx', 'Couldn’t save link.'),
@@ -132,8 +141,9 @@ class LinkBuilderService extends Component
         // "Fields" (gray).
         $nativeOptions = $target ? $target->matchableNativeAttributes($stub) : [];
         $fieldOptions = [];
+
         foreach ($fields as $f) {
-            if (!empty($f['native'])) {
+            if (! empty($f['native'])) {
                 continue;
             }
             $fieldOptions[] = [
@@ -149,6 +159,7 @@ class LinkBuilderService extends Component
                 'options' => [['value' => '', 'label' => Craft::t('influx', '— select a field —')]],
             ],
         ];
+
         if ($nativeOptions) {
             $matchOptions[] = [
                 'label'   => $target ? $target::friendlyName() : Craft::t('influx', 'Native'),
@@ -156,6 +167,7 @@ class LinkBuilderService extends Component
                 'options' => $nativeOptions,
             ];
         }
+
         if ($fieldOptions) {
             $matchOptions[] = [
                 'label'   => Craft::t('influx', 'Fields'),
@@ -175,6 +187,7 @@ class LinkBuilderService extends Component
     public function endpointTokenSuggestions(string $elementType, array $criteria): array
     {
         $stub = new Link(['elementType' => $elementType, 'elementCriteria' => $criteria]);
+
         return Influx::getInstance()->endpointTokens->suggestions($stub);
     }
 
@@ -194,7 +207,8 @@ class LinkBuilderService extends Component
     public function sample(array $payload): array
     {
         $endpoint = $this->emptyToNull($payload['endpoint'] ?? null);
-        if (!$endpoint) {
+
+        if (! $endpoint) {
             return ['success' => false, 'message' => Craft::t('influx', 'Set a list endpoint first.')];
         }
 
@@ -205,12 +219,12 @@ class LinkBuilderService extends Component
             'endpoint'      => $endpoint,
             'rootNode'      => $this->emptyToNull($payload['rootNode'] ?? null),
             'paginatorNode' => $this->emptyToNull($payload['paginatorNode'] ?? null),
-            'auth'          => (array)($payload['auth'] ?? []),
+            'auth'          => (array) ($payload['auth'] ?? []),
         ]);
 
         try {
             $report = Influx::getInstance()->data->inspect($link);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
@@ -219,8 +233,11 @@ class LinkBuilderService extends Component
 
     protected function emptyToNull(mixed $v): ?string
     {
-        if ($v === null) return null;
-        $s = trim((string)$v);
+        if ($v === null) {
+            return null;
+        }
+        $s = trim((string) $v);
+
         return $s === '' ? null : $s;
     }
 
@@ -239,14 +256,16 @@ class LinkBuilderService extends Component
     public function renderElementSelect(string $elementType, array $ids): array
     {
         $elements = [];
+
         foreach ($ids as $id) {
-            $el = Craft::$app->getElements()->getElementById((int)$id, $elementType);
+            $el = Craft::$app->getElements()->getElementById((int) $id, $elementType);
+
             if ($el) {
                 $elements[] = $el;
             }
         }
 
-        $hostId = 'influx-el-' . \craft\helpers\StringHelper::randomString(8);
+        $hostId = 'influx-el-' . StringHelper::randomString(8);
 
         $renderArgs = [
             'id'             => $hostId,
@@ -280,7 +299,7 @@ class LinkBuilderService extends Component
             'showActionMenu'   => false,
             'viewMode'         => 'list',
             'defaultPlacement' => 'end',
-            'modalSettings'    => (object)[],
+            'modalSettings'    => (object) [],
         ];
 
         return ['html' => $html, 'jsSettings' => $jsSettings];
@@ -332,7 +351,6 @@ class LinkBuilderService extends Component
             'Enable if the external service supports resource localisation.',
             'The link runs once per listed site and writes localized data to the same canonical element.',
             'Processing actions',
-            'What the sync engine is allowed to do.',
 
             // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',
@@ -402,22 +420,30 @@ class LinkBuilderService extends Component
      */
     protected function envAndAliasSuggestions(): array
     {
-        $cp = new \craft\web\twig\variables\Cp();
+        $cp = new Cp();
         $raw = $cp->getEnvSuggestions(true);
 
         $out = [];
+
         foreach ($raw as $group) {
             $items = [];
+
             foreach (($group['data'] ?? []) as $item) {
-                $name = (string)($item['name'] ?? '');
-                if ($name === '') continue;
+                $name = (string) ($item['name'] ?? '');
+
+                if ($name === '') {
+                    continue;
+                }
                 $items[] = [
                     'name' => $name,
-                    'hint' => (string)($item['hint'] ?? ''),
+                    'hint' => (string) ($item['hint'] ?? ''),
                     'type' => 'text',
                 ];
             }
-            if (!$items) continue;
+
+            if (! $items) {
+                continue;
+            }
 
             // Slugify the group by inspecting the first item's prefix —
             // Craft's `getEnvSuggestions` returns env vars first, aliases
@@ -443,43 +469,52 @@ class LinkBuilderService extends Component
     protected function elementTypeOptions(): array
     {
         $out = [];
+
         foreach (Influx::getInstance()->targets->all() as $target) {
             $out[] = [
                 'value' => $target::elementType(),
                 'label' => $target::friendlyName(),
             ];
         }
+
         return $out;
     }
 
     protected function sectionOptions(): array
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— select —')]];
+
         foreach (Compat::getAllSections() as $section) {
             $out[] = ['value' => $section->handle, 'label' => $section->name];
         }
+
         return $out;
     }
 
     protected function sectionEntryTypes(): array
     {
         $out = [];
+
         foreach (Compat::getAllSections() as $section) {
             $types = [];
+
             foreach ($section->getEntryTypes() as $type) {
                 $types[$type->handle] = $type->name;
             }
             $out[$section->handle] = $types;
         }
+
         return $out;
     }
 
     protected function siteOptions(): array
     {
         $out = [];
+
         foreach (Craft::$app->getSites()->getAllSites() as $site) {
             $out[] = ['value' => $site->handle, 'label' => $site->name];
         }
+
         return $out;
     }
 
@@ -497,9 +532,11 @@ class LinkBuilderService extends Component
     protected function authTypeOptions(): array
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— none —')]];
+
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
             $out[] = ['value' => $type, 'label' => Craft::t('influx', $class::label())];
         }
+
         return $out;
     }
 
@@ -517,13 +554,16 @@ class LinkBuilderService extends Component
     protected function authStrategyDefinitions(): array
     {
         $out = [];
+
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
             $schema = $class::editSchema();
+
             if (empty($schema)) {
                 continue;
             }
             $out[] = ['type' => $type, 'schema' => $schema];
         }
+
         return $out;
     }
 
@@ -531,13 +571,16 @@ class LinkBuilderService extends Component
     protected function groupMappableFields(array $fields): array
     {
         $byLabel = [];
+
         foreach ($fields as $field) {
             $label = $field['group'] ?? Craft::t('influx', 'Other');
-            if (!isset($byLabel[$label])) {
+
+            if (! isset($byLabel[$label])) {
                 $byLabel[$label] = ['label' => $label, 'fields' => []];
             }
             $byLabel[$label]['fields'][] = $field;
         }
+
         return array_values($byLabel);
     }
 }

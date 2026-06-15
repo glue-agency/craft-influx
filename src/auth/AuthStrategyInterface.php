@@ -4,8 +4,8 @@ namespace GlueAgency\Influx\auth;
 
 /**
  * Per-auth-type strategy. One concrete class per shape currently stored under
- * `Link::$auth` — bearer / custom header / query-string. Adding a new auth
- * type means writing a new strategy and registering it through
+ * `Link::$auth` — basic / bearer / custom header / query-string. Adding a new
+ * auth type means writing a new strategy and registering it through
  * {@see \GlueAgency\Influx\services\AuthService}; no other code needs to learn the
  * difference.
  *

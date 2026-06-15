@@ -5,14 +5,14 @@ namespace GlueAgency\Influx\services;
 use Cake\Utility\Hash;
 use Craft;
 use craft\base\Component;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 use GlueAgency\Influx\data\EndpointResolver;
 use GlueAgency\Influx\data\PagedFeed;
-use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 
 /**
  * Fetches JSON from a link's endpoint. JSON only by design.
@@ -47,7 +47,7 @@ class DataService extends Component
         }
 
         $headers = [];
-        $query   = $queryParams;
+        $query = $queryParams;
         $link->applyAuth($headers, $query);
 
         return $this->get($url, $headers, $query);
@@ -62,7 +62,7 @@ class DataService extends Component
         }
 
         $headers = [];
-        $query   = [];
+        $query = [];
         $link->applyAuth($headers, $query);
 
         return $this->get($url, $headers, $query);
@@ -92,7 +92,17 @@ class DataService extends Component
      */
     public function inspect(Link $link): array
     {
-        $response = $this->fetch($link);
+        // Sample fetches aren't tied to a site. A link configured with only
+        // site-specific endpoints has no base endpoint to fall back to, so
+        // sample against the first site endpoint instead of erroring out.
+        // Real sync runs stay strict — they resolve their own site handle.
+        $siteHandle = null;
+
+        if (! $link->endpoint && ! empty($link->siteEndpoints)) {
+            $siteHandle = array_key_first($link->siteEndpoints);
+        }
+
+        $response = $this->fetch($link, $siteHandle);
 
         $rootCandidates = $this->findArrayPaths($response, '', 3);
         $paginatorCandidates = $this->findPaginatorPaths($response);
@@ -105,7 +115,7 @@ class DataService extends Component
         $paginatorNode = $link->paginatorNode;
 
         if ($rootNode === null) {
-            if (!is_array($response) || !array_is_list($response)) {
+            if (! is_array($response) || ! array_is_list($response)) {
                 throw new InfluxException(
                     "Configure a root node before fetching a sample — the response is not a top-level array, so Influx needs to know which key inside the response holds the list of items."
                 );
@@ -113,7 +123,8 @@ class DataService extends Component
             $list = $response;
         } else {
             $listSource = Hash::get($response, $rootNode);
-            if (!is_array($listSource)) {
+
+            if (! is_array($listSource)) {
                 throw new InfluxException(
                     "Root node '{$rootNode}' does not resolve to an array in the response."
                 );
@@ -125,6 +136,7 @@ class DataService extends Component
 
         $flatNodes = [];
         $mappingSuggestions = [];
+
         if (is_array($sampleItem)) {
             foreach ($this->flattenLeafPaths($sampleItem, []) as $path) {
                 $flatNodes[] = [
@@ -134,9 +146,10 @@ class DataService extends Component
             }
 
             foreach ($sampleItem as $key => $value) {
-                if (!is_string($key)) {
+                if (! is_string($key)) {
                     continue;
                 }
+
                 if (is_scalar($value) || $value === null) {
                     $mappingSuggestions[] = [
                         'field' => $key,
@@ -148,7 +161,7 @@ class DataService extends Component
         }
 
         return [
-            'url'                     => $this->endpoints->listUrlForDisplay($link),
+            'url'                     => $this->endpoints->listUrlForDisplay($link, $siteHandle),
             'rootNode'                => $rootNode,
             'rootNodeCandidates'      => $rootCandidates,
             'paginatorNode'           => $paginatorNode,
@@ -175,14 +188,17 @@ class DataService extends Component
         // Resolve exactly the way the sync pipeline will — collapsed list
         // hops included — so the preview shows what a mapping would read.
         $value = (new RemoteItem($sampleItem))->get($path);
+
         if ($value === null) {
             return '';
         }
 
         $preview = trim(preg_replace('/\s+/u', ' ', $this->previewValue($value)) ?? '');
+
         if ($preview === '') {
             return '';
         }
+
         if (mb_strlen($preview) > 30) {
             $preview = mb_substr($preview, 0, 30) . '…';
         }
@@ -200,12 +216,15 @@ class DataService extends Component
         if ($value === null) {
             return '';
         }
+
         if (is_bool($value)) {
             return $value ? 'true' : 'false';
         }
+
         if (is_scalar($value)) {
-            return (string)$value;
+            return (string) $value;
         }
+
         if (is_array($value)) {
             if ($value === []) {
                 return '';
@@ -214,8 +233,10 @@ class DataService extends Component
             $first = $this->previewValue($value[$firstKey]);
             $prefix = is_int($firstKey) ? '' : $firstKey . ': ';
             $more = count($value) > 1 ? ', …' : '';
+
             return $prefix . $first . $more;
         }
+
         return '';
     }
 
@@ -233,7 +254,7 @@ class DataService extends Component
      */
     protected function flattenLeafPaths(mixed $value, array $prefix): array
     {
-        if (!is_array($value)) {
+        if (! is_array($value)) {
             return [$prefix ? implode('.', $prefix) : ''];
         }
 
@@ -246,17 +267,19 @@ class DataService extends Component
         }
 
         $paths = [];
+
         foreach ($value as $key => $child) {
-            if (!is_string($key)) {
+            if (! is_string($key)) {
                 continue;
             }
             $childPrefix = array_merge($prefix, [$key]);
 
             // Nested object: only its leaves are nodes.
-            if (is_array($child) && !empty($child) && !array_is_list($child)) {
+            if (is_array($child) && ! empty($child) && ! array_is_list($child)) {
                 foreach ($this->flattenLeafPaths($child, $childPrefix) as $p) {
                     $paths[] = $p;
                 }
+
                 continue;
             }
 
@@ -272,6 +295,7 @@ class DataService extends Component
                 }
             }
         }
+
         return $paths;
     }
 
@@ -286,7 +310,7 @@ class DataService extends Component
     {
         $paths = [];
 
-        if (!is_array($value)) {
+        if (! is_array($value)) {
             return $paths;
         }
 
@@ -299,10 +323,11 @@ class DataService extends Component
         }
 
         foreach ($value as $key => $child) {
-            if (!is_string($key)) {
+            if (! is_string($key)) {
                 continue;
             }
             $childPath = $prefix === '' ? $key : ($prefix . '.' . $key);
+
             foreach ($this->findArrayPaths($child, $childPath, $depth - 1) as $p) {
                 $paths[] = $p;
             }
@@ -313,11 +338,12 @@ class DataService extends Component
 
     protected function looksLikeListOfObjects(array $value): bool
     {
-        if (!array_is_list($value) || empty($value)) {
+        if (! array_is_list($value) || empty($value)) {
             return false;
         }
         $first = $value[0];
-        return is_array($first) && !array_is_list($first);
+
+        return is_array($first) && ! array_is_list($first);
     }
 
     /**
@@ -344,6 +370,7 @@ class DataService extends Component
 
         foreach ($preferred as $path) {
             $value = Hash::get($response, $path);
+
             if (is_string($value) && $value !== '') {
                 $hits[] = $path;
                 $seen[$path] = true;
@@ -374,7 +401,7 @@ class DataService extends Component
      */
     protected function stringLeafPaths(mixed $value, array $prefix): array
     {
-        if (!is_array($value)) {
+        if (! is_array($value)) {
             return [$prefix ? implode('.', $prefix) : ''];
         }
 
@@ -384,27 +411,32 @@ class DataService extends Component
 
         if (array_is_list($value)) {
             $first = $value[0] ?? null;
-            if (is_array($first) && !array_is_list($first)) {
+
+            if (is_array($first) && ! array_is_list($first)) {
                 return [];
             }
+
             return [$prefix ? implode('.', $prefix) : ''];
         }
 
         $paths = [];
+
         foreach ($value as $key => $child) {
-            if (!is_string($key)) {
+            if (! is_string($key)) {
                 continue;
             }
+
             foreach ($this->stringLeafPaths($child, array_merge($prefix, [$key])) as $p) {
                 $paths[] = $p;
             }
         }
+
         return $paths;
     }
 
     public function rootList(Link $link, array $response): array
     {
-        if (!$link->rootNode) {
+        if (! $link->rootNode) {
             return is_array($response) ? array_values($response) : [];
         }
 
@@ -442,10 +474,10 @@ class DataService extends Component
             );
         }
 
-        $body = (string)$response->getBody();
+        $body = (string) $response->getBody();
         $decoded = json_decode($body, true);
 
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             throw new FeedFetchException("Response from {$url} is not valid JSON.");
         }
 
@@ -454,22 +486,24 @@ class DataService extends Component
 
     protected function isLocalPath(string $url): bool
     {
-        return !preg_match('#^https?://#i', $url);
+        return ! preg_match('#^https?://#i', $url);
     }
 
     protected function read(string $path): array
     {
-        if (!is_file($path) || !is_readable($path)) {
+        if (! is_file($path) || ! is_readable($path)) {
             throw new FeedFetchException("File '{$path}' is not readable.");
         }
 
         $body = file_get_contents($path);
+
         if ($body === false) {
             throw new FeedFetchException("Failed to read '{$path}'.");
         }
 
         $decoded = json_decode($body, true);
-        if (!is_array($decoded)) {
+
+        if (! is_array($decoded)) {
             throw new FeedFetchException("Contents of '{$path}' are not valid JSON.");
         }
 

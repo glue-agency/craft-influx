@@ -32,27 +32,32 @@ class SubElementApplier
      */
     public function apply(ElementInterface $element, FieldContext $parentContext): bool
     {
-        if (!$parentContext->mapping->hasSubMappings()) {
+        if (! $parentContext->mapping->hasSubMappings()) {
             return false;
         }
 
         $touched = $this->applyNative($element, $parentContext);
+
         return $this->applyCustom($element, $parentContext) || $touched;
     }
 
     protected function applyNative(ElementInterface $element, FieldContext $parentContext): bool
     {
         $touched = false;
+
         foreach ($parentContext->mapping->nativeSubMappings() as $sub) {
             $value = $sub->resolve($parentContext->item);
+
             if ($value === null) {
                 continue;
             }
+
             if ($element->hasAttribute($sub->handle) || property_exists($element, $sub->handle)) {
                 $element->{$sub->handle} = $value;
                 $touched = true;
             }
         }
+
         return $touched;
     }
 
@@ -63,7 +68,8 @@ class SubElementApplier
 
         foreach ($parentContext->mapping->subMappings() as $sub) {
             $craftField = $element->getFieldLayout()?->getFieldByHandle($sub->handle);
-            if (!$craftField) {
+
+            if (! $craftField) {
                 continue;
             }
 
@@ -71,6 +77,7 @@ class SubElementApplier
             $strategy = $registry->forCraftField($craftField);
 
             $value = $strategy->parse($context);
+
             if ($value === null) {
                 continue;
             }
@@ -78,6 +85,7 @@ class SubElementApplier
             $strategy->apply($context, $value);
             $touched = true;
         }
+
         return $touched;
     }
 }

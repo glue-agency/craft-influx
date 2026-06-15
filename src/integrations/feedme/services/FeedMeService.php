@@ -5,10 +5,9 @@ namespace GlueAgency\Influx\integrations\feedme\services;
 use Craft;
 use craft\base\Component;
 use craft\db\Query;
-use craft\helpers\Console;
-use craft\helpers\Json;
-use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
+use GlueAgency\Influx\integrations\feedme\FeedMeImportResult;
 use InvalidArgumentException;
 
 /**
@@ -17,7 +16,8 @@ use InvalidArgumentException;
  *
  * Reads straight from the `feedme_feeds` table, so Feed Me only needs to be
  * (or have been) installed — the plugin itself doesn't have to be enabled.
- * Progress and results are written to the console via {@see Console}.
+ * Data in, {@see FeedMeImportResult}s out — console presentation lives in
+ * {@see \GlueAgency\Influx\console\controllers\FeedMeController}.
  */
 class FeedMeService extends Component
 {
@@ -43,8 +43,9 @@ class FeedMeService extends Component
             ->from('{{%feedme_feeds}}')
             ->orderBy(['id' => SORT_ASC]);
 
-        if (!$all && $feedIds !== '') {
+        if (! $all && $feedIds !== '') {
             $ids = array_filter(array_map('intval', explode(',', $feedIds)));
+
             if (empty($ids)) {
                 throw new InvalidArgumentException('Pass one or more numeric feed ids, or --all');
             }
@@ -53,9 +54,11 @@ class FeedMeService extends Component
             $feeds = $query->all();
             $found = array_column($feeds, 'id');
             $missing = array_diff($ids, array_map('intval', $found));
+
             if ($missing) {
                 throw new InvalidArgumentException('Feed id(s) not found: ' . implode(', ', $missing));
             }
+
             return $feeds;
         }
 
@@ -63,28 +66,9 @@ class FeedMeService extends Component
     }
 
     /**
-     * Print the feeds available for import.
-     */
-    public function listFeeds(array $feeds): void
-    {
-        $this->stdout("Available Feed Me feeds:\n\n");
-        Console::table(
-            ['ID', 'Name', 'Type', 'Element', 'URL'],
-            array_map(fn(array $feed) => [
-                $feed['id'],
-                $feed['name'],
-                $feed['feedType'],
-                $feed['elementType'],
-                $feed['feedUrl'],
-            ], $feeds),
-        );
-        $this->tip('Import with `influx/feed-me <ids>` or `influx/feed-me --all`.');
-    }
-
-    /**
      * Convert and (unless `$dryRun`) save each feed as an Influx link.
      *
-     * @return array{imported: int, failed: int}
+     * @return list<FeedMeImportResult>
      */
     public function importFeeds(array $feeds, bool $dryRun = false, bool $force = false): array
     {
@@ -95,46 +79,31 @@ class FeedMeService extends Component
         // with saved links nor between feeds in this batch.
         $takenHandles = array_keys($plugin->links->getAllLinks());
 
-        $imported = 0;
-        $failed = 0;
+        $results = [];
 
         foreach ($feeds as $feed) {
-            $this->stdout("→ Converting feed #{$feed['id']} “{$feed['name']}”\n");
-
             $conversion = $converter->convert($feed);
             $link = $conversion->link;
             $link->handle = $this->uniqueHandle($link->handle, $takenHandles);
             $takenHandles[] = $link->handle;
 
-            foreach ($conversion->warnings as $warning) {
-                $this->warning($warning);
-            }
-
             if ($dryRun) {
-                $this->stdout("  Link “{$link->handle}” (dry run):\n");
-                $this->stdout(Json::encode($link->getConfig(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-                $imported++;
+                $results[] = new FeedMeImportResult($feed, $link, $conversion->warnings);
+
                 continue;
             }
 
-            if ($plugin->links->saveLink($link, !$force)) {
-                $this->success("Imported as link “{$link->handle}”.");
-                $imported++;
-                continue;
-            }
-
-            $failed++;
-            $this->failure("Link “{$link->handle}” failed validation and was not saved:");
-            foreach ($link->getErrorSummary(true) as $error) {
-                Console::stderr("  - {$error}\n");
-            }
-            $this->tip('Re-run with `--force` to save it anyway and finish it in the link builder.');
+            $saved = $plugin->links->saveLink($link, ! $force);
+            $results[] = new FeedMeImportResult(
+                $feed,
+                $link,
+                $conversion->warnings,
+                $saved,
+                $saved ? [] : $link->getErrorSummary(true),
+            );
         }
 
-        $verb = $dryRun ? 'converted (dry run)' : 'imported';
-        $this->stdout("\n{$imported} feed(s) {$verb}, {$failed} failed.\n");
-
-        return ['imported' => $imported, 'failed' => $failed];
+        return $results;
     }
 
     /**
@@ -144,43 +113,15 @@ class FeedMeService extends Component
      */
     protected function uniqueHandle(string $handle, array $taken): string
     {
-        if (!in_array($handle, $taken, true)) {
+        if (! in_array($handle, $taken, true)) {
             return $handle;
         }
         $i = 2;
+
         while (in_array("{$handle}{$i}", $taken, true)) {
             $i++;
         }
+
         return "{$handle}{$i}";
-    }
-
-    /**
-     * Write to stdout, optionally ANSI-formatted — a service-context stand-in
-     * for `craft\console\Controller::stdout()`.
-     */
-    protected function stdout(string $string, int ...$format): void
-    {
-        Console::stdout($format ? Console::ansiFormat($string, $format) : $string);
-    }
-
-    /** Emoji output helpers, matching {@see \GlueAgency\Influx\console\ConsoleOutputCompatTrait}. */
-    protected function success(string $message): void
-    {
-        $this->stdout("✅ {$message}\n", Console::FG_GREEN);
-    }
-
-    protected function failure(string $message): void
-    {
-        $this->stdout("❌ {$message}\n", Console::FG_RED);
-    }
-
-    protected function warning(string $message): void
-    {
-        $this->stdout("⚠️ {$message}\n", Console::FG_YELLOW);
-    }
-
-    protected function tip(string $message): void
-    {
-        $this->stdout("💡 {$message}\n", Console::FG_YELLOW);
     }
 }

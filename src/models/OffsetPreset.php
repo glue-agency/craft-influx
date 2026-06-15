@@ -2,6 +2,10 @@
 
 namespace GlueAgency\Influx\models;
 
+use DateTime;
+use DateTimeInterface;
+use Throwable;
+
 /**
  * Sliding-window preset for incremental syncs:
  *
@@ -26,13 +30,13 @@ class OffsetPreset
     public string $queryParam = '';
 
     /** PHP date format for the cutoff value. */
-    public string $format = \DateTimeInterface::ATOM;
+    public string $format = DateTimeInterface::ATOM;
 
     public function __construct(
         string $key,
         string $since,
         string $queryParam,
-        string $format = \DateTimeInterface::ATOM,
+        string $format = DateTimeInterface::ATOM,
     ) {
         $this->key = $key;
         $this->since = $since;
@@ -47,14 +51,15 @@ class OffsetPreset
      */
     public static function fromConfig(string $key, array $config): ?self
     {
-        if (!isset($config['since'], $config['queryParam'])) {
+        if (! isset($config['since'], $config['queryParam'])) {
             return null;
         }
+
         return new self(
             key: $key,
-            since: (string)$config['since'],
-            queryParam: (string)$config['queryParam'],
-            format: (string)($config['format'] ?? \DateTimeInterface::ATOM),
+            since: (string) $config['since'],
+            queryParam: (string) $config['queryParam'],
+            format: (string) ($config['format'] ?? DateTimeInterface::ATOM),
         );
     }
 
@@ -63,9 +68,10 @@ class OffsetPreset
      */
     public static function forLink(Link $link, ?string $key): ?self
     {
-        if (!$key || !isset($link->offset[$key]) || !is_array($link->offset[$key])) {
+        if (! $key || ! isset($link->offset[$key]) || ! is_array($link->offset[$key])) {
             return null;
         }
+
         return self::fromConfig($key, $link->offset[$key]);
     }
 
@@ -83,10 +89,11 @@ class OffsetPreset
     public function resolve(): array
     {
         try {
-            $since = (new \DateTime())->modify($this->since);
-        } catch (\Throwable) {
+            $since = (new DateTime())->modify($this->since);
+        } catch (Throwable) {
             return [[], "invalid 'since' on preset '{$this->key}'"];
         }
+
         if ($since === false) {
             return [[], "invalid 'since' on preset '{$this->key}'"];
         }

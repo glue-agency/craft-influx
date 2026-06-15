@@ -6,6 +6,7 @@ use Craft;
 use craft\web\Controller;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\queue\jobs\SyncLinkJob;
+use Throwable;
 use yii\web\BadRequestHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -31,8 +32,10 @@ class SynchronizationController extends Controller
         $offset = $request->getBodyParam('offset');
 
         $plugin = Influx::getInstance();
-        $link = $plugin->links->getLinkByHandle($handle)
-            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+
+        if (! ($link = $plugin->links->getLinkByHandle($handle))) {
+            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        }
 
         Craft::$app->getQueue()->push(new SyncLinkJob([
             'linkHandle' => $link->handle,
@@ -49,9 +52,10 @@ class SynchronizationController extends Controller
     {
         $this->requirePostRequest();
 
-        $elementId = (int)Craft::$app->getRequest()->getRequiredBodyParam('elementId');
+        $elementId = (int) Craft::$app->getRequest()->getRequiredBodyParam('elementId');
         $element = Craft::$app->getElements()->getElementById($elementId);
-        if (!$element) {
+
+        if (! $element) {
             throw new NotFoundHttpException("Element #{$elementId} not found.");
         }
 
@@ -59,11 +63,13 @@ class SynchronizationController extends Controller
 
         $plugin = Influx::getInstance();
         $link = $plugin->links->findLinkForElement($element);
-        if (!$link) {
+
+        if (! $link) {
             throw new BadRequestHttpException("No link claims element #{$elementId}.");
         }
 
         $remaining = $plugin->cooldown->remaining($link, $element);
+
         if ($remaining > 0) {
             return $this->asFailure(
                 Craft::t('influx', 'Cool-down active, try again in {n}s', ['n' => $remaining]),
@@ -72,7 +78,7 @@ class SynchronizationController extends Controller
 
         try {
             $plugin->synchronization->syncElement($link, $element);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return $this->asFailure($e->getMessage());
         }
 

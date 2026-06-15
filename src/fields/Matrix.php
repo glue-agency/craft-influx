@@ -2,6 +2,10 @@
 
 namespace GlueAgency\Influx\fields;
 
+use Craft;
+use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fields\Matrix as CraftMatrixField;
+use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -15,10 +19,10 @@ class Matrix extends Field
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Matrix::class;
+        return CraftMatrixField::class;
     }
 
-    public function fieldMeta(\craft\base\FieldInterface $field): array
+    public function fieldMeta(CraftFieldInterface $field): array
     {
         return [
             'kind'   => 'matrix',
@@ -35,15 +39,15 @@ class Matrix extends Field
     public static function extrasLabels(): array
     {
         return [
-            'placeholder' => \Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
+            'placeholder' => Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
         ];
     }
 
-    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    public function defineExtrasSchema(CraftFieldInterface $field): array
     {
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::note(
-                \Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
+            BuilderSchema::note(
+                Craft::t('influx', 'Matrix block mapping is not yet supported. Map remote sub-arrays here in a future update.'),
             ),
         ];
     }

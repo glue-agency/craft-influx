@@ -56,7 +56,10 @@
         <hr>
         <h2>{{ $t('Endpoint') }}</h2>
 
-        <div class="field" :class="{ 'has-errors': errors.endpoint?.length }">
+<!-- In site-specific mode every site lists its own URL, so the base
+             endpoint is hidden rather than shown as dead config. Its value
+             is kept — flipping the switch back restores it untouched. -->
+        <div class="field" v-if="!siteEndpointsMode" :class="{ 'has-errors': errors.endpoint?.length }">
             <div class="heading"><label>{{ $t('Base Endpoint') }}</label></div>
             <div class="instructions"><p v-html="$t('JSON URL, or an <code>@alias</code> pointing to a local JSON file.')"></p></div>
             <div class="input ltr">
@@ -68,6 +71,22 @@
                 />
             </div>
             <field-errors :messages="errors.endpoint" />
+        </div>
+
+        <div class="field">
+            <div class="heading"><label class="lightswitch-label">{{ $t('Site-specific endpoints') }}</label></div>
+            <div class="instructions"><p>{{ $t('Enable if the external service supports resource localisation.') }}</p></div>
+            <div class="input">
+                <light-switch v-model="siteEndpointsMode" />
+            </div>
+        </div>
+
+        <div class="field" v-if="siteEndpointsMode" :class="{ 'has-errors': errors.siteEndpoints?.length }">
+            <div class="instructions">
+                <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
+            </div>
+            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" />
+            <field-errors :messages="errors.siteEndpoints" />
         </div>
 
         <div class="field">
@@ -106,30 +125,10 @@
             </div>
         </div>
 
-        <div class="field">
-            <div class="heading"><label class="lightswitch-label">{{ $t('Site-specific endpoints') }}</label></div>
-            <div class="instructions"><p>{{ $t('Enable if the external service supports resource localisation.') }}</p></div>
-            <div class="input">
-                <light-switch v-model="supportsSiteEndpoints" />
-            </div>
-        </div>
-
-        <div class="field" v-if="supportsSiteEndpoints">
-            <div class="instructions">
-                <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
-            </div>
-            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" />
-        </div>
-
         <hr>
         <h2>{{ $t('Processing actions') }}</h2>
 
         <div class="field">
-            <div class="instructions"><p>{{ $t('What the sync engine is allowed to do.') }}</p></div>
-            <!-- Craft draws the visible box on the label via the
-                 `input.checkbox + label` sibling selector, so the input
-                 must precede the label — nesting it inside leaves the
-                 (opacity-0) native checkbox invisible. -->
             <ul class="checkbox-group">
                 <li v-for="opt in options.processingActions" :key="opt.value">
                     <input type="checkbox"
@@ -167,9 +166,10 @@ export default {
             // Local UI flags mirroring the Twig form's lightswitches —
             // flipped off doesn't clear the underlying value, just hides
             // the editor so the user can iterate without losing config.
+            // (The site-endpoints flag lives in the store instead: save()
+            // validates against it and sampling keys off it.)
             supportsItemEndpoint:  !!store.link.itemEndpoint,
             supportsOffset:        Object.keys(store.link.offset || {}).length > 0,
-            supportsSiteEndpoints: Object.keys(store.link.siteEndpoints || {}).length > 0,
         };
     },
 
@@ -177,6 +177,13 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        // Store-owned so save() can require at least one site endpoint
+        // while the switch is on, and sampling can prefer site URLs.
+        siteEndpointsMode: {
+            get() { return this.ui.siteEndpointsMode; },
+            set(v) { store.setSiteEndpointsMode(v); },
+        },
 
         section: {
             get() { return this.link.elementCriteria.section || ''; },

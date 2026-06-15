@@ -222,6 +222,10 @@
     color: #777;
     text-transform: uppercase;
     letter-spacing: .04em;
+    /* Tinted like a Craft table head so the heading row reads as group
+       chrome instead of part of the first field row below it. */
+    background: #f3f7fc;
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
 }
 
 /* The Field heading shares the rows' chevron gutter so it stays flush

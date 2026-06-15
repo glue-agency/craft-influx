@@ -8,19 +8,20 @@ use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\enums\SyncTrigger;
-use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\events\SyncLinkEvent;
 use GlueAgency\Influx\events\SyncItemEvent;
+use GlueAgency\Influx\events\SyncLinkEvent;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\exceptions\InfluxException;
-use GlueAgency\Influx\models\OffsetPreset;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\models\OffsetPreset;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\sync\ItemProcessor;
 use GlueAgency\Influx\sync\ItemSyncResult;
 use GlueAgency\Influx\sync\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
+use Throwable;
 
 /**
  * Owns the full sync lifecycle for a link:
@@ -80,7 +81,8 @@ class SynchronizationService extends Component
 
         $beforeEvent = new SyncLinkEvent(['link' => $link]);
         $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
-        if (!$beforeEvent->isValid) {
+
+        if (! $beforeEvent->isValid) {
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
@@ -101,19 +103,20 @@ class SynchronizationService extends Component
             }
 
             $plugin->logs->finish($log);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $plugin->logs->fail($log, $e->getMessage());
+
             throw $e;
         }
 
         $afterEvent = new SyncLinkEvent([
             'link'           => $link,
-            'itemsSeen'      => (int)$log->itemsSeen,
-            'itemsCreated'   => (int)$log->itemsCreated,
-            'itemsUpdated'   => (int)$log->itemsUpdated,
-            'itemsUnchanged' => (int)$log->itemsUnchanged,
-            'itemsSkipped'   => (int)$log->itemsSkipped,
-            'itemsDeleted'   => (int)$log->itemsDeleted,
+            'itemsSeen'      => (int) $log->itemsSeen,
+            'itemsCreated'   => (int) $log->itemsCreated,
+            'itemsUpdated'   => (int) $log->itemsUpdated,
+            'itemsUnchanged' => (int) $log->itemsUnchanged,
+            'itemsSkipped'   => (int) $log->itemsSkipped,
+            'itemsDeleted'   => (int) $log->itemsDeleted,
         ]);
         $this->trigger(self::EVENT_AFTER_SYNC_LINK, $afterEvent);
 
@@ -128,11 +131,14 @@ class SynchronizationService extends Component
     {
         $plugin = Influx::getInstance();
         $target = $this->resolveTarget($link);
-        $matchAttr = $link->matchAttribute()
-            ?? throw new InfluxException("Link '{$link->handle}' has no match attribute.");
+
+        if (! ($matchAttr = $link->matchAttribute())) {
+            throw new InfluxException("Link '{$link->handle}' has no match attribute.");
+        }
 
         $matchValue = $element->$matchAttr;
-        if (!$matchValue) {
+
+        if (! $matchValue) {
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
@@ -148,15 +154,16 @@ class SynchronizationService extends Component
 
                 try {
                     $this->processItem($context, $item, $log);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::Error, $element->id, null, $e->getMessage(), $item->raw());
                 }
             }
 
             $plugin->cooldown->mark($link, $element);
             $plugin->logs->finish($log);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $plugin->logs->fail($log, $e->getMessage());
+
             throw $e;
         }
 
@@ -182,7 +189,7 @@ class SynchronizationService extends Component
                 // per-item failures become an error row and the run goes on.
                 try {
                     $this->processItem($context, $item, $log);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::Error, null, null, $e->getMessage(), $item->raw());
                 }
             }
@@ -212,7 +219,8 @@ class SynchronizationService extends Component
             $this->trigger(self::EVENT_BEFORE_ITEM, $beforeEvent);
 
             if ($beforeEvent->skip) {
-                $plugin->logs->recordItem($log, ItemAction::Skipped, $resolution->element?->id, (string)$resolution->matchValue, null, $item->raw());
+                $plugin->logs->recordItem($log, ItemAction::Skipped, $resolution->element?->id, (string) $resolution->matchValue, null, $item->raw());
+
                 return;
             }
 
@@ -225,8 +233,9 @@ class SynchronizationService extends Component
         $result = $this->itemProcessor->populate($context, $item, $resolution);
 
         if ($result->decision->isSkip()) {
-            $matchValue = $result->matchValue !== null ? (string)$result->matchValue : null;
+            $matchValue = $result->matchValue !== null ? (string) $result->matchValue : null;
             $plugin->logs->recordItem($log, ItemAction::Skipped, $result->element?->id, $matchValue, $result->message, $item->raw());
+
             return;
         }
 
@@ -244,7 +253,7 @@ class SynchronizationService extends Component
             $log,
             $result->action,
             $result->element?->id,
-            (string)$result->matchValue,
+            (string) $result->matchValue,
             $this->resultMessage($result),
             $item->raw(),
         );
@@ -261,11 +270,13 @@ class SynchronizationService extends Component
     {
         $message = $result->message;
         $errors = $result->mappingErrors();
-        if (!$errors) {
+
+        if (! $errors) {
             return $message;
         }
 
         $parts = [];
+
         foreach ($errors as $handle => $error) {
             $parts[] = "{$handle}: {$error}";
         }
@@ -313,10 +324,11 @@ class SynchronizationService extends Component
     protected function resolveTarget(Link $link): ElementTargetInterface
     {
         $target = Influx::getInstance()->targets->forLink($link);
-        if (!$target) {
+
+        if (! $target) {
             throw new InfluxException("No element target registered for '{$link->elementType}'.");
         }
+
         return $target;
     }
-
 }

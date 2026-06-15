@@ -29,7 +29,7 @@ class m260605_140000_rename_ago_to_offset extends Migration
         $db = Craft::$app->getDb();
         $schema = $db->getTableSchema(Table::LINKS, true);
 
-        if ($schema !== null && isset($schema->columns['ago']) && !isset($schema->columns['offset'])) {
+        if ($schema !== null && isset($schema->columns['ago']) && ! isset($schema->columns['offset'])) {
             $this->renameColumn(Table::LINKS, 'ago', 'offset');
         }
 
@@ -38,10 +38,11 @@ class m260605_140000_rename_ago_to_offset extends Migration
 
         if (is_array($links)) {
             foreach ($links as $uid => $config) {
-                if (!is_array($config) || !array_key_exists('ago', $config)) {
+                if (! is_array($config) || ! array_key_exists('ago', $config)) {
                     continue;
                 }
-                if (!isset($config['offset'])) {
+
+                if (! isset($config['offset'])) {
                     $config['offset'] = $config['ago'];
                 }
                 unset($config['ago']);

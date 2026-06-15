@@ -2,6 +2,8 @@
 
 namespace GlueAgency\Influx\sync;
 
+use Throwable;
+
 /**
  * One decoded item from a remote feed — the unit the per-item pipeline works
  * on. Wraps the raw associative array so dot-path reads live in one place
@@ -35,9 +37,10 @@ class RemoteItem
         if ($path === '') {
             return null;
         }
+
         try {
             return $this->resolve($this->data, explode('.', $path));
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -51,35 +54,43 @@ class RemoteItem
         if ($segments === []) {
             return $data;
         }
-        if (!is_array($data)) {
+
+        if (! is_array($data)) {
             return null;
         }
 
         if (array_is_list($data)) {
             // An explicit index wins when given.
             if (ctype_digit($segments[0])) {
-                $index = (int)array_shift($segments);
+                $index = (int) array_shift($segments);
+
                 return $this->resolve($data[$index] ?? null, $segments);
             }
 
             // Collapsed hop: fan the remaining path out over every element.
             $values = [];
+
             foreach ($data as $element) {
                 $value = $this->resolve($element, $segments);
+
                 if ($value !== null) {
                     $values[] = $value;
                 }
             }
+
             if ($values === []) {
                 return null;
             }
+
             return count($data) === 1 ? $values[0] : $values;
         }
 
         $key = array_shift($segments);
-        if (!array_key_exists($key, $data)) {
+
+        if (! array_key_exists($key, $data)) {
             return null;
         }
+
         return $this->resolve($data[$key], $segments);
     }
 

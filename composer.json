@@ -10,7 +10,8 @@
     },
     "require-dev": {
         "codeception/codeception": "^5.0",
-        "codeception/module-asserts": "^3.0"
+        "codeception/module-asserts": "^3.0",
+        "craftcms/ecs": "dev-main"
     },
     "autoload": {
         "psr-4": {
@@ -37,6 +38,8 @@
         }
     },
     "scripts": {
-        "test": "codecept run unit"
+        "test": "codecept run unit",
+        "check-cs": "ecs check --ansi",
+        "fix-cs": "ecs check --fix --ansi"
     }
 }

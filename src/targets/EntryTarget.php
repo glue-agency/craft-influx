@@ -5,11 +5,21 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\Entry;
+use craft\elements\User;
+use craft\fieldlayoutelements\CustomField;
+use craft\fieldlayoutelements\entries\EntryTitleField;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
+use DateTime;
+use DateTimeInterface;
+use GlueAgency\Influx\fields\Date;
+use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\fields\Relation;
+use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -32,26 +42,29 @@ class EntryTarget extends AbstractElementTarget
 
     public function claimsElement(Link $link, ElementInterface $element): bool
     {
-        if (!($element instanceof Entry)) {
+        if (! ($element instanceof Entry)) {
             return false;
         }
 
-        if (!$this->handles($link)) {
+        if (! $this->handles($link)) {
             return false;
         }
 
         $sectionHandle = $link->elementCriteria['section'] ?? null;
+
         if ($sectionHandle && $element->getSection()?->handle !== $sectionHandle) {
             return false;
         }
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
+
         if ($typeHandle && $element->getType()?->handle !== $typeHandle) {
             return false;
         }
 
         $matchAttr = $link->matchAttribute();
-        if (!$matchAttr) {
+
+        if (! $matchAttr) {
             return false;
         }
 
@@ -71,7 +84,8 @@ class EntryTarget extends AbstractElementTarget
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?Entry
     {
         $matchAttr = $link->matchAttribute();
-        if (!$matchAttr || $matchValue === null || $matchValue === '') {
+
+        if (! $matchAttr || $matchValue === null || $matchValue === '') {
             return null;
         }
 
@@ -82,6 +96,7 @@ class EntryTarget extends AbstractElementTarget
         if (isset($link->elementCriteria['section'])) {
             $query->section($link->elementCriteria['section']);
         }
+
         if (isset($link->elementCriteria['type'])) {
             $query->type($link->elementCriteria['type']);
         }
@@ -121,7 +136,8 @@ class EntryTarget extends AbstractElementTarget
         $attributes = parent::matchableNativeAttributes($link);
 
         $resolved = (new EntryTypeResolver())->tryResolve($link);
-        if (!$resolved) {
+
+        if (! $resolved) {
             return $attributes;
         }
         [, $entryType] = $resolved;
@@ -129,12 +145,13 @@ class EntryTarget extends AbstractElementTarget
         if (Compat::entryTypeShowsSlugField($entryType)) {
             $attributes[] = ['value' => 'slug', 'label' => Craft::t('influx', 'Slug (slug)')];
         }
+
         if ($entryType->hasTitleField) {
             // The title's label is user-editable in the entry type's field
             // layout — surface what the editor actually sees. label()
             // handles the custom value (site-translated) and the default.
             $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
-                \craft\fieldlayoutelements\entries\EntryTitleField::class,
+                EntryTitleField::class,
             );
             $titleLabel = $titleElement?->label() ?: Craft::t('app', 'Title');
             $attributes[] = ['value' => 'title', 'label' => "{$titleLabel} (title)"];
@@ -148,13 +165,15 @@ class EntryTarget extends AbstractElementTarget
         $fields = $this->nativeFieldDefinitions();
 
         $resolved = (new EntryTypeResolver())->tryResolve($link);
-        if (!$resolved) {
+
+        if (! $resolved) {
             return $fields;
         }
         [, $entryType] = $resolved;
 
         $layout = $entryType->getFieldLayout();
-        if (!$layout) {
+
+        if (! $layout) {
             return $fields;
         }
 
@@ -162,14 +181,17 @@ class EntryTarget extends AbstractElementTarget
         // they have in Craft's own entry editor. CustomField elements have a
         // `field` property; tabs without a name fall back to a generic label.
         $fallbackTab = Craft::t('influx', 'Content');
+
         foreach ($layout->getTabs() as $tab) {
             $tabName = $tab->name ?: $fallbackTab;
+
             foreach ($tab->getElements() as $element) {
-                if (!($element instanceof \craft\fieldlayoutelements\CustomField)) {
+                if (! ($element instanceof CustomField)) {
                     continue;
                 }
                 $field = $element->getField();
-                if (!$field) {
+
+                if (! $field) {
                     continue;
                 }
                 $fields[] = [
@@ -179,7 +201,7 @@ class EntryTarget extends AbstractElementTarget
                     'group'       => $tabName,
                     'defaultType' => 'text',
                     'fieldClass'  => $field::class,
-                    'fieldMeta'   => \GlueAgency\Influx\Influx::getInstance()->fields->metaFor($field),
+                    'fieldMeta'   => Influx::getInstance()->fields->metaFor($field),
                 ];
             }
         }
@@ -197,11 +219,13 @@ class EntryTarget extends AbstractElementTarget
     protected function parseTitle(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+
         if ($value === null) {
             return false;
         }
 
-        $element->title = StringHelper::safeTruncate((string)$value, 255);
+        $element->title = StringHelper::safeTruncate((string) $value, 255);
+
         return true;
     }
 
@@ -213,11 +237,13 @@ class EntryTarget extends AbstractElementTarget
     protected function parseSlug(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+
         if ($value === null) {
             return false;
         }
 
-        $element->slug = ElementHelper::normalizeSlug((string)$value);
+        $element->slug = ElementHelper::normalizeSlug((string) $value);
+
         return true;
     }
 
@@ -230,18 +256,21 @@ class EntryTarget extends AbstractElementTarget
     protected function parseAuthor(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+
         if ($value === null) {
             return false;
         }
 
-        $match = (string)$mapping->option('match', 'id');
+        $match = (string) $mapping->option('match', 'id');
         $user = $this->findUser($match, $value);
-        if (!$user) {
+
+        if (! $user) {
             return false;
         }
 
         /** @var Entry $element */
         Compat::setEntryAuthor($element, $user->id);
+
         return true;
     }
 
@@ -264,27 +293,33 @@ class EntryTarget extends AbstractElementTarget
     protected function parseEnabled(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+
         if ($value === null) {
             return false;
         }
 
         if (is_bool($value)) {
             $element->enabled = $value;
+
             return true;
         }
 
-        $element->enabled = in_array(strtolower(trim((string)$value)), Lightswitch::TRUTHY_VALUES, true);
+        $element->enabled = in_array(strtolower(trim((string) $value)), Lightswitch::TRUTHY_VALUES, true);
+
         return true;
     }
 
     protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+
         if ($value === null || $value === '') {
             return false;
         }
-        if ($value instanceof \DateTimeInterface) {
-            $element->{$attr} = $value instanceof \DateTime ? $value : \DateTime::createFromInterface($value);
+
+        if ($value instanceof DateTimeInterface) {
+            $element->{$attr} = $value instanceof DateTime ? $value : DateTime::createFromInterface($value);
+
             return true;
         }
 
@@ -293,33 +328,39 @@ class EntryTarget extends AbstractElementTarget
         // `timestamp` is a UI sentinel for Unix seconds (translated to the
         // PHP `U` token here so the Vue side stays human-readable).
         $format = $mapping->option('format');
+
         if (is_string($format) && $format !== '') {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
-            $parsed = \DateTime::createFromFormat($phpFormat, (string)$value);
+            $parsed = DateTime::createFromFormat($phpFormat, (string) $value);
+
             if ($parsed === false) {
                 return false;
             }
             $element->{$attr} = $parsed;
+
             return true;
         }
 
         $parsed = DateTimeHelper::toDateTime($value);
-        if (!$parsed) {
+
+        if (! $parsed) {
             return false;
         }
         $element->{$attr} = $parsed;
+
         return true;
     }
 
-    protected function findUser(string $match, mixed $value): ?\craft\elements\User
+    protected function findUser(string $match, mixed $value): ?User
     {
-        $query = \craft\elements\User::find()->status(null);
+        $query = User::find()->status(null);
         match ($match) {
-            'id'       => $query->id((int)$value),
-            'username' => $query->username((string)$value),
-            'email'    => $query->email((string)$value),
+            'id'       => $query->id((int) $value),
+            'username' => $query->username((string) $value),
+            'email'    => $query->email((string) $value),
             default    => $query->$match($value),
         };
+
         return $query->one();
     }
 
@@ -339,45 +380,45 @@ class EntryTarget extends AbstractElementTarget
             ['handle' => 'title', 'name' => Craft::t('app', 'Title'), 'native' => true, 'group' => $native, 'defaultType' => 'text'],
             ['handle' => 'slug',  'name' => Craft::t('app', 'Slug'),  'native' => true, 'group' => $native, 'defaultType' => 'text'],
             [
-                'handle' => 'enabled',
-                'name'   => Craft::t('app', 'Enabled'),
-                'native' => true,
-                'group'  => $native,
+                'handle'      => 'enabled',
+                'name'        => Craft::t('app', 'Enabled'),
+                'native'      => true,
+                'group'       => $native,
                 'defaultType' => 'select',
-                'options' => [
+                'options'     => [
                     'true'  => Craft::t('app', 'Enabled'),
                     'false' => Craft::t('app', 'Disabled'),
                 ],
             ],
             [
-                'handle' => 'postDate', 'name' => Craft::t('app', 'Post Date'),
-                'native' => true, 'group' => $native, 'defaultType' => 'text',
+                'handle'    => 'postDate', 'name' => Craft::t('app', 'Post Date'),
+                'native'    => true, 'group' => $native, 'defaultType' => 'text',
                 'fieldMeta' => $this->dateFieldMeta(),
             ],
             [
-                'handle' => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'),
-                'native' => true, 'group' => $native, 'defaultType' => 'text',
+                'handle'    => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'),
+                'native'    => true, 'group' => $native, 'defaultType' => 'text',
                 'fieldMeta' => $this->dateFieldMeta(),
             ],
             [
-                'handle' => 'author',
-                'name'   => Craft::t('app', 'Author'),
-                'native' => true,
-                'group'  => $native,
+                'handle'      => 'author',
+                'name'        => Craft::t('app', 'Author'),
+                'native'      => true,
+                'group'       => $native,
                 'defaultType' => 'element',
-                'elementType' => \craft\elements\User::class,
+                'elementType' => User::class,
                 'fieldMeta'   => [
                     'kind'         => 'relation',
-                    'elementType'  => \craft\elements\User::class,
+                    'elementType'  => User::class,
                     'matchOptions' => $this->authorMatchOptions(),
                     'allowCreate'  => false,
                     'schema'       => [
-                        \GlueAgency\Influx\helpers\BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
+                        BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
                             'default' => 'id',
                         ]),
                     ],
-                    'labels'       => \GlueAgency\Influx\fields\Relation::extrasLabels()
-                        + \GlueAgency\Influx\fields\Field::commonExtrasLabels(),
+                    'labels' => Relation::extrasLabels()
+                        + Field::commonExtrasLabels(),
                 ],
             ],
         ];
@@ -394,15 +435,15 @@ class EntryTarget extends AbstractElementTarget
     {
         return [
             'kind'          => 'date',
-            'formatOptions' => \GlueAgency\Influx\fields\Date::formatOptions(),
+            'formatOptions' => Date::formatOptions(),
             'schema'        => [
-                \GlueAgency\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), \GlueAgency\Influx\fields\Date::formatOptions(), [
+                BuilderSchema::select('format', Craft::t('influx', 'Date format'), Date::formatOptions(), [
                     'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
                     'default'      => '',
                 ]),
             ],
-            'labels'        => \GlueAgency\Influx\fields\Date::extrasLabels()
-                + \GlueAgency\Influx\fields\Field::commonExtrasLabels(),
+            'labels' => Date::extrasLabels()
+                + Field::commonExtrasLabels(),
         ];
     }
 
@@ -428,8 +469,9 @@ class EntryTarget extends AbstractElementTarget
             ],
         ];
 
-        $layout = Craft::$app->getFields()->getLayoutByType(\craft\elements\User::class);
+        $layout = Craft::$app->getFields()->getLayoutByType(User::class);
         $customFields = [];
+
         if ($layout) {
             foreach ($layout->getCustomFields() as $customField) {
                 $customFields[] = [
@@ -438,6 +480,7 @@ class EntryTarget extends AbstractElementTarget
                 ];
             }
         }
+
         if ($customFields) {
             $groups[] = ['label' => Craft::t('influx', 'Fields'), 'kind' => 'fields', 'options' => $customFields];
         }

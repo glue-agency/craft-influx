@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\sync;
 
 use craft\base\ElementInterface;
 use GlueAgency\Influx\Influx;
+use Throwable;
 
 /**
  * Walks the link's mappings against one remote item and writes the resolved
@@ -51,6 +52,7 @@ class MappingApplier
                     rawValue: $rawValue,
                     note: 'Managed by target.',
                 );
+
                 continue;
             }
 
@@ -60,9 +62,10 @@ class MappingApplier
                 // Native attribute (title/slug/status/...) — let the target
                 // translate to whatever attribute Craft actually accepts.
                 $currentValue = $this->safeAttribute($element, $handle);
+
                 try {
                     $wrote = $target->applyNativeAttribute($element, $handle, $item, $mapping);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     $results[] = new MappingResult(
                         handle: $handle,
                         node: $mapping->node,
@@ -72,8 +75,10 @@ class MappingApplier
                         currentValue: $currentValue,
                         error: $e->getMessage(),
                     );
+
                     continue;
                 }
+
                 if ($wrote) {
                     $changed = true;
                 }
@@ -86,6 +91,7 @@ class MappingApplier
                     currentValue: $currentValue,
                     changed: $wrote,
                 );
+
                 continue;
             }
 
@@ -116,10 +122,12 @@ class MappingApplier
                         changed: false,
                         note: 'Strategy returned null — field left untouched.',
                     );
+
                     continue;
                 }
 
                 $rowChanged = $isNew ? true : $strategy->hasChanged($context, $value);
+
                 if ($rowChanged) {
                     $changed = true;
                 }
@@ -136,7 +144,7 @@ class MappingApplier
                     currentValue: $currentValue,
                     changed: $rowChanged,
                 );
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $results[] = new MappingResult(
                     handle: $handle,
                     node: $mapping->node,
@@ -156,7 +164,7 @@ class MappingApplier
     {
         try {
             return $element->{$handle} ?? null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -165,7 +173,7 @@ class MappingApplier
     {
         try {
             return $element->getFieldValue($handle);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }

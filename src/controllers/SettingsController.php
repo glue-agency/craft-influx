@@ -15,9 +15,11 @@ class SettingsController extends Controller
     public function beforeAction($action): bool
     {
         $this->requirePermission('accessPlugin-influx');
-        if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+
+        if (! Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
             throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');
         }
+
         return parent::beforeAction($action);
     }
 
@@ -47,22 +49,24 @@ class SettingsController extends Controller
         $plugin = Influx::getInstance();
 
         $data = [
-            'defaultItemCooldown' => (int)$request->getBodyParam('defaultItemCooldown', 30),
-            'loggingEnabled'      => (bool)$request->getBodyParam('loggingEnabled', true),
-            'logRetentionDays'    => (int)$request->getBodyParam('logRetentionDays', 0),
+            'defaultItemCooldown' => (int) $request->getBodyParam('defaultItemCooldown', 30),
+            'loggingEnabled'      => (bool) $request->getBodyParam('loggingEnabled', true),
+            'logRetentionDays'    => (int) $request->getBodyParam('logRetentionDays', 0),
         ];
 
-        if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $data)) {
+        if (! Craft::$app->getPlugins()->savePluginSettings($plugin, $data)) {
             Craft::$app->getSession()->setError(
                 Craft::t('influx', 'Couldn’t save settings.')
             );
             Craft::$app->getUrlManager()->setRouteParams([
                 'settings' => $plugin->getSettings(),
             ]);
+
             return null;
         }
 
         Craft::$app->getSession()->setNotice(Craft::t('influx', 'Settings saved.'));
+
         return $this->redirectToPostedUrl();
     }
 }

@@ -14,7 +14,7 @@ class m250603_120000_rename_feed_handle_to_link_handle extends Migration
     {
         $columns = $this->db->getTableSchema(Table::LOGS)?->columns ?? [];
 
-        if (isset($columns['feedHandle']) && !isset($columns['linkHandle'])) {
+        if (isset($columns['feedHandle']) && ! isset($columns['linkHandle'])) {
             $this->renameColumn(Table::LOGS, 'feedHandle', 'linkHandle');
         }
 
@@ -25,7 +25,7 @@ class m250603_120000_rename_feed_handle_to_link_handle extends Migration
     {
         $columns = $this->db->getTableSchema(Table::LOGS)?->columns ?? [];
 
-        if (isset($columns['linkHandle']) && !isset($columns['feedHandle'])) {
+        if (isset($columns['linkHandle']) && ! isset($columns['feedHandle'])) {
             $this->renameColumn(Table::LOGS, 'linkHandle', 'feedHandle');
         }
 

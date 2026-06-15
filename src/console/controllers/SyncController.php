@@ -4,8 +4,10 @@ namespace GlueAgency\Influx\console\controllers;
 
 use Craft;
 use craft\console\Controller;
+use GlueAgency\Influx\console\ConsoleOutputCompatTrait;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
+use Throwable;
 use yii\console\ExitCode;
 
 /**
@@ -18,6 +20,8 @@ use yii\console\ExitCode;
  */
 class SyncController extends Controller
 {
+    use ConsoleOutputCompatTrait;
+
     public bool $all = false;
     public ?string $offset = null;
 
@@ -39,36 +43,41 @@ class SyncController extends Controller
             $links = $plugin->links->getAllLinks();
         } else {
             $handleList = array_filter(array_map('trim', explode(',', $handles)));
-            if (!$handleList) {
+
+            if (! $handleList) {
                 $this->stderr("Pass one or more link handles, or --all\n");
+
                 return ExitCode::USAGE;
             }
+
             $links = [];
+
             foreach ($handleList as $handle) {
                 $link = $plugin->links->getLinkByHandle($handle);
-                if (!$link) {
-                    $this->stderr("Link '{$handle}' not found.\n");
+
+                if (! $link) {
+                    $this->failure("Link '{$handle}' not found.");
+
                     return ExitCode::DATAERR;
                 }
+
                 $links[$handle] = $link;
             }
         }
 
         foreach ($links as $link) {
             $this->stdout("→ Syncing '{$link->handle}'\n");
+
             try {
-                $log = $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::Console);
-                $this->stdout(sprintf(
-                    "  done. seen=%d created=%d updated=%d unchanged=%d skipped=%d\n",
-                    $log->itemsSeen,
-                    $log->itemsCreated,
-                    $log->itemsUpdated,
-                    $log->itemsUnchanged,
-                    $log->itemsSkipped,
-                ));
-            } catch (\Throwable $e) {
-                $this->stderr("  FAILED: " . $e->getMessage() . "\n");
+                // The sync runs async on the queue, so the log's counters are
+                // still zero here — nothing meaningful to report beyond the
+                // dispatch itself.
+                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::Console);
+                $this->success('done.');
+            } catch (Throwable $e) {
+                $this->failure('FAILED: ' . $e->getMessage());
                 Craft::error($e, __METHOD__);
+
                 return ExitCode::SOFTWARE;
             }
         }

@@ -28,13 +28,15 @@ class EntryTypeResolver
      */
     public function resolve(Link $link): array
     {
-        $sectionHandle = $link->elementCriteria['section']
-            ?? throw new InfluxException(
+        if (! ($sectionHandle = $link->elementCriteria['section'] ?? null)) {
+            throw new InfluxException(
                 "Link '{$link->handle}' must declare elementCriteria.section for Entry targets.",
             );
+        }
 
-        $section = Compat::getSectionByHandle($sectionHandle)
-            ?? throw new InfluxException("Section '{$sectionHandle}' does not exist.");
+        if (! ($section = Compat::getSectionByHandle($sectionHandle))) {
+            throw new InfluxException("Section '{$sectionHandle}' does not exist.");
+        }
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
 
@@ -42,14 +44,17 @@ class EntryTypeResolver
         // the chosen type is actually attached to the configured section.
         $sectionEntryTypes = $section->getEntryTypes();
         $entryType = null;
+
         if ($typeHandle) {
             foreach ($sectionEntryTypes as $candidate) {
                 if ($candidate->handle === $typeHandle) {
                     $entryType = $candidate;
+
                     break;
                 }
             }
-            if (!$entryType) {
+
+            if (! $entryType) {
                 throw new InfluxException(
                     "Entry type '{$typeHandle}' is not attached to section '{$sectionHandle}'.",
                 );
@@ -58,7 +63,7 @@ class EntryTypeResolver
             $entryType = $sectionEntryTypes[0] ?? null;
         }
 
-        if (!$entryType) {
+        if (! $entryType) {
             throw new InfluxException("Section '{$sectionHandle}' has no usable entry type.");
         }
 
@@ -75,22 +80,26 @@ class EntryTypeResolver
     public function tryResolve(Link $link): ?array
     {
         $sectionHandle = $link->elementCriteria['section'] ?? null;
-        if (!$sectionHandle) {
+
+        if (! $sectionHandle) {
             return null;
         }
 
         $section = Compat::getSectionByHandle($sectionHandle);
-        if (!$section) {
+
+        if (! $section) {
             return null;
         }
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
         $entryTypes = $section->getEntryTypes();
         $entryType = null;
+
         if ($typeHandle) {
             foreach ($entryTypes as $candidate) {
                 if ($candidate->handle === $typeHandle) {
                     $entryType = $candidate;
+
                     break;
                 }
             }

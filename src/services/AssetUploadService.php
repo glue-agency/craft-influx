@@ -5,11 +5,10 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
-use craft\errors\AssetException;
 use craft\helpers\Assets as AssetsHelper;
 use craft\helpers\FileHelper;
-use GuzzleHttp\Client;
 use GlueAgency\Influx\exceptions\AssetUploadException;
+use GuzzleHttp\Client;
 use Throwable;
 
 /**
@@ -52,7 +51,8 @@ class AssetUploadService extends Component
         string $conflict = 'index',
     ): Asset {
         $volume = Craft::$app->getVolumes()->getVolumeByHandle($volumeHandle);
-        if (!$volume) {
+
+        if (! $volume) {
             throw new AssetUploadException("Volume '{$volumeHandle}' does not exist.");
         }
 
@@ -71,6 +71,7 @@ class AssetUploadService extends Component
                 ->filename($filename)
                 ->status(null)
                 ->one();
+
             if ($existing) {
                 return $existing;
             }
@@ -87,11 +88,12 @@ class AssetUploadService extends Component
             $asset->avoidFilenameConflicts = ($conflict !== 'replace');
             $asset->setScenario(Asset::SCENARIO_CREATE);
 
-            if (!Craft::$app->getElements()->saveElement($asset, true)) {
+            if (! Craft::$app->getElements()->saveElement($asset, true)) {
                 throw new AssetUploadException(
                     "Saving asset '{$filename}' failed: " . implode('; ', $asset->getFirstErrors()),
                 );
             }
+
             return $asset;
         } catch (AssetUploadException $e) {
             throw $e;
@@ -107,9 +109,11 @@ class AssetUploadService extends Component
     protected function filenameFor(string $url): string
     {
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
+
         if ($name === '' || $name === false) {
             $name = 'asset-' . substr(md5($url), 0, 8);
         }
+
         return AssetsHelper::prepareAssetName($name);
     }
 
@@ -131,13 +135,15 @@ class AssetUploadService extends Component
             if (is_file($tempPath)) {
                 @unlink($tempPath);
             }
+
             throw new AssetUploadException("Downloading '{$url}' failed: " . $e->getMessage(), previous: $e);
         }
 
-        if ($response->getStatusCode() >= 300 || !is_file($tempPath)) {
+        if ($response->getStatusCode() >= 300 || ! is_file($tempPath)) {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
             }
+
             throw new AssetUploadException("Downloading '{$url}' failed with HTTP {$response->getStatusCode()}.");
         }
 

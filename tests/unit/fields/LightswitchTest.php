@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
+use craft\fields\Lightswitch as CraftLightswitchField;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
@@ -66,7 +67,7 @@ class LightswitchTest extends Unit
 
     public function testCraftFieldClassIsLightswitch(): void
     {
-        $this->assertSame(\craft\fields\Lightswitch::class, Lightswitch::craftFieldClass());
+        $this->assertSame(CraftLightswitchField::class, Lightswitch::craftFieldClass());
     }
 
     private function context(array $feed, array $mapping = ['node' => 'featured']): FieldContext

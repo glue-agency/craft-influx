@@ -11,6 +11,7 @@ use craft\helpers\Db;
 use craft\helpers\Html;
 use craft\models\EntryType;
 use craft\models\Section;
+use craft\services\Sections;
 use yii\web\Response;
 
 /**
@@ -30,7 +31,7 @@ class Compat
      */
     public static function isCraft5(): bool
     {
-        return !class_exists(\craft\services\Sections::class);
+        return ! class_exists(Sections::class);
     }
 
     // -- Section / entry-type lookups ----------------------------------------
@@ -65,7 +66,7 @@ class Compat
     }
 
     /**
-     * @return \craft\services\Entries|\craft\services\Sections
+     * @return \craft\services\Entries|Sections
      */
     protected static function sectionsService(): object
     {
@@ -82,7 +83,7 @@ class Compat
      */
     public static function entryTypeShowsSlugField(EntryType $entryType): bool
     {
-        return !property_exists($entryType, 'showSlugField') || $entryType->showSlugField;
+        return ! property_exists($entryType, 'showSlugField') || $entryType->showSlugField;
     }
 
     /**
@@ -112,9 +113,10 @@ class Compat
     {
         $elements = Craft::$app->getElements();
 
-        if ((int)$element->siteId !== $siteId) {
+        if ((int) $element->siteId !== $siteId) {
             $element = $elements->getElementById($element->id, get_class($element), $siteId);
-            if (!$element) {
+
+            if (! $element) {
                 // Not present in the target site — nothing to delete.
                 return;
             }
@@ -122,6 +124,7 @@ class Compat
 
         if (method_exists($elements, 'deleteElementForSite')) {
             $elements->deleteElementForSite($element);
+
             return;
         }
 
@@ -132,14 +135,15 @@ class Compat
             ->siteId(['not', $siteId])
             ->exists();
 
-        if (!$existsElsewhere) {
+        if (! $existsElsewhere) {
             $elements->deleteElement($element, true);
+
             return;
         }
 
         Db::delete(CraftTable::ELEMENTS_SITES, [
             'elementId' => $element->id,
-            'siteId' => $siteId,
+            'siteId'    => $siteId,
         ]);
         $elements->invalidateCachesForElement($element);
     }
@@ -158,8 +162,10 @@ class Compat
         }
 
         $html = Cp::elementHtml($element);
-        if (!empty($config['hyperlink'])) {
+
+        if (! empty($config['hyperlink'])) {
             $url = $element->getCpEditUrl();
+
             if ($url) {
                 $html = Html::a($html, $url);
             }

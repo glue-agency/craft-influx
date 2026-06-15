@@ -10,6 +10,7 @@ use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
+use RuntimeException;
 
 /**
  * Behaviour spec for Field::hasChanged. The sync engine uses it to skip
@@ -60,7 +61,7 @@ class CompareTest extends Unit
     public function testReadFailureTreatedAsChanged(): void
     {
         $element = $this->createMock(ElementInterface::class);
-        $element->method('getFieldValue')->willThrowException(new \RuntimeException('boom'));
+        $element->method('getFieldValue')->willThrowException(new RuntimeException('boom'));
         $context = $this->context($element);
         $this->assertTrue(
             (new DefaultField())->hasChanged($context, 'anything'),
@@ -94,6 +95,7 @@ class CompareTest extends Unit
     {
         $element = $this->createMock(ElementInterface::class);
         $element->method('getFieldValue')->willReturn($current);
+
         return $element;
     }
 }

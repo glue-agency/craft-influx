@@ -4,12 +4,16 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\elements\Entry;
+use craft\helpers\UrlHelper;
 use craft\web\Controller;
+use craft\web\View;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
+use Throwable;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -29,18 +33,19 @@ class LinksController extends Controller
 
     public function beforeAction($action): bool
     {
-        if (!parent::beforeAction($action)) {
+        if (! parent::beforeAction($action)) {
             return false;
         }
 
         $viewActions = ['index', 'view', 'edit', 'debug', 'debug-stream'];
+
         if (in_array($action->id, $viewActions, true)) {
             $this->requireAdmin(false);
         } else {
             $this->requireAdmin();
         }
 
-        $this->readOnly = !Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+        $this->readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
 
         return true;
     }
@@ -49,19 +54,20 @@ class LinksController extends Controller
     {
         return $this->renderTemplate('influx/links/index', [
             'links'    => Influx::getInstance()->links->getAllLinks(),
-            'lastRuns' => $this->lastRunPerLink(),
+            'lastRuns' => Influx::getInstance()->logs->lastRunPerLink(),
             'readOnly' => $this->readOnly,
         ]);
     }
 
     public function actionView(string $handle): Response
     {
-        if (!$this->readOnly) {
+        if (! $this->readOnly) {
             return $this->redirect("influx/links/{$handle}/edit");
         }
 
-        $link = Influx::getInstance()->links->getLinkByHandle($handle)
-            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
+            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        }
 
         $recentLogs = LogRecord::find()
             ->where(['linkHandle' => $handle])
@@ -83,10 +89,11 @@ class LinksController extends Controller
      */
     public function actionDebug(string $handle): Response
     {
-        $link = Influx::getInstance()->links->getLinkByHandle($handle)
-            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
+            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        }
 
-        $limit = (int)Craft::$app->getRequest()->getQueryParam('limit', \GlueAgency\Influx\services\DebugService::DEFAULT_LIMIT);
+        $limit = (int) Craft::$app->getRequest()->getQueryParam('limit', DebugService::DEFAULT_LIMIT);
         $limit = max(1, min($limit, 500));
 
         $siteHandles = $link->siteHandles();
@@ -108,7 +115,7 @@ class LinksController extends Controller
             'selectedSite'   => $selectedSite,
             'offsetKeys'     => $offsetKeys,
             'selectedOffset' => $selectedOffset,
-            'streamUrl'      => \craft\helpers\UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
+            'streamUrl'      => UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
         ]);
     }
 
@@ -122,19 +129,22 @@ class LinksController extends Controller
      */
     public function actionDebugStream(string $handle): void
     {
-        $link = Influx::getInstance()->links->getLinkByHandle($handle)
-            ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
+            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        }
 
         $request = Craft::$app->getRequest();
-        $limit = max(1, min((int)$request->getQueryParam('limit', \GlueAgency\Influx\services\DebugService::DEFAULT_LIMIT), 500));
+        $limit = max(1, min((int) $request->getQueryParam('limit', DebugService::DEFAULT_LIMIT), 500));
 
         $siteHandle = $request->getQueryParam('site') ?: null;
-        if ($siteHandle !== null && !in_array($siteHandle, $link->siteHandles(), true)) {
+
+        if ($siteHandle !== null && ! in_array($siteHandle, $link->siteHandles(), true)) {
             $siteHandle = null;
         }
 
         $offset = $request->getQueryParam('offset') ?: null;
-        if ($offset !== null && !isset($link->offset[$offset])) {
+
+        if ($offset !== null && ! isset($link->offset[$offset])) {
             $offset = null;
         }
 
@@ -163,7 +173,7 @@ class LinksController extends Controller
                     $html = $view->renderTemplate(
                         'influx/links/_debug-item',
                         ['row' => $event['data']],
-                        \craft\web\View::TEMPLATE_MODE_CP,
+                        View::TEMPLATE_MODE_CP,
                     );
                     $payload = ['index' => $event['data']['index'] ?? null, 'html' => $html];
                 } else {
@@ -181,7 +191,7 @@ class LinksController extends Controller
 
             echo "event: done\ndata: {}\n\n";
             @flush();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             echo "event: error\n";
             echo 'data: ' . json_encode(['message' => $e->getMessage()]) . "\n\n";
             @flush();
@@ -201,8 +211,9 @@ class LinksController extends Controller
 
         if ($handle !== null) {
             if ($link === null) {
-                $link = $plugin->links->getLinkByHandle($handle)
-                    ?? throw new NotFoundHttpException("Link '{$handle}' not found.");
+                if (! ($link = $plugin->links->getLinkByHandle($handle))) {
+                    throw new NotFoundHttpException("Link '{$handle}' not found.");
+                }
             }
             $title = trim($link->name) ?: Craft::t('influx', 'Edit link');
         } else {
@@ -251,7 +262,7 @@ class LinksController extends Controller
 
         if ($this->readOnly) {
             Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
-        } elseif (!$isNew && $link->uid) {
+        } elseif (! $isNew && $link->uid) {
             $response->addAltAction(Craft::t('app', 'Delete'), [
                 'action'      => 'influx/links/delete',
                 'destructive' => true,
@@ -269,9 +280,9 @@ class LinksController extends Controller
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $uid = (string)Craft::$app->getRequest()->getRequiredBodyParam('uid');
+        $uid = Craft::$app->getRequest()->getRequiredBodyParam('uid');
 
-        if (!Influx::getInstance()->links->deleteLinkByUid($uid)) {
+        if (! Influx::getInstance()->links->deleteLinkByUid($uid)) {
             return $this->asFailure(Craft::t('influx', 'Link not found.'));
         }
 
@@ -283,30 +294,16 @@ class LinksController extends Controller
         $this->requirePostRequest();
 
         $request = Craft::$app->getRequest();
-        $sourceHandle = (string)$request->getRequiredBodyParam('handle');
-        $newHandle    = (string)$request->getRequiredBodyParam('newHandle');
-        $newName      = $request->getBodyParam('newName');
+        $sourceHandle = $request->getRequiredBodyParam('handle');
+        $newHandle = $request->getRequiredBodyParam('newHandle');
+        $newName = $request->getBodyParam('newName');
 
         try {
             $link = Influx::getInstance()->links->duplicateLink($sourceHandle, $newHandle, $newName);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return $this->asFailure($e->getMessage());
         }
 
         return $this->redirect("influx/links/{$link->handle}/edit");
-    }
-
-    protected function lastRunPerLink(): array
-    {
-        $out = [];
-        $logs = LogRecord::find()
-            ->orderBy(['startedAt' => SORT_DESC])
-            ->all();
-        foreach ($logs as $log) {
-            if (!isset($out[$log->linkHandle])) {
-                $out[$log->linkHandle] = $log;
-            }
-        }
-        return $out;
     }
 }

@@ -3,11 +3,15 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
-use craft\fields\Date as DateField;
+use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fields\Date as CraftDateField;
 use craft\helpers\DateTimeHelper;
+use DateTimeInterface;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
+use Throwable;
 use yii\base\Event;
 
 class Date extends Field
@@ -21,7 +25,7 @@ class Date extends Field
 
     public static function craftFieldClass(): ?string
     {
-        return DateField::class;
+        return CraftDateField::class;
     }
 
     /**
@@ -66,13 +70,14 @@ class Date extends Field
             ],
         ]);
         Event::trigger(self::class, self::EVENT_REGISTER_FORMAT_OPTIONS, $event);
+
         return $event->options;
     }
 
-    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    public function defineExtrasSchema(CraftFieldInterface $field): array
     {
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
+            BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
                 'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
                 'default'      => '',
             ]),
@@ -87,31 +92,38 @@ class Date extends Field
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
+
         if ($raw === null || $raw === '') {
             return null;
         }
 
         $parsed = DateTimeHelper::toDateTime($raw);
+
         if ($parsed === false) {
-            $display = is_scalar($raw) ? (string)$raw : gettype($raw);
+            $display = is_scalar($raw) ? (string) $raw : gettype($raw);
+
             throw new MappingValueException("Unparseable date value '{$display}'.");
         }
+
         return $parsed;
     }
 
     public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
-        if (!$incoming instanceof \DateTimeInterface) {
+        if (! $incoming instanceof DateTimeInterface) {
             return parent::hasChanged($context, $incoming);
         }
+
         try {
             $current = $context->element->getFieldValue($context->handle);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return true;
         }
-        if (!$current instanceof \DateTimeInterface) {
+
+        if (! $current instanceof DateTimeInterface) {
             return true;
         }
+
         return $current->getTimestamp() !== $incoming->getTimestamp();
     }
 }

@@ -41,6 +41,11 @@ const initial = () => ({
     saving: false,
     savedSnapshot: null,   // JSON of the link as last loaded/saved
     errors: {},            // attribute → message[]
+    // UI mode: the link is endpoint-per-site instead of one base endpoint.
+    // Derived from the saved data on load, then owned by the General tab's
+    // lightswitch. Not persisted itself — a link "is" site-specific when
+    // it has siteEndpoints; save() enforces that invariant.
+    siteEndpointsMode: false,
 });
 
 const root = reactive(initial());
@@ -73,6 +78,7 @@ async function load(handle) {
         root.link    = data.link;
         root.options = data.options;
         root.meta    = data.meta;
+        root.siteEndpointsMode = Object.keys(data.link.siteEndpoints || {}).length > 0;
         // Reset lazily-loaded caches whenever we re-bootstrap so the next
         // tab activation re-fetches against the new link.
         root.mappable = null;
@@ -101,8 +107,24 @@ async function load(handle) {
 async function save(options = {}) {
     const { continueEditing = false } = options;
     if (root.saving || !root.link) return { success: false };
-    root.saving = true;
     root.errors = {};
+
+    // Site-specific mode without a single usable site endpoint can't be
+    // caught server-side (the lightswitch itself isn't persisted, and a
+    // hidden base endpoint would satisfy the model rule), so it's the one
+    // validation that lives client-side.
+    if (root.siteEndpointsMode && !hasAnySiteEndpoint()) {
+        const message = window.Craft?.t
+            ? Craft.t('influx', 'Add at least one site endpoint, or turn site-specific endpoints off.')
+            : 'Add at least one site endpoint, or turn site-specific endpoints off.';
+        root.errors = { siteEndpoints: [message] };
+        if (window.Craft?.cp?.displayError) {
+            Craft.cp.displayError(message);
+        }
+        return { success: false, errors: root.errors };
+    }
+
+    root.saving = true;
     try {
         const result = await api.save(root.link);
 
@@ -185,7 +207,7 @@ async function fetchSample() {
     root.sampleError = null;
     try {
         const result = await api.sample({
-            endpoint:      root.link.endpoint,
+            endpoint:      sampleEndpoint() || null,
             rootNode:      root.link.rootNode,
             paginatorNode: root.link.paginatorNode,
             auth:          root.link.auth,
@@ -207,14 +229,40 @@ async function fetchSample() {
 }
 
 /**
+ * The endpoint a sample fetch should hit. In site-specific mode the base
+ * endpoint is hidden (and possibly stale), so sampling goes against the
+ * first filled-in site endpoint instead. Empty string when there's
+ * nothing usable to fetch.
+ */
+function sampleEndpoint() {
+    const link = root.link;
+    if (!link) return '';
+
+    if (root.siteEndpointsMode) {
+        for (const url of Object.values(link.siteEndpoints || {})) {
+            const trimmed = typeof url === 'string' ? url.trim() : '';
+            if (trimmed) return trimmed;
+        }
+        return '';
+    }
+
+    return typeof link.endpoint === 'string' ? link.endpoint.trim() : '';
+}
+
+/** Whether any site-endpoint row is actually filled in. */
+function hasAnySiteEndpoint() {
+    return Object.values(root.link?.siteEndpoints || {})
+        .some((url) => typeof url === 'string' && url.trim() !== '');
+}
+
+/**
  * The inputs the sample report materially depends on. Null when there's
  * nothing to fetch yet.
  */
 function sampleKey() {
-    const link = root.link;
-    const endpoint = typeof link?.endpoint === 'string' ? link.endpoint.trim() : '';
+    const endpoint = sampleEndpoint();
     if (!endpoint) return null;
-    return `${endpoint} ${link.rootNode ?? ''}`;
+    return `${endpoint} ${root.link.rootNode ?? ''}`;
 }
 
 let fetchedSampleKey = null;
@@ -244,6 +292,18 @@ function evaluateSample() {
 // handshake needed.
 watch(() => root.link?.rootNode, () => evaluateSample());
 
+/**
+ * Flip the General tab's "Site-specific endpoints" mode. Pure UI state —
+ * turning it off keeps any configured siteEndpoints (the editor is just
+ * hidden), matching the other lightswitches' don't-lose-config behavior.
+ * Re-evaluates the sample because the effective sample endpoint changes
+ * with the mode.
+ */
+function setSiteEndpointsMode(on) {
+    root.siteEndpointsMode = !!on;
+    evaluateSample();
+}
+
 async function refreshEndpointTokenSuggestions() {
     if (!root.link) return;
     const { suggestions } = await api.endpointTokenSuggestions(
@@ -264,6 +324,7 @@ export const store = {
     save,
     fetchSample,
     evaluateSample,
+    setSiteEndpointsMode,
     refreshMappableFields,
     refreshEndpointTokenSuggestions,
 };

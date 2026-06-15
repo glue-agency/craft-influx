@@ -23,10 +23,12 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public static function friendlyName(): string
     {
         $class = static::elementType();
+
         if (is_subclass_of($class, ElementInterface::class)) {
             return $class::displayName();
         }
         $parts = explode('\\', ltrim($class, '\\'));
+
         return end($parts) ?: $class;
     }
 
@@ -48,11 +50,13 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         FieldMapping $mapping,
     ): bool {
         $method = 'parse' . ucfirst($handle);
+
         if (method_exists($this, $method)) {
-            return (bool)$this->{$method}($element, $item, $mapping);
+            return (bool) $this->{$method}($element, $item, $mapping);
         }
 
         $value = $mapping->resolve($item);
+
         if ($value === null) {
             return false;
         }
@@ -62,6 +66,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         } else {
             $element->setFieldValue($handle, $value);
         }
+
         return true;
     }
 
@@ -83,9 +88,11 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function assignMatchValue(ElementInterface $element, Link $link, mixed $matchValue): void
     {
         $attr = $link->matchAttribute();
-        if (!$attr) {
+
+        if (! $attr) {
             return;
         }
+
         if (in_array($attr, $element->attributes(), true) || property_exists($element, $attr)) {
             $element->{$attr} = $matchValue;
         } else {
@@ -96,6 +103,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function disable(ElementInterface $element): bool
     {
         $element->enabled = false;
+
         return Craft::$app->getElements()->saveElement($element, false);
     }
 
@@ -107,6 +115,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function deleteForSite(ElementInterface $element, int $siteId): bool
     {
         Compat::deleteElementForSite($element, $siteId);
+
         return true;
     }
 

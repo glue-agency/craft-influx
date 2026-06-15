@@ -2,6 +2,10 @@
 
 namespace GlueAgency\Influx\fields;
 
+use Craft;
+use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fields\BaseOptionsField;
+use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -20,18 +24,20 @@ class Dropdown extends Field
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\BaseOptionsField::class;
+        return BaseOptionsField::class;
     }
 
-    public function fieldMeta(\craft\base\FieldInterface $field): array
+    public function fieldMeta(CraftFieldInterface $field): array
     {
-        /** @var \craft\fields\BaseOptionsField $field */
+        /** @var BaseOptionsField $field */
         $options = [];
+
         foreach ($field->options ?? [] as $opt) {
             if (is_array($opt) && isset($opt['value'])) {
-                $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
+                $options[(string) $opt['value']] = (string) ($opt['label'] ?? $opt['value']);
             }
         }
+
         return [
             'kind'    => 'options',
             'options' => $options,
@@ -47,30 +53,31 @@ class Dropdown extends Field
     public static function extrasLabels(): array
     {
         return [
-            'valueMapHint' => \Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.'),
-            'remoteValue'  => \Craft::t('influx', 'Remote value'),
-            'pickLocal'    => \Craft::t('influx', '— pick —'),
-            'addRow'       => \Craft::t('influx', 'Add value map'),
-            'removeRow'    => \Craft::t('influx', 'Remove row'),
+            'valueMapHint' => Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.'),
+            'remoteValue'  => Craft::t('influx', 'Remote value'),
+            'pickLocal'    => Craft::t('influx', '— pick —'),
+            'addRow'       => Craft::t('influx', 'Add value map'),
+            'removeRow'    => Craft::t('influx', 'Remove row'),
         ];
     }
 
-    public function defineExtrasSchema(\craft\base\FieldInterface $field): array
+    public function defineExtrasSchema(CraftFieldInterface $field): array
     {
-        /** @var \craft\fields\BaseOptionsField $field */
+        /** @var BaseOptionsField $field */
         $options = [];
+
         foreach ($field->options ?? [] as $opt) {
             if (is_array($opt) && isset($opt['value'])) {
-                $options[(string)$opt['value']] = (string)($opt['label'] ?? $opt['value']);
+                $options[(string) $opt['value']] = (string) ($opt['label'] ?? $opt['value']);
             }
         }
 
         return [
-            \GlueAgency\Influx\helpers\BuilderSchema::valueMapTable(
+            BuilderSchema::valueMapTable(
                 'valueMap',
-                \Craft::t('influx', 'Value map'),
+                Craft::t('influx', 'Value map'),
                 $options,
-                ['instructions' => \Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.')],
+                ['instructions' => Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.')],
             ),
         ];
     }
@@ -78,13 +85,15 @@ class Dropdown extends Field
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
+
         if ($raw === null) {
             return null;
         }
 
         $map = $context->mapping->option('valueMap');
-        if (is_array($map) && array_key_exists((string)$raw, $map)) {
-            return $map[(string)$raw];
+
+        if (is_array($map) && array_key_exists((string) $raw, $map)) {
+            return $map[(string) $raw];
         }
 
         return $raw;

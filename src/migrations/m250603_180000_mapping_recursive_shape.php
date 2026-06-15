@@ -28,17 +28,19 @@ class m250603_180000_mapping_recursive_shape extends Migration
         $pc = Craft::$app->getProjectConfig();
         $links = $pc->get(LinksService::CONFIG_LINKS_KEY) ?? [];
 
-        if (!is_array($links)) {
+        if (! is_array($links)) {
             return true;
         }
 
         foreach ($links as $uid => $linkConfig) {
             $mappings = $linkConfig['mappings'] ?? null;
-            if (!is_array($mappings) || empty($mappings)) {
+
+            if (! is_array($mappings) || empty($mappings)) {
                 continue;
             }
 
             $newMappings = [];
+
             foreach ($mappings as $handle => $row) {
                 $newMappings[$handle] = $this->migrateRow(is_array($row) ? $row : []);
             }
@@ -65,19 +67,22 @@ class m250603_180000_mapping_recursive_shape extends Migration
         // Lift options.subFields → nativeFields, recursively. Sub-rows in
         // either branch get the same treatment.
         $options = $row['options'] ?? [];
+
         if (is_array($options) && isset($options['subFields']) && is_array($options['subFields'])) {
             $row['nativeFields'] = $options['subFields'];
             unset($options['subFields']);
             $row['options'] = $options;
+
             if (empty($row['options'])) {
                 unset($row['options']);
             }
         }
 
         foreach (['fields', 'nativeFields'] as $branch) {
-            if (!isset($row[$branch]) || !is_array($row[$branch])) {
+            if (! isset($row[$branch]) || ! is_array($row[$branch])) {
                 continue;
             }
+
             foreach ($row[$branch] as $subHandle => $subRow) {
                 if (is_array($subRow)) {
                     $row[$branch][$subHandle] = $this->migrateRow($subRow);

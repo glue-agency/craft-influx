@@ -111,7 +111,7 @@ class ItemProcessor
      */
     public function commit(SyncContext $context, ItemSyncResult $draft): ItemSyncResult
     {
-        if ($context->dryRun || !$draft->changed || $draft->element === null) {
+        if ($context->dryRun || ! $draft->changed || $draft->element === null) {
             return $draft;
         }
 
@@ -136,8 +136,10 @@ class ItemProcessor
         if ($decision === SyncDecision::SkipNoMatch) {
             $matchAttr = $link->matchAttribute() ?: '?';
             $node = $link->getMappingCollection()->get($matchAttr)?->node ?? '?';
+
             return "Remote item has no value at match path '{$node}' (match attribute: {$matchAttr}).";
         }
+
         return $decision->skipReason();
     }
 }

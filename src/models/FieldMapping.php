@@ -74,7 +74,7 @@ class FieldMapping
             handle: $handle,
             node: is_string($node) && $node !== '' ? $node : null,
             default: $config['default'] ?? null,
-            useDefault: !empty($config['useDefault']),
+            useDefault: ! empty($config['useDefault']),
             options: is_array($config['options'] ?? null) ? $config['options'] : [],
             fields: is_array($config['fields'] ?? null) ? $config['fields'] : [],
             nativeFields: is_array($config['nativeFields'] ?? null) ? $config['nativeFields'] : [],
@@ -101,13 +101,15 @@ class FieldMapping
     {
         if ($this->node !== null) {
             $value = $item->get($this->node);
+
             if ($value === null || $value === '') {
                 $value = $this->default;
             }
+
             return ($value === null || $value === '') ? null : $value;
         }
 
-        if (!$this->useDefault) {
+        if (! $this->useDefault) {
             return null;
         }
 
@@ -135,7 +137,7 @@ class FieldMapping
 
     public function hasSubMappings(): bool
     {
-        return !empty($this->fields) || !empty($this->nativeFields);
+        return ! empty($this->fields) || ! empty($this->nativeFields);
     }
 
     /** Sub-mappings for the related element's custom fields (`fields`). */

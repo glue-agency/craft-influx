@@ -4,8 +4,10 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
-use craft\elements\Category as CategoryElement;
+use craft\elements\Category as CraftCategoryElement;
 use craft\elements\db\ElementQueryInterface;
+use craft\fields\BaseRelationField;
+use craft\fields\Categories as CraftCategoriesField;
 use craft\helpers\Db;
 use GlueAgency\Influx\sync\FieldContext;
 
@@ -13,22 +15,24 @@ class Categories extends Relation
 {
     public static function craftFieldClass(): ?string
     {
-        return \craft\fields\Categories::class;
+        return CraftCategoriesField::class;
     }
 
     protected function elementType(): string
     {
-        return CategoryElement::class;
+        return CraftCategoryElement::class;
     }
 
-    protected function sourceFieldLayouts(\craft\fields\BaseRelationField $field): iterable
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
     {
         $source = $field->source ?? null;
-        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+
+        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
             return;
         }
         [, $uid] = explode(':', $source);
         $group = Craft::$app->getCategories()->getGroupByUid($uid);
+
         if ($group) {
             yield $group->getFieldLayout();
         }
@@ -36,15 +40,17 @@ class Categories extends Relation
 
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        if (!$context->craftField) {
+        if (! $context->craftField) {
             return;
         }
         $source = $context->craftField->source ?? null;
-        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+
+        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
             return;
         }
         [, $uid] = explode(':', $source);
         $id = Db::idByUid('{{%categorygroups}}', $uid);
+
         if ($id) {
             /** @phpstan-ignore-next-line */
             $query->groupId($id);
@@ -59,25 +65,29 @@ class Categories extends Relation
      */
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
-        if (!$context->craftField) {
+        if (! $context->craftField) {
             return null;
         }
         $source = $context->craftField->source ?? null;
-        if (!is_string($source) || !str_starts_with($source, 'group:')) {
+
+        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
             return null;
         }
         [, $uid] = explode(':', $source);
         $groupId = Db::idByUid('{{%categorygroups}}', $uid);
-        if (!$groupId) {
+
+        if (! $groupId) {
             return null;
         }
 
-        $category = new CategoryElement();
+        $category = new CraftCategoryElement();
         $category->groupId = $groupId;
-        $category->title = (string)$value;
-        if (!Craft::$app->getElements()->saveElement($category, true)) {
+        $category->title = (string) $value;
+
+        if (! Craft::$app->getElements()->saveElement($category, true)) {
             return null;
         }
+
         return $category;
     }
 }

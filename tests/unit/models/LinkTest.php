@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
+use craft\elements\Entry;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -24,7 +25,7 @@ class LinkTest extends Unit
     public function testMatchValueIsPulledFromTheConfiguredNode(): void
     {
         $link = $this->link([
-            'match' => ['attribute' => 'importId'],
+            'match'    => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'remote_id']],
         ]);
         $this->assertSame(42, $link->matchValue(new RemoteItem(['remote_id' => 42, 'title' => 'x'])));
@@ -33,7 +34,7 @@ class LinkTest extends Unit
     public function testMatchValueSupportsNestedNodes(): void
     {
         $link = $this->link([
-            'match' => ['attribute' => 'importId'],
+            'match'    => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'meta.remote_id']],
         ]);
         $this->assertSame('abc', $link->matchValue(new RemoteItem(['meta' => ['remote_id' => 'abc']])));
@@ -42,7 +43,7 @@ class LinkTest extends Unit
     public function testMatchValueIsNullWhenSourceMissing(): void
     {
         $link = $this->link([
-            'match' => ['attribute' => 'importId'],
+            'match'    => ['attribute' => 'importId'],
             'mappings' => ['importId' => ['node' => 'remote_id']],
         ]);
         $this->assertNull($link->matchValue(new RemoteItem(['title' => 'x'])));
@@ -64,12 +65,12 @@ class LinkTest extends Unit
     public function testGetConfigStripsEmptyKeysSoYAMLStaysReadable(): void
     {
         $link = $this->link([
-            'handle' => 'articles',
-            'name' => 'Articles',
+            'handle'      => 'articles',
+            'name'        => 'Articles',
             'elementType' => 'craft\elements\Entry',
-            'endpoint' => 'https://e/articles',
-            'mappings' => ['title' => ['node' => 'name']],
-            'match' => ['attribute' => 'importId'],
+            'endpoint'    => 'https://e/articles',
+            'mappings'    => ['title' => ['node' => 'name']],
+            'match'       => ['attribute' => 'importId'],
         ]);
 
         $config = $link->getConfig();
@@ -105,16 +106,19 @@ class LinkTest extends Unit
         $link = new Link();
         $link->handle = $overrides['handle'] ?? 'articles';
         $link->name = $overrides['name'] ?? 'Articles';
-        $link->elementType = $overrides['elementType'] ?? \craft\elements\Entry::class;
+        $link->elementType = $overrides['elementType'] ?? Entry::class;
         $link->endpoint = $overrides['endpoint'] ?? 'https://example.test';
         $link->match = $overrides['match'] ?? ['attribute' => 'importId'];
         $link->mappings = $overrides['mappings'] ?? ['importId' => ['node' => 'id']];
+
         if (isset($overrides['siteEndpoints'])) {
             $link->siteEndpoints = $overrides['siteEndpoints'];
         }
+
         if (isset($overrides['processing'])) {
             $link->processing = $overrides['processing'];
         }
+
         return $link;
     }
 }

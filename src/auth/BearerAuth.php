@@ -22,7 +22,7 @@ class BearerAuth extends AbstractAuthStrategy
     {
         return [
             BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
-                'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>. Supports <code>$ENV_VAR</code> and <code>@alias</code> references.'),
+                'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'),
             ]),
         ];
     }

@@ -6,7 +6,6 @@ use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
-use GlueAgency\Influx\auth\AuthStrategyInterface;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -36,15 +35,15 @@ class Link extends Model
     ];
 
     /** @deprecated Use {@see SyncDecision::Create} — {@see self::decideAction()} returns the enum now. */
-    public const DECISION_CREATE          = self::PROCESSING_CREATE;
+    public const DECISION_CREATE = self::PROCESSING_CREATE;
     /** @deprecated Use {@see SyncDecision::Update}. */
-    public const DECISION_UPDATE          = self::PROCESSING_UPDATE;
+    public const DECISION_UPDATE = self::PROCESSING_UPDATE;
     /** @deprecated Use {@see SyncDecision::SkipNoMatch}. */
-    public const DECISION_SKIP_NO_MATCH   = 'skip:no-match';
+    public const DECISION_SKIP_NO_MATCH = 'skip:no-match';
     /** @deprecated Use {@see SyncDecision::SkipNoCreate}. */
-    public const DECISION_SKIP_NO_CREATE  = 'skip:no-create';
+    public const DECISION_SKIP_NO_CREATE = 'skip:no-create';
     /** @deprecated Use {@see SyncDecision::SkipNoUpdate}. */
-    public const DECISION_SKIP_NO_UPDATE  = 'skip:no-update';
+    public const DECISION_SKIP_NO_UPDATE = 'skip:no-update';
 
     public ?int $id = null;
 
@@ -92,6 +91,7 @@ class Link extends Model
     /**
      * Authentication configuration. Stored shape:
      *
+     *   ['type' => 'basic',       'token' => '$INFLUX_PASSWORD', 'username' => '$INFLUX_USER']
      *   ['type' => 'bearer',      'token' => '$INFLUX_TOKEN']
      *   ['type' => 'custom',      'token' => '$INFLUX_TOKEN', 'header' => 'X-API-Key']
      *   ['type' => 'querystring', 'token' => '$INFLUX_TOKEN', 'param'  => 'api_key']
@@ -162,15 +162,18 @@ class Link extends Model
     public function validateMatch(string $attribute): void
     {
         $value = $this->$attribute;
-        if (!is_array($value) || empty($value['attribute'])) {
+
+        if (! is_array($value) || empty($value['attribute'])) {
             $this->addError($attribute, 'Match must declare an `attribute`.');
+
             return;
         }
 
         // The match value is read from the node configured on the mapped
         // field, so the chosen match attribute must have an active mapping.
         $mappedNode = $this->mappings[$value['attribute']]['node'] ?? null;
-        if (!$mappedNode) {
+
+        if (! $mappedNode) {
             $this->addError(
                 $attribute,
                 "Match attribute '{$value['attribute']}' needs a configured mapping with a source node.",
@@ -181,19 +184,22 @@ class Link extends Model
     public function validateAuth(string $attribute): void
     {
         $value = $this->$attribute;
+
         if (empty($value)) {
             return;
         }
 
         $auth = $this->authService();
         $strategy = $auth?->fromConfig($value);
-        if (!$strategy) {
+
+        if (! $strategy) {
             $known = $auth ? implode(', ', $auth->knownTypes()) : '?';
             $this->addError($attribute, "Auth type must be one of: {$known}.");
+
             return;
         }
 
-        if (!$strategy->validate()) {
+        if (! $strategy->validate()) {
             foreach ($strategy->getFirstErrors() as $msg) {
                 $this->addError($attribute, $msg);
             }
@@ -206,7 +212,7 @@ class Link extends Model
      */
     public function ensureUid(): void
     {
-        if (!$this->uid) {
+        if (! $this->uid) {
             $this->uid = StringHelper::UUID();
         }
     }
@@ -234,13 +240,15 @@ class Link extends Model
             'backup'          => $this->backup,
         ];
 
-        return array_filter($config, function ($value) {
+        return array_filter($config, function($value) {
             if ($value === null || $value === '' || $value === false) {
                 return false;
             }
+
             if (is_array($value) && empty($value)) {
                 return false;
             }
+
             return true;
         });
     }
@@ -263,18 +271,18 @@ class Link extends Model
             'handle'          => $this->handle ?? '',
             'name'            => $this->name ?? '',
             'elementType'     => $this->elementType ?: Entry::class,
-            'elementCriteria' => (object)($this->elementCriteria ?? []),
+            'elementCriteria' => (object) ($this->elementCriteria ?? []),
             'endpoint'        => $this->endpoint,
             'itemEndpoint'    => $this->itemEndpoint,
-            'siteEndpoints'   => (object)($this->siteEndpoints ?? []),
-            'offset'          => (object)($this->offset ?? []),
+            'siteEndpoints'   => (object) ($this->siteEndpoints ?? []),
+            'offset'          => (object) ($this->offset ?? []),
             'processing'      => array_values($this->processing ?? []),
             'rootNode'        => $this->rootNode,
             'paginatorNode'   => $this->paginatorNode,
-            'mappings'        => (object)($this->mappings ?? []),
-            'match'           => (object)($this->match ?? []),
-            'auth'            => (object)($this->auth ?? []),
-            'backup'          => (bool)$this->backup,
+            'mappings'        => (object) ($this->mappings ?? []),
+            'match'           => (object) ($this->match ?? []),
+            'auth'            => (object) ($this->auth ?? []),
+            'backup'          => (bool) $this->backup,
         ];
     }
 
@@ -289,22 +297,22 @@ class Link extends Model
     {
         $strOrNull = static fn(mixed $v): ?string => is_string($v) && trim($v) !== '' ? trim($v) : null;
 
-        $this->handle      = (string)($payload['handle'] ?? $this->handle);
-        $this->name        = (string)($payload['name'] ?? $this->name);
-        $this->elementType = (string)($payload['elementType'] ?? $this->elementType);
+        $this->handle = (string) ($payload['handle'] ?? $this->handle);
+        $this->name = (string) ($payload['name'] ?? $this->name);
+        $this->elementType = (string) ($payload['elementType'] ?? $this->elementType);
 
-        $this->elementCriteria = (array)($payload['elementCriteria'] ?? []);
-        $this->endpoint        = $strOrNull($payload['endpoint'] ?? null);
-        $this->itemEndpoint    = $strOrNull($payload['itemEndpoint'] ?? null);
-        $this->siteEndpoints   = (array)($payload['siteEndpoints'] ?? []);
-        $this->offset          = (array)($payload['offset'] ?? []);
-        $this->processing      = array_values((array)($payload['processing'] ?? []));
-        $this->rootNode        = $strOrNull($payload['rootNode'] ?? null);
-        $this->paginatorNode   = $strOrNull($payload['paginatorNode'] ?? null);
-        $this->mappings        = (array)($payload['mappings'] ?? []);
-        $this->match           = (array)($payload['match'] ?? []);
-        $this->auth            = (array)($payload['auth'] ?? []);
-        $this->backup          = (bool)($payload['backup'] ?? false);
+        $this->elementCriteria = (array) ($payload['elementCriteria'] ?? []);
+        $this->endpoint = $strOrNull($payload['endpoint'] ?? null);
+        $this->itemEndpoint = $strOrNull($payload['itemEndpoint'] ?? null);
+        $this->siteEndpoints = (array) ($payload['siteEndpoints'] ?? []);
+        $this->offset = (array) ($payload['offset'] ?? []);
+        $this->processing = array_values((array) ($payload['processing'] ?? []));
+        $this->rootNode = $strOrNull($payload['rootNode'] ?? null);
+        $this->paginatorNode = $strOrNull($payload['paginatorNode'] ?? null);
+        $this->mappings = (array) ($payload['mappings'] ?? []);
+        $this->match = (array) ($payload['match'] ?? []);
+        $this->auth = (array) ($payload['auth'] ?? []);
+        $this->backup = (bool) ($payload['backup'] ?? false);
     }
 
     /**
@@ -331,7 +339,7 @@ class Link extends Model
 
     public function siteHandles(): array
     {
-        return !empty($this->siteEndpoints) ? array_keys($this->siteEndpoints) : [];
+        return ! empty($this->siteEndpoints) ? array_keys($this->siteEndpoints) : [];
     }
 
     /**
@@ -355,6 +363,7 @@ class Link extends Model
             $this->mappingCollection = MappingCollection::fromConfig($this->mappings);
             $this->mappingCollectionSource = $this->mappings;
         }
+
         return $this->mappingCollection;
     }
 
@@ -366,6 +375,7 @@ class Link extends Model
     public function matchValue(RemoteItem $item): mixed
     {
         $attr = $this->matchAttribute();
+
         return $attr ? $this->getMappingCollection()->get($attr)?->rawValue($item) : null;
     }
 
@@ -386,14 +396,15 @@ class Link extends Model
         if ($matchValue === null || $matchValue === '') {
             return SyncDecision::SkipNoMatch;
         }
+
         if ($element === null) {
             return in_array(self::PROCESSING_CREATE, $this->processing, true)
                 ? SyncDecision::Create
                 : SyncDecision::SkipNoCreate;
         }
+
         return in_array(self::PROCESSING_UPDATE, $this->processing, true)
             ? SyncDecision::Update
             : SyncDecision::SkipNoUpdate;
     }
-
 }

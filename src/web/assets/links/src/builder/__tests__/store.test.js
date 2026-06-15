@@ -139,4 +139,28 @@ describe('store', () => {
             expect.objectContaining({ rootNode: 'data.items' }),
         );
     });
+
+    it('samples against the first filled site endpoint in site-specific mode', async () => {
+        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+
+        store.link.endpoint = 'https://example.test/base';
+        store.link.siteEndpoints = { en: '', nl: 'https://example.test/nl' };
+        store.setSiteEndpointsMode(true);
+        await store.evaluateSample();
+
+        expect(api.sample).toHaveBeenCalledWith(
+            expect.objectContaining({ endpoint: 'https://example.test/nl' }),
+        );
+    });
+
+    it('blocks saving in site-specific mode without a single site endpoint', async () => {
+        store.link.siteEndpoints = { en: '   ' };
+        store.setSiteEndpointsMode(true);
+
+        const result = await store.save({ continueEditing: true });
+
+        expect(result.success).toBe(false);
+        expect(store.ui.errors.siteEndpoints).toHaveLength(1);
+        expect(api.save).not.toHaveBeenCalled();
+    });
 });

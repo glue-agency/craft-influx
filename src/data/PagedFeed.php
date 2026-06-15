@@ -5,10 +5,13 @@ namespace GlueAgency\Influx\data;
 use Cake\Utility\Hash;
 use Craft;
 use craft\helpers\UrlHelper;
+use Generator;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\sync\RemoteItem;
+use IteratorAggregate;
+use Throwable;
 
 /**
  * Lazily-paginated view over a link's feed: each iteration yields one
@@ -25,9 +28,9 @@ use GlueAgency\Influx\sync\RemoteItem;
  * Consumed by both the sync run (all pages) and the debug inspector (breaks
  * after page one), so neither carries its own fetch/paginator-peek code.
  *
- * @implements \IteratorAggregate<int, FeedPage>
+ * @implements IteratorAggregate<int, FeedPage>
  */
-class PagedFeed implements \IteratorAggregate
+class PagedFeed implements IteratorAggregate
 {
     /**
      * Hard ceiling on pages followed per run.
@@ -55,11 +58,11 @@ class PagedFeed implements \IteratorAggregate
     }
 
     /**
-     * @return \Generator<int, FeedPage>
+     * @return Generator<int, FeedPage>
      * @throws FeedFetchException on fetch failures, paginator URL cycles, or
      * pagination running past {@see MAX_PAGES}.
      */
-    public function getIterator(): \Generator
+    public function getIterator(): Generator
     {
         $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
 
@@ -83,6 +86,7 @@ class PagedFeed implements \IteratorAggregate
             if (isset($seenUrls[$nextUrl])) {
                 throw new FeedFetchException("Pagination loop detected: '{$nextUrl}' was already fetched (paginator node '{$this->link->paginatorNode}').");
             }
+
             if (++$number > self::MAX_PAGES) {
                 throw new FeedFetchException('Pagination exceeded ' . self::MAX_PAGES . " pages — aborting (paginator node '{$this->link->paginatorNode}').");
             }
@@ -97,16 +101,18 @@ class PagedFeed implements \IteratorAggregate
 
     protected function nextUrl(array $response): ?string
     {
-        if (!$this->link->paginatorNode) {
+        if (! $this->link->paginatorNode) {
             return null;
         }
 
         $next = Hash::get($response, $this->link->paginatorNode);
-        if (!is_scalar($next)) {
+
+        if (! is_scalar($next)) {
             return null;
         }
 
-        $url = trim((string)$next);
+        $url = trim((string) $next);
+
         if ($url === '' || $url === '0') {
             return null;
         }
@@ -122,20 +128,23 @@ class PagedFeed implements \IteratorAggregate
      */
     protected function normalizeUrl(string $url): string
     {
-        $url = (string)Craft::getAlias($url);
+        $url = (string) Craft::getAlias($url);
 
         if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
             return $url;
         }
+
         if (str_starts_with($url, '//')) {
             return 'https:' . $url;
         }
+
         if (str_starts_with($url, '/')) {
             $base = $this->data->endpoints()->listUrlForDisplay($this->link, $this->siteHandle);
+
             if ($base !== null) {
                 try {
                     return rtrim(UrlHelper::hostInfo($base), '/') . $url;
-                } catch (\Throwable) {
+                } catch (Throwable) {
                     // Base wasn't a parsable URL — hand the raw value to the
                     // fetch layer, whose error message names the URL.
                 }

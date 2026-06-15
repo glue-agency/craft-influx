@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use GlueAgency\Influx\models\Link;
+use Throwable;
 
 /**
  * Per-link pre-run DB backup. Delegates to Craft's own backup machinery.
@@ -17,17 +18,18 @@ class BackupService extends Component
      */
     public function backupForLink(Link $link): ?string
     {
-        if (!$link->backup) {
+        if (! $link->backup) {
             return null;
         }
 
         try {
             return Craft::$app->getDb()->backup();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Craft::error(
                 "Influx: backup for link '{$link->handle}' failed: " . $e->getMessage(),
                 __METHOD__,
             );
+
             return null;
         }
     }

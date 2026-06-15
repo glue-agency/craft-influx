@@ -105,6 +105,7 @@ class FieldsService extends Component
                 return $this->byCraftFqcn[$class];
             }
         }
+
         return $this->default;
     }
 
@@ -128,16 +129,18 @@ class FieldsService extends Component
     public function all(): array
     {
         $this->ensureLoaded();
+
         return $this->byCraftFqcn;
     }
 
     protected function registerOne(string $class): void
     {
-        if (!is_subclass_of($class, Field::class)) {
+        if (! is_subclass_of($class, Field::class)) {
             throw new InfluxException("'{$class}' must extend " . Field::class . '.');
         }
         $fqcn = $class::craftFieldClass();
-        if (!$fqcn) {
+
+        if (! $fqcn) {
             // Subclass forgot to declare which Craft field it handles —
             // can't register without that, but it's not an error worth
             // breaking init for.

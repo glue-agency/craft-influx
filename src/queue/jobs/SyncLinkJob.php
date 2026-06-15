@@ -27,7 +27,8 @@ class SyncLinkJob extends BaseJob
     {
         $plugin = Influx::getInstance();
         $link = $plugin->links->getLinkByHandle($this->linkHandle);
-        if (!$link) {
+
+        if (! $link) {
             throw new InfluxException("Cannot sync link '{$this->linkHandle}' — no link with that handle exists.");
         }
 
@@ -37,6 +38,7 @@ class SyncLinkJob extends BaseJob
     protected function defaultDescription(): ?string
     {
         $suffix = $this->offset ? " (preset: {$this->offset})" : '';
+
         return Craft::t('influx', 'Syncing influx link “{handle}”{suffix}', [
             'handle' => $this->linkHandle,
             'suffix' => $suffix,

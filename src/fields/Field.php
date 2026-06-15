@@ -2,8 +2,11 @@
 
 namespace GlueAgency\Influx\fields;
 
+use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\sync\FieldContext;
+use Stringable;
+use Throwable;
 
 /**
  * Per-Craft-field-type mapping strategy. One concrete subclass per `craft\fields\*`
@@ -96,8 +99,8 @@ abstract class Field
     public static function commonExtrasLabels(): array
     {
         return [
-            'configure'   => \Craft::t('influx', 'Configure'),
-            'hideOptions' => \Craft::t('influx', 'Hide options'),
+            'configure'   => Craft::t('influx', 'Configure'),
+            'hideOptions' => Craft::t('influx', 'Hide options'),
         ];
     }
 
@@ -109,6 +112,7 @@ abstract class Field
     public function apply(FieldContext $context, mixed $value): bool
     {
         $context->element->setFieldValue($context->handle, $value);
+
         return true;
     }
 
@@ -120,9 +124,10 @@ abstract class Field
     {
         try {
             $current = $context->element->getFieldValue($context->handle);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return true;
         }
+
         return $this->normalize($current) !== $this->normalize($incoming);
     }
 
@@ -137,13 +142,17 @@ abstract class Field
         if ($value === null || $value === '') {
             return null;
         }
+
         if (is_scalar($value)) {
-            return (string)$value;
+            return (string) $value;
         }
-        if ($value instanceof \Stringable) {
-            $str = (string)$value;
+
+        if ($value instanceof Stringable) {
+            $str = (string) $value;
+
             return $str === '' ? null : $str;
         }
+
         return json_encode($value);
     }
 }

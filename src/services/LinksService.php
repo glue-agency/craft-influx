@@ -8,6 +8,7 @@ use craft\base\ElementInterface;
 use craft\db\Query;
 use craft\events\ConfigEvent;
 use craft\helpers\Db;
+use DateTime;
 use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\events\LinkEvent;
 use GlueAgency\Influx\Influx;
@@ -87,18 +88,21 @@ class LinksService extends Component
     public function getLinkByHandle(string $handle): ?Link
     {
         $row = $this->createQuery()->where(['handle' => $handle])->one();
+
         return $row ? $this->linkFromRow($row) : null;
     }
 
     public function getLinkByUid(string $uid): ?Link
     {
         $row = $this->createQuery()->where(['uid' => $uid])->one();
+
         return $row ? $this->linkFromRow($row) : null;
     }
 
     public function getLinkById(int $id): ?Link
     {
         $row = $this->createQuery()->where(['id' => $id])->one();
+
         return $row ? $this->linkFromRow($row) : null;
     }
 
@@ -113,6 +117,7 @@ class LinksService extends Component
 
         foreach ($this->getAllLinks() as $link) {
             $target = $targets->forLink($link);
+
             if ($target && $target->claimsElement($link, $element)) {
                 return $link;
             }
@@ -129,17 +134,18 @@ class LinksService extends Component
      */
     public function saveLink(Link $link, bool $runValidation = true): bool
     {
-        $isNew = !$link->id;
+        $isNew = ! $link->id;
 
         // Hygiene, not validation — runs on forced saves too, so the stored
         // config never carries handles the target can't map.
         $this->pruneUnknownMappings($link);
 
-        if ($runValidation && !$link->validate()) {
+        if ($runValidation && ! $link->validate()) {
             Craft::info(
                 'Link not saved due to validation errors: ' . json_encode($link->getErrors()),
                 __METHOD__,
             );
+
             return false;
         }
 
@@ -147,6 +153,7 @@ class LinksService extends Component
         foreach ($this->getAllLinks() as $other) {
             if ($other->handle === $link->handle && $other->id !== $link->id) {
                 $link->addError('handle', "A link with handle '{$link->handle}' already exists.");
+
                 return false;
             }
         }
@@ -155,7 +162,7 @@ class LinksService extends Component
 
         if ($this->hasEventHandlers(self::EVENT_BEFORE_SAVE_LINK)) {
             $this->trigger(self::EVENT_BEFORE_SAVE_LINK, new LinkEvent([
-                'link' => $link,
+                'link'  => $link,
                 'isNew' => $isNew,
             ]));
         }
@@ -167,13 +174,13 @@ class LinksService extends Component
         );
 
         // PC handler has now upserted the DB row; back-fill the id.
-        if (!$link->id) {
+        if (! $link->id) {
             $link->id = Db::idByUid(Table::LINKS, $link->uid) ?: null;
         }
 
         if ($this->hasEventHandlers(self::EVENT_AFTER_SAVE_LINK)) {
             $this->trigger(self::EVENT_AFTER_SAVE_LINK, new LinkEvent([
-                'link' => $link,
+                'link'  => $link,
                 'isNew' => $isNew,
             ]));
         }
@@ -196,28 +203,34 @@ class LinksService extends Component
     protected function pruneUnknownMappings(Link $link): void
     {
         $target = Influx::getInstance()->targets->forLink($link);
-        if (!$target) {
+
+        if (! $target) {
             return;
         }
 
         $mappable = $target->getMappableFields($link);
+
         if (empty($mappable)) {
             return;
         }
 
         $known = [];
         $hasCustomFields = false;
+
         foreach ($mappable as $field) {
             $known[$field['handle']] = true;
+
             if (empty($field['native'])) {
                 $hasCustomFields = true;
             }
         }
-        if (!$hasCustomFields) {
+
+        if (! $hasCustomFields) {
             return;
         }
 
         $unknown = array_diff_key($link->mappings, $known);
+
         if (empty($unknown)) {
             return;
         }
@@ -236,7 +249,8 @@ class LinksService extends Component
     public function deleteLinkByUid(string $uid): bool
     {
         $link = $this->getLinkByUid($uid);
-        if (!$link) {
+
+        if (! $link) {
             return false;
         }
 
@@ -261,8 +275,9 @@ class LinksService extends Component
      */
     public function duplicateLink(string $sourceHandle, string $newHandle, ?string $newName = null): Link
     {
-        $source = $this->getLinkByHandle($sourceHandle)
-            ?? throw new InvalidConfigException("Link '{$sourceHandle}' not found.");
+        if (! ($source = $this->getLinkByHandle($sourceHandle))) {
+            throw new InvalidConfigException("Link '{$sourceHandle}' not found.");
+        }
 
         if ($this->getLinkByHandle($newHandle)) {
             throw new InvalidConfigException("A link with handle '{$newHandle}' already exists.");
@@ -274,7 +289,7 @@ class LinksService extends Component
         $copy->handle = $newHandle;
         $copy->name = $newName ?? ($source->name . ' (copy)');
 
-        if (!$this->saveLink($copy)) {
+        if (! $this->saveLink($copy)) {
             throw new InvalidConfigException("Failed to duplicate '{$sourceHandle}': "
                 . json_encode($copy->getErrors()));
         }
@@ -297,9 +312,9 @@ class LinksService extends Component
 
         $columns = self::columnValuesFromConfig($data);
         $columns['uid'] = $uid;
-        $columns['dateUpdated'] = Db::prepareDateForDb(new \DateTime());
+        $columns['dateUpdated'] = Db::prepareDateForDb(new DateTime());
 
-        if (!$id) {
+        if (! $id) {
             $columns['dateCreated'] = $columns['dateUpdated'];
             Craft::$app->getDb()->createCommand()
                 ->insert(Table::LINKS, $columns)
@@ -339,14 +354,14 @@ class LinksService extends Component
     public static function columnValuesFromConfig(array $config): array
     {
         $columns = [
-            'name'          => (string)($config['name'] ?? ''),
-            'handle'        => (string)($config['handle'] ?? ''),
-            'elementType'   => (string)($config['elementType'] ?? ''),
-            'endpoint'      => $config['endpoint']      ?? null,
-            'itemEndpoint'  => $config['itemEndpoint']  ?? null,
-            'rootNode'      => $config['rootNode']      ?? null,
+            'name'          => (string) ($config['name'] ?? ''),
+            'handle'        => (string) ($config['handle'] ?? ''),
+            'elementType'   => (string) ($config['elementType'] ?? ''),
+            'endpoint'      => $config['endpoint'] ?? null,
+            'itemEndpoint'  => $config['itemEndpoint'] ?? null,
+            'rootNode'      => $config['rootNode'] ?? null,
             'paginatorNode' => $config['paginatorNode'] ?? null,
-            'backup'        => !empty($config['backup']),
+            'backup'        => ! empty($config['backup']),
         ];
 
         foreach (self::JSON_COLUMNS as $key) {
@@ -367,6 +382,7 @@ class LinksService extends Component
     {
         foreach (self::JSON_COLUMNS as $key) {
             $raw = $row[$key] ?? null;
+
             if (is_string($raw) && $raw !== '') {
                 $decoded = json_decode($raw, true);
                 $row[$key] = is_array($decoded) ? $decoded : [];
@@ -376,8 +392,8 @@ class LinksService extends Component
         }
 
         // Boolean / int columns come back as strings on some drivers.
-        $row['backup'] = !empty($row['backup']);
-        $row['id']     = (int)$row['id'];
+        $row['backup'] = ! empty($row['backup']);
+        $row['id'] = (int) $row['id'];
 
         // Drop columns Link doesn't know about; the Model base would warn.
         unset($row['dateCreated'], $row['dateUpdated']);

@@ -36,7 +36,7 @@ enum SyncDecision: string
         return match ($this) {
             self::SkipNoCreate => "No existing element and 'create' not enabled.",
             self::SkipNoUpdate => "'update' not enabled for this link.",
-            default => null,
+            default            => null,
         };
     }
 }

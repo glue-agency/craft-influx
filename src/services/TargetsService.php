@@ -65,7 +65,7 @@ class TargetsService extends Component
 
     protected function registerOne(string $class): void
     {
-        if (!is_subclass_of($class, ElementTargetInterface::class)) {
+        if (! is_subclass_of($class, ElementTargetInterface::class)) {
             throw new InfluxException("'{$class}' must implement " . ElementTargetInterface::class . '.');
         }
         $target = Craft::createObject($class);
@@ -78,12 +78,14 @@ class TargetsService extends Component
     public function all(): array
     {
         $this->ensureLoaded();
+
         return $this->targets;
     }
 
     public function forLink(Link $link): ?ElementTargetInterface
     {
         $this->ensureLoaded();
+
         return $this->targets[ltrim($link->elementType, '\\')] ?? null;
     }
 
@@ -95,10 +97,12 @@ class TargetsService extends Component
     {
         $this->ensureLoaded();
         $key = ltrim($elementType, '\\');
+
         if (isset($this->targets[$key])) {
             return $this->targets[$key]::friendlyName();
         }
         $parts = explode('\\', $key);
+
         return end($parts) ?: $elementType;
     }
 

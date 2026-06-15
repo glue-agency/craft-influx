@@ -28,9 +28,11 @@ class EndpointResolver
     public function listUrl(Link $link, ?string $siteHandle = null): string
     {
         $raw = $this->rawListEndpoint($link, $siteHandle);
-        if (!$raw) {
+
+        if (! $raw) {
             throw new FeedFetchException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
         }
+
         return $this->parse($raw, $link->handle);
     }
 
@@ -42,14 +44,15 @@ class EndpointResolver
      */
     public function itemUrl(Link $link, array $tokens): string
     {
-        if (!$link->itemEndpoint) {
+        if (! $link->itemEndpoint) {
             throw new FeedFetchException("Link '{$link->handle}' has no itemEndpoint configured.");
         }
         $url = $this->parse($link->itemEndpoint, $link->handle);
 
         foreach ($tokens as $name => $value) {
-            $url = str_replace('{' . $name . '}', rawurlencode((string)$value), $url);
+            $url = str_replace('{' . $name . '}', rawurlencode((string) $value), $url);
         }
+
         return $url;
     }
 
@@ -61,10 +64,12 @@ class EndpointResolver
     public function listUrlForDisplay(Link $link, ?string $siteHandle = null): ?string
     {
         $raw = $this->rawListEndpoint($link, $siteHandle);
-        if (!$raw) {
+
+        if (! $raw) {
             return null;
         }
         $parsed = App::parseEnv($raw);
+
         return is_string($parsed) && $parsed !== '' ? $parsed : $raw;
     }
 
@@ -73,6 +78,7 @@ class EndpointResolver
         if ($siteHandle && isset($link->siteEndpoints[$siteHandle])) {
             return $link->siteEndpoints[$siteHandle];
         }
+
         return $link->endpoint;
     }
 
@@ -89,11 +95,13 @@ class EndpointResolver
                 "Link '{$linkHandle}' endpoint '{$raw}' references an environment variable that isn't set."
             );
         }
-        if (!is_string($resolved) || str_starts_with($resolved, '@')) {
+
+        if (! is_string($resolved) || str_starts_with($resolved, '@')) {
             throw new FeedFetchException(
                 "Link '{$linkHandle}' endpoint '{$raw}' uses an alias that isn't registered."
             );
         }
+
         return $resolved;
     }
 }
