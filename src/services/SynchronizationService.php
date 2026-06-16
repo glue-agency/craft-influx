@@ -75,7 +75,7 @@ class SynchronizationService extends Component
     public function syncLink(
         Link $link,
         ?string $offset = null,
-        SyncTrigger $trigger = SyncTrigger::Console,
+        SyncTrigger $trigger = SyncTrigger::CONSOLE,
     ): LogRecord {
         $plugin = Influx::getInstance();
 
@@ -142,20 +142,20 @@ class SynchronizationService extends Component
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
-        $log = $plugin->logs->start($link, SyncTrigger::Element);
+        $log = $plugin->logs->start($link, SyncTrigger::ELEMENT);
 
         try {
             $siteHandles = $link->siteHandles() ?: [null];
 
             foreach ($siteHandles as $siteHandle) {
-                $context = $this->siteContext($link, $target, $siteHandle, SyncTrigger::Element);
+                $context = $this->siteContext($link, $target, $siteHandle, SyncTrigger::ELEMENT);
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
                 $item = new RemoteItem($plugin->data->fetchOne($link, $tokens));
 
                 try {
                     $this->processItem($context, $item, $log);
                 } catch (Throwable $e) {
-                    $plugin->logs->recordItem($log, ItemAction::Error, $element->id, null, $e->getMessage(), $item->raw());
+                    $plugin->logs->recordItem($log, ItemAction::ERROR, $element->id, null, $e->getMessage(), $item->raw());
                 }
             }
 
@@ -190,7 +190,7 @@ class SynchronizationService extends Component
                 try {
                     $this->processItem($context, $item, $log);
                 } catch (Throwable $e) {
-                    $plugin->logs->recordItem($log, ItemAction::Error, null, null, $e->getMessage(), $item->raw());
+                    $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
                 }
             }
         }
@@ -209,7 +209,7 @@ class SynchronizationService extends Component
         $resolution = $this->itemProcessor->resolve($context, $item);
 
         // No-match items never reach listeners — there's nothing to act on.
-        if ($resolution->decision !== SyncDecision::SkipNoMatch) {
+        if ($resolution->decision !== SyncDecision::SKIP_NO_MATCH) {
             $beforeEvent = new SyncItemEvent([
                 'link'       => $link,
                 'item'       => $item->raw(),
@@ -219,7 +219,7 @@ class SynchronizationService extends Component
             $this->trigger(self::EVENT_BEFORE_ITEM, $beforeEvent);
 
             if ($beforeEvent->skip) {
-                $plugin->logs->recordItem($log, ItemAction::Skipped, $resolution->element?->id, (string) $resolution->matchValue, null, $item->raw());
+                $plugin->logs->recordItem($log, ItemAction::SKIPPED, $resolution->element?->id, (string) $resolution->matchValue, null, $item->raw());
 
                 return;
             }
@@ -234,7 +234,7 @@ class SynchronizationService extends Component
 
         if ($result->decision->isSkip()) {
             $matchValue = $result->matchValue !== null ? (string) $result->matchValue : null;
-            $plugin->logs->recordItem($log, ItemAction::Skipped, $result->element?->id, $matchValue, $result->message, $item->raw());
+            $plugin->logs->recordItem($log, ItemAction::SKIPPED, $result->element?->id, $matchValue, $result->message, $item->raw());
 
             return;
         }

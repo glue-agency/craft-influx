@@ -9,14 +9,14 @@ namespace GlueAgency\Influx\enums;
  */
 enum ItemAction: string
 {
-    case Created = 'created';
-    case Updated = 'updated';
-    case Unchanged = 'unchanged';
-    case Skipped = 'skipped';
-    case Error = 'error';
-    case Disabled = 'disabled';
-    case Deleted = 'deleted';
-    case DeletedForSite = 'deleted-for-site';
+    case CREATED = 'created';
+    case UPDATED = 'updated';
+    case UNCHANGED = 'unchanged';
+    case SKIPPED = 'skipped';
+    case ERROR = 'error';
+    case DISABLED = 'disabled';
+    case DELETED = 'deleted';
+    case DELETED_FOR_SITE = 'deleted-for-site';
 
     /**
      * The log counter column this action increments, or null when the action
@@ -25,12 +25,12 @@ enum ItemAction: string
     public function counterAttribute(): ?string
     {
         return match ($this) {
-            self::Created   => 'itemsCreated',
-            self::Updated   => 'itemsUpdated',
-            self::Unchanged => 'itemsUnchanged',
-            self::Skipped   => 'itemsSkipped',
-            self::Disabled, self::Deleted, self::DeletedForSite => 'itemsDeleted',
-            self::Error => null,
+            self::CREATED   => 'itemsCreated',
+            self::UPDATED   => 'itemsUpdated',
+            self::UNCHANGED => 'itemsUnchanged',
+            self::SKIPPED   => 'itemsSkipped',
+            self::DISABLED, self::DELETED, self::DELETED_FOR_SITE => 'itemsDeleted',
+            self::ERROR => null,
         };
     }
 
@@ -42,14 +42,14 @@ enum ItemAction: string
     public function dryRunLabel(): string
     {
         return match ($this) {
-            self::Created        => 'would-create',
-            self::Updated        => 'would-update',
-            self::Unchanged      => 'would-unchanged',
-            self::Skipped        => 'would-skip',
-            self::Error          => 'error',
-            self::Disabled       => 'would-disable',
-            self::Deleted        => 'would-delete',
-            self::DeletedForSite => 'would-delete-for-site',
+            self::CREATED          => 'would-create',
+            self::UPDATED          => 'would-update',
+            self::UNCHANGED        => 'would-unchanged',
+            self::SKIPPED          => 'would-skip',
+            self::ERROR            => 'error',
+            self::DISABLED         => 'would-disable',
+            self::DELETED          => 'would-delete',
+            self::DELETED_FOR_SITE => 'would-delete-for-site',
         };
     }
 }

@@ -34,93 +34,36 @@ class Assets extends Field
         return CraftAssetsField::class;
     }
 
-    public function fieldMeta(CraftFieldInterface $field): array
-    {
-        /** @var CraftAssetsField $field */
-        return [
-            'kind'         => 'asset',
-            'allowedKinds' => $field->allowedKinds ?? null,
-            'subFields'    => [
-                // Each entry: handle => label. The handle is used as the
-                // sub-mapping key on the saved Link config.
-                'alt'   => Craft::t('influx', 'Alt text'),
-                'title' => Craft::t('influx', 'Title'),
-            ],
-            'modeOptions'     => self::modeOptions(),
-            'conflictOptions' => self::conflictOptions(),
-            'labels'          => self::extrasLabels() + self::commonExtrasLabels(),
-        ];
-    }
-
-    /**
-     * UI strings rendered inside the asset extras block.
-     *
-     * @return array<string, string>
-     */
-    public static function extrasLabels(): array
-    {
-        return [
-            'valueIs'        => Craft::t('influx', 'Match by'),
-            'uploadToggle'   => Craft::t('influx', 'Download & upload missing files'),
-            'onConflict'     => Craft::t('influx', 'On conflict'),
-            'subFieldsTitle' => Craft::t('influx', 'Asset sub-fields'),
-            'subFieldsHint'  => Craft::t('influx', 'Mapped values are written back to the asset itself (alt/title).'),
-            'noMapping'      => Craft::t('influx', '— no mapping —'),
-            'defaultPh'      => Craft::t('influx', 'Default'),
-        ];
-    }
-
-    /**
-     * Options for the "Match by" dropdown — whether the remote node carries
-     * an asset id (default) or a URL we look up / optionally download.
-     *
-     * @return list<array{value: string, label: string}>
-     */
-    public static function modeOptions(): array
-    {
-        // Fixed set — each value drives a parse-time branch in
-        // {@see parse()}, so adding a new mode without code support
-        // would be silently inert. Not exposed as an event registry.
-        return [
-            ['value' => 'id',  'label' => Craft::t('influx', 'Asset ID')],
-            ['value' => 'url', 'label' => Craft::t('influx', 'URL (lookup or download)')],
-        ];
-    }
-
-    /**
-     * Options for the "On conflict" dropdown when downloading-and-uploading
-     * an asset whose filename already exists in the target folder.
-     *
-     * @return list<array{value: string, label: string}>
-     */
-    public static function conflictOptions(): array
-    {
-        // Same story as {@see modeOptions()} — each value maps to a fixed
-        // branch in the upload helper, so the list is intentionally closed.
-        return [
-            ['value' => 'index',   'label' => Craft::t('influx', 'Reuse existing')],
-            ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
-        ];
-    }
-
     public function defineExtrasSchema(CraftFieldInterface $field): array
     {
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
+        // The mode / conflict option sets are fixed: each value maps to a
+        // branch in parse() / the upload helper, so they're intentionally
+        // closed (no event registry — an unknown value would be inert).
         return [
-            BuilderSchema::select('mode', Craft::t('influx', 'Match by'), self::modeOptions(), [
-                'default' => 'id',
-            ]),
+            BuilderSchema::select('mode', Craft::t('influx', 'Match by'),
+                [
+                    ['value' => 'id',  'label' => Craft::t('influx', 'Asset ID')],
+                    ['value' => 'url', 'label' => Craft::t('influx', 'URL (lookup or download)')],
+                ],
+                [
+                    'default' => 'id',
+                ]
+            ),
             BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
                 'showIf' => $url,
             ]),
-            BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), self::conflictOptions(), [
+            BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), [
+                ['value' => 'index',   'label' => Craft::t('influx', 'Reuse existing')],
+                ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
+            ], [
                 'default' => 'index',
                 'showIf'  => $uploading,
             ]),
             BuilderSchema::elementSubFields(
-                Craft::t('influx', 'Asset sub-fields'),
+                Craft::t('influx', 'Sub-fields'),
                 [
                     BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
                     BuilderSchema::text('title', Craft::t('influx', 'Title')),

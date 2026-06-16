@@ -8,8 +8,8 @@ namespace GlueAgency\Influx\enums;
  */
 enum SyncTrigger: string
 {
-    case Console = 'console';
-    case Cp = 'cp';
-    case Queue = 'queue';
-    case Element = 'element';
+    case CONSOLE = 'console';
+    case CP = 'cp';
+    case QUEUE = 'queue';
+    case ELEMENT = 'element';
 }

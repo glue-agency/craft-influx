@@ -34,15 +34,15 @@ class Link extends Model
         self::PROCESSING_DELETE_FOR_SITE,
     ];
 
-    /** @deprecated Use {@see SyncDecision::Create} — {@see self::decideAction()} returns the enum now. */
+    /** @deprecated Use {@see SyncDecision::CREATE} — {@see self::decideAction()} returns the enum now. */
     public const DECISION_CREATE = self::PROCESSING_CREATE;
-    /** @deprecated Use {@see SyncDecision::Update}. */
+    /** @deprecated Use {@see SyncDecision::UPDATE}. */
     public const DECISION_UPDATE = self::PROCESSING_UPDATE;
-    /** @deprecated Use {@see SyncDecision::SkipNoMatch}. */
+    /** @deprecated Use {@see SyncDecision::SKIP_NO_MATCH}. */
     public const DECISION_SKIP_NO_MATCH = 'skip:no-match';
-    /** @deprecated Use {@see SyncDecision::SkipNoCreate}. */
+    /** @deprecated Use {@see SyncDecision::SKIP_NO_CREATE}. */
     public const DECISION_SKIP_NO_CREATE = 'skip:no-create';
-    /** @deprecated Use {@see SyncDecision::SkipNoUpdate}. */
+    /** @deprecated Use {@see SyncDecision::SKIP_NO_UPDATE}. */
     public const DECISION_SKIP_NO_UPDATE = 'skip:no-update';
 
     public ?int $id = null;
@@ -394,17 +394,17 @@ class Link extends Model
     public function decideAction(mixed $matchValue, ?ElementInterface $element): SyncDecision
     {
         if ($matchValue === null || $matchValue === '') {
-            return SyncDecision::SkipNoMatch;
+            return SyncDecision::SKIP_NO_MATCH;
         }
 
         if ($element === null) {
             return in_array(self::PROCESSING_CREATE, $this->processing, true)
-                ? SyncDecision::Create
-                : SyncDecision::SkipNoCreate;
+                ? SyncDecision::CREATE
+                : SyncDecision::SKIP_NO_CREATE;
         }
 
         return in_array(self::PROCESSING_UPDATE, $this->processing, true)
-            ? SyncDecision::Update
-            : SyncDecision::SkipNoUpdate;
+            ? SyncDecision::UPDATE
+            : SyncDecision::SKIP_NO_UPDATE;
     }
 }

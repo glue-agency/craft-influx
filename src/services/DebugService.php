@@ -217,8 +217,8 @@ class DebugService extends Component
         } catch (Throwable $e) {
             // populate() only throws from the target's buildNew() — mapping
             // errors are captured per-row by the applier.
-            $row['isNew'] = $resolution->decision === SyncDecision::Create;
-            $row['action'] = $row['isNew'] ? ItemAction::Created->dryRunLabel() : ItemAction::Updated->dryRunLabel();
+            $row['isNew'] = $resolution->decision === SyncDecision::CREATE;
+            $row['action'] = $row['isNew'] ? ItemAction::CREATED->dryRunLabel() : ItemAction::UPDATED->dryRunLabel();
             $row['error'] = 'buildNew: ' . $e->getMessage();
 
             return $row;
@@ -227,19 +227,19 @@ class DebugService extends Component
         $row['isNew'] = $result->isNew;
 
         if ($result->decision->isSkip()) {
-            $row['action'] = ItemAction::Skipped->dryRunLabel();
+            $row['action'] = ItemAction::SKIPPED->dryRunLabel();
             $row['message'] = $result->message;
 
             // A skipped-but-existing element still gets its mapping rows
             // rendered so the user can see what an enabled 'update' would
             // do — run a preview populate with a forced Update decision
             // (dry-run, so nothing is written).
-            if ($result->decision === SyncDecision::SkipNoUpdate && $resolution->element !== null) {
+            if ($result->decision === SyncDecision::SKIP_NO_UPDATE && $resolution->element !== null) {
                 try {
                     $preview = $this->itemProcessor->populate(
                         $context,
                         $remoteItem,
-                        new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::Update),
+                        new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::UPDATE),
                     );
                     $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element);
                 } catch (Throwable $e) {

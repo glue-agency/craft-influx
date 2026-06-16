@@ -33,8 +33,14 @@ class SettingsController extends Controller
             ->action('influx/settings/save')
             ->redirectUrl('influx/settings')
             ->tabs([
-                'synchronisation' => ['label' => Craft::t('influx', 'Synchronisation'), 'url' => '#synchronisation'],
-                'logging'         => ['label' => Craft::t('influx', 'Logging'),         'url' => '#logging'],
+                'synchronisation' => [
+                    'label' => Craft::t('influx', 'Synchronisation'),
+                    'url'   => '#synchronisation',
+                ],
+                'logging' => [
+                    'label' => Craft::t('influx', 'Logging'),
+                    'url'   => '#logging',
+                ],
             ])
             ->contentTemplate('influx/settings/index', [
                 'settings' => $settings,

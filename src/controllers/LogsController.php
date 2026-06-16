@@ -9,7 +9,7 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
-use Throwable;
+use GlueAgency\Influx\services\EventStreamService;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -133,8 +133,8 @@ class LogsController extends Controller
      * `done` sentinel once it settles. For finished logs it just emits the
      * final counters + done immediately.
      *
-     * Bypasses Yii's normal response pipeline (same shape as the debug stream
-     * on the link side) so each item can flush as soon as it lands in the DB.
+     * The SSE transport lives in {@see EventStreamService}; this only owns the
+     * poll loop that produces the events.
      */
     public function actionStream(int $id): void
     {
@@ -142,53 +142,31 @@ class LogsController extends Controller
             throw new NotFoundHttpException("Log #{$id} not found.");
         }
 
-        $request = Craft::$app->getRequest();
-        $lastId = (int) $request->getQueryParam('lastId', 0);
+        $lastId = (int) Craft::$app->getRequest()->getQueryParam('lastId', 0);
 
-        // Strip any output buffers Yii / PHP may have stacked, then take
-        // exclusive control of the response.
-        while (ob_get_level() > 0) {
-            @ob_end_clean();
-        }
-        @set_time_limit(0);
-        ignore_user_abort(true);
+        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($log, $lastId) {
+            $renderItem = function(LogItemRecord $item): array {
+                $elementHtml = null;
 
-        header('Content-Type: text/event-stream');
-        header('Cache-Control: no-cache');
-        header('X-Accel-Buffering: no');
+                if ($item->elementId) {
+                    $el = Craft::$app->getElements()->getElementById($item->elementId);
 
-        echo ": " . str_repeat(' ', 2048) . "\n\n";
-        @flush();
-
-        $emit = function(string $event, array $data): void {
-            echo "event: {$event}\n";
-            echo 'data: ' . json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
-            @flush();
-        };
-
-        $renderItem = function(LogItemRecord $item): array {
-            $elementHtml = null;
-
-            if ($item->elementId) {
-                $el = Craft::$app->getElements()->getElementById($item->elementId);
-
-                if ($el) {
-                    $elementHtml = Compat::elementChipHtml($el, ['hyperlink' => true]);
-                } else {
-                    $elementHtml = '<span class="light">#' . $item->elementId . ' (gone)</span>';
+                    if ($el) {
+                        $elementHtml = Compat::elementChipHtml($el, ['hyperlink' => true]);
+                    } else {
+                        $elementHtml = '<span class="light">#' . $item->elementId . ' (gone)</span>';
+                    }
                 }
-            }
 
-            return [
-                'id'          => (int) $item->id,
-                'action'      => (string) $item->action,
-                'matchValue'  => (string) ($item->matchValue ?? ''),
-                'message'     => (string) ($item->message ?? ''),
-                'elementHtml' => $elementHtml,
-            ];
-        };
+                return [
+                    'id'          => (int) $item->id,
+                    'action'      => (string) $item->action,
+                    'matchValue'  => (string) ($item->matchValue ?? ''),
+                    'message'     => (string) ($item->message ?? ''),
+                    'elementHtml' => $elementHtml,
+                ];
+            };
 
-        try {
             // Poll until the run finishes (or the client goes away). The first
             // pass also catches any items already written between page-load and
             // stream-connect.
@@ -202,7 +180,7 @@ class LogsController extends Controller
                     ->all();
 
                 foreach ($newItems as $item) {
-                    $emit('item', $renderItem($item));
+                    $stream->send('item', $renderItem($item));
                     $lastId = (int) $item->id;
                 }
 
@@ -210,7 +188,7 @@ class LogsController extends Controller
                 $fresh = LogRecord::findOne($log->id);
 
                 if ($fresh) {
-                    $emit('counters', [
+                    $stream->send('counters', [
                         'status'         => (string) $fresh->status,
                         'itemsSeen'      => (int) $fresh->itemsSeen,
                         'itemsCreated'   => (int) $fresh->itemsCreated,
@@ -228,19 +206,15 @@ class LogsController extends Controller
                     break;
                 }
 
-                if (connection_aborted() || time() > $deadline) {
+                if ($stream->aborted() || time() > $deadline) {
                     break;
                 }
 
                 sleep(1);
             }
 
-            $emit('done', ['status' => (string) $log->status]);
-        } catch (Throwable $e) {
-            $emit('error', ['message' => $e->getMessage()]);
-        }
-
-        Craft::$app->end();
+            $stream->send('done', ['status' => (string) $log->status]);
+        });
     }
 
     /**

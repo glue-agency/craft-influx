@@ -25,6 +25,7 @@ use GlueAgency\Influx\services\CooldownService;
 use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\services\EndpointTokensService;
+use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\services\FieldsService;
 use GlueAgency\Influx\services\LinkBuilderService;
 use GlueAgency\Influx\services\LinksService;
@@ -79,6 +80,7 @@ class Influx extends Plugin
                 'auth'            => AuthService::class,
                 'endpointTokens'  => EndpointTokensService::class,
                 'feedMe'          => FeedMeService::class,
+                'eventStream'     => EventStreamService::class,
             ],
         ];
     }

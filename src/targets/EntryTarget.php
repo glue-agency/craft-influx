@@ -16,7 +16,6 @@ use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
-use GlueAgency\Influx\fields\Relation;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
@@ -408,42 +407,34 @@ class EntryTarget extends AbstractElementTarget
                 'defaultType' => 'element',
                 'elementType' => User::class,
                 'fieldMeta'   => [
-                    'kind'         => 'relation',
-                    'elementType'  => User::class,
-                    'matchOptions' => $this->authorMatchOptions(),
-                    'allowCreate'  => false,
-                    'schema'       => [
+                    'schema' => [
                         BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
                             'default' => 'id',
                         ]),
                     ],
-                    'labels' => Relation::extrasLabels()
-                        + Field::commonExtrasLabels(),
+                    'labels' => Field::commonExtrasLabels(),
                 ],
             ],
         ];
     }
 
     /**
-     * Shared meta for postDate/expiryDate so the date extras block reads
-     * its preset list and labels from {@see \GlueAgency\Influx\fields\Date}, same
-     * as the custom Date field strategy.
+     * Shared meta for postDate/expiryDate so the date extras block reads its
+     * preset format list from {@see \GlueAgency\Influx\fields\Date}, same as the
+     * custom Date field strategy.
      *
      * @return array<string, mixed>
      */
     protected function dateFieldMeta(): array
     {
         return [
-            'kind'          => 'date',
-            'formatOptions' => Date::formatOptions(),
-            'schema'        => [
+            'schema' => [
                 BuilderSchema::select('format', Craft::t('influx', 'Date format'), Date::formatOptions(), [
                     'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
                     'default'      => '',
                 ]),
             ],
-            'labels' => Date::extrasLabels()
-                + Field::commonExtrasLabels(),
+            'labels' => Field::commonExtrasLabels(),
         ];
     }
 

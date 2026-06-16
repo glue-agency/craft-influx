@@ -44,7 +44,7 @@ class ItemProcessor
         $matchValue = $link->matchValue($item);
 
         if ($matchValue === null || $matchValue === '') {
-            return new ItemResolution($matchValue, null, SyncDecision::SkipNoMatch);
+            return new ItemResolution($matchValue, null, SyncDecision::SKIP_NO_MATCH);
         }
 
         $element = $context->target->findByMatchValue($link, $matchValue, $context->siteId);
@@ -67,7 +67,7 @@ class ItemProcessor
         if ($resolution->decision->isSkip()) {
             return new ItemSyncResult(
                 decision: $resolution->decision,
-                action: ItemAction::Skipped,
+                action: ItemAction::SKIPPED,
                 matchValue: $resolution->matchValue,
                 element: $resolution->element,
                 isNew: false,
@@ -76,7 +76,7 @@ class ItemProcessor
             );
         }
 
-        $isNew = $resolution->decision === SyncDecision::Create;
+        $isNew = $resolution->decision === SyncDecision::CREATE;
         $element = $resolution->element;
 
         if ($isNew) {
@@ -93,8 +93,8 @@ class ItemProcessor
         return new ItemSyncResult(
             decision: $resolution->decision,
             action: $outcome->changed
-                ? ($isNew ? ItemAction::Created : ItemAction::Updated)
-                : ItemAction::Unchanged,
+                ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
+                : ItemAction::UNCHANGED,
             matchValue: $resolution->matchValue,
             element: $element,
             isNew: $isNew,
@@ -106,7 +106,7 @@ class ItemProcessor
     /**
      * Phase 3 — persist the populated element. Pass-through for dry-runs,
      * skips, and unchanged results; on save failure the action becomes
-     * {@see ItemAction::Error} with the element's validation errors as the
+     * {@see ItemAction::ERROR} with the element's validation errors as the
      * message.
      */
     public function commit(SyncContext $context, ItemSyncResult $draft): ItemSyncResult
@@ -121,7 +121,7 @@ class ItemProcessor
 
         return new ItemSyncResult(
             decision: $draft->decision,
-            action: ItemAction::Error,
+            action: ItemAction::ERROR,
             matchValue: $draft->matchValue,
             element: $draft->element,
             isNew: $draft->isNew,
@@ -133,7 +133,7 @@ class ItemProcessor
 
     protected function skipMessage(Link $link, SyncDecision $decision): ?string
     {
-        if ($decision === SyncDecision::SkipNoMatch) {
+        if ($decision === SyncDecision::SKIP_NO_MATCH) {
             $matchAttr = $link->matchAttribute() ?: '?';
             $node = $link->getMappingCollection()->get($matchAttr)?->node ?? '?';
 

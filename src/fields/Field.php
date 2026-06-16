@@ -59,14 +59,12 @@ abstract class Field
     abstract public function parse(FieldContext $context): mixed;
 
     /**
-     * UI-side metadata for the mapping editor. Targets call this through
-     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()} when building the
-     * mappable-fields list, so per-field-type UI hints (asset sub-fields,
-     * dropdown options, relation element type, ...) live next to the parse
-     * logic instead of in a giant if-chain on the target.
-     *
-     * Subclasses override when they have something to say; the default is
-     * "no extras", which is correct for plain field types.
+     * Optional extra UI metadata, merged into the payload by
+     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}. The mapping
+     * extras UI is declared via {@see defineExtrasSchema()} — the primary
+     * contract, with labels co-located on each node — so most strategies
+     * never need this. Override only to ship structured meta a schema node
+     * can't express; `schema` and `labels` are reserved keys set by metaFor.
      */
     public function fieldMeta(CraftFieldInterface $field): array
     {
@@ -88,11 +86,11 @@ abstract class Field
     }
 
     /**
-     * UI strings shared by every kind of mapping-extras block — currently
-     * just the show/hide toggle copy. Strategies layer their own labels on
-     * top via `static::extrasLabels()` (or analogous) when assembling
-     * {@see fieldMeta()}, so the Vue side reads everything from
-     * `fieldMeta.labels` instead of hard-coding translations.
+     * The extras block's show/hide toggle copy — the only UI strings not
+     * carried on a schema node, and identical for every field kind.
+     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()} ships them
+     * as `fieldMeta.labels` so the Vue toggle reads translated copy instead
+     * of hard-coding English.
      *
      * @return array<string, string>
      */

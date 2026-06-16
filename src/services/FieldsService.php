@@ -110,19 +110,23 @@ class FieldsService extends Component
     }
 
     /**
-     * UI metadata for a given Craft field — delegated to the matching
-     * strategy so each field type owns both parse logic and UI hints.
-     * Ships the declarative extras `schema` (rendered generically by the
-     * SPA's SchemaForm) alongside the legacy kind/labels meta; whether a
-     * field has an extras block follows from the schema's existence.
+     * UI metadata for a given Craft field. A strategy declares its mapping
+     * extras as a {@see Field::defineExtrasSchema()} node list — the contract
+     * the SPA's SchemaForm renders generically, with each control's label
+     * co-located on its node. The shared show/hide toggle labels ride along
+     * as `labels` so every kind gets them translated; whether a field has an
+     * extras block follows from the schema being non-empty. A strategy's
+     * {@see Field::fieldMeta()} hook may contribute extra keys but can't
+     * override `schema` / `labels`.
      */
     public function metaFor(CraftFieldInterface $field): array
     {
         $strategy = $this->forCraftField($field);
 
-        return $strategy->fieldMeta($field) + [
+        return [
             'schema' => $strategy->defineExtrasSchema($field),
-        ];
+            'labels' => Field::commonExtrasLabels(),
+        ] + $strategy->fieldMeta($field);
     }
 
     /** @return array<class-string, Field> */

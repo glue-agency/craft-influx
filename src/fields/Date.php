@@ -29,19 +29,6 @@ class Date extends Field
     }
 
     /**
-     * UI strings rendered inside the date extras block.
-     *
-     * @return array<string, string>
-     */
-    public static function extrasLabels(): array
-    {
-        return [
-            'formatLabel' => Craft::t('influx', 'Date format'),
-            'formatHint'  => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
-        ];
-    }
-
-    /**
      * Preset PHP date formats offered in the mapping UI. Empty value means
      * "no explicit format" — the server then falls through to Craft's
      * `DateTimeHelper::toDateTime`. `timestamp` is a UI sentinel that the

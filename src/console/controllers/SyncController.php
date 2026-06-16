@@ -72,7 +72,7 @@ class SyncController extends Controller
                 // The sync runs async on the queue, so the log's counters are
                 // still zero here — nothing meaningful to report beyond the
                 // dispatch itself.
-                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::Console);
+                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE);
                 $this->success('done.');
             } catch (Throwable $e) {
                 $this->failure('FAILED: ' . $e->getMessage());

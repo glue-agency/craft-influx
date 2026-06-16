@@ -37,32 +37,6 @@ abstract class Relation extends Field
      */
     abstract protected function elementType(): string;
 
-    public function fieldMeta(CraftFieldInterface $field): array
-    {
-        /** @var BaseRelationField $field */
-        return [
-            'kind'         => 'relation',
-            'elementType'  => $field::elementType(),
-            'matchOptions' => $this->matchOptions($field),
-            'labels'       => self::extrasLabels() + self::commonExtrasLabels(),
-        ];
-    }
-
-    /**
-     * UI strings rendered inside the relation extras block. Static so the
-     * native `author` mapping on {@see \GlueAgency\Influx\targets\EntryTarget} can
-     * reuse the exact same set without building a field instance.
-     *
-     * @return array<string, string>
-     */
-    public static function extrasLabels(): array
-    {
-        return [
-            'matchBy'       => Craft::t('influx', 'Match by'),
-            'createMissing' => Craft::t('influx', 'Create when not found'),
-        ];
-    }
-
     /**
      * Options offered in the CP "Match by" dropdown — native identifiers
      * (id / slug / title) plus every custom-field handle defined on the
@@ -148,7 +122,7 @@ abstract class Relation extends Field
     public function defineExtrasSchema(CraftFieldInterface $field): array
     {
         /** @var BaseRelationField $field */
-        return [
+        $schema = [
             BuilderSchema::select(
                 'match',
                 Craft::t('influx', 'Match by'),
@@ -160,6 +134,52 @@ abstract class Relation extends Field
                 Craft::t('influx', 'Create when not found'),
             ),
         ];
+
+        $nativeSubFields = $this->nativeSubFields($field);
+
+        if ($nativeSubFields) {
+            $schema[] = BuilderSchema::elementSubFields(Craft::t('influx', 'Sub-fields'), $nativeSubFields);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Native attributes (title / slug) the related element can receive values
+     * for, rendered as an `elementSubFields` editor and applied via the
+     * mapping's `nativeFields` channel
+     * ({@see \GlueAgency\Influx\sync\SubElementApplier::applyNative()}).
+     *
+     * Driven by the related element's own field layout(s): each is offered
+     * only when a source layout actually includes it — entry types can
+     * auto-generate the title (titleFormat) or hide the slug, category groups
+     * vary too. The union across sources is offered; an unsupported attr that
+     * slips through is inert at apply time anyway.
+     *
+     * @return list<array>
+     */
+    protected function nativeSubFields(BaseRelationField $field): array
+    {
+        $subFields = [];
+
+        foreach ($this->sourceFieldLayouts($field) as $layout) {
+            if (! $layout instanceof FieldLayout) {
+                continue;
+            }
+
+            // Keyed by handle so a relation spanning several source layouts
+            // (multiple entry types / category groups) contributes each native
+            // field at most once — the first layout that includes it wins.
+            if (! isset($subFields['title']) && $layout->isFieldIncluded('title')) {
+                $subFields['title'] = BuilderSchema::text('title', $layout->getField('title')->label() ?: Craft::t('app', 'Title'));
+            }
+
+            if (! isset($subFields['slug']) && $layout->isFieldIncluded('slug')) {
+                $subFields['slug'] = BuilderSchema::text('slug', Craft::t('app', 'Slug'));
+            }
+        }
+
+        return array_values($subFields);
     }
 
     public function parse(FieldContext $context): mixed

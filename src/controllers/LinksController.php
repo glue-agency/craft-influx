@@ -12,6 +12,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
+use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use Throwable;
 use yii\web\ForbiddenHttpException;
@@ -148,27 +149,11 @@ class LinksController extends Controller
             $offset = null;
         }
 
-        // Strip any output buffers Yii / PHP may have stacked, then take
-        // exclusive control of the response.
-        while (ob_get_level() > 0) {
-            @ob_end_clean();
-        }
-        @set_time_limit(0);
-        ignore_user_abort(true);
-
-        header('Content-Type: text/event-stream');
-        header('Cache-Control: no-cache');
-        header('X-Accel-Buffering: no');
-
-        // Pad so proxies that buffer until they see N bytes start forwarding.
-        echo ": " . str_repeat(' ', 2048) . "\n\n";
-        @flush();
-
         $view = Craft::$app->getView();
-        $svc = Influx::getInstance()->debug;
+        $debug = Influx::getInstance()->debug;
 
-        try {
-            foreach ($svc->streamSite($link, $siteHandle, $limit, $offset) as $event) {
+        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($debug, $link, $siteHandle, $limit, $offset, $view) {
+            foreach ($debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
                 if ($event['type'] === 'item') {
                     $html = $view->renderTemplate(
                         'influx/links/_debug-item',
@@ -180,24 +165,15 @@ class LinksController extends Controller
                     $payload = $event['data'];
                 }
 
-                echo "event: {$event['type']}\n";
-                echo 'data: ' . json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
-                @flush();
+                $stream->send($event['type'], $payload);
 
-                if (connection_aborted()) {
-                    break;
+                if ($stream->aborted()) {
+                    return;
                 }
             }
 
-            echo "event: done\ndata: {}\n\n";
-            @flush();
-        } catch (Throwable $e) {
-            echo "event: error\n";
-            echo 'data: ' . json_encode(['message' => $e->getMessage()]) . "\n\n";
-            @flush();
-        }
-
-        Craft::$app->end();
+            $stream->send('done', []);
+        });
     }
 
     public function actionEdit(?string $handle = null, ?Link $link = null): Response
