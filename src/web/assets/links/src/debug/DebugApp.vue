@@ -1,60 +1,57 @@
 <template>
     <div class="influx-debug-app">
-        <!-- Inspector toolbar — the three controls read as one instrument
-             panel (labelled segments split by hairline rules) with the
-             primary action pinned to the right, rather than three stacked
-             Craft fields. -->
-        <form class="influx-inspector" @submit.prevent="reinspect">
-            <div class="influx-inspector-segment">
-                <span class="influx-inspector-label">{{ $t('Site') }}</span>
-                <span v-if="!sites.length" class="influx-inspector-static">{{ $t('Default endpoint') }}</span>
-                <div v-else class="select">
-                    <select v-model="site">
-                        <option v-for="s in sites" :key="s.handle" :value="s.handle">{{ s.name }}</option>
-                    </select>
-                </div>
-            </div>
+        <!-- Inspect lives in Craft's page-header action-buttons slot (rendered
+             server-side in debug.twig), so it sits where every other CP primary
+             action does. Teleport keeps it a reactive Vue button (disabled/label
+             track the stream) while placing it there; it falls back to rendering
+             in place when the target is absent (e.g. unit tests). -->
+        <teleport :to="actionTarget" :disabled="!hasActionTarget">
+            <button type="button" class="btn submit" data-icon="search" :disabled="streaming" @click="reinspect">
+                {{ streaming ? $t('Inspecting…') : $t('Inspect') }}
+            </button>
+        </teleport>
 
-            <span class="influx-inspector-rule" aria-hidden="true"></span>
-
-            <div class="influx-inspector-segment">
-                <span class="influx-inspector-label">{{ $t('Sliding window') }}</span>
-                <span v-if="!offsetHandles.length" class="influx-inspector-static">{{ $t('No presets') }}</span>
-                <div v-else class="select">
-                    <select v-model="offset">
-                        <option value="">{{ $t('all') }}</option>
-                        <option v-for="h in offsetHandles" :key="h" :value="h">{{ h }}</option>
-                    </select>
-                </div>
-            </div>
-
-            <span class="influx-inspector-rule" aria-hidden="true"></span>
-
-            <div class="influx-inspector-segment">
-                <span class="influx-inspector-label">{{ $t('Limit') }}</span>
-                <input v-model.number="limit" type="number" min="1" max="500" class="text influx-inspector-limit">
-            </div>
-
-            <div class="influx-inspector-actions">
-                <button type="submit" class="btn submit" data-icon="search" :disabled="streaming">
-                    {{ streaming ? $t('Inspecting…') : $t('Inspect') }}
-                </button>
-            </div>
-        </form>
-
-        <!-- Feed report — a response-style header (live status dot + endpoint)
-             over a tiled grid of the run's resolved facts, in place of the old
-             key/value table. -->
-        <h2 class="influx-debug-h2">{{ $t('Feed') }}</h2>
-        <div class="influx-feed" :class="feedState">
+        <!-- Feed report — one panel: a header (live status dot + endpoint), the
+             site/window/limit controls, and the run's resolved facts, all sharing
+             a single quarter-width column grid so the rows line up. -->
+        <div class="influx-feed">
             <div class="influx-feed-bar">
-                <span class="influx-feed-dot" aria-hidden="true"></span>
                 <div class="influx-feed-endpoint">
                     <span class="influx-feed-eyebrow">{{ $t('Endpoint') }}</span>
                     <code class="influx-feed-url">{{ (meta && meta.url) || '—' }}</code>
                 </div>
-                <span class="influx-feed-status">{{ feedStatusLabel }}</span>
             </div>
+
+            <!-- Controls row. A form so Enter in any field re-inspects (and the
+                 unit test can drive a submit); the visible trigger is the
+                 page-header button above. -->
+            <form class="influx-feed-row influx-feed-controls" @submit.prevent="reinspect">
+                <div class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Site') }}</span>
+                    <span v-if="!sites.length" class="influx-feed-static">{{ $t('Default endpoint') }}</span>
+                    <div v-else class="select">
+                        <select v-model="site">
+                            <option v-for="s in sites" :key="s.handle" :value="s.handle">{{ s.name }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Sliding window') }}</span>
+                    <span v-if="!offsetHandles.length" class="influx-feed-static">{{ $t('No presets') }}</span>
+                    <div v-else class="select">
+                        <select v-model="offset">
+                            <option value="">{{ $t('all') }}</option>
+                            <option v-for="h in offsetHandles" :key="h" :value="h">{{ h }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Limit') }}</span>
+                    <input v-model.number="limit" type="number" min="1" max="500" class="text influx-feed-limit">
+                </div>
+            </form>
 
             <p v-if="!meta" class="influx-feed-loading"><span class="spinner"></span> {{ $t('Fetching feed…') }}</p>
 
@@ -62,52 +59,71 @@
                 <pre>{{ meta.error }}</pre>
             </div>
 
-            <div v-else class="influx-feed-stats">
-                <div class="influx-feed-stat">
-                    <span class="influx-feed-stat-k">{{ $t('Items on page') }}</span>
-                    <span class="influx-feed-stat-v">
-                        {{ meta.itemsOnPage }}
-                        <em v-if="meta.itemsOnPage > meta.limit">{{ $t('showing first {n}', { n: meta.limit }) }}</em>
+            <div v-else class="influx-feed-row influx-feed-stats">
+                <!-- Pinned to the first column: what this feed is configured to
+                     do when a real run commits. -->
+                <div v-if="processingTags.length" class="influx-feed-cell influx-feed-cell--first">
+                    <span class="influx-feed-eyebrow">{{ $t('Actions') }}</span>
+                    <span class="influx-feed-tags">
+                        <span v-for="t in processingTags" :key="t.label" class="influx-feed-tag" :class="t.color">{{ t.label }}</span>
                     </span>
                 </div>
 
-                <div v-if="meta.paginatorNode" class="influx-feed-stat">
-                    <span class="influx-feed-stat-k">{{ $t('Paginator') }}</span>
-                    <span class="influx-feed-stat-v">
-                        <code>{{ meta.paginatorNode }}</code>
-                        <template v-if="meta.paginatorValue"><span class="influx-feed-arrow">→</span> <code class="influx-break">{{ meta.paginatorValue }}</code></template>
-                        <em v-else>{{ $t('no next page') }}</em>
+                <div v-if="meta.paginatorNode" class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Paginator') }}</span>
+                    <code class="influx-feed-token">{{ meta.paginatorNode }}</code>
+                    <span v-if="meta.paginatorValue" class="influx-feed-rel" :title="meta.paginatorValue">
+                        <span class="influx-feed-arrow" aria-hidden="true">→</span><code class="influx-feed-token">{{ meta.paginatorValue }}</code>
+                    </span>
+                    <span v-else class="influx-feed-rel light">{{ $t('no next page') }}</span>
+                </div>
+
+                <div v-if="meta.matchAttribute" class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Match') }}</span>
+                    <code class="influx-feed-token">{{ meta.matchAttribute }}</code>
+                    <span v-if="meta.matchNode" class="influx-feed-rel">
+                        <span class="influx-feed-arrow" aria-hidden="true">↤</span><code class="influx-feed-token">{{ meta.matchNode }}</code>
                     </span>
                 </div>
 
-                <div v-if="meta.matchAttribute" class="influx-feed-stat">
-                    <span class="influx-feed-stat-k">{{ $t('Match') }}</span>
-                    <span class="influx-feed-stat-v">
-                        <code>{{ meta.matchAttribute }}</code>
-                        <template v-if="meta.matchNode"><span class="influx-feed-arrow">↤</span> <code>{{ meta.matchNode }}</code></template>
-                    </span>
+                <div v-if="meta.offsetLabel" class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Sliding window') }}</span>
+                    <code class="influx-feed-token">{{ meta.offset }}</code>
+                    <span class="influx-feed-rel"><span class="influx-feed-arrow" aria-hidden="true">→</span>{{ meta.offsetLabel }}</span>
                 </div>
 
-                <div v-if="meta.offsetLabel" class="influx-feed-stat">
-                    <span class="influx-feed-stat-k">{{ $t('Sliding window') }}</span>
-                    <span class="influx-feed-stat-v"><code>{{ meta.offset }}</code> <span class="influx-feed-arrow">→</span> <code>{{ meta.offsetLabel }}</code></span>
+                <!-- Pinned to the last column (under the empty controls cell)
+                     regardless of how many other facts are present. -->
+                <div class="influx-feed-cell influx-feed-cell--last">
+                    <span class="influx-feed-eyebrow">{{ $t('Items on page') }}</span>
+                    <span class="influx-feed-stat-v">{{ meta.itemsOnPage }}</span>
+                    <span v-if="meta.itemsOnPage > meta.limit" class="influx-feed-rel">{{ $t('showing first {n}', { n: meta.limit }) }}</span>
                 </div>
             </div>
         </div>
 
-        <h2 class="influx-debug-h2">
-            {{ $t('Items') }}
-            <span class="light">{{ counterLabel }}</span>
-        </h2>
+        <h2 class="influx-debug-h2">{{ $t('Items') }}</h2>
 
         <debug-item v-for="(row, i) in items" :key="i" :row="row" />
 
-        <div class="light influx-debug-status">{{ statusLabel }}</div>
+        <div v-if="statusLabel" class="light influx-debug-status">{{ statusLabel }}</div>
     </div>
 </template>
 
 <script>
 import DebugItem from '../components/DebugItem.vue';
+import { actionColor } from '../lib/actionColors.js';
+
+// Configured processing actions → the dry-run tag they'd produce. Mirrors
+// ItemAction::dryRunLabel() on the PHP side; the order is ALL_PROCESSING so
+// the tags always read create → update → disable → delete.
+const PROCESSING_LABELS = {
+    'create':          'would-create',
+    'update':          'would-update',
+    'disable':         'would-disable',
+    'delete':          'would-delete',
+    'delete-for-site': 'would-delete-for-site',
+};
 
 /**
  * The debug inspector page. Owns the site/offset/limit form, opens the SSE
@@ -130,43 +146,42 @@ export default {
             limit: this.config.limit || 10,
             sites: this.config.sites || [],
             offsetHandles: this.config.offsetHandles || [],
+            processing: this.config.processing || [],
             meta: null,
             items: [],
             streaming: false,
             streamError: false,
             es: null,
+            // Craft renders an empty action-buttons slot (see debug.twig) that
+            // we Teleport the Inspect button into. Resolved in mounted(); until
+            // then the Teleport is disabled and the button renders in place.
+            actionTarget: '#influx-debug-actions',
+            hasActionTarget: false,
         };
     },
 
     computed: {
-        counterLabel() {
-            return this.items.length ? this.$t('{n} items', { n: this.items.length }) : '';
+        // The link's configured processing actions as dry-run tags — what
+        // this feed is allowed to do when a real run commits.
+        processingTags() {
+            return Object.keys(PROCESSING_LABELS)
+                .filter((action) => this.processing.includes(action))
+                .map((action) => {
+                    const label = PROCESSING_LABELS[action];
+
+                    return { label, color: actionColor(label) };
+                });
         },
 
         statusLabel() {
             if (this.streamError) return this.$t('Stream closed.');
             if (this.streaming) return this.$t('Streaming…');
-            return this.meta ? this.$t('Done.') : '';
-        },
-
-        // Feed fetch outcome — drives the report card's status dot/label
-        // colour. Loading until the meta frame lands; ok unless the feed (or
-        // the stream) reported an error.
-        feedState() {
-            if (this.streamError || this.meta?.error) return 'is-error';
-            if (!this.meta) return 'is-loading';
-            return 'is-ok';
-        },
-
-        feedStatusLabel() {
-            if (this.streamError) return this.$t('Connection lost');
-            if (this.meta?.error) return this.$t('Fetch failed');
-            if (!this.meta) return this.$t('Connecting…');
-            return this.$t('Connected');
+            return '';
         },
     },
 
     mounted() {
+        this.hasActionTarget = !!document.querySelector(this.actionTarget);
         this.openStream();
     },
 
@@ -190,7 +205,7 @@ export default {
             const params = new URLSearchParams();
             if (this.site) params.set('site', this.site);
             if (this.offset) params.set('offset', this.offset);
-            params.set('limit', String(this.limit || 25));
+            params.set('limit', String(this.limit || 10));
             const url = base + (base.includes('?') ? '&' : '?') + params.toString();
 
             const es = new EventSource(url, { withCredentials: true });
@@ -225,61 +240,9 @@ export default {
 
 <style scoped>
 .influx-debug-h2 { margin-top: 28px; }
-.influx-debug-h2 .light { font-weight: normal; }
 .influx-debug-status { margin-top: 14px; }
-.influx-break { word-break: break-all; }
 
-/* ---- Inspector toolbar -------------------------------------------------- */
-.influx-inspector {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 14px 18px;
-    padding: 14px 18px;
-    background: var(--gray-050);
-    border: 1px solid var(--hairline-color);
-    border-radius: var(--large-border-radius);
-}
-
-.influx-inspector-segment {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.influx-inspector-label,
-.influx-feed-eyebrow,
-.influx-feed-stat-k {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--medium-text-color);
-}
-
-.influx-inspector-static {
-    padding: 6px 0;
-    font-size: 13px;
-    color: var(--light-text-color);
-}
-
-.influx-inspector-limit { width: 76px; }
-
-/* Hairline separators between segments. They stretch to control height and
-   simply wrap out of view on narrow layouts. */
-.influx-inspector-rule {
-    align-self: stretch;
-    width: 1px;
-    margin: 2px 0;
-    background: var(--hairline-color);
-}
-
-.influx-inspector-actions {
-    margin-left: auto;
-    align-self: flex-end;
-}
-
-/* ---- Feed report card --------------------------------------------------- */
+/* ---- Feed panel --------------------------------------------------------- */
 .influx-feed {
     overflow: hidden;
     background: var(--white);
@@ -287,6 +250,7 @@ export default {
     border-radius: var(--large-border-radius);
 }
 
+/* Header bar: the resolved endpoint. */
 .influx-feed-bar {
     display: flex;
     align-items: center;
@@ -294,34 +258,6 @@ export default {
     padding: 13px 18px;
     background: var(--gray-050);
     border-bottom: 1px solid var(--hairline-color);
-}
-
-.influx-feed-dot {
-    flex: none;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--medium-text-color);
-}
-
-.influx-feed.is-ok .influx-feed-dot {
-    background: var(--enabled-color);
-    box-shadow: 0 0 0 3px rgba(45, 168, 100, 0.16);
-}
-
-.influx-feed.is-error .influx-feed-dot {
-    background: var(--error-color);
-    box-shadow: 0 0 0 3px rgba(207, 17, 36, 0.16);
-}
-
-.influx-feed.is-loading .influx-feed-dot {
-    background: var(--pending-color);
-    animation: influx-feed-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes influx-feed-pulse {
-    0%, 100% { opacity: 1;    transform: scale(1); }
-    50%      { opacity: 0.4;  transform: scale(0.8); }
 }
 
 .influx-feed-endpoint {
@@ -340,17 +276,104 @@ export default {
     word-break: break-all;
 }
 
-.influx-feed-status {
-    flex: none;
+/* Shared quarter-width column grid — the controls row and the facts row use
+   the same four columns, so Site/Window/Limit line up over the facts below. */
+.influx-feed-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px 18px;
+    align-items: end;
+    padding: 16px 18px;
+}
+
+.influx-feed-controls { border-bottom: 1px solid var(--hairline-color); }
+
+/* Controls bottom-align their inputs (.influx-feed-row default); facts top-align
+   so their labels share a baseline while values flow down to varying heights. */
+.influx-feed-stats { align-items: start; }
+
+.influx-feed-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Configured actions pin left, items-on-page pins right, so they bookend the
+   facts row whatever else is present; the remaining facts flow between. */
+.influx-feed-cell--first { grid-column: 1; }
+.influx-feed-cell--last { grid-column: 4; }
+
+.influx-feed-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Same pill palette as the debug-item action tags. */
+.influx-feed-tag {
+    border-radius: 9px;
+    padding: 2px 9px;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.04em;
+}
+
+.influx-feed-tag.live    { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
+.influx-feed-tag.pending { background: rgba(0, 0, 0, 0.08); color: #555; }
+.influx-feed-tag.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
+
+.influx-feed-eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--medium-text-color);
 }
 
-.influx-feed.is-ok    .influx-feed-status { color: var(--enabled-color); }
-.influx-feed.is-error .influx-feed-status { color: var(--error-color); }
+.influx-feed-static {
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--light-text-color);
+}
+
+/* Controls fill their quarter rather than sizing to content. */
+.influx-feed-controls .select,
+.influx-feed-controls .select select,
+.influx-feed-limit { width: 100%; }
+
+.influx-feed-stat-v {
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+/* Identifiers (node paths, handles) read as code but without the heavy chip
+   chrome — plain monospace that sits inline with the surrounding text. */
+.influx-feed-token {
+    padding: 0;
+    background: none;
+    font-size: 12px;
+    color: var(--text-color);
+}
+
+/* The resolved/secondary side of a fact (the live next-page URL, the source
+   node a match maps from, the window label) on its own muted line — truncated
+   with a hover title so a long URL never wraps mid-token. */
+.influx-feed-rel {
+    display: block;
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 12px;
+    color: var(--medium-text-color);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.influx-feed-rel .influx-feed-token { color: var(--medium-text-color); }
+
+.influx-feed-arrow {
+    margin-right: 5px;
+    color: var(--light-text-color);
+}
 
 .influx-feed-loading {
     margin: 0;
@@ -370,42 +393,9 @@ export default {
     word-break: break-word;
 }
 
-/* Tiled facts — 1px gaps over a hairline backdrop draw the gridlines, so
-   each tile keeps Craft's panel colour while the dividers stay crisp. */
-.influx-feed-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 1px;
-    background: var(--hairline-color);
-}
-
-.influx-feed-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 14px 18px;
-    background: var(--white);
-}
-
-.influx-feed-stat-v {
-    font-size: 13px;
-    color: var(--text-color);
-}
-
-.influx-feed-stat-v code {
-    padding: 1px 5px;
-    font-size: 12px;
-    background: var(--gray-100);
-    border-radius: var(--small-border-radius);
-}
-
-.influx-feed-stat-v em {
-    font-style: normal;
-    color: var(--light-text-color);
-}
-
-.influx-feed-arrow {
-    margin: 0 3px;
-    color: var(--light-text-color);
+@media (max-width: 740px) {
+    .influx-feed-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .influx-feed-cell--first,
+    .influx-feed-cell--last { grid-column: auto; }
 }
 </style>

@@ -59,9 +59,13 @@ class EndpointResolver
     /**
      * Best-effort URL for human-facing debug display. Returns the env-resolved
      * URL, or the raw token when the env isn't set — never throws, since this
-     * is purely informational.
+     * is purely informational. Any extra query params (e.g. a sliding-window
+     * preset's offset params) are merged in so the displayed endpoint matches
+     * what the run actually fetches.
+     *
+     * @param array<string, string|int> $queryParams
      */
-    public function listUrlForDisplay(Link $link, ?string $siteHandle = null): ?string
+    public function listUrlForDisplay(Link $link, ?string $siteHandle = null, array $queryParams = []): ?string
     {
         $raw = $this->rawListEndpoint($link, $siteHandle);
 
@@ -69,8 +73,29 @@ class EndpointResolver
             return null;
         }
         $parsed = App::parseEnv($raw);
+        $url = is_string($parsed) && $parsed !== '' ? $parsed : $raw;
 
-        return is_string($parsed) && $parsed !== '' ? $parsed : $raw;
+        if (! $queryParams) {
+            return $url;
+        }
+
+        return $this->mergeQuery($url, $queryParams);
+    }
+
+    /**
+     * Merge extra params into a URL's query string, overriding existing keys
+     * of the same name. Display-only — fragments aren't preserved.
+     *
+     * @param array<string, string|int> $params
+     */
+    protected function mergeQuery(string $url, array $params): string
+    {
+        [$base, $existing] = array_pad(explode('?', $url, 2), 2, '');
+
+        parse_str($existing, $current);
+        $merged = http_build_query(array_merge($current, $params));
+
+        return $merged !== '' ? "{$base}?{$merged}" : $base;
     }
 
     protected function rawListEndpoint(Link $link, ?string $siteHandle): ?string

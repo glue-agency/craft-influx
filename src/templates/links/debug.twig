@@ -8,6 +8,13 @@
     { label: link.name, url: cpUrl("influx/links/" ~ link.id) },
 ] %}
 
+{# Empty action-buttons slot for the SPA to Teleport its Inspect button into,
+   so the primary action sits in the page header like every other CP screen.
+   Defining the block is what makes Craft render the #action-buttons container. #}
+{% block actionButton %}
+    <div id="influx-debug-actions" class="flex"></div>
+{% endblock %}
+
 {% block content %}
     {# Mount point for the Vue debug inspector (DebugApp). Bootstrap config
        rides along as a JSON data attribute. #}
@@ -18,5 +25,6 @@
         limit: limit,
         sites: sites,
         offsetHandles: offsetHandles,
+        processing: processing,
     }|json_encode }}"></div>
 {% endblock %}

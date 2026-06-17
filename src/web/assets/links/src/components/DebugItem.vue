@@ -43,7 +43,7 @@
             >
                 <div class="meta">
                     <span class="name">{{ m.label }}</span>
-                    <span class="handle">{{ m.handle }}<template v-if="m.native"> ({{ $t('native') }})</template></span>
+                    <code class="handle light">{{ m.handle }}<template v-if="m.native"> ({{ $t('native') }})</template></code>
                 </div>
 
                 <div>

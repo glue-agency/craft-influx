@@ -109,6 +109,7 @@ class LinksController extends AbstractController
             'selectedSite'   => $selectedSite,
             'offsetHandles'  => $offsetHandles,
             'selectedOffset' => $selectedOffset,
+            'processing'     => array_values($link->processing ?? []),
             'streamUrl'      => UrlHelper::cpUrl("influx/links/{$link->id}/debug/stream"),
         ]);
     }

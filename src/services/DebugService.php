@@ -28,7 +28,7 @@ use Throwable;
  */
 class DebugService extends Component
 {
-    public const DEFAULT_LIMIT = 25;
+    public const DEFAULT_LIMIT = 10;
 
     /**
      * The same pipeline {@see SynchronizationService} runs — invoked here
@@ -81,7 +81,7 @@ class DebugService extends Component
             return;
         }
 
-        $url = $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle);
+        $url = $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle, $queryParams);
 
         // Same iterator the sync run walks — the debug view just stops after
         // the first page.
