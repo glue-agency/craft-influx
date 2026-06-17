@@ -50,15 +50,14 @@ describe('LogApp', () => {
         const w = mountApp();
 
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(2);
-        const created = w.findAll('.influx-log-filter').find((b) => b.text().includes('created'));
+        const created = w.findAll('.influx-log-filters li').find((li) => li.text().includes('created'));
         expect(created.text()).toContain('1');
     });
 
     it('hides items whose action filter is toggled off', async () => {
         const w = mountApp();
-        const createdBtn = w.findAll('.influx-log-filter').find((b) => b.text().includes('created'));
 
-        await createdBtn.trigger('click');
+        await w.find('#influx-log-filter-created').trigger('change');
 
         // Only the 'skipped' row remains.
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(1);

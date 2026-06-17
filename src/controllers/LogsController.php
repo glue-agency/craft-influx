@@ -22,19 +22,20 @@ class LogsController extends AbstractController
 
         ['logs' => $logs, 'total' => $total] = Influx::getInstance()->logs->paginate($page, $perPage);
 
-        // handle => id, so each row can link to its link's edit screen by id
-        // (logs only store the handle); a deleted link is absent from the map.
-        $linkIds = array_map(
-            static fn($link) => $link->id,
-            Influx::getInstance()->links->getAllLinks(),
-        );
+        // handle => id / handle => name, so each row can link to its link's
+        // edit screen by id and show its friendly name (logs only store the
+        // handle); a deleted link is absent from both maps.
+        $links = Influx::getInstance()->links->getAllLinks();
+        $linkIds = array_map(static fn($link)   => $link->id, $links);
+        $linkNames = array_map(static fn($link) => $link->name, $links);
 
         return $this->renderTemplate('influx/logs/index', [
-            'logs'    => $logs,
-            'page'    => $page,
-            'perPage' => $perPage,
-            'total'   => $total,
-            'linkIds' => $linkIds,
+            'logs'      => $logs,
+            'page'      => $page,
+            'perPage'   => $perPage,
+            'total'     => $total,
+            'linkIds'   => $linkIds,
+            'linkNames' => $linkNames,
         ]);
     }
 

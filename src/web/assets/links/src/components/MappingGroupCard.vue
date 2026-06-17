@@ -48,6 +48,10 @@ export default {
         variant: { type: String, default: '' },
     },
 
+    // Emitted with the new expanded state on every toggle, so consumers can
+    // react (e.g. the log viewer lazy-loads an item's detail on first expand).
+    emits: ['toggle'],
+
     data() {
         return {
             isExpanded: this.defaultExpanded,
@@ -67,6 +71,7 @@ export default {
         toggle() {
             if (this.collapsible) {
                 this.isExpanded = !this.isExpanded;
+                this.$emit('toggle', this.isExpanded);
             }
         },
     },

@@ -41,12 +41,11 @@
                         </td>
                         <td>
                             {% set linkId = linkIds[log.linkHandle] ?? null %}
+                            {% set linkName = linkNames[log.linkHandle] ?? log.linkHandle %}
                             {% if linkId %}
-                                <a href="{{ cpUrl("influx/links/" ~ linkId) }}">
-                                    <code>{{ log.linkHandle }}</code>
-                                </a>
+                                <a href="{{ cpUrl("influx/links/" ~ linkId) }}">{{ linkName }}</a>
                             {% else %}
-                                <code>{{ log.linkHandle }}</code>
+                                {{ linkName }}
                             {% endif %}
                         </td>
                         <td>{{ log.trigger }}</td>

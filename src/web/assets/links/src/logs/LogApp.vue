@@ -37,41 +37,32 @@
             <span v-if="streamLabel" class="light">— {{ streamLabel }}</span>
         </h2>
 
-        <div class="flex influx-log-filters">
-            <button
-                v-for="f in filterDefs"
-                :key="f.action"
-                type="button"
-                class="btn influx-log-filter"
-                :class="{ active: activeFilters[f.action] }"
-                @click="toggleFilter(f.action)"
-            >
-                <span class="status" :class="f.color"></span>
-                <span>{{ $t(f.action) }}</span>
-                <span class="light influx-log-filter-count">{{ filterCounts[f.action] || 0 }}</span>
-            </button>
-        </div>
+        <!-- Native Craft checkbox group (matches the builder's processing-action
+             filters): each action toggles its own visibility; the status dot
+             carries the action's colour, the count rides along in the label. -->
+        <ul class="influx-log-filters">
+            <li v-for="f in filterDefs" :key="f.action">
+                <input
+                    type="checkbox"
+                    class="checkbox"
+                    :id="`influx-log-filter-${f.action}`"
+                    :checked="activeFilters[f.action]"
+                    @change="toggleFilter(f.action)"
+                >
+                <label :for="`influx-log-filter-${f.action}`">
+                    <span class="status" :class="f.color"></span>{{ $t(f.action) }} <span class="light">({{ filterCounts[f.action] || 0 }})</span>
+                </label>
+            </li>
+        </ul>
 
-        <table class="data fullwidth">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>{{ $t('Action') }}</th>
-                    <th>{{ $t('Match value') }}</th>
-                    <th>{{ $t('Element') }}</th>
-                    <th>{{ $t('Message') }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                <log-item
-                    v-for="item in visibleItems"
-                    :key="item.id"
-                    :item="item"
-                    :item-url-template="config.itemUrlTemplate"
-                    :colspan="5"
-                />
-            </tbody>
-        </table>
+        <div class="influx-log-items">
+            <log-item
+                v-for="item in visibleItems"
+                :key="item.id"
+                :item="item"
+                :item-url-template="config.itemUrlTemplate"
+            />
+        </div>
 
         <p v-if="!items.length && !isLive" class="light">{{ $t('No per-item rows.') }}</p>
     </div>
@@ -142,11 +133,13 @@ export default {
         },
 
         visibleItems() {
+            // Newest first. filter() returns a fresh array, so reverse() here
+            // doesn't mutate the source order the stream appends to.
             return this.items.filter((it) => {
                 const filterable = this.activeFilters[it.action] !== undefined;
 
                 return ! filterable || this.activeFilters[it.action];
-            });
+            }).reverse();
         },
     },
 
@@ -214,6 +207,15 @@ export default {
 </script>
 
 <style scoped>
-.influx-log-filters { gap: .4em; margin: 0 0 14px; flex-wrap: wrap; }
-.influx-log-filter-count { margin-left: .4em; }
+.influx-log-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+}
+/* Anchor the visually-hidden checkbox input to its own row. */
+.influx-log-filters li { position: relative; }
+.influx-log-filters .status { margin-right: 5px; }
 </style>
