@@ -44,10 +44,20 @@ class Assets extends RelationalField
         // branch in parse() / the upload helper, so they're intentionally
         // closed (no event registry — an unknown value would be inert).
         return [
+            // Grouped options so this renders via the shared SearchableSelect,
+            // matching the relation / author "Match by" controls. id + url are
+            // the asset's native identifiers; the handle stays `mode` so saved
+            // configs keep round-tripping.
             BuilderSchema::select('mode', Craft::t('influx', 'Match by'),
                 [
-                    ['value' => 'id',  'label' => Craft::t('influx', 'Asset ID')],
-                    ['value' => 'url', 'label' => Craft::t('influx', 'URL (lookup or download)')],
+                    [
+                        'label'   => Craft::t('influx', 'Asset'),
+                        'kind'    => 'element',
+                        'options' => [
+                            ['value' => 'id',  'label' => Craft::t('influx', 'ID (id)')],
+                            ['value' => 'url', 'label' => Craft::t('influx', 'URL (url)')],
+                        ],
+                    ],
                 ],
                 [
                     'default' => 'id',
@@ -57,7 +67,7 @@ class Assets extends RelationalField
                 'showIf' => $url,
             ]),
             BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), [
-                ['value' => 'index',   'label' => Craft::t('influx', 'Reuse existing')],
+                ['value' => 'index',   'label' => Craft::t('influx', 'Use existing')],
                 ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
             ], [
                 'default' => 'index',
