@@ -72,7 +72,7 @@
                 type="text"
                 :class="['text', sub.type === 'code' ? 'code' : null]"
                 :value="rowFor(sub.handle).default"
-                :placeholder="sub.placeholder || '—'"
+                :placeholder="sub.placeholder || null"
                 :disabled="readOnly"
                 @input="updateRow(sub.handle, 'default', $event.target.value)"
             >
