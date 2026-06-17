@@ -9,7 +9,6 @@ use craft\fields\Assets as CraftAssetsField;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\SubElementApplier;
 use Throwable;
 
 /**
@@ -18,16 +17,18 @@ use Throwable;
  *   options.mode:      'id' | 'url'
  *   options.subFields: { alt: { node: 'images.0.alt', default: '' }, ... }
  *
- * In `id` mode the value is treated as an existing asset id. In `url` mode
- * we look up an asset whose `getUrl()` matches verbatim, optionally
- * downloading it when `options.upload` is enabled (matches FeedMe's
- * `options.upload` path). Uploads land in the field's own configured
- * upload location — never a separate mapping option.
+ * In `id` mode the value is treated as an existing asset id. In `url` mode we
+ * look up an asset by filename, preferring one whose `getUrl()` matches the
+ * remote URL exactly but falling back (best-effort) to a same-filename asset
+ * when no URL matches — so a CDN/host change doesn't force a re-download. When
+ * nothing matches and `options.upload` is enabled the file is downloaded
+ * (matches FeedMe's `options.upload` path). Uploads land in the field's own
+ * configured upload location — never a separate mapping option.
  *
  * Sub-field values (alt/title) are written back to the matched asset itself,
  * mirroring how FeedMe handles asset sub-fields.
  */
-class Assets extends Field
+class Assets extends RelationalField
 {
     public static function craftFieldClass(): ?string
     {
@@ -74,9 +75,10 @@ class Assets extends Field
 
     public function parse(FieldContext $context): mixed
     {
+        // resolve() already normalises empty to null.
         $raw = $context->mapping->resolve($context->item);
 
-        if ($raw === null || $raw === '') {
+        if ($raw === null) {
             return null;
         }
 
@@ -87,27 +89,9 @@ class Assets extends Field
             return null;
         }
 
-        $this->applySubFields($context, $asset);
+        $this->persistSubElement($context, $asset);
 
         return [$asset->id];
-    }
-
-    public function hasChanged(FieldContext $context, mixed $incoming): bool
-    {
-        if (! is_array($incoming)) {
-            return true;
-        }
-
-        try {
-            $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
-        } catch (Throwable) {
-            return true;
-        }
-        sort($currentIds);
-        $incomingSorted = $incoming;
-        sort($incomingSorted);
-
-        return $currentIds !== $incomingSorted;
     }
 
     protected function findById(mixed $raw): ?Asset
@@ -226,21 +210,5 @@ class Assets extends Field
         }
 
         return $asset; // best-effort: same filename, possibly different host
-    }
-
-    /**
-     * Apply sub-mappings (alt/title) to the matched asset and persist it when
-     * something changed. Skipped under dry-run — the asset is a real, saved
-     * element the debug inspector must not mutate.
-     */
-    protected function applySubFields(FieldContext $context, Asset $asset): void
-    {
-        if ($context->dryRun) {
-            return;
-        }
-
-        if ((new SubElementApplier())->apply($asset, $context)) {
-            Craft::$app->getElements()->saveElement($asset, false);
-        }
     }
 }

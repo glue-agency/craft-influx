@@ -67,7 +67,13 @@ interface ElementTargetInterface
      *
      * Implementations resolve the value via {@see FieldMapping::resolve()},
      * translate it to whatever attribute(s) the element actually accepts
-     * (e.g. coercing `enabled` to a bool), and return true if a write happened.
+     * (e.g. coercing `enabled` to a bool), and return true when the write
+     * actually CHANGED the element's value — so the sync engine can skip saving
+     * elements nothing changed for. The target owns this comparison because
+     * only it knows each attribute's semantics (e.g. that `author` compares by
+     * id, not by the relation object a naive before/after read would return).
+     * An empty resolved value clears the attribute (the feed is authoritative);
+     * the engine only calls this for an actively-mapped handle.
      *
      * Convention: {@see AbstractElementTarget} dispatches to a
      * `parse{Handle}()` method on the target when one exists — declare

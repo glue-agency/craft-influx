@@ -10,8 +10,6 @@ use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\SubElementApplier;
-use Throwable;
 
 /**
  * Shared base for relational fields: Entries, Users, Categories, Tags, ...
@@ -19,7 +17,7 @@ use Throwable;
  *   options.match: 'id' | 'title' | 'slug' | <native attr or unique field handle>
  *   nativeFields:  recursive map written back to the related element itself
  *   fields:        recursive map for the related element's custom fields
- *                  (handled by populateSubElement)
+ *                  (persisted via RelationalField::persistSubElement)
  *
  * Subclasses just declare the Craft field class they cover and (optionally)
  * override `createMissing()` to create elements when no match is found.
@@ -29,7 +27,7 @@ use Throwable;
  * NOT mirrored from FeedMe: side effects (creating elements, saving sub
  * elements) are dry-run-gated via {@see FieldContext::$dryRun}.
  */
-abstract class Relation extends Field
+abstract class Relation extends RelationalField
 {
     /**
      * Element class this relation field points at — Entry / User / Category /
@@ -148,7 +146,7 @@ abstract class Relation extends Field
      * Native attributes (title / slug) the related element can receive values
      * for, rendered as an `elementSubFields` editor and applied via the
      * mapping's `nativeFields` channel
-     * ({@see \GlueAgency\Influx\sync\SubElementApplier::applyNative()}).
+     * ({@see \GlueAgency\Influx\sync\MappingApplier::applyNativeSubField()}).
      *
      * Driven by the related element's own field layout(s): each is offered
      * only when a source layout actually includes it — entry types can
@@ -186,7 +184,9 @@ abstract class Relation extends Field
     {
         $raw = $context->mapping->resolve($context->item);
 
-        if ($raw === null || $raw === '') {
+        // resolve() already normalises empty to null; list elements are still
+        // guarded individually below.
+        if ($raw === null) {
             return null;
         }
 
@@ -207,34 +207,31 @@ abstract class Relation extends Field
 
             if ($element) {
                 $ids[] = $element->id;
-                $this->populateSubElement($context, $element);
+                $this->persistSubElement($context, $element);
             }
         }
 
         return $ids ?: null;
     }
 
-    public function hasChanged(FieldContext $context, mixed $incoming): bool
-    {
-        if (! is_array($incoming)) {
-            return true;
-        }
-
-        try {
-            $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
-        } catch (Throwable) {
-            return true;
-        }
-        sort($currentIds);
-        $incoming = array_values($incoming);
-        sort($incoming);
-
-        return $currentIds !== $incoming;
-    }
-
     protected function shouldCreate(FieldContext $context): bool
     {
         return ! empty($context->mapping->option('create'));
+    }
+
+    /**
+     * Extract the UID from a Craft field source key (`section:UID`,
+     * `group:UID`, `taggroup:UID`, ...) when it matches the given prefix, or
+     * null. Subclasses decode their own source flavour through this rather
+     * than repeating the `str_starts_with` + `explode` dance.
+     */
+    protected function sourceUid(mixed $source, string $prefix): ?string
+    {
+        if (! is_string($source) || ! str_starts_with($source, $prefix)) {
+            return null;
+        }
+
+        return explode(':', $source)[1] ?? null;
     }
 
     /**
@@ -278,26 +275,5 @@ abstract class Relation extends Field
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
         return null;
-    }
-
-    /**
-     * Apply any configured sub-mappings to the related element and persist it
-     * when something changed. Inherited by every relation strategy
-     * ({@see Entries}, {@see Categories}, {@see Tags}, {@see Users}) — they
-     * all get sub-mapping support "for free" through this base.
-     *
-     * Skipped entirely under dry-run: the related element is a real, saved
-     * element that the debug inspector must not mutate. The walk itself
-     * ({@see SubElementApplier}) never saves; persistence is decided here.
-     */
-    protected function populateSubElement(FieldContext $context, ElementInterface $element): void
-    {
-        if ($context->dryRun) {
-            return;
-        }
-
-        if ((new SubElementApplier())->apply($element, $context)) {
-            Craft::$app->getElements()->saveElement($element, false);
-        }
     }
 }

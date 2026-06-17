@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\services;
 
-use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
@@ -71,11 +70,14 @@ class SynchronizationService extends Component
      * Run a full link sync.
      *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
+     * @param string|null $siteHandle Restrict the run to a single configured
+     * site; null runs every site the link is configured for.
      */
     public function syncLink(
         Link $link,
         ?string $offset = null,
         SyncTrigger $trigger = SyncTrigger::CONSOLE,
+        ?string $siteHandle = null,
     ): LogRecord {
         $plugin = Influx::getInstance();
 
@@ -88,26 +90,17 @@ class SynchronizationService extends Component
 
         $plugin->backup->backupForLink($link);
 
-        $log = $plugin->logs->start($link, $trigger);
-
         $target = $this->resolveTarget($link);
+        $siteHandles = $this->runSites($link, $siteHandle);
 
         [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
-        try {
-            $siteHandles = $link->siteHandles() ?: [null];
-
-            foreach ($siteHandles as $siteHandle) {
-                $context = $this->siteContext($link, $target, $siteHandle, $trigger);
+        $log = $this->runWithLog($link, $trigger, function(LogRecord $log) use ($link, $target, $trigger, $queryParams, $siteHandles) {
+            foreach ($siteHandles as $handle) {
+                $context = SyncContext::forSite($link, $target, $handle, $trigger);
                 $this->processSite($context, $queryParams, $log);
             }
-
-            $plugin->logs->finish($log);
-        } catch (Throwable $e) {
-            $plugin->logs->fail($log, $e->getMessage());
-
-            throw $e;
-        }
+        });
 
         $afterEvent = new SyncLinkEvent([
             'link'           => $link,
@@ -142,13 +135,9 @@ class SynchronizationService extends Component
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
-        $log = $plugin->logs->start($link, SyncTrigger::ELEMENT);
-
-        try {
-            $siteHandles = $link->siteHandles() ?: [null];
-
-            foreach ($siteHandles as $siteHandle) {
-                $context = $this->siteContext($link, $target, $siteHandle, SyncTrigger::ELEMENT);
+        return $this->runWithLog($link, SyncTrigger::ELEMENT, function(LogRecord $log) use ($plugin, $link, $target, $element) {
+            foreach ($link->syncSiteHandles() as $siteHandle) {
+                $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
                 $item = new RemoteItem($plugin->data->fetchOne($link, $tokens));
 
@@ -160,9 +149,46 @@ class SynchronizationService extends Component
             }
 
             $plugin->cooldown->mark($link, $element);
-            $plugin->logs->finish($log);
+        });
+    }
+
+    /**
+     * Run a body within the log lifecycle: start a log, run the body (which
+     * does the actual per-site work and receives the {@see LogRecord}), then
+     * finish — or, if anything throws, fail the log and re-throw. The one place
+     * the start/finish/fail/re-throw scaffold lives, shared by {@see syncLink()}
+     * and {@see syncElement()}.
+     */
+    /**
+     * Sites a run should cover: a single requested site (validated against the
+     * link's configured endpoints), or every configured site when none is
+     * requested. The one place "which sites does this run touch" is decided.
+     *
+     * @return list<string|null>
+     */
+    protected function runSites(Link $link, ?string $siteHandle): array
+    {
+        if ($siteHandle === null) {
+            return $link->syncSiteHandles();
+        }
+
+        if (! in_array($siteHandle, $link->siteHandles(), true)) {
+            throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
+        }
+
+        return [$siteHandle];
+    }
+
+    protected function runWithLog(Link $link, SyncTrigger $trigger, callable $body): LogRecord
+    {
+        $logs = Influx::getInstance()->logs;
+        $log = $logs->start($link, $trigger);
+
+        try {
+            $body($log);
+            $logs->finish($log);
         } catch (Throwable $e) {
-            $plugin->logs->fail($log, $e->getMessage());
+            $logs->fail($log, $e->getMessage());
 
             throw $e;
         }
@@ -219,7 +245,7 @@ class SynchronizationService extends Component
             $this->trigger(self::EVENT_BEFORE_ITEM, $beforeEvent);
 
             if ($beforeEvent->skip) {
-                $plugin->logs->recordItem($log, ItemAction::SKIPPED, $resolution->element?->id, (string) $resolution->matchValue, null, $item->raw());
+                $plugin->logs->recordItem($log, ItemAction::SKIPPED, $resolution->element?->id, $this->matchValueString($resolution->matchValue), null, $item->raw());
 
                 return;
             }
@@ -233,8 +259,7 @@ class SynchronizationService extends Component
         $result = $this->itemProcessor->populate($context, $item, $resolution);
 
         if ($result->decision->isSkip()) {
-            $matchValue = $result->matchValue !== null ? (string) $result->matchValue : null;
-            $plugin->logs->recordItem($log, ItemAction::SKIPPED, $result->element?->id, $matchValue, $result->message, $item->raw());
+            $plugin->logs->recordItem($log, ItemAction::SKIPPED, $result->element?->id, $this->matchValueString($result->matchValue), $result->message, $item->raw());
 
             return;
         }
@@ -253,12 +278,22 @@ class SynchronizationService extends Component
             $log,
             $result->action,
             $result->element?->id,
-            (string) $result->matchValue,
+            $this->matchValueString($result->matchValue),
             $this->resultMessage($result),
             $item->raw(),
         );
 
         $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);
+    }
+
+    /**
+     * Stringify a match value for the log row, preserving null (an item with
+     * no match value logs NULL, not an empty string). The one place the cast
+     * happens, so every recordItem() call records it the same way.
+     */
+    protected function matchValueString(mixed $value): ?string
+    {
+        return $value !== null ? (string) $value : null;
     }
 
     /**
@@ -283,25 +318,6 @@ class SynchronizationService extends Component
         $note = 'Mapping errors — ' . implode('; ', $parts);
 
         return $message === null ? $note : $message . ' | ' . $note;
-    }
-
-    protected function siteContext(
-        Link $link,
-        ElementTargetInterface $target,
-        ?string $siteHandle,
-        ?SyncTrigger $trigger,
-    ): SyncContext {
-        $siteId = $siteHandle
-            ? (Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id)
-            : null;
-
-        return new SyncContext(
-            link: $link,
-            target: $target,
-            siteId: $siteId,
-            siteHandle: $siteHandle,
-            trigger: $trigger,
-        );
     }
 
     protected function fireAfterItem(

@@ -113,6 +113,63 @@ class LogsService extends Component
         return $out;
     }
 
+    /**
+     * One page of logs, newest first, plus the total for the pager.
+     *
+     * @return array{logs: LogRecord[], total: int}
+     */
+    public function paginate(int $page, int $perPage): array
+    {
+        $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
+        $total = (int) $query->count();
+        $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();
+
+        return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * Recent runs for one link handle, newest first — powers the read-only
+     * link view's run history.
+     *
+     * @return LogRecord[]
+     */
+    public function recentForLink(string $linkHandle, int $limit): array
+    {
+        return LogRecord::find()
+            ->where(['linkHandle' => $linkHandle])
+            ->orderBy(['startedAt' => SORT_DESC])
+            ->limit($limit)
+            ->all();
+    }
+
+    /**
+     * All items of a log, oldest first.
+     *
+     * @return LogItemRecord[]
+     */
+    public function itemsForLog(LogRecord $log): array
+    {
+        return LogItemRecord::find()
+            ->where(['logId' => $log->id])
+            ->orderBy(['id' => SORT_ASC])
+            ->all();
+    }
+
+    /**
+     * A log's items newer than $lastId, oldest first — the live-stream poll
+     * fetches each batch since the last row it sent.
+     *
+     * @return LogItemRecord[]
+     */
+    public function itemsForLogAfter(LogRecord $log, int $lastId): array
+    {
+        return LogItemRecord::find()
+            ->where(['logId' => $log->id])
+            ->andWhere(['>', 'id', $lastId])
+            ->orderBy(['id' => SORT_ASC])
+            ->all();
+    }
+
     public function clear(): int
     {
         return LogRecord::deleteAll();

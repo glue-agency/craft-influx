@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
-use craft\web\Controller;
+use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\queue\jobs\SyncLinkJob;
 use Throwable;
@@ -18,18 +18,16 @@ use yii\web\Response;
  *   POST influx/synchronization/element  — sync one element via its link (sync,
  *                                          so cooldown + UI feedback are immediate)
  */
-class SynchronizationController extends Controller
+class SynchronizationController extends AbstractController
 {
-    protected array|int|bool $allowAnonymous = false;
-
     public function actionLink(): ?Response
     {
         $this->requirePostRequest();
-        $this->requirePermission('accessPlugin-influx');
 
         $request = Craft::$app->getRequest();
         $handle = $request->getRequiredBodyParam('handle');
         $offset = $request->getBodyParam('offset');
+        $site = $request->getBodyParam('site');
 
         $plugin = Influx::getInstance();
 
@@ -37,15 +35,24 @@ class SynchronizationController extends Controller
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
+        // Validate the requested site up front so the user gets immediate
+        // feedback instead of a job that fails later in the queue.
+        if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
+            throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
+        }
+
         Craft::$app->getQueue()->push(new SyncLinkJob([
             'linkHandle' => $link->handle,
             'offset'     => $offset,
-            'trigger'    => 'cp',
+            'site'       => $site,
+            'trigger'    => SyncTrigger::CP->value,
         ]));
 
-        return $this->asSuccess(Craft::t('influx', 'Sync queued for {link}.', [
-            'link' => $link->name,
-        ]));
+        $message = $site
+            ? Craft::t('influx', 'Sync queued for {link} ({site}).', ['link' => $link->name, 'site' => $site])
+            : Craft::t('influx', 'Sync queued for {link}.', ['link' => $link->name]);
+
+        return $this->asSuccess($message);
     }
 
     public function actionElement(): ?Response
@@ -58,8 +65,6 @@ class SynchronizationController extends Controller
         if (! $element) {
             throw new NotFoundHttpException("Element #{$elementId} not found.");
         }
-
-        $this->requirePermission('accessPlugin-influx');
 
         $plugin = Influx::getInstance();
         $link = $plugin->links->findLinkForElement($element);

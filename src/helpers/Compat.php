@@ -88,15 +88,32 @@ class Compat
 
     /**
      * Craft 5 entries are multi-author (setAuthorIds() @since 5.0); Craft 4
-     * entries take a single author ID.
+     * entries take a single author ID. A null id clears the author.
      */
-    public static function setEntryAuthor(Entry $entry, int $userId): void
+    public static function setEntryAuthor(Entry $entry, ?int $userId): void
     {
         if (method_exists($entry, 'setAuthorIds')) {
-            $entry->setAuthorIds([$userId]);
+            $entry->setAuthorIds($userId === null ? [] : [$userId]);
         } else {
             $entry->setAuthorId($userId);
         }
+    }
+
+    /**
+     * Current author id(s) of an entry, for change detection. Craft 5 entries
+     * are multi-author (getAuthorIds() @since 5.0); Craft 4 entries carry a
+     * single authorId. Reads from the in-memory value, so it reflects a just-
+     * set author without a save.
+     *
+     * @return int[]
+     */
+    public static function entryAuthorIds(Entry $entry): array
+    {
+        if (method_exists($entry, 'getAuthorIds')) {
+            return array_map('intval', $entry->getAuthorIds() ?? []);
+        }
+
+        return $entry->authorId ? [(int) $entry->authorId] : [];
     }
 
     /**

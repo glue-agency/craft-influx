@@ -3,24 +3,22 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
-use craft\web\Controller;
 use GlueAgency\Influx\Influx;
-use yii\web\ForbiddenHttpException;
 use yii\web\Response;
 
-class SettingsController extends Controller
+class SettingsController extends AbstractController
 {
-    protected array|int|bool $allowAnonymous = false;
-
     public function beforeAction($action): bool
     {
-        $this->requirePermission('accessPlugin-influx');
-
-        if (! Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
-            throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');
+        if (! parent::beforeAction($action)) {
+            return false;
         }
 
-        return parent::beforeAction($action);
+        // Settings are Project Config — every action here mutates, so gate the
+        // whole controller rather than per-action.
+        $this->assertWriteable();
+
+        return true;
     }
 
     public function actionEdit(): Response

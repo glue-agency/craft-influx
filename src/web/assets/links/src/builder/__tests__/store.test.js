@@ -39,7 +39,7 @@ describe('store', () => {
         vi.useFakeTimers();
         vi.clearAllMocks();
         api.bootstrap.mockResolvedValue(bootstrapPayload());
-        await store.load('articles');
+        await store.load(1);
         vi.clearAllTimers();
     });
 
@@ -64,7 +64,7 @@ describe('store', () => {
 
     it('stores the ApiError message as loadError when bootstrap fails', async () => {
         api.bootstrap.mockRejectedValue(apiError('Link not found.'));
-        await store.load('missing');
+        await store.load(999);
         expect(store.ui.loadError).toBe('Link not found.');
     });
 
@@ -144,7 +144,10 @@ describe('store', () => {
         api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
 
         store.link.endpoint = 'https://example.test/base';
-        store.link.siteEndpoints = { en: '', nl: 'https://example.test/nl' };
+        store.link.siteEndpoints = [
+            { site: 'en', endpoint: '' },
+            { site: 'nl', endpoint: 'https://example.test/nl' },
+        ];
         store.setSiteEndpointsMode(true);
         await store.evaluateSample();
 
@@ -154,7 +157,7 @@ describe('store', () => {
     });
 
     it('blocks saving in site-specific mode without a single site endpoint', async () => {
-        store.link.siteEndpoints = { en: '   ' };
+        store.link.siteEndpoints = [{ site: 'en', endpoint: '   ' }];
         store.setSiteEndpointsMode(true);
 
         const result = await store.save({ continueEditing: true });

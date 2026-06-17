@@ -228,18 +228,22 @@ export default {
    the parent mapping row's 3-column grid so labels and controls line up
    with the Field / Source-node / Default-value columns above. */
 
-/* The form itself sits on the mapping rows' column grid: everything —
+/* The grid form sits on the mapping rows' column grid: everything —
    the options fieldset and the sub-field groups — starts at the
    source-node column's left edge and runs to the row's right edge. The
    field-name column stays empty: these are details *of* the field above,
-   not siblings. */
-.influx-schema-form {
+   not siblings.
+
+   Scoped to :not(.is-stacked): the stacked variant (Auth tab) renders
+   plain Craft .field blocks and must NOT inherit this grid, or each field
+   gets pushed into column 2 with an empty column to its left. */
+.influx-schema-form:not(.is-stacked) {
     display: grid;
     grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
     gap: 0 12px;
 }
 
-.influx-schema-form > * {
+.influx-schema-form:not(.is-stacked) > * {
     grid-column: 2 / -1;
     min-width: 0;
 }

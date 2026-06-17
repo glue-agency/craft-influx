@@ -5,171 +5,18 @@
 {% set crumbs = [
     { label: "Influx"|t("influx"), url: cpUrl("influx") },
     { label: "Links"|t("influx"), url: cpUrl("influx/links") },
-    { label: link.name, url: cpUrl("influx/links/" ~ link.handle) },
+    { label: link.name, url: cpUrl("influx/links/" ~ link.id) },
 ] %}
 
 {% block content %}
-    <div class="content-pane">
-        <form method="get" action="{{ cpUrl('influx/links/' ~ link.handle ~ '/debug') }}" id="influx-debug-form">
-            <div class="flex" style="gap: 1em; align-items: flex-end; flex-wrap: wrap;">
-                <div class="field">
-                    <div class="heading"><label for="influx-debug-site">{{ "Site"|t("influx") }}</label></div>
-                    <div class="input">
-                        {% if siteHandles is empty %}
-                            <span class="light">{{ "Default endpoint (no site endpoints configured)"|t("influx") }}</span>
-                        {% else %}
-                            <div class="select">
-                                <select id="influx-debug-site" name="site">
-                                    {% for sh in siteHandles %}
-                                        <option value="{{ sh }}"{% if sh == selectedSite %} selected{% endif %}>{{ sh }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div class="field">
-                    <div class="heading"><label for="influx-debug-offset">{{ "Sliding window"|t("influx") }}</label></div>
-                    <div class="input">
-                        {% if offsetKeys is empty %}
-                            <span class="light">{{ "No presets configured"|t("influx") }}</span>
-                        {% else %}
-                            <div class="select">
-                                <select id="influx-debug-offset" name="offset">
-                                    <option value="">{{ "— full feed —"|t("influx") }}</option>
-                                    {% for k in offsetKeys %}
-                                        <option value="{{ k }}"{% if k == selectedOffset %} selected{% endif %}>{{ k }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div class="field">
-                    <div class="heading"><label for="influx-debug-limit">{{ "Limit"|t("influx") }}</label></div>
-                    <div class="input">
-                        <input id="influx-debug-limit" name="limit" type="number" min="1" max="500"
-                               value="{{ limit }}" class="text" style="width: 80px;">
-                    </div>
-                </div>
-
-                <div class="field">
-                    <button type="submit" class="btn submit">{{ "Inspect"|t("influx") }}</button>
-                </div>
-            </div>
-        </form>
-    </div>
-
-    <h2 style="margin-top: 1.5em;">{{ "Feed"|t("influx") }}</h2>
-
-    <div class="content-pane" id="influx-debug-meta">
-        <p class="light"><span class="spinner"></span> {{ "Loading…"|t("influx") }}</p>
-    </div>
-
-    <h2 style="margin-top: 1.5em;">
-        {{ "Items"|t("influx") }}
-        <span class="light" id="influx-debug-counter"></span>
-    </h2>
-
-    <div id="influx-debug-results"></div>
-    <div id="influx-debug-status" class="light" style="margin-top: 1em;"></div>
-
-    {% js %}
-    (function () {
-        const streamBase = {{ streamUrl|json_encode|raw }};
-        const params = new URLSearchParams();
-        {% if selectedSite %}params.set('site', {{ selectedSite|json_encode|raw }});{% endif %}
-        {% if selectedOffset %}params.set('offset', {{ selectedOffset|json_encode|raw }});{% endif %}
-        params.set('limit', {{ limit|json_encode|raw }});
-
-        const url = streamBase + (streamBase.includes('?') ? '&' : '?') + params.toString();
-
-        const metaEl = document.getElementById('influx-debug-meta');
-        const resultsEl = document.getElementById('influx-debug-results');
-        const counterEl = document.getElementById('influx-debug-counter');
-        const statusEl = document.getElementById('influx-debug-status');
-
-        function escapeHtml(s) {
-            return String(s == null ? '' : s)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
-        function renderMeta(d) {
-            let html = '<table class="data fullwidth fixed-layout"><tbody>';
-            html += '<tr><th>URL</th><td><code style="word-break:break-all;">' + escapeHtml(d.url || '—') + '</code></td></tr>';
-            if (d.error) {
-                html += '<tr><th>Error</th><td><pre class="error">' + escapeHtml(d.error) + '</pre></td></tr>';
-            } else {
-                html += '<tr><th>Items on page</th><td>' + escapeHtml(d.itemsOnPage);
-                if (d.itemsOnPage > d.limit) {
-                    html += ' <span class="light">— showing first ' + escapeHtml(d.limit) + '</span>';
-                }
-                html += '</td></tr>';
-                if (d.paginatorNode) {
-                    html += '<tr><th>Paginator</th><td><code>' + escapeHtml(d.paginatorNode) + '</code>';
-                    if (d.paginatorValue) {
-                        html += ' <span class="light">→</span> <code style="word-break:break-all;">' + escapeHtml(d.paginatorValue) + '</code>';
-                    } else {
-                        html += ' <span class="light">— no next page</span>';
-                    }
-                    html += '</td></tr>';
-                }
-                if (d.matchAttribute) {
-                    html += '<tr><th>Match</th><td><code>' + escapeHtml(d.matchAttribute) + '</code>';
-                    if (d.matchNode) {
-                        html += ' <span class="light">↤</span> <code>' + escapeHtml(d.matchNode) + '</code>';
-                    }
-                    html += '</td></tr>';
-                }
-                if (d.offsetLabel) {
-                    html += '<tr><th>Sliding window</th><td><code>' + escapeHtml(d.offset) + '</code> <span class="light">→</span> <code>' + escapeHtml(d.offsetLabel) + '</code></td></tr>';
-                }
-            }
-            html += '</tbody></table>';
-            metaEl.innerHTML = html;
-        }
-
-        let count = 0;
-        const es = new EventSource(url, { withCredentials: true });
-        statusEl.textContent = 'Connecting…';
-
-        es.addEventListener('meta', function (e) {
-            try { renderMeta(JSON.parse(e.data)); } catch (err) { console.error(err); }
-            statusEl.textContent = 'Streaming…';
-        });
-
-        es.addEventListener('item', function (e) {
-            try {
-                const payload = JSON.parse(e.data);
-                const wrap = document.createElement('div');
-                wrap.innerHTML = payload.html;
-                resultsEl.appendChild(wrap.firstElementChild || wrap);
-                count++;
-                counterEl.textContent = '— ' + count + ' shown';
-            } catch (err) { console.error(err); }
-        });
-
-        es.addEventListener('done', function () {
-            statusEl.textContent = 'Done — ' + count + ' item(s) inspected.';
-            es.close();
-        });
-
-        es.addEventListener('error', function (e) {
-            if (e.data) {
-                try {
-                    const d = JSON.parse(e.data);
-                    statusEl.innerHTML = '<span class="error">Error: ' + escapeHtml(d.message || 'unknown') + '</span>';
-                } catch (err) {
-                    statusEl.innerHTML = '<span class="error">Stream error.</span>';
-                }
-            } else {
-                statusEl.innerHTML = '<span class="error">Connection closed.</span>';
-            }
-            es.close();
-        });
-    })();
-    {% endjs %}
+    {# Mount point for the Vue debug inspector (DebugApp). Bootstrap config
+       rides along as a JSON data attribute. #}
+    <div data-influx-debug="{{ {
+        streamUrl: streamUrl,
+        selectedSite: selectedSite,
+        selectedOffset: selectedOffset,
+        limit: limit,
+        sites: sites,
+        offsetHandles: offsetHandles,
+    }|json_encode }}"></div>
 {% endblock %}

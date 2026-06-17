@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\sync;
 
+use Craft;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\targets\ElementTargetInterface;
@@ -50,5 +51,33 @@ class SyncContext
         $this->siteHandle = $siteHandle;
         $this->trigger = $trigger;
         $this->dryRun = $dryRun;
+    }
+
+    /**
+     * Build a context for a run against a given site handle, resolving the
+     * handle to its site id. THE one place that handle → id lookup lives — the
+     * sync run, the per-element sync, and the debug inspector all build their
+     * contexts through here instead of repeating the lookup. A null handle
+     * means the primary site (id stays null, which Craft reads as "default").
+     */
+    public static function forSite(
+        Link $link,
+        ElementTargetInterface $target,
+        ?string $siteHandle,
+        ?SyncTrigger $trigger = null,
+        bool $dryRun = false,
+    ): self {
+        $siteId = $siteHandle
+            ? Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id
+            : null;
+
+        return new self(
+            link: $link,
+            target: $target,
+            siteId: $siteId,
+            siteHandle: $siteHandle,
+            trigger: $trigger,
+            dryRun: $dryRun,
+        );
     }
 }

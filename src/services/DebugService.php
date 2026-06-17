@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\services;
 
-use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
@@ -35,6 +34,14 @@ class DebugService extends Component
      * with dry-run contexts and never committed.
      */
     protected ItemProcessor $itemProcessor;
+
+    /**
+     * Memoized handle => friendly-name maps, keyed by link, so a multi-item
+     * dry-run resolves the target's mappable fields once rather than per item.
+     *
+     * @var array<string, array<string, string>>
+     */
+    protected array $fieldLabelCache = [];
 
     public function init(): void
     {
@@ -129,14 +136,10 @@ class DebugService extends Component
             return;
         }
 
-        $siteId = $siteHandle
-            ? (Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id)
-            : null;
-
         $index = 0;
 
         foreach (array_slice($firstPage->items, 0, $limit) as $item) {
-            $row = $this->debugItem($link, $target, $item->raw(), $siteId);
+            $row = $this->debugItem($link, $target, $item->raw(), $siteHandle);
             $row['index'] = $index++;
             yield ['type' => 'item', 'data' => $row];
         }
@@ -147,7 +150,7 @@ class DebugService extends Component
      * remote item. Used by the log detail drill-down to reuse the debug
      * machinery against a historical row's stored payload.
      */
-    public function inspectItem(Link $link, array $item, ?int $siteId = null): array
+    public function inspectItem(Link $link, array $item, ?string $siteHandle = null): array
     {
         $target = Influx::getInstance()->targets->forLink($link);
 
@@ -166,7 +169,7 @@ class DebugService extends Component
             ];
         }
 
-        return $this->debugItem($link, $target, $item, $siteId);
+        return $this->debugItem($link, $target, $item, $siteHandle);
     }
 
     /**
@@ -179,9 +182,9 @@ class DebugService extends Component
         Link $link,
         ElementTargetInterface $target,
         array $item,
-        ?int $siteId,
+        ?string $siteHandle,
     ): array {
-        $context = new SyncContext(link: $link, target: $target, siteId: $siteId, dryRun: true);
+        $context = SyncContext::forSite($link, $target, $siteHandle, dryRun: true);
         $remoteItem = new RemoteItem($item);
 
         $matchAttr = $link->matchAttribute();
@@ -241,7 +244,7 @@ class DebugService extends Component
                         $remoteItem,
                         new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::UPDATE),
                     );
-                    $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element);
+                    $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element, $this->fieldLabels($link, $target));
                 } catch (Throwable $e) {
                     $row['error'] = $e->getMessage();
                 }
@@ -253,7 +256,7 @@ class DebugService extends Component
         $row['action'] = $result->action->dryRunLabel();
 
         if ($result->element !== null) {
-            $row['mappings'] = $this->presentMappingResults($result->mappingResults, $result->element);
+            $row['mappings'] = $this->presentMappingResults($result->mappingResults, $result->element, $this->fieldLabels($link, $target));
         }
 
         return $row;
@@ -265,9 +268,10 @@ class DebugService extends Component
      * the Craft field's normalizeValue for display parity with the editor.
      *
      * @param list<\GlueAgency\Influx\sync\MappingResult> $results
+     * @param array<string, string> $labels handle => friendly field name
      * @return list<array>
      */
-    protected function presentMappingResults(array $results, ElementInterface $element): array
+    protected function presentMappingResults(array $results, ElementInterface $element, array $labels = []): array
     {
         $layout = $element->getFieldLayout();
         $rows = [];
@@ -289,6 +293,7 @@ class DebugService extends Component
 
             $rows[] = [
                 'handle'       => $result->handle,
+                'label'        => $labels[$result->handle] ?? $result->handle,
                 'node'         => $result->node,
                 'default'      => $result->default,
                 'native'       => $result->native,
@@ -302,6 +307,31 @@ class DebugService extends Component
         }
 
         return $rows;
+    }
+
+    /**
+     * Handle => friendly field name for a link, sourced from the target's
+     * mappable fields (the same labels the builder's mapping list shows).
+     * Memoized per link so a multi-item dry-run resolves them once.
+     *
+     * @return array<string, string>
+     */
+    protected function fieldLabels(Link $link, ElementTargetInterface $target): array
+    {
+        $key = $link->uid ?? $link->handle;
+
+        if (! isset($this->fieldLabelCache[$key])) {
+            $labels = [];
+
+            foreach ($target->getMappableFields($link) as $field) {
+                if (isset($field['handle'])) {
+                    $labels[$field['handle']] = $field['name'] ?? $field['handle'];
+                }
+            }
+            $this->fieldLabelCache[$key] = $labels;
+        }
+
+        return $this->fieldLabelCache[$key];
     }
 
     /**

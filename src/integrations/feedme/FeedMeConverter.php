@@ -147,8 +147,8 @@ class FeedMeConverter
             $this->warn('Feed is a singleton; Influx has no singleton mode — the match attribute decides which element each item updates.');
         }
 
-        if (! empty($feed['setEmptyValues'])) {
-            $this->warn('"Set empty values" is not supported; Influx leaves fields untouched when the feed has no data for them.');
+        if (empty($feed['setEmptyValues'])) {
+            $this->warn('This feed had "Set empty values" off, but Influx always writes empty values through — a mapped field with no data in the feed is cleared on sync.');
         }
 
         return new FeedMeConversion($link, $this->warnings);
@@ -198,7 +198,7 @@ class FeedMeConverter
             $siteHandle = $this->siteHandleById($siteId);
 
             if ($siteHandle !== null) {
-                $link->siteEndpoints = [$siteHandle => $feedUrl];
+                $link->siteEndpoints = [['site' => $siteHandle, 'endpoint' => $feedUrl]];
                 $this->warn("Feed targeted site '{$siteHandle}'; converted to a site endpoint so the link only writes that site. Add more site endpoints if needed.");
 
                 return;

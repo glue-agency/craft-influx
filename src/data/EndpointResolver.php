@@ -12,7 +12,7 @@ use GlueAgency\Influx\models\Link;
  *
  * Encapsulates three concerns that used to be spread across DataService
  * and DebugService:
- *   - Per-site lookup (siteEndpoints[$siteHandle] → endpoint fallback).
+ *   - Per-site lookup (endpointForSite($siteHandle) → endpoint fallback).
  *   - `$ENV` / `@alias` resolution via Craft's App::parseEnv.
  *   - Token substitution for itemEndpoint (`{id}`, `{slug}`, `{site.handle}` etc.).
  *
@@ -75,8 +75,8 @@ class EndpointResolver
 
     protected function rawListEndpoint(Link $link, ?string $siteHandle): ?string
     {
-        if ($siteHandle && isset($link->siteEndpoints[$siteHandle])) {
-            return $link->siteEndpoints[$siteHandle];
+        if ($siteHandle && ($endpoint = $link->endpointForSite($siteHandle)) !== null) {
+            return $endpoint;
         }
 
         return $link->endpoint;

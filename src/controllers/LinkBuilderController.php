@@ -3,12 +3,10 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
-use craft\web\Controller;
 use GlueAgency\Influx\Influx;
 use ReflectionClass;
 use Throwable;
 use yii\web\BadRequestHttpException;
-use yii\web\ForbiddenHttpException;
 use yii\web\HttpException;
 use yii\web\Response;
 
@@ -21,17 +19,8 @@ use yii\web\Response;
  * Read-only environments (`allowAdminChanges = false`) get a 403 on any
  * mutating route, consistent with how {@see LinksController} gates writes.
  */
-class LinkBuilderController extends Controller
+class LinkBuilderController extends AbstractController
 {
-    protected array|bool|int $allowAnonymous = false;
-
-    public function beforeAction($action): bool
-    {
-        $this->requirePermission('accessPlugin-influx');
-
-        return parent::beforeAction($action);
-    }
-
     /**
      * Wrap the standard runAction so any uncaught exception comes back as
      * a JSON `{success: false, message}` envelope instead of an HTML 500. The
@@ -66,17 +55,17 @@ class LinkBuilderController extends Controller
     /**
      * Hydrate the SPA with everything it needs to mount.
      *
-     *   GET influx/link-builder/bootstrap?handle=foo
+     *   GET influx/link-builder/bootstrap?id=42
      */
     public function actionBootstrap(): Response
     {
         $this->requireAcceptsJson();
 
-        $handle = Craft::$app->getRequest()->getQueryParam('handle');
-        $readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+        $id = Craft::$app->getRequest()->getQueryParam('id');
+        $id = $id !== null && $id !== '' ? (int) $id : null;
 
         return $this->asJson(
-            Influx::getInstance()->linkBuilder->bootstrap($handle, $readOnly),
+            Influx::getInstance()->linkBuilder->bootstrap($id, $this->readOnly()),
         );
     }
 
@@ -215,12 +204,5 @@ class LinkBuilderController extends Controller
         }
 
         return $decoded;
-    }
-
-    protected function assertWriteable(): void
-    {
-        if (! Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
-            throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');
-        }
     }
 }

@@ -26,6 +26,14 @@ class Lightswitch extends Field
     {
         $raw = $context->mapping->resolve($context->item);
 
+        // No node and no default — the field isn't mapped at all. Yield null so
+        // the walker leaves it untouched instead of forcing it to false on
+        // every sync. (An actively-mapped-but-empty value still coerces to
+        // false below: the feed is authoritative, and an empty boolean is false.)
+        if ($raw === null && ! $context->mapping->isActive()) {
+            return null;
+        }
+
         if (is_bool($raw)) {
             return $raw;
         }

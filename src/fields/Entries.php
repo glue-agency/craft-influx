@@ -49,10 +49,11 @@ class Entries extends Relation
             $sections = Compat::getAllSections();
         } else {
             foreach ($sources as $source) {
-                if (! is_string($source) || ! str_starts_with($source, 'section:')) {
+                $uid = $this->sourceUid($source, 'section:');
+
+                if ($uid === null) {
                     continue;
                 }
-                [, $uid] = explode(':', $source);
                 $section = Compat::getSectionByUid($uid);
 
                 if ($section) {
@@ -83,13 +84,10 @@ class Entries extends Relation
         $sectionIds = [];
 
         foreach ($sources as $source) {
-            if (str_starts_with($source, 'section:')) {
-                [, $uid] = explode(':', $source);
-                $id = Db::idByUid('{{%sections}}', $uid);
+            $uid = $this->sourceUid($source, 'section:');
 
-                if ($id) {
-                    $sectionIds[] = $id;
-                }
+            if ($uid !== null && ($id = Db::idByUid('{{%sections}}', $uid))) {
+                $sectionIds[] = $id;
             }
         }
 

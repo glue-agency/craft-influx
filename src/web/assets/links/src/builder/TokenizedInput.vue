@@ -335,3 +335,365 @@ function onDocumentMousedown(e) {
 onMounted(() => document.addEventListener('mousedown', onDocumentMousedown));
 onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMousedown));
 </script>
+
+<style>
+/* Token input, chips, and token-picker visuals (also used by TokenChip /
+   TokenPickerMenu, and reached by SchemaForm / SiteEndpointsTable) - moved
+   here from the monolithic links.css. Unscoped/class-namespaced. */
+/* ---------------------------------------------------------------------
+   TokenizedInput — flex row mimicking a single text input, with native
+   <input> elements for text segments interleaved with colored chips and
+   a built-in "+ token" dropdown.
+--------------------------------------------------------------------- */
+.influx-tokenized-input {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    min-height: 34px;
+    background: #fff;
+    border: 1px solid hsla(212deg, 25%, 50%, 0.25);
+    border-radius: 5px;
+}
+/* Craft's CP CSS applies a universal `:focus-within { box-shadow: var(--focus-ring) }`
+   that lights up every ancestor — and the focused element itself — when
+   something inside takes focus. Suppress the bubbled glow on both the
+   container and the inner segment inputs; the in-flow cursor and the
+   chip colors already make the focused state obvious. */
+.influx-tokenized-input:focus-within,
+.influx-tokenized-input .influx-tokenized-text:focus,
+.influx-tokenized-input .influx-tokenized-text:focus-within,
+.influx-tokenized-input .influx-tokenized-text:focus-visible {
+    box-shadow: none;
+}
+.influx-tokenized-input.disabled {
+    background: #f7f9fc;
+}
+/* Inside an editable-table cell (site endpoints) the cell already draws
+   the border — flatten the control so it doesn't read as a box-in-a-box. */
+.influx-site-endpoints table.editable .influx-tokenized-input {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.influx-tokenized-segments {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 4px 5px 9px;
+    /* Tight inline feel — chips and text segments butt right up against
+       each other so the URL reads as one continuous string. */
+    gap: 0;
+    row-gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.influx-tokenized-text {
+    border: 0;
+    background: transparent;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    /* Grow inputs to fit their content; min-width keeps an empty segment
+       between chips clickable. `field-sizing: content` is widely supported
+       in mid-2026 evergreen browsers — older shells fall back to the
+       default ~150px, which is ugly but functional. */
+    field-sizing: content;
+    min-width: 2px;
+    max-width: 100%;
+}
+.influx-tokenized-text::placeholder {
+    color: #9aa4ad;
+    font-family: var(--craft-cp-font, system-ui, sans-serif);
+    font-size: 14px;
+}
+.influx-tokenized-text:disabled {
+    cursor: not-allowed;
+}
+
+/* Inline chip — sized to slot inside the monospaced text flow without
+   blowing up the row height. Colors come from data-kind below. */
+.influx-tokenized-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 4px 1px 6px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    user-select: none;
+}
+.influx-tokenized-chip .chip-name {
+    /* Empty rule reserved for future tweaks — the chip itself does the work. */
+}
+.influx-tokenized-chip .chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    margin-inline-start: 2px;
+    border-radius: 50%;
+    opacity: 0.55;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+}
+.influx-tokenized-chip .chip-remove:hover,
+.influx-tokenized-chip .chip-remove:focus-visible {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.08);
+    outline: none;
+}
+.influx-tokenized-chip .chip-remove svg {
+    display: block;
+}
+
+/* Per-kind chip colors — Element=green, Site=blue, Fields/custom=gray. */
+.influx-tokenized-chip[data-kind="element"] {
+    background: #e4f5e5;
+    color: #1f6f30;
+    border-color: #b9e0bf;
+}
+.influx-tokenized-chip[data-kind="site"] {
+    background: #e1eefc;
+    color: #1c4f8a;
+    border-color: #b9d3f0;
+}
+.influx-tokenized-chip[data-kind="fields"],
+.influx-tokenized-chip[data-kind="custom"] {
+    background: #ececef;
+    color: #4a4f57;
+    border-color: #d4d6db;
+}
+.influx-tokenized-chip[data-kind="env"] {
+    background: #fff4d6;
+    color: #8a6a00;
+    border-color: #f0d676;
+}
+.influx-tokenized-chip[data-kind="alias"] {
+    background: #efe3fb;
+    color: #5a26a0;
+    border-color: #d4baee;
+}
+
+/* "+ Insert token" trigger — small icon button docked to the right edge
+   of the input. Stays inside the bordered shell so it reads as one
+   integrated field. */
+.influx-tokenized-picker-wrap {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding-inline-end: 4px;
+}
+.influx-tokenized-picker-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.influx-tokenized-picker-btn:hover,
+.influx-tokenized-picker-btn.active {
+    background: hsl(208deg, 100%, 96%);
+    color: hsl(208deg, 100%, 38%);
+    border-color: hsl(208deg, 100%, 85%);
+}
+.influx-tokenized-picker-btn svg {
+    display: block;
+}
+
+/* Dropdown menu */
+.influx-tokenized-picker-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 200;
+    min-width: 280px;
+    max-height: 360px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d7dfe7;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(20, 30, 50, 0.16), 0 2px 6px rgba(20, 30, 50, 0.06);
+    padding: 6px 0;
+}
+.influx-tokenized-picker-menu h6 {
+    margin: 8px 14px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8b95a3;
+}
+.influx-tokenized-picker-menu h6:first-child {
+    margin-top: 4px;
+}
+.influx-tokenized-picker-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0 4px;
+}
+.influx-tokenized-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    transition: background-color 0.08s ease;
+}
+.influx-tokenized-picker-item:hover,
+.influx-tokenized-picker-item:focus-visible,
+.influx-tokenized-picker-item.highlighted {
+    background: hsl(208deg, 100%, 96%);
+    outline: none;
+}
+.influx-tokenized-picker-item .hint {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+/* Search input at the top of the manually-opened picker — `+`-mode only.
+   Triggered-mode (`$` / `@` / `{`) reads its query straight off the URL
+   input so a duplicate search box would be confusing. */
+.influx-tokenized-picker-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 8px 6px;
+    padding: 6px 8px;
+    background: hsl(212deg, 25%, 96%);
+    border: 1px solid hsla(212deg, 25%, 50%, 0.18);
+    border-radius: 4px;
+    color: #6b7280;
+}
+.influx-tokenized-picker-search input {
+    flex: 1 1 auto;
+    border: 0;
+    background: transparent;
+    outline: none;
+    padding: 0;
+    font: inherit;
+    color: #1f2937;
+}
+.influx-tokenized-picker-search input::placeholder {
+    color: #9aa4ad;
+}
+.influx-tokenized-picker-search input:focus {
+    box-shadow: none;
+}
+
+.influx-tokenized-picker-empty {
+    margin: 4px 14px 10px;
+    color: #6b7280;
+    font-size: 12px;
+}
+.influx-tokenized-picker-empty code {
+    background: #ececef;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+
+/* Mini inline chip used inside the picker dropdown — reuses the chip
+   color scheme so users see the same visual hint they'll get in-input. */
+.influx-tokenized-chip-inline {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.influx-tokenized-chip-inline[data-kind="element"] {
+    background: #e4f5e5;
+    color: #1f6f30;
+    border-color: #b9e0bf;
+}
+.influx-tokenized-chip-inline[data-kind="site"] {
+    background: #e1eefc;
+    color: #1c4f8a;
+    border-color: #b9d3f0;
+}
+.influx-tokenized-chip-inline[data-kind="fields"],
+.influx-tokenized-chip-inline[data-kind="custom"],
+.influx-tokenized-chip-inline[data-kind="node"] {
+    background: #ececef;
+    color: #4a4f57;
+    border-color: #d4d6db;
+}
+.influx-tokenized-chip-inline[data-kind="env"] {
+    /* Amber — matches Craft's "environment-variable" accent on
+       env-suggesting fields elsewhere in the CP. */
+    background: #fff4d6;
+    color: #8a6a00;
+    border-color: #f0d676;
+}
+.influx-tokenized-chip-inline[data-kind="alias"] {
+    /* Violet — distinct from any other kind in the picker so users can
+       tell aliases apart from env vars at a glance. */
+    background: #efe3fb;
+    color: #5a26a0;
+    border-color: #d4baee;
+}
+
+
+/* Token pills inside the picker menu — one accent per group so the user can
+   tell at a glance whether a token is native, site-scoped, or comes from a
+   custom field. The colors match the chip styles used elsewhere in the CP. */
+.influx-token-pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 9px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+.influx-token-group[data-kind="element"] .influx-token-pill {
+    background: #e4f5e5;
+    color: #1f6f30;
+    border-color: #b9e0bf;
+}
+.influx-token-group[data-kind="site"] .influx-token-pill {
+    background: #e1eefc;
+    color: #1c4f8a;
+    border-color: #b9d3f0;
+}
+.influx-token-group[data-kind="fields"] .influx-token-pill,
+.influx-token-group[data-kind="custom"] .influx-token-pill {
+    background: #ececef;
+    color: #4a4f57;
+    border-color: #d4d6db;
+}
+</style>

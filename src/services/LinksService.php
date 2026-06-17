@@ -46,21 +46,6 @@ class LinksService extends Component
     public const EVENT_BEFORE_DELETE_LINK = 'beforeDeleteLink';
     public const EVENT_AFTER_DELETE_LINK = 'afterDeleteLink';
 
-    /**
-     * Link config fields that are stored as JSON-encoded columns. Listed once
-     * here and reused for encoding (DB write) and decoding (DB read) so the
-     * two stay symmetric.
-     */
-    protected const JSON_COLUMNS = [
-        'elementCriteria',
-        'siteEndpoints',
-        'auth',
-        'match',
-        'mappings',
-        'processing',
-        'offset',
-    ];
-
     /** @var Link[]|null in-memory cache keyed by handle */
     protected ?array $links = null;
 
@@ -364,7 +349,7 @@ class LinksService extends Component
             'backup'        => ! empty($config['backup']),
         ];
 
-        foreach (self::JSON_COLUMNS as $key) {
+        foreach (Link::JSON_FIELDS as $key) {
             $columns[$key] = isset($config[$key]) ? json_encode($config[$key]) : null;
         }
 
@@ -380,7 +365,7 @@ class LinksService extends Component
 
     protected function linkFromRow(array $row): Link
     {
-        foreach (self::JSON_COLUMNS as $key) {
+        foreach (Link::JSON_FIELDS as $key) {
             $raw = $row[$key] ?? null;
 
             if (is_string($raw) && $raw !== '') {

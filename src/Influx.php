@@ -155,10 +155,10 @@ class Influx extends Plugin
                 $event->rules['influx'] = 'influx/links/index';
                 $event->rules['influx/links'] = 'influx/links/index';
                 $event->rules['influx/links/new'] = 'influx/links/edit';
-                $event->rules['influx/links/<handle:[\w\-]+>'] = 'influx/links/view';
-                $event->rules['influx/links/<handle:[\w\-]+>/edit'] = 'influx/links/edit';
-                $event->rules['influx/links/<handle:[\w\-]+>/debug'] = 'influx/links/debug';
-                $event->rules['influx/links/<handle:[\w\-]+>/debug/stream'] = 'influx/links/debug-stream';
+                $event->rules['influx/links/<id:\d+>'] = 'influx/links/view';
+                $event->rules['influx/links/<id:\d+>/edit'] = 'influx/links/edit';
+                $event->rules['influx/links/<id:\d+>/debug'] = 'influx/links/debug';
+                $event->rules['influx/links/<id:\d+>/debug/stream'] = 'influx/links/debug-stream';
 
                 // LinkBuilder SPA — JSON CP routes
                 $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';

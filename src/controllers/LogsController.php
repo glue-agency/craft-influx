@@ -4,41 +4,37 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\helpers\UrlHelper;
-use craft\web\Controller;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\services\EventStreamService;
+use GlueAgency\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\web\LogPresenter;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
-class LogsController extends Controller
+class LogsController extends AbstractController
 {
-    protected array|int|bool $allowAnonymous = false;
-
-    public function beforeAction($action): bool
-    {
-        $this->requirePermission('accessPlugin-influx');
-
-        return parent::beforeAction($action);
-    }
-
     public function actionIndex(): Response
     {
-        $request = Craft::$app->getRequest();
-        $page = max(1, (int) $request->getQueryParam('page', 1));
+        $page = max(1, (int) Craft::$app->getRequest()->getQueryParam('page', 1));
         $perPage = 50;
 
-        $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
-        $total = $query->count();
-        $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();
+        ['logs' => $logs, 'total' => $total] = Influx::getInstance()->logs->paginate($page, $perPage);
+
+        // handle => id, so each row can link to its link's edit screen by id
+        // (logs only store the handle); a deleted link is absent from the map.
+        $linkIds = array_map(
+            static fn($link) => $link->id,
+            Influx::getInstance()->links->getAllLinks(),
+        );
 
         return $this->renderTemplate('influx/logs/index', [
             'logs'    => $logs,
             'page'    => $page,
             'perPage' => $perPage,
             'total'   => $total,
+            'linkIds' => $linkIds,
         ]);
     }
 
@@ -48,16 +44,26 @@ class LogsController extends Controller
             throw new NotFoundHttpException("Log #{$id} not found.");
         }
 
-        $items = LogItemRecord::find()
-            ->where(['logId' => $log->id])
-            ->orderBy(['id' => SORT_ASC])
-            ->all();
+        // The viewer is a Vue app (LogApp) — ship the full bundle.
+        Craft::$app->getView()->registerAssetBundle(LinksAsset::class);
+
+        $plugin = Influx::getInstance();
+        $presenter = new LogPresenter();
+        // Extracted (not inlined into the array) so ECS doesn't align the
+        // arrow-fn `=>` against the surrounding array's arrows.
+        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemsForLog($log));
 
         return $this->renderTemplate('influx/logs/view', [
-            'log'             => $log,
-            'items'           => $items,
-            'streamUrl'       => UrlHelper::cpUrl("influx/logs/{$log->id}/stream"),
-            'itemUrlTemplate' => UrlHelper::cpUrl('influx/logs/items/__ID__'),
+            'config' => [
+                'log'             => $presenter->presentLog($log),
+                'items'           => $items,
+                'streamUrl'       => UrlHelper::cpUrl("influx/logs/{$log->id}/stream"),
+                'itemUrlTemplate' => UrlHelper::cpUrl('influx/logs/items/__ID__'),
+                // id of the link this log belongs to (null if it was deleted),
+                // for the "back to link" cross-link — logs only store the handle.
+                'linkId' => $plugin->links->getLinkByHandle($log->linkHandle)?->id,
+                'isLive' => in_array($log->status, ['running', 'pending'], true),
+            ],
         ]);
     }
 
@@ -84,9 +90,8 @@ class LogsController extends Controller
 
         if (! $link) {
             return $this->asJson([
-                'html' => '<div class="influx-debug-item"><p class="error">'
-                    . Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle])
-                    . '</p></div>',
+                'row'     => null,
+                'message' => Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle]),
             ]);
         }
 
@@ -102,17 +107,12 @@ class LogsController extends Controller
 
         if ($raw === null) {
             return $this->asJson([
-                'html' => '<div class="influx-debug-item"><p class="light">'
-                    . Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')
-                    . '</p></div>',
+                'row'     => null,
+                'message' => Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.'),
             ]);
         }
 
-        $siteId = $log->siteHandle
-            ? (Craft::$app->getSites()->getSiteByHandle($log->siteHandle)?->id)
-            : null;
-
-        $row = $plugin->debug->inspectItem($link, $raw, $siteId);
+        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle);
         $row['index'] = (int) $item->id;
         $row['action'] = (string) $item->action;
 
@@ -120,11 +120,7 @@ class LogsController extends Controller
             $row['message'] = (string) $item->message;
         }
 
-        $html = Craft::$app->getView()->renderTemplate('influx/links/_debug-item', [
-            'row' => $row,
-        ]);
-
-        return $this->asJson(['html' => $html]);
+        return $this->asJson(['row' => $row]);
     }
 
     /**
@@ -143,44 +139,18 @@ class LogsController extends Controller
         }
 
         $lastId = (int) Craft::$app->getRequest()->getQueryParam('lastId', 0);
+        $plugin = Influx::getInstance();
+        $presenter = new LogPresenter();
 
-        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($log, $lastId) {
-            $renderItem = function(LogItemRecord $item): array {
-                $elementHtml = null;
-
-                if ($item->elementId) {
-                    $el = Craft::$app->getElements()->getElementById($item->elementId);
-
-                    if ($el) {
-                        $elementHtml = Compat::elementChipHtml($el, ['hyperlink' => true]);
-                    } else {
-                        $elementHtml = '<span class="light">#' . $item->elementId . ' (gone)</span>';
-                    }
-                }
-
-                return [
-                    'id'          => (int) $item->id,
-                    'action'      => (string) $item->action,
-                    'matchValue'  => (string) ($item->matchValue ?? ''),
-                    'message'     => (string) ($item->message ?? ''),
-                    'elementHtml' => $elementHtml,
-                ];
-            };
-
+        $plugin->eventStream->run(function(EventStreamService $stream) use ($plugin, $presenter, $log, $lastId) {
             // Poll until the run finishes (or the client goes away). The first
             // pass also catches any items already written between page-load and
             // stream-connect.
             $deadline = time() + 600; // hard cap: 10 minutes
 
             while (true) {
-                $newItems = LogItemRecord::find()
-                    ->where(['logId' => $log->id])
-                    ->andWhere(['>', 'id', $lastId])
-                    ->orderBy(['id' => SORT_ASC])
-                    ->all();
-
-                foreach ($newItems as $item) {
-                    $stream->send('item', $renderItem($item));
+                foreach ($plugin->logs->itemsForLogAfter($log, $lastId) as $item) {
+                    $stream->send('item', $presenter->presentItem($item));
                     $lastId = (int) $item->id;
                 }
 
@@ -188,17 +158,7 @@ class LogsController extends Controller
                 $fresh = LogRecord::findOne($log->id);
 
                 if ($fresh) {
-                    $stream->send('counters', [
-                        'status'         => (string) $fresh->status,
-                        'itemsSeen'      => (int) $fresh->itemsSeen,
-                        'itemsCreated'   => (int) $fresh->itemsCreated,
-                        'itemsUpdated'   => (int) $fresh->itemsUpdated,
-                        'itemsUnchanged' => (int) $fresh->itemsUnchanged,
-                        'itemsSkipped'   => (int) $fresh->itemsSkipped,
-                        'itemsDeleted'   => (int) $fresh->itemsDeleted,
-                        'finishedAt'     => $fresh->finishedAt,
-                        'error'          => $fresh->error,
-                    ]);
+                    $stream->send('counters', $presenter->presentCounters($fresh));
                     $log = $fresh;
                 }
 

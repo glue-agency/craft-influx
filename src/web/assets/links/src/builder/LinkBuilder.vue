@@ -50,8 +50,8 @@ export default {
     components: { GeneralTab, PaginationTab, MappingTab, AuthTab, SettingsTab, HeaderActions },
 
     props: {
-        // Pulled from the host template's data-bootstrap attribute.
-        handle: { type: String, default: null },
+        // Pulled from the host template's data-id attribute (null for a new link).
+        id: { type: Number, default: null },
     },
 
     data() {
@@ -94,7 +94,7 @@ export default {
     },
 
     created() {
-        store.load(this.handle);
+        store.load(this.id);
 
         // Replay URL hash → activate matching tab once the SPA has
         // mounted its content panes. Tabs.js init at document.ready ran
@@ -179,3 +179,19 @@ export default {
     },
 };
 </script>
+
+<style>
+/* Moved from links.css. */
+/* LinkBuilder SPA shell — tabs render server-side via cpScreen->tabs()
+   into Craft's #content-header, so there are no tab-related styles
+   needed here. */
+.influx-link-builder-errors {
+    background: #fdecec;
+    border: 1px solid #f0c4c4;
+    color: #8a1a1a;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 18px;
+}
+.influx-link-builder-errors code { color: inherit; }
+</style>

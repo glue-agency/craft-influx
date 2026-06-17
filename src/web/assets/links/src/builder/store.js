@@ -67,18 +67,18 @@ function rememberSnapshot() {
 /**
  * Hydrate the SPA. Run once when the root component mounts.
  */
-async function load(handle) {
+async function load(id) {
     root.loading = true;
     root.loadError = null;
     root.errors = {};
     try {
-        const data = await api.bootstrap(handle);
+        const data = await api.bootstrap(id);
         api.configureCsrf({ name: data.meta.csrfTokenName, value: data.meta.csrfToken });
 
         root.link    = data.link;
         root.options = data.options;
         root.meta    = data.meta;
-        root.siteEndpointsMode = Object.keys(data.link.siteEndpoints || {}).length > 0;
+        root.siteEndpointsMode = (data.link.siteEndpoints || []).length > 0;
         // Reset lazily-loaded caches whenever we re-bootstrap so the next
         // tab activation re-fetches against the new link.
         root.mappable = null;
@@ -99,7 +99,7 @@ async function load(handle) {
  * Persist the current link state. Centralizes the post-save UX so every
  * trigger (Cmd+S, the save button, Save-and-continue) shares the same
  * redirect / toast behavior:
- *   - new link → redirect to its real edit URL (must reload to drop the `new` route)
+ *   - new link → redirect to its real edit URL by id (must reload to drop the `new` route)
  *   - plain save → return to /influx/links unless `continueEditing` is set
  *   - validation errors → ApiError carries them; stored on state.errors
  *     plus a top toast. The snapshot stays put, so the link reads dirty.
@@ -129,7 +129,7 @@ async function save(options = {}) {
         const result = await api.save(root.link);
 
         const wasNew = !!(root.meta && root.meta.isNew);
-        const savedHandle = result.link?.handle;
+        const savedId = result.link?.id;
 
         // Replace the local link with the server's canonical version
         // before any redirect — covers the case where the server applied
@@ -141,11 +141,11 @@ async function save(options = {}) {
             Craft.cp.displayNotice(Craft.t('influx', 'Link saved.'));
         }
 
-        if (wasNew && savedHandle) {
+        if (wasNew && savedId) {
             // The `new` URL is gone — full reload lands the SPA on the
             // persistent edit URL so subsequent saves update in place.
             window.location.href = Craft.getCpUrl(
-                `influx/links/${encodeURIComponent(savedHandle)}/edit`,
+                `influx/links/${encodeURIComponent(savedId)}/edit`,
             );
             return { success: true, redirected: true };
         }
@@ -239,8 +239,8 @@ function sampleEndpoint() {
     if (!link) return '';
 
     if (root.siteEndpointsMode) {
-        for (const url of Object.values(link.siteEndpoints || {})) {
-            const trimmed = typeof url === 'string' ? url.trim() : '';
+        for (const row of link.siteEndpoints || []) {
+            const trimmed = typeof row?.endpoint === 'string' ? row.endpoint.trim() : '';
             if (trimmed) return trimmed;
         }
         return '';
@@ -251,8 +251,8 @@ function sampleEndpoint() {
 
 /** Whether any site-endpoint row is actually filled in. */
 function hasAnySiteEndpoint() {
-    return Object.values(root.link?.siteEndpoints || {})
-        .some((url) => typeof url === 'string' && url.trim() !== '');
+    return (root.link?.siteEndpoints || [])
+        .some((row) => typeof row?.endpoint === 'string' && row.endpoint.trim() !== '');
 }
 
 /**

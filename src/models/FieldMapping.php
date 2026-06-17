@@ -135,6 +135,21 @@ class FieldMapping
         return Hash::get($this->options, $key) ?? $default;
     }
 
+    /**
+     * Whether this mapping is actually wired to a source — a source node, or
+     * an explicit "— use default —" ({@see $useDefault}). A handle with
+     * neither isn't mapped, so its (always-null) value must never overwrite
+     * the field: the sync walker leaves such fields untouched rather than
+     * clearing them. Everything else — an empty feed value, or a non-empty
+     * value that no longer resolves — is written through as empty (the feed is
+     * authoritative). The single source of truth for that distinction, shared
+     * by {@see \GlueAgency\Influx\sync\MappingApplier} and the field strategies.
+     */
+    public function isActive(): bool
+    {
+        return $this->node !== null || $this->useDefault;
+    }
+
     public function hasSubMappings(): bool
     {
         return ! empty($this->fields) || ! empty($this->nativeFields);

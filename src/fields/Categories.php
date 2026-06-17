@@ -5,13 +5,15 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\Category as CraftCategoryElement;
-use craft\elements\db\ElementQueryInterface;
-use craft\fields\BaseRelationField;
 use craft\fields\Categories as CraftCategoriesField;
-use craft\helpers\Db;
-use GlueAgency\Influx\sync\FieldContext;
+use craft\models\FieldLayout;
 
-class Categories extends Relation
+/**
+ * Relation strategy for the Categories field. Creation stays opt-in (no
+ * {@see shouldCreate()} override) — categories are usually curated, unlike
+ * {@see Tags}, which auto-creates.
+ */
+class Categories extends GroupRelation
 {
     public static function craftFieldClass(): ?string
     {
@@ -23,70 +25,26 @@ class Categories extends Relation
         return CraftCategoryElement::class;
     }
 
-    protected function sourceFieldLayouts(BaseRelationField $field): iterable
+    protected function sourcePrefix(): string
     {
-        $source = $field->source ?? null;
-
-        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
-            return;
-        }
-        [, $uid] = explode(':', $source);
-        $group = Craft::$app->getCategories()->getGroupByUid($uid);
-
-        if ($group) {
-            yield $group->getFieldLayout();
-        }
+        return 'group:';
     }
 
-    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
+    protected function groupTable(): string
     {
-        if (! $context->craftField) {
-            return;
-        }
-        $source = $context->craftField->source ?? null;
-
-        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
-            return;
-        }
-        [, $uid] = explode(':', $source);
-        $id = Db::idByUid('{{%categorygroups}}', $uid);
-
-        if ($id) {
-            /** @phpstan-ignore-next-line */
-            $query->groupId($id);
-        }
+        return '{{%categorygroups}}';
     }
 
-    /**
-     * Create the category in the field's configured group when the extras'
-     * "Create when not found" toggle is on. Mirrors {@see Tags} but without
-     * its auto-create default — categories are usually curated, so creation
-     * stays opt-in.
-     */
-    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
+    protected function groupLayout(string $uid): ?FieldLayout
     {
-        if (! $context->craftField) {
-            return null;
-        }
-        $source = $context->craftField->source ?? null;
+        return Craft::$app->getCategories()->getGroupByUid($uid)?->getFieldLayout();
+    }
 
-        if (! is_string($source) || ! str_starts_with($source, 'group:')) {
-            return null;
-        }
-        [, $uid] = explode(':', $source);
-        $groupId = Db::idByUid('{{%categorygroups}}', $uid);
-
-        if (! $groupId) {
-            return null;
-        }
-
+    protected function newGroupElement(int $groupId, string $title): ElementInterface
+    {
         $category = new CraftCategoryElement();
         $category->groupId = $groupId;
-        $category->title = (string) $value;
-
-        if (! Craft::$app->getElements()->saveElement($category, true)) {
-            return null;
-        }
+        $category->title = $title;
 
         return $category;
     }

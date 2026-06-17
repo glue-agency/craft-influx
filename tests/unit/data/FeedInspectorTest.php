@@ -1,21 +1,21 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\services;
+namespace GlueAgency\Influx\Tests\unit\data;
 
 use Codeception\Test\Unit;
-use GlueAgency\Influx\services\DataService;
+use GlueAgency\Influx\data\FeedInspector;
 use GlueAgency\Influx\sync\RemoteItem;
 use ReflectionClass;
 
 /**
- * Node-discovery spec for `DataService::flattenLeafPaths()` — the source of
+ * Node-discovery spec for `FeedInspector::flattenLeafPaths()` — the source of
  * the mapping dropdowns' flatNodes. Locks in the nested-shape rules: object
  * children contribute leaves only, list children are nodes themselves AND
  * (when they hold objects) expose their first element's leaves under the
  * parent key with the index collapsed away — `RemoteItem::get()` fans those
  * reads out over every list element at sync time.
  */
-class DataServiceFlattenTest extends Unit
+class FeedInspectorTest extends Unit
 {
     public function testScalarAndObjectLeaves(): void
     {
@@ -78,10 +78,10 @@ class DataServiceFlattenTest extends Unit
      */
     protected function flatten(array $item): array
     {
-        $ref = new ReflectionClass(DataService::class);
-        $service = $ref->newInstanceWithoutConstructor();
+        $ref = new ReflectionClass(FeedInspector::class);
+        $inspector = $ref->newInstanceWithoutConstructor();
         $method = $ref->getMethod('flattenLeafPaths');
 
-        return $method->invoke($service, $item, []);
+        return $method->invoke($inspector, $item, []);
     }
 }

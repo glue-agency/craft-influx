@@ -40,7 +40,7 @@ describe('request envelope', () => {
     it('throws ApiError with the server message on non-2xx', async () => {
         fetch.mockResolvedValue(jsonResponse({ success: false, message: 'Forbidden.' }, { status: 403 }));
 
-        const error = await bootstrap('articles').catch(e => e);
+        const error = await bootstrap(1).catch(e => e);
         expect(error).toBeInstanceOf(ApiError);
         expect(error.message).toBe('Forbidden.');
         expect(error.status).toBe(403);
@@ -50,7 +50,7 @@ describe('request envelope', () => {
     it('falls back to a generic message when the body has none', async () => {
         fetch.mockResolvedValue(jsonResponse(null, { status: 500 }));
 
-        const error = await bootstrap('articles').catch(e => e);
+        const error = await bootstrap(1).catch(e => e);
         expect(error).toBeInstanceOf(ApiError);
         expect(error.message).toBe('Request failed (500)');
     });

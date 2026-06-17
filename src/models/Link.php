@@ -7,6 +7,7 @@ use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -45,6 +46,50 @@ class Link extends Model
     /** @deprecated Use {@see SyncDecision::SKIP_NO_UPDATE}. */
     public const DECISION_SKIP_NO_UPDATE = 'skip:no-update';
 
+    /**
+     * The config fields a Link serialises to — its Project Config keys, which
+     * are also its `influx_links` columns. THE single source of truth for
+     * "what fields does a Link have": {@see getConfig()} builds from this and
+     * {@see \GlueAgency\Influx\services\LinksService} maps the same fields onto
+     * DB columns, rather than each re-listing them.
+     *
+     * Empty-shape contract: {@see getConfig()} strips empty values, so an empty
+     * field is absent from Project Config and stored as NULL; the service reads
+     * a missing JSON column back as `[]`; {@see toBuilderArray()} casts the
+     * array-y fields to `{}` for the SPA. Three representations, reconciled here.
+     */
+    public const CONFIG_FIELDS = [
+        'handle',
+        'name',
+        'elementType',
+        'elementCriteria',
+        'endpoint',
+        'itemEndpoint',
+        'siteEndpoints',
+        'auth',
+        'rootNode',
+        'paginatorNode',
+        'match',
+        'mappings',
+        'processing',
+        'offset',
+        'backup',
+    ];
+
+    /**
+     * The subset of {@see CONFIG_FIELDS} stored as JSON-encoded columns — used
+     * for both encode (DB write) and decode (DB read) so the two stay symmetric.
+     */
+    public const JSON_FIELDS = [
+        'elementCriteria',
+        'siteEndpoints',
+        'auth',
+        'match',
+        'mappings',
+        'processing',
+        'offset',
+    ];
+
     public ?int $id = null;
 
     public ?string $uid = null;
@@ -82,11 +127,21 @@ class Link extends Model
     public ?string $itemEndpoint = null;
 
     /**
-     * Map of siteHandle => endpoint. When set, the link runs once per site,
-     * fetching the localized payload and writing to that site's row on the
-     * matched element.
+     * Per-site endpoints as an ordered list of
+     * `['site' => handle, 'endpoint' => url]`. When set, the link runs once
+     * per site — in this order — fetching the localized payload and writing
+     * to that site's row on the matched element.
+     *
+     * Stored as a list rather than a `{handle: url}` map because Project
+     * Config alphabetizes associative-array keys on save
+     * ({@see \craft\helpers\ProjectConfig::cleanupConfig()} ksorts), which
+     * would discard the configured run order; ordered lists round-trip
+     * intact. Always assigned through {@see setSiteEndpoints()} so legacy map
+     * configs still hydrate.
+     *
+     * @var list<array{site: string, endpoint: string}>
      */
-    public array $siteEndpoints = [];
+    protected array $siteEndpoints = [];
 
     /**
      * Authentication configuration. Stored shape:
@@ -171,7 +226,7 @@ class Link extends Model
 
         // The match value is read from the node configured on the mapped
         // field, so the chosen match attribute must have an active mapping.
-        $mappedNode = $this->mappings[$value['attribute']]['node'] ?? null;
+        $mappedNode = $this->getMappingCollection()->get($value['attribute'])?->node;
 
         if (! $mappedNode) {
             $this->addError(
@@ -222,23 +277,11 @@ class Link extends Model
      */
     public function getConfig(): array
     {
-        $config = [
-            'handle'          => $this->handle,
-            'name'            => $this->name,
-            'elementType'     => $this->elementType,
-            'elementCriteria' => $this->elementCriteria,
-            'endpoint'        => $this->endpoint,
-            'itemEndpoint'    => $this->itemEndpoint,
-            'siteEndpoints'   => $this->siteEndpoints,
-            'auth'            => $this->auth,
-            'rootNode'        => $this->rootNode,
-            'paginatorNode'   => $this->paginatorNode,
-            'match'           => $this->match,
-            'mappings'        => $this->mappings,
-            'processing'      => $this->processing,
-            'offset'          => $this->offset,
-            'backup'          => $this->backup,
-        ];
+        $config = [];
+
+        foreach (self::CONFIG_FIELDS as $field) {
+            $config[$field] = $this->{$field};
+        }
 
         return array_filter($config, function($value) {
             if ($value === null || $value === '' || $value === false) {
@@ -274,7 +317,7 @@ class Link extends Model
             'elementCriteria' => (object) ($this->elementCriteria ?? []),
             'endpoint'        => $this->endpoint,
             'itemEndpoint'    => $this->itemEndpoint,
-            'siteEndpoints'   => (object) ($this->siteEndpoints ?? []),
+            'siteEndpoints'   => $this->siteEndpoints,
             'offset'          => (object) ($this->offset ?? []),
             'processing'      => array_values($this->processing ?? []),
             'rootNode'        => $this->rootNode,
@@ -304,7 +347,7 @@ class Link extends Model
         $this->elementCriteria = (array) ($payload['elementCriteria'] ?? []);
         $this->endpoint = $strOrNull($payload['endpoint'] ?? null);
         $this->itemEndpoint = $strOrNull($payload['itemEndpoint'] ?? null);
-        $this->siteEndpoints = (array) ($payload['siteEndpoints'] ?? []);
+        $this->setSiteEndpoints($payload['siteEndpoints'] ?? []);
         $this->offset = (array) ($payload['offset'] ?? []);
         $this->processing = array_values((array) ($payload['processing'] ?? []));
         $this->rootNode = $strOrNull($payload['rootNode'] ?? null);
@@ -323,8 +366,22 @@ class Link extends Model
      */
     public function applyAuth(array &$headers, array &$query): void
     {
+        if (empty($this->auth)) {
+            return;
+        }
+
         $strategy = $this->authService()?->fromConfig($this->auth);
-        $strategy?->apply($headers, $query);
+
+        if (! $strategy) {
+            // Auth is configured but its type no longer resolves — e.g. a
+            // third-party strategy was unregistered after the link was saved.
+            // Fail loudly instead of firing the request unauthenticated.
+            throw new InfluxException(
+                "Link '{$this->handle}' has an unresolvable auth type '" . ($this->auth['type'] ?? '?') . "'.",
+            );
+        }
+
+        $strategy->apply($headers, $query);
     }
 
     /**
@@ -337,9 +394,99 @@ class Link extends Model
         return Influx::getInstance()?->auth;
     }
 
+    /**
+     * @return list<array{site: string, endpoint: string}>
+     */
+    public function getSiteEndpoints(): array
+    {
+        return $this->siteEndpoints;
+    }
+
+    /**
+     * Accepts either the canonical ordered list or a legacy `{handle: url}`
+     * map (configs written before the list shape) and stores the list form.
+     * Reached via `__set` on every external assignment — hydration from the
+     * DB row, the builder payload, the Feed Me converter — so the model only
+     * ever holds the normalized shape.
+     */
+    public function setSiteEndpoints(mixed $value): void
+    {
+        $this->siteEndpoints = self::normalizeSiteEndpoints($value);
+    }
+
+    /**
+     * Coerce either stored shape into the canonical ordered list, dropping
+     * rows missing a site handle or endpoint:
+     *   - list:   [['site' => 'nl', 'endpoint' => '…'], …]
+     *   - legacy: ['nl' => '…', 'en' => '…']
+     *
+     * @return list<array{site: string, endpoint: string}>
+     */
+    public static function normalizeSiteEndpoints(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $list = [];
+
+        foreach ($value as $key => $row) {
+            if (is_array($row)) {
+                $site = (string) ($row['site'] ?? (is_string($key) ? $key : ''));
+                $endpoint = (string) ($row['endpoint'] ?? '');
+            } else {
+                $site = (string) $key;
+                $endpoint = (string) $row;
+            }
+
+            $site = trim($site);
+            $endpoint = trim($endpoint);
+
+            if ($site === '' || $endpoint === '') {
+                continue;
+            }
+
+            $list[] = ['site' => $site, 'endpoint' => $endpoint];
+        }
+
+        return $list;
+    }
+
+    /**
+     * Site handles this link is configured to run for, in run order.
+     *
+     * @return list<string>
+     */
     public function siteHandles(): array
     {
-        return ! empty($this->siteEndpoints) ? array_keys($this->siteEndpoints) : [];
+        return array_map(static fn(array $row): string => $row['site'], $this->siteEndpoints);
+    }
+
+    /**
+     * Site handles a sync run iterates: the configured per-site endpoints, or
+     * a single `[null]` meaning "the primary site" when none are configured.
+     * The one place the "no sites = primary site" rule lives.
+     *
+     * @return list<string|null>
+     */
+    public function syncSiteHandles(): array
+    {
+        return $this->siteHandles() ?: [null];
+    }
+
+    /**
+     * Endpoint configured for a specific site handle, or null when the site
+     * has no dedicated endpoint (the caller then falls back to {@see $endpoint}).
+     */
+    public function endpointForSite(string $siteHandle): ?string
+    {
+        foreach ($this->siteEndpoints as $row) {
+            if ($row['site'] === $siteHandle) {
+                return $row['endpoint'];
+            }
+        }
+
+        return null;
     }
 
     /**

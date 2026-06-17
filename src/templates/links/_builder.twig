@@ -1,9 +1,9 @@
 {# =====================================================================
    LinkBuilder SPA host. This template renders a single mount point and
    gets out of the way — the entire link edit UI is driven by Vue from
-   here on. The handle (if any) is passed via a data attribute so the
+   here on. The link id (if any) is passed via a data attribute so the
    SPA can bootstrap against the right link.
    ===================================================================== #}
 <div data-influx-link-builder
-     {% if link.handle ?? '' %}data-handle="{{ link.handle }}"{% endif %}>
+     {% if link.id ?? '' %}data-id="{{ link.id }}"{% endif %}>
 </div>

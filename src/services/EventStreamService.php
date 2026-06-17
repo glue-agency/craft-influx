@@ -51,8 +51,16 @@ class EventStreamService extends Component
      */
     public function send(string $event, array $data): void
     {
+        $payload = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        if ($payload === false) {
+            // Malformed UTF-8 in a feed payload (e.g. echoed into a debug row)
+            // would otherwise emit an empty `data:` frame with no signal.
+            $payload = json_encode(['error' => 'Event payload could not be encoded.']);
+        }
+
         echo "event: {$event}\n";
-        echo 'data: ' . json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
+        echo 'data: ' . $payload . "\n\n";
         @flush();
     }
 

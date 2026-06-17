@@ -17,6 +17,7 @@ class SyncLinkJob extends BaseJob
 {
     public string $linkHandle = '';
     public ?string $offset = null;
+    public ?string $site = null;
     public string $trigger = 'queue';
 
     /**
@@ -32,12 +33,20 @@ class SyncLinkJob extends BaseJob
             throw new InfluxException("Cannot sync link '{$this->linkHandle}' — no link with that handle exists.");
         }
 
-        $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::from($this->trigger));
+        // tryFrom (not from) so a job serialised with an unexpected trigger
+        // value degrades to QUEUE instead of throwing a raw ValueError.
+        $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
+
+        $plugin->synchronization->syncLink($link, $this->offset, $trigger, $this->site);
     }
 
     protected function defaultDescription(): ?string
     {
-        $suffix = $this->offset ? " (preset: {$this->offset})" : '';
+        $parts = array_filter([
+            $this->site ? "site: {$this->site}" : null,
+            $this->offset ? "preset: {$this->offset}" : null,
+        ]);
+        $suffix = $parts ? ' (' . implode(', ', $parts) . ')' : '';
 
         return Craft::t('influx', 'Syncing influx link “{handle}”{suffix}', [
             'handle' => $this->linkHandle,

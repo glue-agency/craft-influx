@@ -31,10 +31,6 @@ class RichText extends Field
 
     public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
-        if ($incoming === null || $incoming === '') {
-            return false;
-        }
-
         if ($context->craftField === null) {
             return parent::hasChanged($context, $incoming);
         }

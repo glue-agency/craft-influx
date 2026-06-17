@@ -5,7 +5,7 @@
             <col>
             <thead>
                 <tr>
-                    <th class="singleline-cell textual" scope="col">{{ $t('Key') }}</th>
+                    <th class="singleline-cell textual" scope="col">{{ $t('Handle') }}</th>
                     <th class="singleline-cell textual has-info" scope="col">
                         {{ $t('Since') }}
                         <span class="info" v-html="$t('Anything <code>DateTime::modify</code> accepts.')"></span>
@@ -21,7 +21,7 @@
             <tbody>
                 <tr v-for="(row, idx) in rows" :key="idx">
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.key" :placeholder="$t('e.g. last24h')" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.handle" :placeholder="$t('e.g. last24h')" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
                         <textarea rows="1" v-model="row.since" placeholder="-1 day" @input="onChange"></textarea>
@@ -53,7 +53,7 @@
  * Editor for `link.offset` — the sliding-window preset map. Renders inside
  * Craft's standard `table.editable.fullwidth` so the CP CSS handles cell
  * borders, focus rings, and dashed add button styling. Rows are kept as a
- * positional list internally and round-tripped to the `{key: {...}}` shape
+ * positional list internally and round-tripped to the `{handle: {...}}` shape
  * the link payload uses on emit.
  */
 export default {
@@ -96,8 +96,8 @@ export default {
 
     methods: {
         fromValue(value) {
-            return Object.entries(value || {}).map(([key, preset]) => ({
-                key,
+            return Object.entries(value || {}).map(([handle, preset]) => ({
+                handle,
                 since:      preset?.since      ?? '',
                 queryParam: preset?.queryParam ?? '',
                 format:     preset?.format     ?? '',
@@ -107,20 +107,20 @@ export default {
         toValue(rows) {
             const out = {};
             for (const row of rows) {
-                const key = (row.key || '').trim();
+                const handle = (row.handle || '').trim();
                 const since = (row.since || '').trim();
                 const queryParam = (row.queryParam || '').trim();
-                if (!key || !since || !queryParam) continue;
+                if (!handle || !since || !queryParam) continue;
                 const entry = { since, queryParam };
                 const format = (row.format || '').trim();
                 if (format) entry.format = format;
-                out[key] = entry;
+                out[handle] = entry;
             }
             return { value: out, serialized: JSON.stringify(out) };
         },
 
         addRow() {
-            this.rows.push({ key: '', since: '', queryParam: '', format: '' });
+            this.rows.push({ handle: '', since: '', queryParam: '', format: '' });
         },
 
         removeRow(idx) {

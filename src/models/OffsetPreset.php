@@ -20,8 +20,8 @@ use Throwable;
  */
 class OffsetPreset
 {
-    /** The preset's key in the link's offset map ('hour', 'day', ...). */
-    public string $key = '';
+    /** The preset's handle in the link's offset map ('hour', 'day', ...). */
+    public string $handle = '';
 
     /** Relative date string fed to DateTime::modify ('-1 hour'). */
     public string $since = '';
@@ -33,12 +33,12 @@ class OffsetPreset
     public string $format = DateTimeInterface::ATOM;
 
     public function __construct(
-        string $key,
+        string $handle,
         string $since,
         string $queryParam,
         string $format = DateTimeInterface::ATOM,
     ) {
-        $this->key = $key;
+        $this->handle = $handle;
         $this->since = $since;
         $this->queryParam = $queryParam;
         $this->format = $format;
@@ -49,14 +49,14 @@ class OffsetPreset
      * config is missing the mandatory keys — the caller treats null as
      * "no filter", same way the sync service used to.
      */
-    public static function fromConfig(string $key, array $config): ?self
+    public static function fromConfig(string $handle, array $config): ?self
     {
         if (! isset($config['since'], $config['queryParam'])) {
             return null;
         }
 
         return new self(
-            key: $key,
+            handle: $handle,
             since: (string) $config['since'],
             queryParam: (string) $config['queryParam'],
             format: (string) ($config['format'] ?? DateTimeInterface::ATOM),
@@ -64,15 +64,15 @@ class OffsetPreset
     }
 
     /**
-     * Pull a named preset off the link, or null if the key isn't configured.
+     * Pull a named preset off the link, or null if the handle isn't configured.
      */
-    public static function forLink(Link $link, ?string $key): ?self
+    public static function forLink(Link $link, ?string $handle): ?self
     {
-        if (! $key || ! isset($link->offset[$key]) || ! is_array($link->offset[$key])) {
+        if (! $handle || ! isset($link->offset[$handle]) || ! is_array($link->offset[$handle])) {
             return null;
         }
 
-        return self::fromConfig($key, $link->offset[$key]);
+        return self::fromConfig($handle, $link->offset[$handle]);
     }
 
     /**
@@ -91,11 +91,11 @@ class OffsetPreset
         try {
             $since = (new DateTime())->modify($this->since);
         } catch (Throwable) {
-            return [[], "invalid 'since' on preset '{$this->key}'"];
+            return [[], "invalid 'since' on preset '{$this->handle}'"];
         }
 
         if ($since === false) {
-            return [[], "invalid 'since' on preset '{$this->key}'"];
+            return [[], "invalid 'since' on preset '{$this->handle}'"];
         }
 
         $formatted = $since->format($this->format);

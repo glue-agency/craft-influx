@@ -78,9 +78,10 @@ class Date extends Field
      */
     public function parse(FieldContext $context): mixed
     {
+        // resolve() already normalises empty to null.
         $raw = $context->mapping->resolve($context->item);
 
-        if ($raw === null || $raw === '') {
+        if ($raw === null) {
             return null;
         }
 

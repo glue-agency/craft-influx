@@ -21,9 +21,11 @@ use Throwable;
  * Lifecycle, driven by {@see \GlueAgency\Influx\sync\MappingApplier}:
  *
  *   $value = $strategy->parse($context);
- *   if ($value !== null && $strategy->hasChanged($context, $value)) {
- *       $strategy->apply($context, $value);
- *   }
+ *   // An actively-mapped field is always written — a null/empty value clears
+ *   // it (the feed is authoritative). hasChanged() only decides whether the
+ *   // write counts toward the element's save-worthy "changed" flag.
+ *   $changed = $strategy->hasChanged($context, $value);
+ *   $strategy->apply($context, $value);
  *
  * `parse()` is the one method subclasses have to implement; everything else
  * has a sensible default in this base.

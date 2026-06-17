@@ -371,7 +371,7 @@ class FeedMeConverterTest extends Unit
         $link = $this->convert(['siteId' => '2'], multiSite: true)->link;
 
         $this->assertNull($link->endpoint);
-        $this->assertSame(['nl' => 'https://example.test/feed.json'], $link->siteEndpoints);
+        $this->assertSame([['site' => 'nl', 'endpoint' => 'https://example.test/feed.json']], $link->siteEndpoints);
     }
 
     public function testSingleSiteFeedKeepsDefaultEndpointDespiteSiteId(): void

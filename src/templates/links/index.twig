@@ -54,7 +54,7 @@
                     {% set lastRun = lastRuns[link.handle] ?? null %}
                     <tr>
                         <td>
-                            <a href="{{ cpUrl('influx/links/' ~ link.handle) }}">
+                            <a href="{{ cpUrl('influx/links/' ~ link.id) }}">
                                 <strong>{{ link.name }}</strong>
                             </a>
                         </td>
@@ -85,22 +85,29 @@
                             {% endif %}
                         </td>
                         <td class="thin">
+                            {# A link with 2+ site-specific endpoints can be synced per site;
+                               otherwise "all sites" is the only scope. Offset presets stay
+                               available within whichever scope. #}
+                            {% set siteHandles = link.siteHandles() %}
+                            {% set multiSite = siteHandles|length > 1 %}
+                            {% set siteScopes = multiSite ? [null]|merge(siteHandles) : [null] %}
+                            {% set presetHandles = link.offset|keys %}
+
                             {# Forms hoisted out of the btngroup so the buttons can sit as direct
                                children — Craft's .btngroup radius rules target .btn:first-child /
-                               :last-child, which would never match when the buttons are wrapped. #}
-                            <form id="influx-sync-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
-                                {{ csrfInput() }}
-                                {{ actionInput("influx/synchronization/link") }}
-                                {{ hiddenInput("handle", link.handle) }}
-                            </form>
-
-                            {% for key, _ in link.offset %}
-                                <form id="influx-sync-{{ link.handle }}-{{ key }}" method="post" accept-charset="UTF-8" hidden>
-                                    {{ csrfInput() }}
-                                    {{ actionInput("influx/synchronization/link") }}
-                                    {{ hiddenInput("handle", link.handle) }}
-                                    {{ hiddenInput("offset", key) }}
-                                </form>
+                               :last-child, which would never match when the buttons are wrapped.
+                               One form per (site scope × offset preset) the buttons below submit. #}
+                            {% for site in siteScopes %}
+                                {% for presetHandle in [null]|merge(presetHandles) %}
+                                    <form id="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle ?? "default" }}"
+                                          method="post" accept-charset="UTF-8" hidden>
+                                        {{ csrfInput() }}
+                                        {{ actionInput("influx/synchronization/link") }}
+                                        {{ hiddenInput("handle", link.handle) }}
+                                        {% if site is not null %}{{ hiddenInput("site", site) }}{% endif %}
+                                        {% if presetHandle is not null %}{{ hiddenInput("offset", presetHandle) }}{% endif %}
+                                    </form>
+                                {% endfor %}
                             {% endfor %}
 
                             {% if not readOnly %}
@@ -114,35 +121,59 @@
 
                             <div class="btngroup">
                                 <button type="submit"
-                                        form="influx-sync-{{ link.handle }}"
+                                        form="influx-sync-{{ link.handle }}--all--default"
                                         class="btn"
                                         data-icon="refresh"
                                         title="{{ 'Sync'|t('influx') }}">
                                     {{ "Sync"|t("influx") }}
                                 </button>
 
-                                {% if link.offset is not empty %}
-                                    <button type="button" class="btn menubtn" title="{{ 'Sync with preset'|t('influx') }}"></button>
+                                {% if presetHandles is not empty or multiSite %}
+                                    <button type="button" class="btn menubtn" title="{{ 'Sync options'|t('influx') }}"></button>
                                     <div class="menu" data-align="right">
-                                        <ul>
-                                            {% for key, preset in link.offset %}
-                                                <li>
-                                                    <button type="submit"
-                                                            form="influx-sync-{{ link.handle }}-{{ key }}"
-                                                            class="menu-option">
-                                                        {{ key }}
-                                                        <span class="light">— {{ preset.since }}</span>
-                                                    </button>
-                                                </li>
+                                        {% if multiSite %}
+                                            {% for site in siteScopes %}
+                                                {% if not loop.first %}<hr>{% endif %}
+                                                <h6>{{ site is null ? "All sites"|t("influx") : "Site {site}"|t("influx", { site: site }) }}</h6>
+                                                <ul>
+                                                    <li>
+                                                        <button type="submit"
+                                                                form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--default"
+                                                                class="menu-option">
+                                                            {{ "all"|t("influx") }}
+                                                        </button>
+                                                    </li>
+                                                    {% for presetHandle in presetHandles %}
+                                                        <li>
+                                                            <button type="submit"
+                                                                    form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle }}"
+                                                                    class="menu-option">
+                                                                {{ presetHandle }}
+                                                            </button>
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
                                             {% endfor %}
-                                        </ul>
+                                        {% else %}
+                                            <ul>
+                                                {% for presetHandle in presetHandles %}
+                                                    <li>
+                                                        <button type="submit"
+                                                                form="influx-sync-{{ link.handle }}--all--{{ presetHandle }}"
+                                                                class="menu-option">
+                                                            {{ presetHandle }}
+                                                        </button>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>
                         </td>
                         <td class="thin">
                             <div class="btngroup">
-                                <a href="{{ cpUrl('influx/links/' ~ link.handle ~ '/debug') }}"
+                                <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/debug') }}"
                                    class="btn"
                                    data-icon="search"
                                    title="{{ 'Debug'|t('influx') }}">

@@ -5,17 +5,14 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\elements\Entry;
 use craft\helpers\UrlHelper;
-use craft\web\Controller;
-use craft\web\View;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use Throwable;
-use yii\web\ForbiddenHttpException;
+use yii\base\Action;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -26,29 +23,19 @@ use yii\web\Response;
  * (when `allowAdminChanges` is on) the same way Craft 5 manages Sections,
  * Entry Types, Volumes, etc.
  */
-class LinksController extends Controller
+class LinksController extends AbstractController
 {
-    protected array|int|bool $allowAnonymous = false;
-
-    protected bool $readOnly;
-
-    public function beforeAction($action): bool
+    /**
+     * Links live in Project Config, so they're admin territory rather than a
+     * plugin permission. View actions still work in a read-only environment
+     * (requireAdmin(false)); mutating actions also require allowAdminChanges
+     * (requireAdmin()).
+     */
+    protected function requireAccess(Action $action): void
     {
-        if (! parent::beforeAction($action)) {
-            return false;
-        }
-
         $viewActions = ['index', 'view', 'edit', 'debug', 'debug-stream'];
 
-        if (in_array($action->id, $viewActions, true)) {
-            $this->requireAdmin(false);
-        } else {
-            $this->requireAdmin();
-        }
-
-        $this->readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
-
-        return true;
+        $this->requireAdmin(! in_array($action->id, $viewActions, true));
     }
 
     public function actionIndex(): Response
@@ -56,30 +43,26 @@ class LinksController extends Controller
         return $this->renderTemplate('influx/links/index', [
             'links'    => Influx::getInstance()->links->getAllLinks(),
             'lastRuns' => Influx::getInstance()->logs->lastRunPerLink(),
-            'readOnly' => $this->readOnly,
+            'readOnly' => $this->readOnly(),
         ]);
     }
 
-    public function actionView(string $handle): Response
+    public function actionView(int $id): Response
     {
-        if (! $this->readOnly) {
-            return $this->redirect("influx/links/{$handle}/edit");
+        if (! $this->readOnly()) {
+            return $this->redirect("influx/links/{$id}/edit");
         }
 
-        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
-            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
+            throw new NotFoundHttpException("Link {$id} not found.");
         }
 
-        $recentLogs = LogRecord::find()
-            ->where(['linkHandle' => $handle])
-            ->orderBy(['startedAt' => SORT_DESC])
-            ->limit(20)
-            ->all();
+        $recentLogs = Influx::getInstance()->logs->recentForLink($link->handle, 20);
 
         return $this->renderTemplate('influx/links/view', [
             'link'       => $link,
             'recentLogs' => $recentLogs,
-            'readOnly'   => $this->readOnly,
+            'readOnly'   => $this->readOnly(),
         ]);
     }
 
@@ -88,11 +71,14 @@ class LinksController extends Controller
      * results container that gets populated live via {@see actionDebugStream}.
      * Writes nothing.
      */
-    public function actionDebug(string $handle): Response
+    public function actionDebug(int $id): Response
     {
-        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
-            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
+            throw new NotFoundHttpException("Link {$id} not found.");
         }
+
+        // The debug inspector is a Vue app (DebugApp) — ship the full bundle.
+        Craft::$app->getView()->registerAssetBundle(LinksAsset::class);
 
         $limit = (int) Craft::$app->getRequest()->getQueryParam('limit', DebugService::DEFAULT_LIMIT);
         $limit = max(1, min($limit, 500));
@@ -103,20 +89,27 @@ class LinksController extends Controller
             ? $requestedSite
             : ($siteHandles[0] ?? null);
 
-        $offsetKeys = array_keys($link->offset ?? []);
+        // Friendly site names for the dropdown labels; the option value stays
+        // the handle (what the stream and $selectedSite work with).
+        $sites = array_map(static fn(string $handle): array => [
+            'handle' => $handle,
+            'name'   => Craft::$app->getSites()->getSiteByHandle($handle)?->name ?? $handle,
+        ], $siteHandles);
+
+        $offsetHandles = array_keys($link->offset ?? []);
         $requestedOffset = Craft::$app->getRequest()->getQueryParam('offset');
-        $selectedOffset = $requestedOffset !== null && in_array($requestedOffset, $offsetKeys, true)
+        $selectedOffset = $requestedOffset !== null && in_array($requestedOffset, $offsetHandles, true)
             ? $requestedOffset
             : null;
 
         return $this->renderTemplate('influx/links/debug', [
             'link'           => $link,
             'limit'          => $limit,
-            'siteHandles'    => $siteHandles,
+            'sites'          => $sites,
             'selectedSite'   => $selectedSite,
-            'offsetKeys'     => $offsetKeys,
+            'offsetHandles'  => $offsetHandles,
             'selectedOffset' => $selectedOffset,
-            'streamUrl'      => UrlHelper::cpUrl("influx/links/{$link->handle}/debug/stream"),
+            'streamUrl'      => UrlHelper::cpUrl("influx/links/{$link->id}/debug/stream"),
         ]);
     }
 
@@ -128,10 +121,10 @@ class LinksController extends Controller
      * Bypasses Yii's normal response pipeline and writes the event stream
      * directly so each item can flush as soon as it's processed.
      */
-    public function actionDebugStream(string $handle): void
+    public function actionDebugStream(int $id): void
     {
-        if (! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
-            throw new NotFoundHttpException("Link '{$handle}' not found.");
+        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
+            throw new NotFoundHttpException("Link {$id} not found.");
         }
 
         $request = Craft::$app->getRequest();
@@ -149,23 +142,13 @@ class LinksController extends Controller
             $offset = null;
         }
 
-        $view = Craft::$app->getView();
         $debug = Influx::getInstance()->debug;
 
-        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($debug, $link, $siteHandle, $limit, $offset, $view) {
+        // Each event's data is already JSON-serializable (the Vue DebugApp
+        // renders it); stream it straight through, no server-side rendering.
+        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($debug, $link, $siteHandle, $limit, $offset) {
             foreach ($debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
-                if ($event['type'] === 'item') {
-                    $html = $view->renderTemplate(
-                        'influx/links/_debug-item',
-                        ['row' => $event['data']],
-                        View::TEMPLATE_MODE_CP,
-                    );
-                    $payload = ['index' => $event['data']['index'] ?? null, 'html' => $html];
-                } else {
-                    $payload = $event['data'];
-                }
-
-                $stream->send($event['type'], $payload);
+                $stream->send($event['type'], $event['data']);
 
                 if ($stream->aborted()) {
                     return;
@@ -176,19 +159,19 @@ class LinksController extends Controller
         });
     }
 
-    public function actionEdit(?string $handle = null, ?Link $link = null): Response
+    public function actionEdit(?int $id = null, ?Link $link = null): Response
     {
-        if ($handle === null && $this->readOnly) {
-            throw new ForbiddenHttpException('Administrative changes are disallowed in this environment.');
+        if ($id === null) {
+            $this->assertWriteable();
         }
 
         $plugin = Influx::getInstance();
-        $isNew = ($handle === null);
+        $isNew = ($id === null);
 
-        if ($handle !== null) {
+        if ($id !== null) {
             if ($link === null) {
-                if (! ($link = $plugin->links->getLinkByHandle($handle))) {
-                    throw new NotFoundHttpException("Link '{$handle}' not found.");
+                if (! ($link = $plugin->links->getLinkById($id))) {
+                    throw new NotFoundHttpException("Link {$id} not found.");
                 }
             }
             $title = trim($link->name) ?: Craft::t('influx', 'Edit link');
@@ -211,7 +194,7 @@ class LinksController extends Controller
         $view->registerTranslations('influx', $plugin->linkBuilder->translatableStrings());
 
         // The SPA owns the form. We only ship the host template + the
-        // handle (if any). Save is wired through the JSON endpoint inside
+        // link id (if any). Save is wired through the JSON endpoint inside
         // the Vue layer — Craft's standard cpScreen form submit is bypassed.
         //
         // The empty additional-buttons HTML ensures cpScreen renders its
@@ -236,7 +219,7 @@ class LinksController extends Controller
 
         Compat::additionalButtonsHtml($response, '<div data-influx-actions-slot></div>');
 
-        if ($this->readOnly) {
+        if ($this->readOnly()) {
             Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
         } elseif (! $isNew && $link->uid) {
             $response->addAltAction(Craft::t('app', 'Delete'), [
@@ -280,6 +263,6 @@ class LinksController extends Controller
             return $this->asFailure($e->getMessage());
         }
 
-        return $this->redirect("influx/links/{$link->handle}/edit");
+        return $this->redirect("influx/links/{$link->id}/edit");
     }
 }

@@ -219,13 +219,14 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        if ($value === null) {
-            return false;
-        }
+        // An active mapping that's now empty clears the title — the feed is
+        // authoritative. Saves run with validation off, so an empty title
+        // persists rather than failing (mirrors Feed Me's essentials scenario).
+        $new = $value === null ? null : StringHelper::safeTruncate((string) $value, 255);
+        $changed = (string) ($element->title ?? '') !== (string) ($new ?? '');
+        $element->title = $new;
 
-        $element->title = StringHelper::safeTruncate((string) $value, 255);
-
-        return true;
+        return $changed;
     }
 
     /**
@@ -237,13 +238,12 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        if ($value === null) {
-            return false;
-        }
+        // Empty clears the slug — Craft regenerates it from the title on save.
+        $new = $value === null ? null : ElementHelper::normalizeSlug((string) $value);
+        $changed = (string) ($element->slug ?? '') !== (string) ($new ?? '');
+        $element->slug = $new;
 
-        $element->slug = ElementHelper::normalizeSlug((string) $value);
-
-        return true;
+        return $changed;
     }
 
     /**
@@ -256,21 +256,23 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        if ($value === null) {
-            return false;
-        }
-
-        $match = (string) $mapping->option('match', 'id');
-        $user = $this->findUser($match, $value);
-
-        if (! $user) {
-            return false;
-        }
-
         /** @var Entry $element */
-        Compat::setEntryAuthor($element, $user->id);
+        // Compare by author id, not the author relation object — re-applying
+        // the same author (e.g. a useDefault `default` that already matches the
+        // current author) must read as unchanged.
+        $before = Compat::entryAuthorIds($element);
 
-        return true;
+        // Empty, or a value that no longer matches any user, clears the author
+        // — the feed is authoritative (the same policy the relational fields
+        // follow when a lookup resolves to nothing).
+        if ($value === null) {
+            Compat::setEntryAuthor($element, null);
+        } else {
+            $match = (string) $mapping->option('match', 'id');
+            Compat::setEntryAuthor($element, $this->findUser($match, $value)?->id);
+        }
+
+        return $before !== Compat::entryAuthorIds($element);
     }
 
     protected function parsePostDate(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
@@ -293,61 +295,67 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        if ($value === null) {
-            return false;
-        }
+        // Empty clears to disabled — an empty boolean is false.
+        $new = match (true) {
+            $value === null => false,
+            is_bool($value) => $value,
+            default         => in_array(strtolower(trim((string) $value)), Lightswitch::TRUTHY_VALUES, true),
+        };
 
-        if (is_bool($value)) {
-            $element->enabled = $value;
+        $changed = (bool) $element->enabled !== $new;
+        $element->enabled = $new;
 
-            return true;
-        }
-
-        $element->enabled = in_array(strtolower(trim((string) $value)), Lightswitch::TRUTHY_VALUES, true);
-
-        return true;
+        return $changed;
     }
 
     protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
+        $before = $element->{$attr};
 
+        // Empty clears the date (the feed is authoritative).
         if ($value === null || $value === '') {
+            $element->{$attr} = null;
+
+            return $before !== null;
+        }
+
+        $parsed = $this->parseDateValue($value, $mapping);
+
+        // A present-but-unparseable value is left as a no-op — malformed feed
+        // data shouldn't wipe a valid stored date.
+        if ($parsed === null) {
             return false;
         }
 
-        if ($value instanceof DateTimeInterface) {
-            $element->{$attr} = $value instanceof DateTime ? $value : DateTime::createFromInterface($value);
+        $element->{$attr} = $parsed;
 
-            return true;
+        return ! ($before instanceof DateTimeInterface) || $before->getTimestamp() !== $parsed->getTimestamp();
+    }
+
+    /**
+     * Parse a resolved feed value into a DateTime, or null when it can't be
+     * parsed. An explicit `format` option wins over the auto-detector — feeds
+     * that ship ambiguous strings (e.g. `02/03/2024`) need to disambiguate
+     * manually. `timestamp` is a UI sentinel for Unix seconds (translated to
+     * the PHP `U` token here so the Vue side stays human-readable).
+     */
+    protected function parseDateValue(mixed $value, FieldMapping $mapping): ?DateTime
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value instanceof DateTime ? $value : DateTime::createFromInterface($value);
         }
 
-        // An explicit format wins over the auto-detector — feeds that ship
-        // ambiguous strings (e.g. `02/03/2024`) need to disambiguate manually.
-        // `timestamp` is a UI sentinel for Unix seconds (translated to the
-        // PHP `U` token here so the Vue side stays human-readable).
         $format = $mapping->option('format');
 
         if (is_string($format) && $format !== '') {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
             $parsed = DateTime::createFromFormat($phpFormat, (string) $value);
 
-            if ($parsed === false) {
-                return false;
-            }
-            $element->{$attr} = $parsed;
-
-            return true;
+            return $parsed === false ? null : $parsed;
         }
 
-        $parsed = DateTimeHelper::toDateTime($value);
-
-        if (! $parsed) {
-            return false;
-        }
-        $element->{$attr} = $parsed;
-
-        return true;
+        return DateTimeHelper::toDateTime($value) ?: null;
     }
 
     protected function findUser(string $match, mixed $value): ?User

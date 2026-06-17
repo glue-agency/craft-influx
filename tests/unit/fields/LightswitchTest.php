@@ -65,6 +65,23 @@ class LightswitchTest extends Unit
         $this->assertTrue((new Lightswitch())->parse($context));
     }
 
+    public function testInactiveMappingYieldsNullSoTheFieldIsLeftUntouched(): void
+    {
+        // No node and no default: the field isn't mapped at all, so parse must
+        // return null (the walker then leaves it untouched) rather than forcing
+        // it to false on every sync.
+        $context = $this->context(feed: [], mapping: []);
+        $this->assertNull((new Lightswitch())->parse($context));
+    }
+
+    public function testActiveButEmptyMappingStillCoercesToFalse(): void
+    {
+        // node mapped but the feed value is empty: the feed is authoritative and
+        // an empty boolean is false — distinct from "not mapped" above.
+        $context = $this->context(feed: ['featured' => ''], mapping: ['node' => 'featured']);
+        $this->assertFalse((new Lightswitch())->parse($context));
+    }
+
     public function testCraftFieldClassIsLightswitch(): void
     {
         $this->assertSame(CraftLightswitchField::class, Lightswitch::craftFieldClass());

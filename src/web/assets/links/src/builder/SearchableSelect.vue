@@ -491,3 +491,237 @@ export default {
     },
 };
 </script>
+
+<style>
+/* SearchableSelect dropdown - moved from links.css. Unscoped: the
+   source-node dropdown is recolored cross-component by the missing-mapping
+   rules that stay global in links.css. */
+/* ---------------------------------------------------------------------
+   SearchableSelect — single-select dropdown with embedded search. Visual
+   vocabulary borrowed from TokenizedInput's picker: same border, same
+   blue hover accent, same dropdown shadow. The trigger button mimics
+   Craft's native `.select` chrome (gray pill with caret) so it slots in
+   alongside the rest of the form.
+--------------------------------------------------------------------- */
+.influx-searchable-select {
+    position: relative;
+    width: 100%;
+}
+
+.influx-searchable-select-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 28px 6px 10px;
+    background: #fff;
+    border: 1px solid hsla(212deg, 25%, 50%, 0.25);
+    border-radius: 5px;
+    color: #1f2937;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.4;
+    position: relative;
+    transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+.influx-searchable-select-trigger:hover {
+    border-color: hsla(212deg, 25%, 40%, 0.4);
+}
+.influx-searchable-select-trigger:focus-visible,
+.influx-searchable-select-trigger.active {
+    outline: none;
+    border-color: hsl(208deg, 100%, 55%);
+    box-shadow: 0 0 0 2px hsla(208deg, 100%, 55%, 0.18);
+}
+.influx-searchable-select-trigger:disabled {
+    background: #f7f9fc;
+    color: #9aa4ad;
+    cursor: not-allowed;
+}
+.influx-searchable-select-trigger .value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.influx-searchable-select-trigger .value.placeholder {
+    color: #9aa4ad;
+}
+.influx-searchable-select-trigger .caret {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    color: #6b7280;
+    transition: transform 0.15s ease, color 0.1s ease;
+    pointer-events: none;
+}
+.influx-searchable-select.open .influx-searchable-select-trigger .caret {
+    transform: translateY(-50%) rotate(180deg);
+    color: hsl(208deg, 100%, 38%);
+}
+
+.influx-searchable-select-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: #fff;
+    border: 1px solid #d7dfe7;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(20, 30, 50, 0.16), 0 2px 6px rgba(20, 30, 50, 0.06);
+    padding: 6px 0 4px;
+    display: flex;
+    flex-direction: column;
+    max-height: 320px;
+    overflow: hidden;
+}
+
+/* Search box at the top — same chrome as TokenizedInput's manual picker
+   so the two pickers feel like siblings. */
+.influx-searchable-select-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 8px 6px;
+    padding: 6px 8px;
+    background: hsl(212deg, 25%, 96%);
+    border: 1px solid hsla(212deg, 25%, 50%, 0.18);
+    border-radius: 4px;
+    color: #6b7280;
+}
+.influx-searchable-select-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    padding: 0;
+    font: inherit;
+    color: #1f2937;
+}
+.influx-searchable-select-search input::placeholder {
+    color: #9aa4ad;
+}
+.influx-searchable-select-search input:focus {
+    box-shadow: none;
+}
+.influx-searchable-select-clear-search {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.7;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+}
+.influx-searchable-select-clear-search:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.influx-searchable-select-options {
+    list-style: none;
+    margin: 0;
+    padding: 0 4px 2px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+.influx-searchable-select-options li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #1f2937;
+    transition: background-color 0.08s ease;
+}
+.influx-searchable-select-options li .label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.influx-searchable-select-options li .label mark {
+    background: hsl(48deg, 100%, 80%);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+.influx-searchable-select-options li .check {
+    flex: 0 0 auto;
+    color: hsl(208deg, 100%, 42%);
+}
+.influx-searchable-select-options li.is-empty .label {
+    color: #6b7280;
+    font-style: italic;
+}
+.influx-searchable-select-options li.selected {
+    color: hsl(208deg, 100%, 28%);
+    font-weight: 600;
+}
+.influx-searchable-select-options li.highlighted,
+.influx-searchable-select-options li:hover {
+    background: hsl(208deg, 100%, 96%);
+}
+.influx-searchable-select-options li.selected.highlighted,
+.influx-searchable-select-options li.selected:hover {
+    background: hsl(208deg, 100%, 92%);
+}
+
+.influx-searchable-select-empty {
+    margin: 4px 14px 8px;
+    color: #6b7280;
+    font-size: 12px;
+}
+.influx-searchable-select-empty code {
+    background: #ececef;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+/* Grouped SearchableSelect (relation/author "Match by"): one scroll region
+   wrapping the per-kind option groups, with token-picker-style headings.
+   The per-group lists must not scroll individually. */
+.influx-searchable-select-scroll {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    padding-bottom: 2px;
+}
+.influx-searchable-select-scroll .influx-searchable-select-options {
+    overflow-y: visible;
+    flex: none;
+}
+.influx-searchable-select-menu h6 {
+    margin: 8px 14px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8b95a3;
+}
+.influx-searchable-select-scroll h6:first-child {
+    margin-top: 4px;
+}
+/* Drop-up: when the viewport has no room below the trigger, the menu
+   anchors above it instead of stretching the document (which dragged the
+   CP sidebar along). The direction is measured per open in
+   SearchableSelect.updateDropDirection(). */
+.influx-searchable-select.drop-up .influx-searchable-select-menu {
+    top: auto;
+    bottom: calc(100% + 4px);
+}
+</style>

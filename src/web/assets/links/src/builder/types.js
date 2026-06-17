@@ -38,7 +38,7 @@
  * @property {Object<string, string>} elementCriteria e.g. {section, type, author}.
  * @property {?string} endpoint
  * @property {?string} itemEndpoint
- * @property {Object<string, string>} siteEndpoints siteHandle → endpoint URL.
+ * @property {Array<{site: string, endpoint: string}>} siteEndpoints ordered per-site endpoints (run order).
  * @property {Object<string, *>} auth {type, token?, header?, param?} or empty.
  * @property {?string} rootNode
  * @property {?string} paginatorNode

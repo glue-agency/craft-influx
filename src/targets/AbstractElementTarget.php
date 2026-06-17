@@ -4,10 +4,12 @@ namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
+use DateTimeInterface;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
+use Stringable;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {
@@ -40,8 +42,12 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * coercing Entry's `enabled` to a bool) — see the convention documented
      * on {@see ElementTargetInterface::applyNativeAttribute()}.
      *
-     * Returns true when a write happened, so the sync engine can flag the
-     * element as changed.
+     * The caller ({@see \GlueAgency\Influx\sync\MappingApplier}) only invokes
+     * this for an actively-mapped handle, so an empty resolved value here means
+     * "actively mapped, now empty" — written through to clear the attribute
+     * (the feed is authoritative). Returns whether the value actually changed
+     * (generic before/after comparison for the default path; `parseFoo`
+     * overrides own their own attribute-aware comparison).
      */
     public function applyNativeAttribute(
         ElementInterface $element,
@@ -56,18 +62,57 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         }
 
         $value = $mapping->resolve($item);
+        $isAttribute = in_array($handle, $element->attributes(), true) || property_exists($element, $handle);
 
-        if ($value === null) {
-            return false;
-        }
-
-        if (in_array($handle, $element->attributes(), true) || property_exists($element, $handle)) {
+        if ($isAttribute) {
+            $before = $element->{$handle} ?? null;
             $element->{$handle} = $value;
-        } else {
-            $element->setFieldValue($handle, $value);
+
+            return $this->nativeValueChanged($before, $element->{$handle} ?? null);
         }
 
-        return true;
+        $before = $element->getFieldValue($handle);
+        $element->setFieldValue($handle, $value);
+
+        return $this->nativeValueChanged($before, $element->getFieldValue($handle));
+    }
+
+    /**
+     * Whether two native values differ, compared on a stable, type-aware
+     * representation: a boolean false is a real value (not "empty"), dates
+     * compare by timestamp, and related elements by id — so re-applying the
+     * same author/date/flag isn't mistaken for a change.
+     */
+    protected function nativeValueChanged(mixed $before, mixed $after): bool
+    {
+        return $this->comparable($before) !== $this->comparable($after);
+    }
+
+    protected function comparable(mixed $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->getTimestamp();
+        }
+
+        if ($value instanceof ElementInterface) {
+            return (int) $value->id;
+        }
+
+        if (is_scalar($value) || $value instanceof Stringable) {
+            $str = (string) $value;
+
+            return $str === '' ? null : $str;
+        }
+
+        return json_encode($value);
     }
 
     /**

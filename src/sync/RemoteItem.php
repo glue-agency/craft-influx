@@ -68,6 +68,10 @@ class RemoteItem
             }
 
             // Collapsed hop: fan the remaining path out over every element.
+            // Elements that resolve to null are dropped, so the result is a
+            // dense list of present values — note this does NOT preserve
+            // positional alignment with the source list (a missing middle
+            // element collapses away rather than leaving a null gap).
             $values = [];
 
             foreach ($data as $element) {

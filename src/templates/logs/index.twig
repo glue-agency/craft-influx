@@ -40,9 +40,14 @@
                             </a>
                         </td>
                         <td>
-                            <a href="{{ cpUrl("influx/links/" ~ log.linkHandle) }}">
+                            {% set linkId = linkIds[log.linkHandle] ?? null %}
+                            {% if linkId %}
+                                <a href="{{ cpUrl("influx/links/" ~ linkId) }}">
+                                    <code>{{ log.linkHandle }}</code>
+                                </a>
+                            {% else %}
                                 <code>{{ log.linkHandle }}</code>
-                            </a>
+                            {% endif %}
                         </td>
                         <td>{{ log.trigger }}</td>
                         <td>

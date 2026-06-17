@@ -124,6 +124,10 @@ Anything in there treats the other plugin as optional: integrations read its tab
 - [ ] Webhook entry point for push-style links.
 - [ ] Solspace Calendar target adapter.
 
+## Acknowledgements
+
+Influx is heavily inspired by [Feed Me](https://github.com/craftcms/feed-me) (`craftcms/feed-me`). Its mapping model — per-field-type strategies, relation sub-fields, asset upload-on-import, and change detection before save — follows trails Feed Me blazed. Influx makes different trade-offs (JSON-only, Project Config-backed, hydrating existing element types rather than owning its own), but it stands on Feed Me's shoulders, and the `integrations/feedme` converter exists so you can bring your existing feeds along.
+
 ## License
 
 MIT.

@@ -29,7 +29,7 @@ class LinkBuilderService extends Component
 {
     /**
      * Initial payload the SPA needs to mount. Returns the link being edited
-     * (or a fresh draft when `$handle` is null) plus a small bundle of
+     * (or a fresh draft when `$id` is null) plus a small bundle of
      * always-needed options. Heavier per-tab data is fetched lazily via
      * dedicated endpoints so this stays light.
      *
@@ -39,10 +39,10 @@ class LinkBuilderService extends Component
      *   meta: array,
      * }
      */
-    public function bootstrap(?string $handle, bool $readOnly): array
+    public function bootstrap(?int $id, bool $readOnly): array
     {
         $plugin = Influx::getInstance();
-        $isNew = ($handle === null);
+        $isNew = ($id === null);
 
         if ($isNew) {
             $link = new Link([
@@ -50,10 +50,10 @@ class LinkBuilderService extends Component
                 'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
             ]);
         } else {
-            $link = $plugin->links->getLinkByHandle($handle);
+            $link = $plugin->links->getLinkById($id);
 
             if (! $link) {
-                throw new NotFoundHttpException("Link '{$handle}' not found.");
+                throw new NotFoundHttpException("Link {$id} not found.");
             }
         }
 
@@ -393,7 +393,7 @@ class LinkBuilderService extends Component
             'Off by default. Mainly useful for destructive processing actions.',
 
             // OffsetPresetsTable.vue
-            'Key', 'Since', 'Query param', 'Date format',
+            'Handle', 'Since', 'Query param', 'Date format',
             'Anything <code>DateTime::modify</code> accepts.',
             'Anything <code>DateTime::format</code> accepts.',
             'e.g. last24h',

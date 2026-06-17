@@ -1,18 +1,10 @@
 <template>
-    <!-- Same group chrome as the main field list (MappingGroup): white
-         card, clickable header with chevron + mapped/missing pills. Sub-
-         field mappings ARE mappings, so they get the same furniture. -->
-    <div class="influx-mapping-group influx-subfields-group" :class="{ collapsed: !expanded }">
-        <div class="influx-mapping-group-header"
-             role="button"
-             tabindex="0"
-             :aria-expanded="expanded ? 'true' : 'false'"
-             @click="expanded = !expanded"
-             @keydown.enter.prevent="expanded = !expanded"
-             @keydown.space.prevent="expanded = !expanded">
-            <span class="chevron" aria-hidden="true">▼</span>
-            <span class="label">{{ node.label }}</span>
-
+    <!-- Same group chrome as the main field list (MappingGroup): the shared
+         MappingGroupCard, with the subfields variant so SchemaForm's subgrid
+         rules keep matching. Sub-field mappings ARE mappings, so they get the
+         same furniture (chevron, mapped/missing pills, column headings). -->
+    <mapping-group-card variant="subfields" :label="node.label">
+        <template #tags>
             <span class="pill pill-mapped"
                   :data-mapped="mappedCount"
                   :title="$t('Sub-fields with an active source node')">
@@ -27,73 +19,70 @@
             </span>
 
             <span class="pill pill-count" :title="$t('Total sub-fields in this group')">{{ subFieldList.length }}</span>
+        </template>
+
+        <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
+
+        <!-- Same column headings as the main mapping list — sub-field rows are
+             mappings too. Joined to the card's shared grid in SchemaForm.vue
+             so the labels track the content-sized columns. -->
+        <div class="influx-mapping-headings">
+            <div>{{ $t('Field') }}</div>
+            <div>{{ $t('Source node') }}</div>
+            <div>{{ $t('Default value') }}</div>
         </div>
 
-        <div class="influx-mapping-group-body">
-            <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
-
-            <!-- Same column headings as the main mapping list — sub-field
-                 rows are mappings too. Joined to the card's shared grid in
-                 SchemaForm.vue so the labels track the content-sized
-                 columns. -->
-            <div class="influx-mapping-headings">
-                <div>{{ $t('Field') }}</div>
-                <div>{{ $t('Source node') }}</div>
-                <div>{{ $t('Default value') }}</div>
-            </div>
-
-            <div
-                class="sub-field-row"
-                v-for="sub in subFieldList"
-                :key="sub.handle"
-                :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
+        <div
+            class="sub-field-row"
+            v-for="sub in subFieldList"
+            :key="sub.handle"
+            :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
+        >
+            <label>
+                {{ sub.label }}
+                <span v-if="isMissing(sub.handle)"
+                      class="influx-missing-badge"
+                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
+                    {{ $t('missing mapping') }}
+                </span>
+                <code class="handle light">{{ sub.handle }}</code>
+            </label>
+            <searchable-select
+                :model-value="rowFor(sub.handle).node"
+                :options="sourceNodeOptions"
+                :placeholder="$t('— no mapping —')"
+                :search-placeholder="$t('Search nodes…')"
+                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                :disabled="readOnly"
+                @update:model-value="updateRow(sub.handle, 'node', $event)"
+            />
+            <!-- The default-value editor renders by the sub-field node's own
+                 type — the same primitives the rest of the schema uses. -->
+            <select-input
+                v-if="sub.type === 'select'"
+                :node="sub"
+                :model-value="rowFor(sub.handle).default"
+                searchable
+                :read-only="readOnly"
+                @update:model-value="updateRow(sub.handle, 'default', $event)"
+            />
+            <input
+                v-else
+                type="text"
+                :class="['text', sub.type === 'code' ? 'code' : null]"
+                :value="rowFor(sub.handle).default"
+                :placeholder="sub.placeholder || '—'"
+                :disabled="readOnly"
+                @input="updateRow(sub.handle, 'default', $event.target.value)"
             >
-                <label>
-                    {{ sub.label }}
-                    <span v-if="isMissing(sub.handle)"
-                          class="influx-missing-badge"
-                          :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
-                        {{ $t('missing mapping') }}
-                    </span>
-                    <code class="handle light">{{ sub.handle }}</code>
-                </label>
-                <searchable-select
-                    :model-value="rowFor(sub.handle).node"
-                    :options="sourceNodeOptions"
-                    :placeholder="$t('— no mapping —')"
-                    :search-placeholder="$t('Search nodes…')"
-                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
-                    :disabled="readOnly"
-                    @update:model-value="updateRow(sub.handle, 'node', $event)"
-                />
-                <!-- The default-value editor renders by the sub-field node's
-                     own type — the same primitives the rest of the schema
-                     uses. -->
-                <select-input
-                    v-if="sub.type === 'select'"
-                    :node="sub"
-                    :model-value="rowFor(sub.handle).default"
-                    searchable
-                    :read-only="readOnly"
-                    @update:model-value="updateRow(sub.handle, 'default', $event)"
-                />
-                <input
-                    v-else
-                    type="text"
-                    :class="['text', sub.type === 'code' ? 'code' : null]"
-                    :value="rowFor(sub.handle).default"
-                    :placeholder="sub.placeholder || '—'"
-                    :disabled="readOnly"
-                    @input="updateRow(sub.handle, 'default', $event.target.value)"
-                >
-            </div>
         </div>
-    </div>
+    </mapping-group-card>
 </template>
 
 <script>
 import SearchableSelect from '../../SearchableSelect.vue';
 import SelectInput from './SelectInput.vue';
+import MappingGroupCard from '../../../components/MappingGroupCard.vue';
 
 /**
  * Schema elementSubFields node: source-node + default rows for a related
@@ -110,7 +99,7 @@ import SelectInput from './SelectInput.vue';
 export default {
     name: 'ElementSubFields',
 
-    components: { SearchableSelect, SelectInput },
+    components: { SearchableSelect, SelectInput, MappingGroupCard },
 
     props: {
         node: { type: Object, required: true },
@@ -125,12 +114,6 @@ export default {
     },
 
     emits: ['update:modelValue'],
-
-    data() {
-        return {
-            expanded: true,
-        };
-    },
 
     computed: {
         /** @returns the sub-field nodes (BuilderSchema primitives). */

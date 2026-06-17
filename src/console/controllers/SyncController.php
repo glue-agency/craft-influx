@@ -17,6 +17,7 @@ use yii\console\ExitCode;
  *   ./craft influx/sync news,events          # multiple
  *   ./craft influx/sync --all                # everything
  *   ./craft influx/sync news --offset=hour   # use the "hour" preset from the link config
+ *   ./craft influx/sync news --site=fr       # only the "fr" site-specific endpoint
  */
 class SyncController extends Controller
 {
@@ -24,10 +25,11 @@ class SyncController extends Controller
 
     public bool $all = false;
     public ?string $offset = null;
+    public ?string $site = null;
 
     public function options($actionID): array
     {
-        return array_merge(parent::options($actionID), ['all', 'offset']);
+        return array_merge(parent::options($actionID), ['all', 'offset', 'site']);
     }
 
     public function optionAliases(): array
@@ -72,7 +74,7 @@ class SyncController extends Controller
                 // The sync runs async on the queue, so the log's counters are
                 // still zero here — nothing meaningful to report beyond the
                 // dispatch itself.
-                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE);
+                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE, $this->site);
                 $this->success('done.');
             } catch (Throwable $e) {
                 $this->failure('FAILED: ' . $e->getMessage());

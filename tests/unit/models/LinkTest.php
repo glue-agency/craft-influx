@@ -62,6 +62,63 @@ class LinkTest extends Unit
         $this->assertSame([], $this->link()->siteHandles());
     }
 
+    public function testSyncSiteHandlesReturnsConfiguredSites(): void
+    {
+        $link = $this->link([
+            'siteEndpoints' => ['default' => 'https://e/en', 'nl' => 'https://e/nl'],
+        ]);
+        $this->assertSame(['default', 'nl'], $link->syncSiteHandles());
+    }
+
+    public function testSyncSiteHandlesFallsBackToPrimaryWhenNoneConfigured(): void
+    {
+        // No configured sites means "the primary site" — represented as a
+        // single null handle the sync run iterates once.
+        $this->assertSame([null], $this->link()->syncSiteHandles());
+    }
+
+    public function testSiteEndpointsKeepConfiguredOrder(): void
+    {
+        // The configured order is the run order, and it must survive into the
+        // Project Config payload — Craft alphabetizes assoc-array keys, so the
+        // list shape (not a {handle: url} map) is what preserves it.
+        $link = $this->link([
+            'siteEndpoints' => [
+                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
+                ['site' => 'en', 'endpoint' => 'https://e/en'],
+                ['site' => 'fr', 'endpoint' => 'https://e/fr'],
+            ],
+        ]);
+
+        $this->assertSame(['nl', 'en', 'fr'], $link->siteHandles());
+        $this->assertSame(
+            [
+                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
+                ['site' => 'en', 'endpoint' => 'https://e/en'],
+                ['site' => 'fr', 'endpoint' => 'https://e/fr'],
+            ],
+            $link->getConfig()['siteEndpoints'],
+        );
+        $this->assertSame('https://e/en', $link->endpointForSite('en'));
+        $this->assertNull($link->endpointForSite('de'));
+    }
+
+    public function testLegacySiteEndpointMapNormalizesToList(): void
+    {
+        // Configs written before the list shape stored a {handle: url} map;
+        // they must still hydrate so existing links keep working.
+        $link = $this->link(['siteEndpoints' => ['nl' => 'https://e/nl', 'en' => 'https://e/en']]);
+
+        $this->assertSame(
+            [
+                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
+                ['site' => 'en', 'endpoint' => 'https://e/en'],
+            ],
+            $link->siteEndpoints,
+        );
+        $this->assertSame('https://e/nl', $link->endpointForSite('nl'));
+    }
+
     public function testGetConfigStripsEmptyKeysSoYAMLStaysReadable(): void
     {
         $link = $this->link([

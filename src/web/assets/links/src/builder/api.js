@@ -103,9 +103,9 @@ async function request(url, init) {
     return body;
 }
 
-export async function bootstrap(handle) {
+export async function bootstrap(id) {
     const url = resolve('bootstrap', 'influx/link-builder/bootstrap');
-    const qs = handle ? `handle=${encodeURIComponent(handle)}` : '';
+    const qs = id ? `id=${encodeURIComponent(id)}` : '';
     return request(withQuery(url, qs), { method: 'GET' });
 }
 

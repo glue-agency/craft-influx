@@ -1,17 +1,6 @@
 <template>
-    <div class="influx-mapping-group"
-         :class="{ collapsed: !expanded }"
-         :data-group="group.label">
-        <div class="influx-mapping-group-header"
-             role="button"
-             tabindex="0"
-             :aria-expanded="expanded ? 'true' : 'false'"
-             @click="expanded = !expanded"
-             @keydown.enter.prevent="expanded = !expanded"
-             @keydown.space.prevent="expanded = !expanded">
-            <span class="chevron" aria-hidden="true">▼</span>
-            <span class="label">{{ group.label }}</span>
-
+    <mapping-group-card :label="group.label" :data-group="group.label">
+        <template #tags>
             <span class="pill pill-mapped"
                   :data-mapped="mappedCount"
                   :title="$t('Fields with an active source node')">
@@ -26,33 +15,32 @@
             </span>
 
             <span class="pill pill-count" :title="$t('Total fields in this group')">{{ group.fields.length }}</span>
+        </template>
+
+        <div class="influx-mapping-headings">
+            <div>{{ $t('Field') }}</div>
+            <div>{{ $t('Source node') }}</div>
+            <div>{{ $t('Default value') }}</div>
         </div>
 
-        <div class="influx-mapping-group-body">
-            <div class="influx-mapping-headings">
-                <div>{{ $t('Field') }}</div>
-                <div>{{ $t('Source node') }}</div>
-                <div>{{ $t('Default value') }}</div>
-            </div>
-
-            <mapping-row
-                v-for="field in group.fields"
-                :key="field.handle"
-                :field="field"
-                :node-options="nodeOptions"
-            />
-        </div>
-    </div>
+        <mapping-row
+            v-for="field in group.fields"
+            :key="field.handle"
+            :field="field"
+            :node-options="nodeOptions"
+        />
+    </mapping-group-card>
 </template>
 
 <script>
 import MappingRow from './MappingRow.vue';
+import MappingGroupCard from '../../components/MappingGroupCard.vue';
 import { store } from '../store.js';
 
 export default {
     name: 'MappingGroup',
 
-    components: { MappingRow },
+    components: { MappingRow, MappingGroupCard },
 
     props: {
         group: { type: Object, required: true },
@@ -61,7 +49,6 @@ export default {
 
     data() {
         return {
-            expanded: true,
             ui: store.ui,
         };
     },

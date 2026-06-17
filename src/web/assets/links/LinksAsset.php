@@ -19,10 +19,12 @@ class LinksAsset extends AssetBundle
 
         $this->depends = [
             CpAsset::class,
+            // Ships css/links.css — shared with the server-rendered debug /
+            // log pages so the mapping-group chrome lives in one place.
+            StylesAsset::class,
         ];
 
         $this->css = [
-            'css/links.css',
             // Compiled by `npm run build`. Holds the styles for the typed-
             // mapping extras Vue components.
             'css/influx-app.css',

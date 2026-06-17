@@ -190,3 +190,44 @@ export default {
     },
 };
 </script>
+
+<style>
+/* Moved from links.css. */
+/* ---------------------------------------------------------------------
+   Header actions — teleported into Craft's cpScreen #action-buttons slot.
+   Two primary controls: a state-aware Fetch sample trigger and a Save
+   split-button (primary + disclosure menu for "Save and continue").
+--------------------------------------------------------------------- */
+.influx-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Fetch sample button — standard Craft button whose data-icon carries the
+   state: download (idle), spinning refresh (fetching), green check
+   (fetched), red cross (error). The label updates alongside; see
+   HeaderActions.vue. */
+.influx-fetch-btn.is-fetching {
+    color: var(--medium-text-color, #6b7280);
+    cursor: progress;
+}
+.influx-fetch-btn.is-fetching::before {
+    animation: influx-fetch-spin 1s linear infinite;
+}
+.influx-fetch-btn.is-fetched::before { color: #008549; }
+.influx-fetch-btn.is-error::before { color: #cf1124; }
+
+@keyframes influx-fetch-spin {
+    to { transform: rotate(360deg); }
+}
+
+.influx-sample-error {
+    background: #fdecec;
+    border: 1px solid #f0c4c4;
+    color: #8a1a1a;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 0 0 16px;
+}
+</style>
