@@ -36,7 +36,10 @@ use Throwable;
  * the target's {@see \GlueAgency\Influx\targets\ElementTargetInterface::applyNativeAttribute()}
  * return value (the target owns the comparison because only it knows each
  * attribute's semantics — e.g. that `author` compares by id). A freshly-built
- * element counts every write as a change. The aggregate {@see MappingOutcome::$changed}
+ * element forces the aggregate {@see MappingOutcome::$changed} (it always
+ * saves), but per-row flags stay genuine: an empty/missing value landing on an
+ * already-empty field is not a change, even on a new element, so the debug
+ * view only flags rows that actually receive a differing value. The aggregate
  * flag is what the caller hangs the save decision on; the same applies to
  * related elements, which {@see applySubMappings()} reports as changed only
  * when a sub-mapping actually differed — so unchanged relations no longer
@@ -47,9 +50,11 @@ use Throwable;
 class MappingApplier
 {
     /**
-     * @param bool $isNew When true, every write counts as a change (so a
-     * freshly-built element always saves on the first pass regardless of
-     * value-equality short-cuts).
+     * @param bool $isNew When true the element is freshly built, so the
+     * aggregate outcome is forced "changed" (a new element always saves on the
+     * first pass). Per-row change flags stay genuine — an empty or missing
+     * field on a new element reads as unchanged, so the debug view only flags
+     * rows that actually receive a differing value.
      */
     public function apply(
         SyncContext $syncContext,
@@ -83,7 +88,7 @@ class MappingApplier
             if ($craftField === null) {
                 // Native attribute (title/slug/status/...) — the target
                 // translates it to whatever attribute Craft actually accepts.
-                $result = $this->applyNativeAttribute($syncContext, $element, $handle, $mapping, $item, $isNew);
+                $result = $this->applyNativeAttribute($syncContext, $element, $handle, $mapping, $item);
             } else {
                 $context = new FieldContext(
                     craftField: $craftField,
@@ -94,7 +99,7 @@ class MappingApplier
                     element: $element,
                     dryRun: $syncContext->dryRun,
                 );
-                $result = $this->applyCustomField($context, $isNew);
+                $result = $this->applyCustomField($context);
             }
 
             if ($result->changed === true) {
@@ -150,7 +155,7 @@ class MappingApplier
 
             // No try/catch here: a throwing sub-strategy propagates to the
             // parent relation's row (it has no row of its own).
-            if ($this->mapCustomField($parentContext->descend($element, $sub, $craftField), false)->changed === true) {
+            if ($this->mapCustomField($parentContext->descend($element, $sub, $craftField))->changed === true) {
                 $changed = true;
             }
         }
@@ -175,7 +180,6 @@ class MappingApplier
         string $handle,
         FieldMapping $mapping,
         RemoteItem $item,
-        bool $isNew,
     ): MappingResult {
         $rawValue = $mapping->rawValue($item);
         $currentValue = $this->safeAttribute($element, $handle);
@@ -214,7 +218,7 @@ class MappingApplier
             native: true,
             rawValue: $rawValue,
             currentValue: $currentValue,
-            changed: $isNew || $changed,
+            changed: $changed,
         );
     }
 
@@ -257,10 +261,10 @@ class MappingApplier
      * captured as a per-mapping {@see MappingResult::$error} row so one broken
      * field never fails the whole item.
      */
-    protected function applyCustomField(FieldContext $context, bool $isNew): MappingResult
+    protected function applyCustomField(FieldContext $context): MappingResult
     {
         try {
-            return $this->mapCustomField($context, $isNew);
+            return $this->mapCustomField($context);
         } catch (Throwable $e) {
             return new MappingResult(
                 handle: $context->handle,
@@ -281,7 +285,7 @@ class MappingApplier
      * caught here: the caller decides whether to capture (top level) or let
      * them propagate to a parent relation row (sub-mappings).
      */
-    protected function mapCustomField(FieldContext $context, bool $isNew): MappingResult
+    protected function mapCustomField(FieldContext $context): MappingResult
     {
         $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
         $rawValue = $context->mapping->rawValue($context->item);
@@ -306,8 +310,11 @@ class MappingApplier
 
         // A null value for an actively-mapped field clears the field: the feed
         // is authoritative, so a value that's now empty (or no longer resolves)
-        // is written through as empty.
-        $rowChanged = $isNew || $strategy->hasChanged($context, $value);
+        // is written through as empty. The row is "changed" only when the value
+        // actually differs from what the element holds — a missing/empty value
+        // landing on an already-empty field is not a change, even on a new
+        // element (the element still saves; see apply()'s aggregate).
+        $rowChanged = $strategy->hasChanged($context, $value);
 
         $strategy->apply($context, $value);
 

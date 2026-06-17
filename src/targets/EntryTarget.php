@@ -257,22 +257,21 @@ class EntryTarget extends AbstractElementTarget
         $value = $mapping->resolve($item);
 
         /** @var Entry $element */
-        // Compare by author id, not the author relation object — re-applying
-        // the same author (e.g. a useDefault `default` that already matches the
-        // current author) must read as unchanged.
+        // Compare current author id(s) against the INTENDED id — computed here,
+        // not read back off the element after setting it. Reading the resolved
+        // author relation back on an unsaved element is unreliable, which made
+        // a useDefault `default` that already matches the current author read
+        // as "changed". An empty value, or one that matches no user, clears the
+        // author (the feed is authoritative, like the relational fields).
         $before = Compat::entryAuthorIds($element);
 
-        // Empty, or a value that no longer matches any user, clears the author
-        // — the feed is authoritative (the same policy the relational fields
-        // follow when a lookup resolves to nothing).
-        if ($value === null) {
-            Compat::setEntryAuthor($element, null);
-        } else {
-            $match = (string) $mapping->option('match', 'id');
-            Compat::setEntryAuthor($element, $this->findUser($match, $value)?->id);
-        }
+        $newId = $value === null
+            ? null
+            : $this->findUser((string) $mapping->option('match', 'id'), $value)?->id;
 
-        return $before !== Compat::entryAuthorIds($element);
+        Compat::setEntryAuthor($element, $newId);
+
+        return $before !== ($newId === null ? [] : [(int) $newId]);
     }
 
     protected function parsePostDate(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
