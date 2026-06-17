@@ -254,24 +254,41 @@ class EntryTarget extends AbstractElementTarget
      */
     protected function parseAuthor(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
-        $value = $mapping->resolve($item);
-
         /** @var Entry $element */
         // Compare current author id(s) against the INTENDED id — computed here,
-        // not read back off the element after setting it. Reading the resolved
-        // author relation back on an unsaved element is unreliable, which made
-        // a useDefault `default` that already matches the current author read
-        // as "changed". An empty value, or one that matches no user, clears the
-        // author (the feed is authoritative, like the relational fields).
+        // not read back off the element after setting it (reading the resolved
+        // author relation back on an unsaved element is unreliable). An empty
+        // value, or one that matches no user, clears the author.
         $before = Compat::entryAuthorIds($element);
-
-        $newId = $value === null
-            ? null
-            : $this->findUser((string) $mapping->option('match', 'id'), $value)?->id;
+        $newId = $this->resolveAuthorId($item, $mapping);
 
         Compat::setEntryAuthor($element, $newId);
 
-        return $before !== ($newId === null ? [] : [(int) $newId]);
+        return $before !== ($newId === null ? [] : [$newId]);
+    }
+
+    /**
+     * Resolve the author user id for one item. A feed *node* value is matched
+     * via the configured `match` strategy (id / username / email / field). The
+     * mapping's `default` is a different thing: a user id picked in the CP via
+     * the element selector, so it's matched by id regardless of `match` — the
+     * strategy applies to feed values, not the picked default. (Matching the
+     * picked default id through, say, the `email` strategy finds nobody and
+     * wrongly clears the author.)
+     */
+    protected function resolveAuthorId(RemoteItem $item, FieldMapping $mapping): ?int
+    {
+        $nodeValue = $mapping->rawValue($item);
+
+        if ($nodeValue !== null && $nodeValue !== '') {
+            return $this->findUser((string) $mapping->option('match', 'id'), $nodeValue)?->id;
+        }
+
+        if ($mapping->useDefault && $mapping->default !== null && $mapping->default !== '') {
+            return $this->findUser('id', $mapping->default)?->id;
+        }
+
+        return null;
     }
 
     protected function parsePostDate(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool

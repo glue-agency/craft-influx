@@ -9,6 +9,7 @@ use DateTimeInterface;
 use Generator;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\OffsetPreset;
@@ -344,6 +345,7 @@ class DebugService extends Component
             'title'     => (string) ($element->title ?? '#' . $element->id),
             'cpEditUrl' => $element->getCpEditUrl(),
             'siteId'    => $element->siteId,
+            'chipHtml'  => Compat::elementChipHtml($element, ['hyperlink' => true]),
         ];
     }
 

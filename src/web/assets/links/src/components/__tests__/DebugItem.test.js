@@ -15,7 +15,7 @@ const mountItem = (row) => mount(DebugItem, {
 const baseRow = (over = {}) => ({
     action: 'would-update',
     matchValue: 'ABC',
-    element: { id: 42, title: 'Thing', cpEditUrl: '/admin/x/42' },
+    element: { id: 42, title: 'Thing', cpEditUrl: '/admin/x/42', chipHtml: '<a href="/admin/x/42" class="chip">Thing</a>' },
     message: null,
     error: null,
     raw: { id: 1 },
@@ -36,17 +36,20 @@ describe('DebugItem', () => {
         expect(mountItem(baseRow({ action: 'error' })).find('.influx-debug-tag').classes()).toContain('expired');
     });
 
-    it('links the element when present', () => {
-        const a = mountItem(baseRow()).find('.influx-debug-item-element a');
+    it('renders the element chip when present', () => {
+        const wrapper = mountItem(baseRow()).find('.influx-debug-item-element');
 
-        expect(a.attributes('href')).toBe('/admin/x/42');
-        expect(a.text()).toContain('Thing');
+        // The server-rendered Craft chip is injected verbatim via v-html.
+        expect(wrapper.html()).toContain('class="chip"');
+        expect(wrapper.find('a').attributes('href')).toBe('/admin/x/42');
+        expect(wrapper.text()).toContain('Thing');
     });
 
-    it('shows "will be created" for a new would-create item', () => {
+    it('shows the ghost chip for a new would-create item', () => {
         const w = mountItem(baseRow({ action: 'would-create', element: null }));
 
-        expect(w.find('.influx-debug-item-element').text()).toContain('will be created');
+        expect(w.find('.influx-debug-ghost-chip').exists()).toBe(true);
+        expect(w.find('.influx-debug-item-element').text()).toContain('New element');
     });
 
     it('renders field rows: name above handle, changed flag, native n/a', () => {

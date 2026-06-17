@@ -2,16 +2,25 @@
     <mapping-group-card variant="debug">
         <template #header>
             <span class="chevron" aria-hidden="true">▼</span>
-            <span class="influx-debug-item-element">
+            <span
+                v-if="row.element && row.element.chipHtml"
+                class="influx-debug-item-element"
+                v-html="row.element.chipHtml"
+                @click.stop
+            ></span>
+            <span v-else class="influx-debug-item-element">
                 <a v-if="row.element" :href="row.element.cpEditUrl" target="_blank" rel="noopener" @click.stop>
                     {{ row.element.title }}
                     <span class="light">#{{ row.element.id }}</span>
                 </a>
-                <span v-else-if="row.action === 'would-create'" class="light">{{ $t('will be created') }}</span>
+                <span v-else-if="row.action === 'would-create'" class="influx-debug-ghost-chip">
+                    <span class="influx-debug-ghost-chip-glyph" aria-hidden="true">+</span>
+                    {{ $t('New element') }}
+                </span>
             </span>
 
             <span v-if="!isNullish(row.matchValue)" class="influx-debug-match light">
-                · {{ $t('match') }}: <code>{{ row.matchValue }}</code>
+                · <code>{{ row.matchValue }}</code>
             </span>
 
             <span class="influx-debug-tag" :class="color">{{ row.action }}</span>
@@ -146,6 +155,36 @@ export default {
 
 .influx-debug-item-element { font-size: 13px; }
 .influx-debug-match code { font-size: 12px; }
+
+/* "Ghost chip" for the would-create state: a muted, dashed-outline pill that
+   mirrors a Craft element chip's rounded shape, in the subtle green/create
+   palette that echoes the would-create action tag — signalling an element that
+   doesn't exist yet without competing with the real chips beside it. */
+.influx-debug-ghost-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px dashed #7fcb95;
+    border-radius: 9px;
+    padding: 1px 9px 1px 7px;
+    font-size: 12px;
+    line-height: 18px;
+    color: #064f1f;
+    background: rgba(214, 241, 222, .35);
+}
+.influx-debug-ghost-chip-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #45a35e;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
 
 .influx-mapping-headings.influx-debug-fields,
 .influx-mapping-row.influx-debug-field-row {
