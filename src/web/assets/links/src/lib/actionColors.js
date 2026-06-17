@@ -7,7 +7,6 @@
 export const ACTION_COLORS = {
     'would-create':     'live',
     'would-update':     'live',
-    'would-unchanged':  'pending',
     'would-skip':       'pending',
     'created':          'live',
     'updated':          'live',

@@ -36,15 +36,17 @@ enum ItemAction: string
 
     /**
      * The label the dry-run debug view shows for this action. Errors stay
-     * 'error' — a dry run can't soften those. The strings are part of the
-     * debug view's JS/Twig contract; don't reword without updating it.
+     * 'error' — a dry run can't soften those, and UNCHANGED keeps its plain
+     * 'unchanged' label: there's no hypothetical write to prefix with 'would-'
+     * (the item was fully compared and already matches). The strings are part
+     * of the debug view's JS/Twig contract; don't reword without updating it.
      */
     public function dryRunLabel(): string
     {
         return match ($this) {
             self::CREATED          => 'would-create',
             self::UPDATED          => 'would-update',
-            self::UNCHANGED        => 'would-unchanged',
+            self::UNCHANGED        => 'unchanged',
             self::SKIPPED          => 'would-skip',
             self::ERROR            => 'error',
             self::DISABLED         => 'would-disable',
