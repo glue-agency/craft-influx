@@ -184,7 +184,9 @@ class MappingApplier
         $rawValue = $mapping->rawValue($item);
         $currentValue = $this->safeAttribute($element, $handle);
 
-        if (! $mapping->isActive()) {
+        if (! $mapping->addressedBy($item)) {
+            // Node absent from this item (and no default) — leave the attribute
+            // alone rather than clearing it.
             return new MappingResult(
                 handle: $handle,
                 node: $mapping->node,
@@ -193,7 +195,7 @@ class MappingApplier
                 rawValue: $rawValue,
                 currentValue: $currentValue,
                 changed: false,
-                note: 'No mapping — attribute left untouched.',
+                note: 'Feed has no value for this attribute — left untouched.',
             );
         }
 
@@ -236,9 +238,9 @@ class MappingApplier
             return false;
         }
 
-        // Unmapped native sub-attribute — leave it untouched rather than
-        // clearing it.
-        if (! $sub->isActive()) {
+        // Node absent from this item (and no default) — leave it untouched
+        // rather than clearing it.
+        if (! $sub->addressedBy($item)) {
             return false;
         }
 
@@ -287,15 +289,14 @@ class MappingApplier
      */
     protected function mapCustomField(FieldContext $context): MappingResult
     {
-        $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
         $rawValue = $context->mapping->rawValue($context->item);
         $currentValue = $this->safeFieldValue($context->element, $context->handle);
 
-        $value = $strategy->parse($context);
-
-        if ($value === null && ! $context->mapping->isActive()) {
-            // No source node and no explicit default — the field isn't actually
-            // mapped, so leave it untouched rather than wiping it.
+        // The feed only touches a field it addresses: a node it provides a
+        // value for (even an explicit empty string), or an explicit default. A
+        // node that's simply absent from this item is left untouched — the feed
+        // isn't saying "make this empty", it just doesn't mention the field.
+        if (! $context->mapping->addressedBy($context->item)) {
             return new MappingResult(
                 handle: $context->handle,
                 node: $context->mapping->node,
@@ -304,16 +305,18 @@ class MappingApplier
                 rawValue: $rawValue,
                 currentValue: $currentValue,
                 changed: false,
-                note: 'No mapping — field left untouched.',
+                note: 'Feed has no value for this field — left untouched.',
             );
         }
 
-        // A null value for an actively-mapped field clears the field: the feed
-        // is authoritative, so a value that's now empty (or no longer resolves)
-        // is written through as empty. The row is "changed" only when the value
-        // actually differs from what the element holds — a missing/empty value
-        // landing on an already-empty field is not a change, even on a new
-        // element (the element still saves; see apply()'s aggregate).
+        $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
+
+        // An addressed-but-empty value (explicit empty string, or one that no
+        // longer resolves) clears the field — the feed is authoritative. The
+        // row is "changed" only when the value differs from what the element
+        // already holds, so a clear of an already-empty field is not a change,
+        // even on a new element (the element still saves; see apply()).
+        $value = $strategy->parse($context);
         $rowChanged = $strategy->hasChanged($context, $value);
 
         $strategy->apply($context, $value);

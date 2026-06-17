@@ -150,6 +150,24 @@ class FieldMapping
         return $this->node !== null || $this->useDefault;
     }
 
+    /**
+     * Whether the feed actually addresses this field for the given item — a
+     * node it provides a value for, or an explicit default. A configured node
+     * that is simply absent from this item (and has no default) is NOT
+     * addressed: the feed isn't saying "make this empty", it just doesn't
+     * mention the field, so the sync leaves it untouched.
+     *
+     * Distinct from {@see isActive()} (which is item-independent): an
+     * empty-STRING node value IS addressed — {@see rawValue()} returns '' for a
+     * present-but-empty node, so the feed is explicitly providing empty and the
+     * field gets cleared; only an absent node ({@see rawValue()} null) is
+     * left alone.
+     */
+    public function addressedBy(RemoteItem $item): bool
+    {
+        return $this->rawValue($item) !== null || $this->useDefault;
+    }
+
     public function hasSubMappings(): bool
     {
         return ! empty($this->fields) || ! empty($this->nativeFields);
