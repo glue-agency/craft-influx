@@ -62,6 +62,7 @@
                     <th>{{ "Handle"|t("influx") }}</th>
                     <th>{{ "Target"|t("influx") }}</th>
                     <th>{{ "Sites"|t("influx") }}</th>
+                    <th>{{ "Processing"|t("influx") }}</th>
                     <th>{{ "Last run"|t("influx") }}</th>
                     <th colspan="2">{{ "Actions"|t('influx') }}</th>
                 </tr>
@@ -78,16 +79,24 @@
                         <td><code>{{ link.handle }}</code></td>
                         <td>
                             {{ link.elementTypeLabel() }}
-                            {% if link.elementCriteria.section is defined %}
-                                <span class="light">/ {{ link.elementCriteria.section }}</span>
+                            {% set targetCriteria = link.targetCriteriaLabel() %}
+                            {% if targetCriteria %}
+                                <span class="light">/ {{ targetCriteria }}</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% set sites = link.siteHandles() %}
-                            {% if sites is empty %}
+                            {% set siteLabels = link.siteLabels() %}
+                            {% if siteLabels is empty %}
                                 <span class="light">{{ "primary"|t("influx") }}</span>
                             {% else %}
-                                {{ sites|join(", ") }}
+                                {{ siteLabels|join(", ") }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if link.processing is empty %}
+                                <span class="light">—</span>
+                            {% else %}
+                                {{ link.processing|join(", ") }}
                             {% endif %}
                         </td>
                         <td>

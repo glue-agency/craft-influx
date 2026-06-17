@@ -2,12 +2,14 @@
 
 namespace GlueAgency\Influx\models;
 
+use Craft;
 use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -497,6 +499,60 @@ class Link extends Model
     public function elementTypeLabel(): string
     {
         return Influx::getInstance()->targets->friendlyNameFor($this->elementType);
+    }
+
+    /**
+     * Section + entry-type display labels for the target — e.g. "Movies /
+     * Feature" — resolved from the stored handles so the overview reads like
+     * the CP rather than echoing raw handles. Null when no section criteria is
+     * configured (the element type carries none, or it isn't set yet). Falls
+     * back to the handle when a section/type has since been removed.
+     */
+    public function targetCriteriaLabel(): ?string
+    {
+        $criteria = $this->elementCriteria ?? [];
+        $sectionHandle = $criteria['section'] ?? null;
+
+        if (! $sectionHandle) {
+            return null;
+        }
+
+        $section = Compat::getSectionByHandle($sectionHandle);
+        $parts = [$section?->name ?? $sectionHandle];
+
+        $typeHandle = $criteria['type'] ?? null;
+
+        if ($typeHandle) {
+            $typeName = null;
+
+            if ($section) {
+                foreach ($section->getEntryTypes() as $type) {
+                    if ($type->handle === $typeHandle) {
+                        $typeName = $type->name;
+
+                        break;
+                    }
+                }
+            }
+
+            $parts[] = $typeName ?? $typeHandle;
+        }
+
+        return implode(' / ', $parts);
+    }
+
+    /**
+     * Display names for the link's configured sites, for the overview — falls
+     * back to the handle when a site has since been removed.
+     *
+     * @return string[]
+     */
+    public function siteLabels(): array
+    {
+        return array_map(
+            static fn(string $handle): string => Craft::$app->getSites()->getSiteByHandle($handle)?->name ?? $handle,
+            $this->siteHandles(),
+        );
     }
 
     /**
