@@ -194,4 +194,15 @@ export default {
     margin-bottom: 18px;
 }
 .influx-link-builder-errors code { color: inherit; }
+
+/* Required-field marker. Our own superscript asterisk rather than Craft's
+   `.required` class, which renders an icon-font asterisk vertically centered
+   on the label (and would double up with this one). */
+.influx-required {
+    color: var(--error-color, #cf1124);
+    font-size: 0.75em;
+    vertical-align: super;
+    line-height: 1;
+    margin-left: 1px;
+}
 </style>

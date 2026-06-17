@@ -13,6 +13,23 @@
 {% endblock %}
 
 {% block content %}
+    {# Craft only applies a :hover background to anchor menu options; our sync
+       presets are <button class="menu-option"> elements, which rely on a JS-
+       added `.hover` class that doesn't fire here — so they sit dead on hover.
+       Replicate Craft's own plain-menu hover look for them. The custom class
+       survives Garnish teleporting `.menu` to <body> on open, keeping this
+       scoped to the sync dropdown rather than every menu on the page. #}
+    {% css %}
+    .influx-sync-menu ul li .menu-option:not(.sel, .disabled) {
+        transition: background-color 0.1s ease, color 0.1s ease;
+    }
+    .influx-sync-menu ul li .menu-option:not(.sel, .disabled):hover {
+        color: var(--white) !important;
+        --light-text-color: hsla(0, 0%, 100%, 0.8);
+        background-color: var(--bg-selection-dark);
+    }
+    {% endcss %}
+
     {% if not readOnly %}
         {% js %}
         document.querySelectorAll('.influx-duplicate-form').forEach(function (form) {
@@ -130,7 +147,7 @@
 
                                 {% if presetHandles is not empty or multiSite %}
                                     <button type="button" class="btn menubtn" title="{{ 'Sync options'|t('influx') }}"></button>
-                                    <div class="menu" data-align="right">
+                                    <div class="menu influx-sync-menu" data-align="right">
                                         {% if multiSite %}
                                             {% for site in siteScopes %}
                                                 {% if not loop.first %}<hr>{% endif %}

@@ -338,7 +338,6 @@ class LinkBuilderService extends Component
             'Name', 'What this link will be called in the control panel.',
             'Handle', 'Identifier used in console commands and event keys.',
             'Element', 'Element type', 'Section', 'Entry type',
-            'Defaults to the first entry type attached to the section.',
             '— select —',
             'Endpoint', 'Base Endpoint',
             'JSON URL, or an <code>@alias</code> pointing to a local JSON file.',
@@ -354,7 +353,7 @@ class LinkBuilderService extends Component
 
             // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',
-            'Sample failed:', 'Last fetched from',
+            'Sample failed:',
             'Root node',
             'Dot-path to the iterable list inside the response. Leave blank if the response itself is a JSON array.',
             '— response root —',

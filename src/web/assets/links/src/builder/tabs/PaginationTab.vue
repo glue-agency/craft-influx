@@ -1,9 +1,5 @@
 <template>
     <div class="influx-tab-pagination">
-        <p v-if="ui.sample" class="light">
-            {{ $t('Last fetched from') }} <code>{{ ui.sample.url }}</code>.
-        </p>
-
         <div class="field">
             <div class="heading"><label>{{ $t('Root node') }}</label></div>
             <div class="instructions">
@@ -13,6 +9,7 @@
                 <searchable-select
                     :model-value="link.rootNode ?? ''"
                     :options="rootNodeOptions"
+                    searchable
                     :placeholder="$t('— response root —')"
                     :search-placeholder="$t('Search nodes…')"
                     :empty-label="$t('Run “Fetch sample” to discover nodes.')"
@@ -30,6 +27,7 @@
                 <searchable-select
                     :model-value="link.paginatorNode ?? ''"
                     :options="paginatorNodeOptions"
+                    searchable
                     :placeholder="$t('— no paginator —')"
                     :search-placeholder="$t('Search nodes…')"
                     :empty-label="$t('Run “Fetch sample” to discover nodes.')"

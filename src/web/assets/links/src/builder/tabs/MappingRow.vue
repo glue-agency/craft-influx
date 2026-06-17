@@ -43,6 +43,7 @@
             <searchable-select
                 :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
                 :options="sourceNodeOptions"
+                searchable
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
                 :empty-label="$t('Run “Fetch sample” to discover nodes.')"
@@ -59,7 +60,6 @@
                 <searchable-select
                     :model-value="mapping.default ?? ''"
                     :options="defaultSelectOptions"
-                    :placeholder="'—'"
                     :search-placeholder="$t('Search options…')"
                     @update:model-value="onDefaultSelect"
                 />
@@ -75,7 +75,6 @@
                 <input type="text"
                        class="text fullwidth"
                        :value="mapping.default ?? ''"
-                       placeholder="—"
                        @input="onDefaultChange" />
             </template>
         </div>

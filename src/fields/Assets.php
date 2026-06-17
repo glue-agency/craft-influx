@@ -93,24 +93,40 @@ class Assets extends RelationalField
         }
 
         $mode = $context->mapping->option('mode', 'id');
-        $asset = $mode === 'url' ? $this->resolveByUrl($context, (string) $raw) : $this->findById($raw);
 
-        if (! $asset) {
-            return null;
+        // A single source node can carry many values (a JSON array of URLs or
+        // ids) — resolve each to an asset, exactly as a relation field maps a
+        // list of remote references to a list of element ids.
+        $ids = [];
+
+        foreach (is_array($raw) ? $raw : [$raw] as $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $asset = $mode === 'url' ? $this->resolveByUrl($context, (string) $value) : $this->findById($context, $value);
+
+            if (! $asset) {
+                continue;
+            }
+
+            $this->persistSubElement($context, $asset);
+            $ids[] = $asset->id;
         }
 
-        $this->persistSubElement($context, $asset);
-
-        return [$asset->id];
+        return $ids ?: null;
     }
 
-    protected function findById(mixed $raw): ?Asset
+    protected function findById(FieldContext $context, mixed $raw): ?Asset
     {
         if (! is_numeric($raw)) {
             return null;
         }
 
-        return Asset::find()->id((int) $raw)->status(null)->one();
+        $query = Asset::find()->id((int) $raw)->status(null);
+        $this->scopeToAllowedVolumes($query, $context);
+
+        return $query->one();
     }
 
     /**
@@ -126,7 +142,7 @@ class Assets extends RelationalField
     {
         // First try matching an existing asset by url() — cheap and avoids
         // pointless re-uploads when the source already lives in Craft.
-        $existing = $this->matchExistingByUrl($url);
+        $existing = $this->matchExistingByUrl($context, $url);
 
         if ($existing) {
             return $existing;
@@ -199,7 +215,7 @@ class Assets extends RelationalField
         return [$volume, trim($subpath, '/')];
     }
 
-    protected function matchExistingByUrl(string $url): ?Asset
+    protected function matchExistingByUrl(FieldContext $context, string $url): ?Asset
     {
         // Match by filename first — much faster than enumerating volumes.
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
@@ -207,7 +223,10 @@ class Assets extends RelationalField
         if ($name === '' || $name === false) {
             return null;
         }
-        $asset = Asset::find()->filename($name)->status(null)->one();
+
+        $query = Asset::find()->filename($name)->status(null);
+        $this->scopeToAllowedVolumes($query, $context);
+        $asset = $query->one();
 
         if ($asset) {
             try {
@@ -220,5 +239,60 @@ class Assets extends RelationalField
         }
 
         return $asset; // best-effort: same filename, possibly different host
+    }
+
+    /**
+     * Constrain an asset lookup to the volumes the field is allowed to relate.
+     * A relation can only ever point at an asset in one of the field's source
+     * volumes, so matching by id/url must honour that boundary too — otherwise
+     * a same-filename file in an unrelated volume could be linked, or an id
+     * from outside the field's scope accepted. A field set to "all volumes"
+     * (`sources === '*'`) imposes no constraint.
+     */
+    protected function scopeToAllowedVolumes(mixed $query, FieldContext $context): void
+    {
+        $volumeIds = $this->allowedVolumeIds($context);
+
+        if ($volumeIds !== null) {
+            $query->volumeId($volumeIds);
+        }
+    }
+
+    /**
+     * Volume ids the field's sources resolve to, or null when the field
+     * relates assets from any volume (no scoping). Returns the resolved ids
+     * even if empty is impossible here — an unresolvable source list falls
+     * back to null rather than silently matching nothing.
+     *
+     * @return int[]|null
+     */
+    protected function allowedVolumeIds(FieldContext $context): ?array
+    {
+        $field = $context->craftField;
+
+        if (! $field instanceof CraftAssetsField) {
+            return null;
+        }
+
+        $sources = $field->sources ?? '*';
+
+        if (! is_array($sources)) {
+            // '*' (any volume) or null — no constraint.
+            return null;
+        }
+
+        $ids = [];
+
+        foreach ($sources as $source) {
+            if (is_string($source) && str_starts_with($source, 'volume:')) {
+                $volume = Craft::$app->getVolumes()->getVolumeByUid(substr($source, 7));
+
+                if ($volume) {
+                    $ids[] = $volume->id;
+                }
+            }
+        }
+
+        return $ids ?: null;
     }
 }

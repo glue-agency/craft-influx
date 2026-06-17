@@ -26,11 +26,12 @@
             <h2>{{ $t('Match key') }}</h2>
 
             <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
-                <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="required">*</span></label></div>
+                <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
                 <div class="input ltr">
                     <searchable-select
                         v-model="matchAttribute"
                         :options="ui.mappable.matchOptions"
+                        searchable
                         :placeholder="$t('Select an attribute…')"
                         :search-placeholder="$t('Search attributes…')"
                     />

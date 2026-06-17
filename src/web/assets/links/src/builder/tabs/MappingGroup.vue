@@ -1,17 +1,17 @@
 <template>
     <mapping-group-card :label="group.label" :data-group="group.label">
         <template #tags>
-            <span class="pill pill-mapped"
-                  :data-mapped="mappedCount"
-                  :title="$t('Fields with an active source node')">
-                <span class="num">{{ mappedCount }}</span>&nbsp;{{ $t('mapped') }}
-            </span>
-
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
                   :title="$t('Fields whose saved source node is no longer in the fetched sample')">
                 <span class="num">{{ missingCount }}</span>&nbsp;{{ $t('missing') }}
+            </span>
+
+            <span class="pill pill-mapped"
+                  :data-mapped="mappedCount"
+                  :title="$t('Fields with an active source node')">
+                <span class="num">{{ mappedCount }}</span>&nbsp;{{ $t('mapped') }}
             </span>
 
             <span class="pill pill-count" :title="$t('Total fields in this group')">{{ group.fields.length }}</span>

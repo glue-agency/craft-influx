@@ -1,14 +1,14 @@
 <template>
     <div class="influx-tab-general">
         <div class="field" :class="{ 'has-errors': errors.name?.length }">
-            <div class="heading"><label for="builder-name">{{ $t('Name') }} <span class="required">*</span></label></div>
+            <div class="heading"><label for="builder-name">{{ $t('Name') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="instructions"><p>{{ $t('What this link will be called in the control panel.') }}</p></div>
             <div class="input ltr"><input id="builder-name" type="text" class="text fullwidth" v-model="link.name" /></div>
             <field-errors :messages="errors.name" />
         </div>
 
         <div class="field" :class="{ 'has-errors': errors.handle?.length }">
-            <div class="heading"><label for="builder-handle">{{ $t('Handle') }} <span class="required">*</span></label></div>
+            <div class="heading"><label for="builder-handle">{{ $t('Handle') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="instructions"><p>{{ $t('Identifier used in console commands and event keys.') }}</p></div>
             <div class="input ltr"><input id="builder-handle" type="text" class="text fullwidth code" v-model="link.handle" /></div>
             <field-errors :messages="errors.handle" />
@@ -18,7 +18,7 @@
         <h2>{{ $t('Element') }}</h2>
 
         <div class="field" :class="{ 'has-errors': errors.elementType?.length }">
-            <div class="heading"><label for="builder-elementType">{{ $t('Element type') }} <span class="required">*</span></label></div>
+            <div class="heading"><label for="builder-elementType">{{ $t('Element type') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-elementType" v-model="link.elementType">
@@ -42,7 +42,6 @@
 
         <div class="field">
             <div class="heading"><label for="builder-entryType">{{ $t('Entry type') }}</label></div>
-            <div class="instructions"><p>{{ $t('Defaults to the first entry type attached to the section.') }}</p></div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-entryType" v-model="entryType">

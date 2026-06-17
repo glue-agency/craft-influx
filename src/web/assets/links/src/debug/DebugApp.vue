@@ -113,7 +113,7 @@ export default {
         return {
             site: this.config.selectedSite || '',
             offset: this.config.selectedOffset || '',
-            limit: this.config.limit || 25,
+            limit: this.config.limit || 10,
             sites: this.config.sites || [],
             offsetHandles: this.config.offsetHandles || [],
             meta: null,

@@ -13,6 +13,7 @@
         placeholder="—"
         empty-is-value
         :disabled="readOnly"
+        :searchable="grouped"
         @update:model-value="$emit('update:modelValue', $event)"
     />
 

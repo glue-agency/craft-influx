@@ -190,6 +190,10 @@ export default {
         // renders like any other, and it stays findable during search.
         emptyIsValue: { type: Boolean, default: false },
         disabled: { type: Boolean, default: false },
+        // Whether to show the search box. The caller decides (node pickers and
+        // "Match by" selects want it; short fixed enums don't) — the component
+        // doesn't guess from list length.
+        searchable: { type: Boolean, default: false },
     },
 
     emits: ['update:modelValue'],
@@ -222,11 +226,11 @@ export default {
             return this.groups.flatMap(g => g.options || []);
         },
 
-        // Short enum lists (mapping-extras "Value is" etc.) scan faster
-        // than they search — the box only earns its row once the list is
-        // long enough that scrubbing by eye gets old.
+        // Caller-controlled via `searchable` — node pickers and "Match by"
+        // selects opt in; short fixed enums leave it off. The component never
+        // guesses from list length.
         showSearch() {
-            return this.allOptions.length > 7;
+            return this.searchable;
         },
 
         currentOption() {

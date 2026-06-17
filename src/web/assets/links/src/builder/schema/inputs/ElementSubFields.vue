@@ -50,6 +50,7 @@
             <searchable-select
                 :model-value="rowFor(sub.handle).node"
                 :options="sourceNodeOptions"
+                searchable
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
                 :empty-label="$t('Run “Fetch sample” to discover nodes.')"
