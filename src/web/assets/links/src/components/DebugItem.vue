@@ -19,10 +19,6 @@
                 </span>
             </span>
 
-            <span v-if="!isNullish(row.matchValue)" class="influx-debug-match light">
-                · <code>{{ row.matchValue }}</code>
-            </span>
-
             <span class="influx-debug-tag" :class="color">{{ row.action }}</span>
         </template>
 
@@ -154,7 +150,6 @@ export default {
 .influx-debug-tag.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
 
 .influx-debug-item-element { font-size: 13px; }
-.influx-debug-match code { font-size: 12px; }
 
 /* "Ghost chip" for the would-create state: a muted, dashed-outline pill that
    mirrors a Craft element chip's rounded shape, in the subtle green/create
