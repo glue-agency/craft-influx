@@ -12,6 +12,8 @@
     "processing": ["create", "update"],
     "rootNode": null,
     "paginatorNode": null,
+    "totalCountNode": null,
+    "pageCountNode": null,
     "mappings": {
         "importId": {
             "node": "id"

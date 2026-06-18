@@ -55,7 +55,7 @@ use yii\base\Event;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.7.0';
+    public string $schemaVersion = '1.8.0';
 
     public bool $hasCpSettings = false;
 

@@ -49,15 +49,22 @@ class SyncLinkJob extends BaseJob
             $this->offset,
             $trigger,
             $this->site,
-            function(int $seen) use ($queue): void {
-                // No reliable total for a streamed feed: ease the bar toward 1
-                // as items arrive (never reaching it), and carry the live count
-                // in the label so the HUD shows real movement.
-                $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
+            function(int $seen, ?int $total) use ($queue): void {
+                if ($total !== null && $total > 0) {
+                    // The feed reported a total (via the count nodes) — a real %.
+                    $progress = min(1.0, $seen / $total);
+                    $label = Craft::t('influx', '{count} of {total} items synced', [
+                        'count' => $seen,
+                        'total' => $total,
+                    ]);
+                } else {
+                    // No total: ease the bar toward 1 as items arrive (never
+                    // reaching it); the label carries the live count.
+                    $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
+                    $label = Craft::t('influx', '{count} items synced', ['count' => $seen]);
+                }
 
-                $this->setProgress($queue, $progress, Craft::t('influx', '{count} items synced', [
-                    'count' => $seen,
-                ]));
+                $this->setProgress($queue, $progress, $label);
             },
         );
     }

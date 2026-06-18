@@ -77,7 +77,13 @@ class PagedFeed implements IteratorAggregate
 
             $nextUrl = $this->nextUrl($response);
 
-            yield new FeedPage($number, $items, $nextUrl);
+            yield new FeedPage(
+                $number,
+                $items,
+                $nextUrl,
+                $this->countAt($response, $this->link->totalCountNode),
+                $this->countAt($response, $this->link->pageCountNode),
+            );
 
             if ($nextUrl === null) {
                 return;
@@ -97,6 +103,22 @@ class PagedFeed implements IteratorAggregate
             $this->link->applyAuth($headers, $query);
             $response = $this->data->fetchUrl($nextUrl, $headers, $query);
         }
+    }
+
+    /**
+     * Read an integer count from the response at a Hash path — the total-item
+     * or total-page count the feed reports. Null when the node isn't
+     * configured, missing, or non-numeric.
+     */
+    protected function countAt(array $response, ?string $node): ?int
+    {
+        if (! $node) {
+            return null;
+        }
+
+        $value = Hash::get($response, $node);
+
+        return is_numeric($value) ? (int) $value : null;
     }
 
     protected function nextUrl(array $response): ?string

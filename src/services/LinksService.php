@@ -339,14 +339,16 @@ class LinksService extends Component
     public static function columnValuesFromConfig(array $config): array
     {
         $columns = [
-            'name'          => (string) ($config['name'] ?? ''),
-            'handle'        => (string) ($config['handle'] ?? ''),
-            'elementType'   => (string) ($config['elementType'] ?? ''),
-            'endpoint'      => $config['endpoint'] ?? null,
-            'itemEndpoint'  => $config['itemEndpoint'] ?? null,
-            'rootNode'      => $config['rootNode'] ?? null,
-            'paginatorNode' => $config['paginatorNode'] ?? null,
-            'backup'        => ! empty($config['backup']),
+            'name'           => (string) ($config['name'] ?? ''),
+            'handle'         => (string) ($config['handle'] ?? ''),
+            'elementType'    => (string) ($config['elementType'] ?? ''),
+            'endpoint'       => $config['endpoint'] ?? null,
+            'itemEndpoint'   => $config['itemEndpoint'] ?? null,
+            'rootNode'       => $config['rootNode'] ?? null,
+            'paginatorNode'  => $config['paginatorNode'] ?? null,
+            'totalCountNode' => $config['totalCountNode'] ?? null,
+            'pageCountNode'  => $config['pageCountNode'] ?? null,
+            'backup'         => ! empty($config['backup']),
         ];
 
         foreach (Link::JSON_FIELDS as $key) {

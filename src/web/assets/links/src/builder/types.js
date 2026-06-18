@@ -42,6 +42,8 @@
  * @property {Object<string, *>} auth {type, token?, header?, param?} or empty.
  * @property {?string} rootNode
  * @property {?string} paginatorNode
+ * @property {?string} totalCountNode response path to the total item count, if the feed reports one.
+ * @property {?string} pageCountNode response path to the total page count, if the feed reports one.
  * @property {{attribute?: string}} match
  * @property {Object<string, Mapping>} mappings field handle → mapping.
  * @property {string[]} processing Subset of create/update/disable/delete/delete-for-site.

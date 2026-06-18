@@ -19,11 +19,19 @@ class FeedPage
     /** Normalized next-page URL, or null when this is the last page. */
     public ?string $nextUrl = null;
 
+    /** Total item count the feed reported (via the link's totalCountNode), or null. */
+    public ?int $totalCount = null;
+
+    /** Total page count the feed reported (via the link's pageCountNode), or null. */
+    public ?int $pageCount = null;
+
     /** @param list<RemoteItem> $items */
-    public function __construct(int $number, array $items, ?string $nextUrl)
+    public function __construct(int $number, array $items, ?string $nextUrl, ?int $totalCount = null, ?int $pageCount = null)
     {
         $this->number = $number;
         $this->items = $items;
         $this->nextUrl = $nextUrl;
+        $this->totalCount = $totalCount;
+        $this->pageCount = $pageCount;
     }
 }

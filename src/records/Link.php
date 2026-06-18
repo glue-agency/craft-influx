@@ -29,6 +29,8 @@ use GlueAgency\Influx\db\Table;
  * @property ?string $auth             JSON
  * @property ?string $rootNode
  * @property ?string $paginatorNode
+ * @property ?string $totalCountNode
+ * @property ?string $pageCountNode
  * @property ?string $match            JSON
  * @property ?string $mappings         JSON (potentially large)
  * @property ?string $processing       JSON

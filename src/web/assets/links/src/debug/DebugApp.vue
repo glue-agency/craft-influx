@@ -92,6 +92,17 @@
                     <span class="influx-feed-rel"><span class="influx-feed-arrow" aria-hidden="true">→</span>{{ meta.offsetLabel }}</span>
                 </div>
 
+                <!-- Resolved total/page counts — confirms the count nodes
+                     actually resolve, so progress % can be trusted. -->
+                <div v-if="meta.totalCount != null || meta.pageCount != null" class="influx-feed-cell">
+                    <span class="influx-feed-eyebrow">{{ $t('Feed reports') }}</span>
+                    <span class="influx-feed-stat-v">
+                        <template v-if="meta.totalCount != null">{{ meta.totalCount }} {{ $t('items') }}</template>
+                        <template v-if="meta.totalCount != null && meta.pageCount != null"> · </template>
+                        <template v-if="meta.pageCount != null">{{ meta.pageCount }} {{ $t('pages') }}</template>
+                    </span>
+                </div>
+
                 <!-- Pinned to the last column (under the empty controls cell)
                      regardless of how many other facts are present. -->
                 <div class="influx-feed-cell influx-feed-cell--last">

@@ -73,9 +73,10 @@ class SynchronizationService extends Component
      * site; null runs every site the link is configured for.
      */
     /**
-     * @param callable|null $onProgress Called once per fetched page with the
-     * running items-seen count, so a queue job can report live progress. Null
-     * for synchronous (console) runs that don't need it.
+     * @param callable|null $onProgress fn(int $seen, ?int $total): called once
+     * per fetched page with the running items-seen count and the feed's
+     * reported total (null when it doesn't report one), so a queue job can show
+     * a real progress %. Null for synchronous (console) runs that don't need it.
      */
     public function syncLink(
         Link $link,
@@ -214,7 +215,17 @@ class SynchronizationService extends Component
     {
         $plugin = Influx::getInstance();
 
+        // The feed's reported total (via totalCountNode, or pageCount × the
+        // first page's size) — constant across pages, captured once so the
+        // job can show a real % instead of the eased heuristic.
+        $total = null;
+        $firstPageSize = null;
+
         foreach ($plugin->data->pages($context->link, $context->siteHandle, $queryParams) as $page) {
+            if ($firstPageSize === null) {
+                $firstPageSize = count($page->items);
+            }
+
             foreach ($page->items as $item) {
                 // One bad item must not kill the run — transport/config
                 // errors abort (they throw from the pages() iterator), but
@@ -229,7 +240,12 @@ class SynchronizationService extends Component
             // Report progress once per page (not per item) to keep the queue
             // writes bounded; itemsSeen is the cumulative count across sites.
             if ($onProgress !== null) {
-                $onProgress((int) $log->itemsSeen);
+                if ($total === null) {
+                    $total = $page->totalCount
+                        ?? ($page->pageCount !== null && $firstPageSize > 0 ? $page->pageCount * $firstPageSize : null);
+                }
+
+                $onProgress((int) $log->itemsSeen, $total);
             }
         }
     }

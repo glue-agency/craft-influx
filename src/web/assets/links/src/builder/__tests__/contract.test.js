@@ -12,7 +12,8 @@ import fixture from '../../../tests/fixtures/link-payload.json';
 const LINK_PAYLOAD_KEYS = [
     'id', 'uid', 'handle', 'name', 'elementType', 'elementCriteria',
     'endpoint', 'itemEndpoint', 'siteEndpoints', 'offset', 'processing',
-    'rootNode', 'paginatorNode', 'mappings', 'match', 'auth', 'backup',
+    'rootNode', 'paginatorNode', 'totalCountNode', 'pageCountNode',
+    'mappings', 'match', 'auth', 'backup',
 ].sort();
 
 describe('Link wire contract', () => {

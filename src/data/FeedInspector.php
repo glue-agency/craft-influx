@@ -94,12 +94,21 @@ class FeedInspector
             }
         }
 
+        // Response-level scalar leaves (outside the item list) — candidates for
+        // the total-count / page-count nodes, which live on the response, not
+        // the item.
+        $countCandidates = array_values(array_filter(
+            $this->stringLeafPaths($response, []),
+            static fn(string $path): bool => $path !== '',
+        ));
+
         return [
             'url'                     => $url,
             'rootNode'                => $rootNode,
             'rootNodeCandidates'      => $rootCandidates,
             'paginatorNode'           => $paginatorNode,
             'paginatorNodeCandidates' => $paginatorCandidates,
+            'countNodeCandidates'     => $countCandidates,
             'sampleItem'              => is_array($sampleItem) ? $sampleItem : null,
             'mappingSuggestions'      => $mappingSuggestions,
             'flatNodes'               => $flatNodes,

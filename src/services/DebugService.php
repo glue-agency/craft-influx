@@ -123,6 +123,8 @@ class DebugService extends Component
                 'itemsOnPage'    => $firstPage ? count($firstPage->items) : 0,
                 'paginatorNode'  => $link->paginatorNode,
                 'paginatorValue' => $firstPage?->nextUrl,
+                'totalCount'     => $firstPage?->totalCount,
+                'pageCount'      => $firstPage?->pageCount,
                 'limit'          => $limit,
                 'matchAttribute' => $matchAttr,
                 'matchNode'      => $matchNode,

@@ -25,6 +25,8 @@ class Install extends Migration
             'auth'            => $this->text()->null(),
             'rootNode'        => $this->string()->null(),
             'paginatorNode'   => $this->string()->null(),
+            'totalCountNode'  => $this->string()->null(),
+            'pageCountNode'   => $this->string()->null(),
             'match'           => $this->text()->null(),
             'mappings'        => $this->longText()->null(),
             'processing'      => $this->text()->null(),

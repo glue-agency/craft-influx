@@ -71,6 +71,8 @@ class Link extends Model
         'auth',
         'rootNode',
         'paginatorNode',
+        'totalCountNode',
+        'pageCountNode',
         'match',
         'mappings',
         'processing',
@@ -167,6 +169,18 @@ class Link extends Model
      * Hash dot-path that yields the next-page URL.
      */
     public ?string $paginatorNode = null;
+
+    /**
+     * Hash dot-path (in the response, not the item) to the total item count,
+     * when the feed reports one — lets the sync show a real progress %.
+     */
+    public ?string $totalCountNode = null;
+
+    /**
+     * Hash dot-path (in the response) to the total page count, when the feed
+     * reports one — drives page-based progress and page-per-step batching.
+     */
+    public ?string $pageCountNode = null;
 
     /**
      * { attribute: importId }
@@ -324,6 +338,8 @@ class Link extends Model
             'processing'      => array_values($this->processing ?? []),
             'rootNode'        => $this->rootNode,
             'paginatorNode'   => $this->paginatorNode,
+            'totalCountNode'  => $this->totalCountNode,
+            'pageCountNode'   => $this->pageCountNode,
             'mappings'        => (object) ($this->mappings ?? []),
             'match'           => (object) ($this->match ?? []),
             'auth'            => (object) ($this->auth ?? []),
@@ -354,6 +370,8 @@ class Link extends Model
         $this->processing = array_values((array) ($payload['processing'] ?? []));
         $this->rootNode = $strOrNull($payload['rootNode'] ?? null);
         $this->paginatorNode = $strOrNull($payload['paginatorNode'] ?? null);
+        $this->totalCountNode = $strOrNull($payload['totalCountNode'] ?? null);
+        $this->pageCountNode = $strOrNull($payload['pageCountNode'] ?? null);
         $this->mappings = (array) ($payload['mappings'] ?? []);
         $this->match = (array) ($payload['match'] ?? []);
         $this->auth = (array) ($payload['auth'] ?? []);

@@ -36,6 +36,42 @@
             </div>
         </div>
 
+        <div class="field">
+            <div class="heading"><label>{{ $t('Total-count node') }}</label></div>
+            <div class="instructions">
+                <p>{{ $t('Response node holding the total number of items, if the feed reports it — drives a real sync progress %.') }}</p>
+            </div>
+            <div class="input ltr">
+                <searchable-select
+                    :model-value="link.totalCountNode ?? ''"
+                    :options="totalCountNodeOptions"
+                    searchable
+                    :placeholder="$t('— none —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    @update:model-value="link.totalCountNode = $event || null"
+                />
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="heading"><label>{{ $t('Page-count node') }}</label></div>
+            <div class="instructions">
+                <p>{{ $t('Response node holding the total number of pages, if the feed reports it.') }}</p>
+            </div>
+            <div class="input ltr">
+                <searchable-select
+                    :model-value="link.pageCountNode ?? ''"
+                    :options="pageCountNodeOptions"
+                    searchable
+                    :placeholder="$t('— none —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    @update:model-value="link.pageCountNode = $event || null"
+                />
+            </div>
+        </div>
+
     </div>
 </template>
 
@@ -79,6 +115,24 @@ export default {
                 this.$t('— no paginator —'),
                 this.ui.sample?.paginatorNodeCandidates ?? [],
                 this.link.paginatorNode,
+            );
+        },
+
+        // The count nodes live on the response, so they draw from the same
+        // response-level scalar leaves the paginator does.
+        totalCountNodeOptions() {
+            return this.nodeGroups(
+                this.$t('— none —'),
+                this.ui.sample?.countNodeCandidates ?? [],
+                this.link.totalCountNode,
+            );
+        },
+
+        pageCountNodeOptions() {
+            return this.nodeGroups(
+                this.$t('— none —'),
+                this.ui.sample?.countNodeCandidates ?? [],
+                this.link.pageCountNode,
             );
         },
     },
