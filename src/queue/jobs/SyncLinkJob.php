@@ -5,20 +5,24 @@ namespace GlueAgency\Influx\queue\jobs;
 use Craft;
 use craft\queue\BaseJob;
 use GlueAgency\Influx\enums\SyncTrigger;
-use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\Influx;
 
 /**
- * Queue job that runs a full link sync. CP-side triggers push this job so the
- * web request returns immediately and the actual work happens in the worker.
- * Console runs stay synchronous — operators usually want to wait for output.
+ * Queue job that runs a link sync one feed page per step: each execution
+ * processes a single page and, if there's another page (or another site),
+ * re-queues itself with the carried run state — so one log spans the whole run
+ * while no single step holds the worker long enough to time out on a big feed.
+ * A feed with no paginator simply finishes after the first step.
+ *
+ * CP-side triggers push the job (with no state) so the request returns
+ * immediately; console runs stay synchronous via {@see \GlueAgency\Influx\services\SynchronizationService::syncLink()}.
  */
 class SyncLinkJob extends BaseJob
 {
     /**
-     * Streamed feeds have no known total, so the progress bar eases toward
-     * (without reaching) 100% as items arrive — this is the soft target it
-     * curves against. The job completing is what marks the run done.
+     * Streamed feeds that report no total have no known denominator, so the
+     * bar eases toward (without reaching) 100% as items arrive — this is the
+     * soft target it curves against. A feed with count nodes shows a real %.
      */
     protected const PROGRESS_SOFT_TARGET = 250;
 
@@ -27,28 +31,30 @@ class SyncLinkJob extends BaseJob
     public ?string $site = null;
     public string $trigger = 'queue';
 
-    /**
-     * @throws InfluxException when the link no longer exists — the job must
-     * fail visibly in the queue instead of silently succeeding.
-     */
+    // Run state carried across steps; defaults are the first step's values, so
+    // an initial push (handle/offset/site/trigger only) starts a fresh run.
+    public ?int $logId = null;
+    public int $siteIndex = 0;
+    public ?string $cursorUrl = null;
+    public int $page = 1;
+
     public function execute($queue): void
     {
-        $plugin = Influx::getInstance();
-        $link = $plugin->links->getLinkByHandle($this->linkHandle);
-
-        if (! $link) {
-            throw new InfluxException("Cannot sync link '{$this->linkHandle}' — no link with that handle exists.");
-        }
-
         // tryFrom (not from) so a job serialised with an unexpected trigger
         // value degrades to QUEUE instead of throwing a raw ValueError.
         $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
 
-        $plugin->synchronization->syncLink(
-            $link,
+        $state = Influx::getInstance()->synchronization->batchStep(
+            $this->linkHandle,
             $this->offset,
             $trigger,
             $this->site,
+            [
+                'logId'     => $this->logId,
+                'siteIndex' => $this->siteIndex,
+                'cursorUrl' => $this->cursorUrl,
+                'page'      => $this->page,
+            ],
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
                     // The feed reported a total (via the count nodes) — a real %.
@@ -67,6 +73,21 @@ class SyncLinkJob extends BaseJob
                 $this->setProgress($queue, $progress, $label);
             },
         );
+
+        if (empty($state['done'])) {
+            // More pages (or sites) to go — re-queue the next step on the same
+            // log so the whole run reads as one log entry.
+            Craft::$app->getQueue()->push(new self([
+                'linkHandle' => $this->linkHandle,
+                'offset'     => $this->offset,
+                'site'       => $this->site,
+                'trigger'    => $this->trigger,
+                'logId'      => $state['logId'],
+                'siteIndex'  => $state['siteIndex'],
+                'cursorUrl'  => $state['cursorUrl'],
+                'page'       => $state['page'],
+            ]));
+        }
     }
 
     protected function defaultDescription(): ?string

@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\enums\SyncTrigger;
@@ -66,17 +67,16 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Run a full link sync.
+     * Run a full link sync synchronously (console / per-element / CP-direct);
+     * the queued, page-per-step path lives in {@see batchStep()}.
      *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
      * @param string|null $siteHandle Restrict the run to a single configured
      * site; null runs every site the link is configured for.
-     */
-    /**
      * @param callable|null $onProgress fn(int $seen, ?int $total): called once
      * per fetched page with the running items-seen count and the feed's
-     * reported total (null when it doesn't report one), so a queue job can show
-     * a real progress %. Null for synchronous (console) runs that don't need it.
+     * reported total (null when it doesn't report one). Null for synchronous
+     * runs that don't need it.
      */
     public function syncLink(
         Link $link,
@@ -121,6 +121,144 @@ class SynchronizationService extends Component
         $this->trigger(self::EVENT_AFTER_SYNC_LINK, $afterEvent);
 
         return $log;
+    }
+
+    /**
+     * Advance a queued, resumable run by one feed page. {@see SyncLinkJob}
+     * calls this each step and re-queues itself with the returned state until
+     * `done` — so one log spans the whole run while each page is its own queue
+     * step (it survives worker timeouts; the synchronous {@see syncLink()} path
+     * is left untouched). A fetch failure fails the run and stops; per-item
+     * failures still become error rows and the run carries on.
+     *
+     * @param array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int} $state
+     * @param callable|null $onProgress fn(int $seen, ?int $total)
+     * @return array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, done: bool}
+     */
+    public function batchStep(
+        string $linkHandle,
+        ?string $offset,
+        SyncTrigger $trigger,
+        ?string $requestedSite,
+        array $state,
+        ?callable $onProgress = null,
+    ): array {
+        $plugin = Influx::getInstance();
+        $link = $plugin->links->getLinkByHandle($linkHandle);
+
+        if (! $link) {
+            throw new InfluxException("Cannot sync link '{$linkHandle}' — no link with that handle exists.");
+        }
+
+        $state['done'] = false;
+        $target = $this->resolveTarget($link);
+        $sites = $this->runSites($link, $requestedSite);
+        [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+
+        // The first step opens the log; later steps reload the run in progress.
+        if (($state['logId'] ?? null) === null) {
+            $log = $this->startSync($link, $trigger);
+            $state['logId'] = $log->id;
+        } else {
+            $log = LogRecord::findOne($state['logId']);
+
+            if (! $log) {
+                throw new InfluxException("Influx log #{$state['logId']} vanished mid-run.");
+            }
+        }
+
+        $siteHandle = $sites[$state['siteIndex']] ?? null;
+        $context = SyncContext::forSite($link, $target, $siteHandle, $trigger);
+
+        try {
+            $page = $plugin->data->page($link, $siteHandle, $state['cursorUrl'], $queryParams, $state['page']);
+        } catch (Throwable $e) {
+            // A page fetch failed — fail the run and stop (no retry).
+            $plugin->logs->fail($log, $e->getMessage());
+            $state['done'] = true;
+
+            return $state;
+        }
+
+        foreach ($page->items as $item) {
+            try {
+                $this->processItem($context, $item, $log);
+            } catch (Throwable $e) {
+                $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
+            }
+        }
+
+        if ($onProgress !== null) {
+            $total = $page->totalCount
+                ?? ($page->pageCount !== null ? $page->pageCount * max(1, count($page->items)) : null);
+            $onProgress((int) $log->itemsSeen, $total);
+        }
+
+        $nextUrl = $page->nextUrl;
+
+        if ($nextUrl !== null) {
+            if ($state['page'] >= PagedFeed::MAX_PAGES) {
+                $plugin->logs->fail($log, 'Pagination exceeded ' . PagedFeed::MAX_PAGES . ' pages — aborting.');
+                $state['done'] = true;
+
+                return $state;
+            }
+
+            $state['cursorUrl'] = $nextUrl;
+            $state['page']++;
+
+            return $state;
+        }
+
+        // Site finished — advance to the next, or finish the whole run.
+        $state['siteIndex']++;
+        $state['cursorUrl'] = null;
+        $state['page'] = 1;
+
+        if ($state['siteIndex'] >= count($sites)) {
+            $this->finishSync($link, $log);
+            $state['done'] = true;
+        }
+
+        return $state;
+    }
+
+    /**
+     * Begin a run: fire the cancellable before-event, take the backup, open the
+     * log. Shared with {@see batchStep()}; {@see syncLink()} does this inline.
+     */
+    protected function startSync(Link $link, SyncTrigger $trigger): LogRecord
+    {
+        $beforeEvent = new SyncLinkEvent(['link' => $link]);
+        $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
+
+        if (! $beforeEvent->isValid) {
+            throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
+        }
+
+        Influx::getInstance()->backup->backupForLink($link);
+
+        return Influx::getInstance()->logs->start($link, $trigger);
+    }
+
+    /**
+     * Finalise a run: close the log and fire the after-event with the final
+     * counters.
+     */
+    protected function finishSync(Link $link, LogRecord $log): void
+    {
+        Influx::getInstance()->logs->finish($log);
+
+        $this->trigger(self::EVENT_AFTER_SYNC_LINK, new SyncLinkEvent([
+            'link'           => $link,
+            'itemsSeen'      => (int) $log->itemsSeen,
+            'itemsCreated'   => (int) $log->itemsCreated,
+            'itemsUpdated'   => (int) $log->itemsUpdated,
+            'itemsUnchanged' => (int) $log->itemsUnchanged,
+            'itemsSkipped'   => (int) $log->itemsSkipped,
+            'itemsDeleted'   => (int) $log->itemsDeleted,
+            'itemsDisabled'  => (int) $log->itemsDisabled,
+        ]));
     }
 
     /**

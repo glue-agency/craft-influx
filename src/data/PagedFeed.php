@@ -64,26 +64,16 @@ class PagedFeed implements IteratorAggregate
      */
     public function getIterator(): Generator
     {
-        $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
-
         $seenUrls = [];
         $number = 1;
+        $cursor = null;
 
         while (true) {
-            $items = array_map(
-                static fn(array $item): RemoteItem => new RemoteItem($item),
-                $this->data->rootList($this->link, $response),
-            );
+            $page = $this->page($cursor, $number);
 
-            $nextUrl = $this->nextUrl($response);
+            yield $page;
 
-            yield new FeedPage(
-                $number,
-                $items,
-                $nextUrl,
-                $this->countAt($response, $this->link->totalCountNode),
-                $this->countAt($response, $this->link->pageCountNode),
-            );
+            $nextUrl = $page->nextUrl;
 
             if ($nextUrl === null) {
                 return;
@@ -97,12 +87,39 @@ class PagedFeed implements IteratorAggregate
                 throw new FeedFetchException('Pagination exceeded ' . self::MAX_PAGES . " pages — aborting (paginator node '{$this->link->paginatorNode}').");
             }
             $seenUrls[$nextUrl] = true;
+            $cursor = $nextUrl;
+        }
+    }
 
+    /**
+     * Fetch a single page: the initial page when $cursorUrl is null (the
+     * configured endpoint + query params), or the page at a carried next-page
+     * URL otherwise. The unit a resumable, page-per-step sync run advances one
+     * at a time; {@see getIterator()} chains these for a synchronous walk.
+     */
+    public function page(?string $cursorUrl, int $number = 1): FeedPage
+    {
+        if ($cursorUrl === null) {
+            $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
+        } else {
             $headers = [];
             $query = [];
             $this->link->applyAuth($headers, $query);
-            $response = $this->data->fetchUrl($nextUrl, $headers, $query);
+            $response = $this->data->fetchUrl($cursorUrl, $headers, $query);
         }
+
+        $items = array_map(
+            static fn(array $item): RemoteItem => new RemoteItem($item),
+            $this->data->rootList($this->link, $response),
+        );
+
+        return new FeedPage(
+            $number,
+            $items,
+            $this->nextUrl($response),
+            $this->countAt($response, $this->link->totalCountNode),
+            $this->countAt($response, $this->link->pageCountNode),
+        );
     }
 
     /**

@@ -7,6 +7,7 @@ use Craft;
 use craft\base\Component;
 use GlueAgency\Influx\data\EndpointResolver;
 use GlueAgency\Influx\data\FeedInspector;
+use GlueAgency\Influx\data\FeedPage;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\models\Link;
@@ -121,6 +122,16 @@ class DataService extends Component
     public function pages(Link $link, ?string $siteHandle = null, array $queryParams = []): PagedFeed
     {
         return new PagedFeed($this, $link, $siteHandle, $queryParams);
+    }
+
+    /**
+     * Fetch a single feed page — the initial page ($cursorUrl null) or the page
+     * at a carried next-page URL. Powers the resumable, page-per-step queue job;
+     * {@see pages()} is the synchronous full walk.
+     */
+    public function page(Link $link, ?string $siteHandle, ?string $cursorUrl, array $queryParams = [], int $number = 1): FeedPage
+    {
+        return (new PagedFeed($this, $link, $siteHandle, $queryParams))->page($cursorUrl, $number);
     }
 
     public function endpoints(): EndpointResolver
