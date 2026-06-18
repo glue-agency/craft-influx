@@ -15,6 +15,13 @@ use GlueAgency\Influx\Influx;
  */
 class SyncLinkJob extends BaseJob
 {
+    /**
+     * Streamed feeds have no known total, so the progress bar eases toward
+     * (without reaching) 100% as items arrive — this is the soft target it
+     * curves against. The job completing is what marks the run done.
+     */
+    protected const PROGRESS_SOFT_TARGET = 250;
+
     public string $linkHandle = '';
     public ?string $offset = null;
     public ?string $site = null;
@@ -37,7 +44,22 @@ class SyncLinkJob extends BaseJob
         // value degrades to QUEUE instead of throwing a raw ValueError.
         $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
 
-        $plugin->synchronization->syncLink($link, $this->offset, $trigger, $this->site);
+        $plugin->synchronization->syncLink(
+            $link,
+            $this->offset,
+            $trigger,
+            $this->site,
+            function(int $seen) use ($queue): void {
+                // No reliable total for a streamed feed: ease the bar toward 1
+                // as items arrive (never reaching it), and carry the live count
+                // in the label so the HUD shows real movement.
+                $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
+
+                $this->setProgress($queue, $progress, Craft::t('influx', '{count} items synced', [
+                    'count' => $seen,
+                ]));
+            },
+        );
     }
 
     protected function defaultDescription(): ?string

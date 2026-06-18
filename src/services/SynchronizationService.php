@@ -72,11 +72,17 @@ class SynchronizationService extends Component
      * @param string|null $siteHandle Restrict the run to a single configured
      * site; null runs every site the link is configured for.
      */
+    /**
+     * @param callable|null $onProgress Called once per fetched page with the
+     * running items-seen count, so a queue job can report live progress. Null
+     * for synchronous (console) runs that don't need it.
+     */
     public function syncLink(
         Link $link,
         ?string $offset = null,
         SyncTrigger $trigger = SyncTrigger::CONSOLE,
         ?string $siteHandle = null,
+        ?callable $onProgress = null,
     ): LogRecord {
         $plugin = Influx::getInstance();
 
@@ -94,10 +100,10 @@ class SynchronizationService extends Component
 
         [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
-        $log = $this->runWithLog($link, $trigger, function(LogRecord $log) use ($link, $target, $trigger, $queryParams, $siteHandles) {
+        $log = $this->runWithLog($link, $trigger, function(LogRecord $log) use ($link, $target, $trigger, $queryParams, $siteHandles, $onProgress) {
             foreach ($siteHandles as $handle) {
                 $context = SyncContext::forSite($link, $target, $handle, $trigger);
-                $this->processSite($context, $queryParams, $log);
+                $this->processSite($context, $queryParams, $log, $onProgress);
             }
         });
 
@@ -204,7 +210,7 @@ class SynchronizationService extends Component
      * @throws FeedFetchException on fetch failures, paginator URL cycles, or
      * runaway pagination.
      */
-    protected function processSite(SyncContext $context, array $queryParams, LogRecord $log): void
+    protected function processSite(SyncContext $context, array $queryParams, LogRecord $log, ?callable $onProgress = null): void
     {
         $plugin = Influx::getInstance();
 
@@ -218,6 +224,12 @@ class SynchronizationService extends Component
                 } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
                 }
+            }
+
+            // Report progress once per page (not per item) to keep the queue
+            // writes bounded; itemsSeen is the cumulative count across sites.
+            if ($onProgress !== null) {
+                $onProgress((int) $log->itemsSeen);
             }
         }
     }
