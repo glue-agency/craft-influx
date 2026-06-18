@@ -291,6 +291,44 @@ class FeedMeConverterTest extends Unit
         $this->assertWarningMatching("/'id'/", $conversion);
     }
 
+    public function testDontImportNativesAreSkippedSilently(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'id'     => ['attribute' => 1, 'node' => 'noimport', 'default' => ''],
+                'parent' => ['attribute' => 1, 'node' => 'noimport', 'default' => ''],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('id', $conversion->link->mappings);
+        $this->assertArrayNotHasKey('parent', $conversion->link->mappings);
+        $this->assertNoWarningMatching('/counterpart/', $conversion);
+    }
+
+    public function testUseDefaultNativesWithEmptyDefaultAreSkippedSilently(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'id' => ['attribute' => 1, 'node' => 'usedefault', 'default' => ''],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('id', $conversion->link->mappings);
+        $this->assertNoWarningMatching('/counterpart/', $conversion);
+    }
+
+    public function testUseDefaultNativesWithRealDefaultAreDroppedWithWarning(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'id' => ['attribute' => 1, 'node' => 'usedefault', 'default' => '42'],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('id', $conversion->link->mappings);
+        $this->assertWarningMatching('/counterpart/', $conversion);
+    }
+
     public function testMatrixBlocksAreDroppedWithWarning(): void
     {
         $conversion = $this->convert([
@@ -502,5 +540,16 @@ class FeedMeConverterTest extends Unit
             }
         }
         $this->fail("No warning matching {$pattern}. Got:\n- " . implode("\n- ", $conversion->warnings));
+    }
+
+    protected function assertNoWarningMatching(string $pattern, FeedMeConversion $conversion): void
+    {
+        foreach ($conversion->warnings as $warning) {
+            if (preg_match($pattern, $warning)) {
+                $this->fail("Unexpected warning matching {$pattern}: {$warning}");
+            }
+        }
+
+        $this->assertTrue(true);
     }
 }

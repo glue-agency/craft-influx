@@ -324,7 +324,13 @@ class FeedMeConverter
 
             if ($topLevel && ! empty($info['attribute'])) {
                 if (in_array($handle, self::UNSUPPORTED_NATIVE_HANDLES, true)) {
-                    $this->warn("Native attribute mapping '{$handle}' has no Influx counterpart and was dropped.");
+                    // Only flag it when the feed actually mapped a value here.
+                    // A "don't import" / unmapped native attribute carries
+                    // nothing to drop, so skip it silently like any other
+                    // no-op mapping.
+                    if ($this->mapsAValue($info)) {
+                        $this->warn("Native attribute mapping '{$handle}' has no Influx counterpart and was dropped.");
+                    }
 
                     continue;
                 }
@@ -345,6 +351,32 @@ class FeedMeConverter
         }
 
         return $mappings;
+    }
+
+    /**
+     * Whether a Feed Me mapping entry actually carries a value to import —
+     * either a real node, or "use default" with a non-empty default. Mirrors
+     * the no-op guards in {@see convertMapping()} (which returns null for
+     * "don't import", an unmapped node, or a default-only mapping with an
+     * empty default); used to decide whether dropping an unsupported native
+     * attribute is worth a warning.
+     *
+     * @param array $info a single decoded fieldMapping entry
+     */
+    protected function mapsAValue(array $info): bool
+    {
+        $node = $info['node'] ?? null;
+        $node = is_string($node) && $node !== '' ? $node : null;
+
+        if ($node === null || $node === self::NODE_NO_IMPORT) {
+            return false;
+        }
+
+        if ($node === self::NODE_USE_DEFAULT) {
+            return $this->normalizeDefault($info['default'] ?? null) !== null;
+        }
+
+        return true;
     }
 
     /**
