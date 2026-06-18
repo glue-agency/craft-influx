@@ -42,6 +42,24 @@ abstract class RelationalField extends Field
     }
 
     /**
+     * Write the related-element ids onto the field. A null/empty parse MUST be
+     * written as an explicit empty array, never null: Craft relation fields
+     * read null as "no value supplied — keep the existing relations"
+     * ({@see \craft\fields\BaseRelationField::normalizeValue()} re-reads the
+     * current ids from the `relations` table when the value is null), so
+     * passing null leaves the relation intact instead of clearing it. The
+     * applier only reaches apply() for a field the feed addresses, so an empty
+     * value here always means "the feed cleared this" — coerce it to [] so the
+     * related elements are actually detached on save.
+     */
+    public function apply(FieldContext $context, mixed $value): bool
+    {
+        $context->element->setFieldValue($context->handle, $value ?? []);
+
+        return true;
+    }
+
+    /**
      * Apply this mapping's sub-mappings to a related element and persist it,
      * but only when a sub-mapping actually changed a value. Skipped under dry-
      * run: the related element is a real, saved element the debug inspector
