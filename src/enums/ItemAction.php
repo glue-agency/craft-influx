@@ -29,7 +29,8 @@ enum ItemAction: string
             self::UPDATED   => 'itemsUpdated',
             self::UNCHANGED => 'itemsUnchanged',
             self::SKIPPED   => 'itemsSkipped',
-            self::DISABLED, self::DELETED, self::DELETED_FOR_SITE => 'itemsDeleted',
+            self::DISABLED  => 'itemsDisabled',
+            self::DELETED, self::DELETED_FOR_SITE => 'itemsDeleted',
             self::ERROR => null,
         };
     }

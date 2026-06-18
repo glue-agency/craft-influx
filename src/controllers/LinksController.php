@@ -9,7 +9,6 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DebugService;
-use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use Throwable;
 use yii\base\Action;
@@ -68,8 +67,8 @@ class LinksController extends AbstractController
 
     /**
      * Dry-run inspector shell. Renders the site / offset / limit selector and a
-     * results container that gets populated live via {@see actionDebugStream}.
-     * Writes nothing.
+     * results container the SPA fills from {@see actionDebugInspect}. Writes
+     * nothing.
      */
     public function actionDebug(int $id): Response
     {
@@ -110,20 +109,20 @@ class LinksController extends AbstractController
             'offsetHandles'  => $offsetHandles,
             'selectedOffset' => $selectedOffset,
             'processing'     => array_values($link->processing ?? []),
-            'streamUrl'      => UrlHelper::cpUrl("influx/links/{$link->id}/debug/stream"),
+            'inspectUrl'     => UrlHelper::cpUrl("influx/links/{$link->id}/debug/inspect"),
         ]);
     }
 
     /**
-     * SSE endpoint backing the debug page. Streams a `meta` event with site
-     * metadata, then one `item` event per processed item, then a `done`
-     * sentinel. Strictly read-only.
-     *
-     * Bypasses Yii's normal response pipeline and writes the event stream
-     * directly so each item can flush as soon as it's processed.
+     * JSON endpoint backing the debug page. Runs the dry-run inspection for the
+     * selected site/offset/limit and returns the feed meta plus one row per
+     * processed item in a single response. Strictly read-only — the inspector
+     * only ever reads the first page, so there's nothing to stream.
      */
-    public function actionDebugStream(int $id): void
+    public function actionDebugInspect(int $id): Response
     {
+        $this->requireAcceptsJson();
+
         if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
             throw new NotFoundHttpException("Link {$id} not found.");
         }
@@ -143,21 +142,22 @@ class LinksController extends AbstractController
             $offset = null;
         }
 
-        $debug = Influx::getInstance()->debug;
+        $meta = null;
+        $items = [];
 
-        // Each event's data is already JSON-serializable (the Vue DebugApp
-        // renders it); stream it straight through, no server-side rendering.
-        Influx::getInstance()->eventStream->run(function(EventStreamService $stream) use ($debug, $link, $siteHandle, $limit, $offset) {
-            foreach ($debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
-                $stream->send($event['type'], $event['data']);
-
-                if ($stream->aborted()) {
-                    return;
-                }
+        // Each row is already JSON-serializable (the Vue DebugApp renders it).
+        foreach (Influx::getInstance()->debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
+            if ($event['type'] === 'meta') {
+                $meta = $event['data'];
+            } elseif ($event['type'] === 'item') {
+                $items[] = $event['data'];
+            } elseif ($event['type'] === 'error') {
+                // No target registered — surface as a meta-level error.
+                $meta = ['error' => $event['data']['message'] ?? Craft::t('influx', 'Inspection failed.')];
             }
+        }
 
-            $stream->send('done', []);
-        });
+        return $this->asJson(['meta' => $meta, 'items' => $items]);
     }
 
     public function actionEdit(?int $id = null, ?Link $link = null): Response

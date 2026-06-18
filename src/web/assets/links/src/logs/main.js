@@ -6,7 +6,7 @@ import { installT } from '../lib/installT.js';
  * Boot the run-log viewer. The host template renders a single mount point
  * carrying its bootstrap config as JSON:
  *
- *   <div data-influx-log='{"log":{…},"items":[…],"streamUrl":"…",…}'></div>
+ *   <div data-influx-log='{"log":{…},"items":[…],"pollUrl":"…",…}'></div>
  */
 export function mountLog(el) {
     let config = {};

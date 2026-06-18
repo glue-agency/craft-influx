@@ -23,4 +23,5 @@ class SyncLinkEvent extends ModelEvent
     public int $itemsUnchanged = 0;
     public int $itemsSkipped = 0;
     public int $itemsDeleted = 0;
+    public int $itemsDisabled = 0;
 }

@@ -12,6 +12,9 @@ const craft = {
     t,
     getCpUrl: (path = '') => `/admin/${path}`,
     getActionUrl: (action) => `/index.php?p=admin/actions/${action}`,
+    // Resolves to an empty payload by default; tests that exercise the debug
+    // inspect / log poll endpoints override this with their own response.
+    sendActionRequest: () => Promise.resolve({ data: {} }),
     cp: {
         displayNotice: () => {},
         displayError: () => {},

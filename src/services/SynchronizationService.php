@@ -16,7 +16,6 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\OffsetPreset;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\sync\ItemProcessor;
-use GlueAgency\Influx\sync\ItemSyncResult;
 use GlueAgency\Influx\sync\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
@@ -110,6 +109,7 @@ class SynchronizationService extends Component
             'itemsUnchanged' => (int) $log->itemsUnchanged,
             'itemsSkipped'   => (int) $log->itemsSkipped,
             'itemsDeleted'   => (int) $log->itemsDeleted,
+            'itemsDisabled'  => (int) $log->itemsDisabled,
         ]);
         $this->trigger(self::EVENT_AFTER_SYNC_LINK, $afterEvent);
 
@@ -279,8 +279,9 @@ class SynchronizationService extends Component
             $result->action,
             $result->element?->id,
             $this->matchValueString($result->matchValue),
-            $this->resultMessage($result),
+            $result->message,
             $item->raw(),
+            $result->mappingErrors(),
         );
 
         $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);
@@ -294,30 +295,6 @@ class SynchronizationService extends Component
     protected function matchValueString(mixed $value): ?string
     {
         return $value !== null ? (string) $value : null;
-    }
-
-    /**
-     * Log message for a committed result: the save error (if any) plus any
-     * per-mapping errors the applier captured — those no longer abort the
-     * item, so they must surface here to stay visible.
-     */
-    protected function resultMessage(ItemSyncResult $result): ?string
-    {
-        $message = $result->message;
-        $errors = $result->mappingErrors();
-
-        if (! $errors) {
-            return $message;
-        }
-
-        $parts = [];
-
-        foreach ($errors as $handle => $error) {
-            $parts[] = "{$handle}: {$error}";
-        }
-        $note = 'Mapping errors — ' . implode('; ', $parts);
-
-        return $message === null ? $note : $message . ' | ' . $note;
     }
 
     protected function fireAfterItem(

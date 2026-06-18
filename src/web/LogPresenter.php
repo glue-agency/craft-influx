@@ -47,6 +47,7 @@ class LogPresenter
             'itemsUnchanged' => (int) $log->itemsUnchanged,
             'itemsSkipped'   => (int) $log->itemsSkipped,
             'itemsDeleted'   => (int) $log->itemsDeleted,
+            'itemsDisabled'  => (int) $log->itemsDisabled,
         ];
     }
 

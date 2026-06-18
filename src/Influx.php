@@ -25,7 +25,6 @@ use GlueAgency\Influx\services\CooldownService;
 use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\services\EndpointTokensService;
-use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\services\FieldsService;
 use GlueAgency\Influx\services\LinkBuilderService;
 use GlueAgency\Influx\services\LinksService;
@@ -56,7 +55,7 @@ use yii\base\Event;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.5.0';
+    public string $schemaVersion = '1.7.0';
 
     public bool $hasCpSettings = false;
 
@@ -80,7 +79,6 @@ class Influx extends Plugin
                 'auth'            => AuthService::class,
                 'endpointTokens'  => EndpointTokensService::class,
                 'feedMe'          => FeedMeService::class,
-                'eventStream'     => EventStreamService::class,
             ],
         ];
     }
@@ -158,7 +156,7 @@ class Influx extends Plugin
                 $event->rules['influx/links/<id:\d+>'] = 'influx/links/view';
                 $event->rules['influx/links/<id:\d+>/edit'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/debug'] = 'influx/links/debug';
-                $event->rules['influx/links/<id:\d+>/debug/stream'] = 'influx/links/debug-stream';
+                $event->rules['influx/links/<id:\d+>/debug/inspect'] = 'influx/links/debug-inspect';
 
                 // LinkBuilder SPA — JSON CP routes
                 $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';
@@ -170,7 +168,7 @@ class Influx extends Plugin
 
                 $event->rules['influx/logs'] = 'influx/logs/index';
                 $event->rules['influx/logs/<id:\d+>'] = 'influx/logs/view';
-                $event->rules['influx/logs/<id:\d+>/stream'] = 'influx/logs/stream';
+                $event->rules['influx/logs/<id:\d+>/items'] = 'influx/logs/items';
                 $event->rules['influx/logs/items/<id:\d+>'] = 'influx/logs/item';
 
                 $event->rules['influx/settings'] = 'influx/settings/edit';

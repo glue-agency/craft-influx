@@ -1,39 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import LogApp from '../LogApp.vue';
-
-class FakeEventSource {
-    constructor(url) {
-        this.url = url;
-        this.listeners = {};
-        this.closed = false;
-        FakeEventSource.last = this;
-    }
-
-    addEventListener(type, cb) {
-        (this.listeners[type] = this.listeners[type] || []).push(cb);
-    }
-
-    emit(type, data) {
-        (this.listeners[type] || []).forEach((cb) => cb({ data: JSON.stringify(data) }));
-    }
-
-    close() {
-        this.closed = true;
-    }
-}
 
 const $t = (s, p) => (p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m)) : s);
 
 const baseConfig = (over = {}) => ({
-    log: { id: 1, linkHandle: 'news', trigger: 'cp', status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 1, itemsUnchanged: 0, itemsSkipped: 0, itemsDeleted: 0 },
+    log: { id: 1, linkHandle: 'news', trigger: 'cp', status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
+    // The bootstrap ships only page 1 (newest first).
     items: [
-        { id: 1, action: 'created', matchValue: 'A', message: '', elementHtml: '<span>el</span>' },
         { id: 2, action: 'skipped', matchValue: 'B', message: '', elementHtml: null },
+        { id: 1, action: 'created', matchValue: 'A', message: '', elementHtml: '<span>el</span>' },
     ],
-    streamUrl: '/logstream',
+    itemTotal: 2,
+    perPage: 25,
+    itemsUrl: '/items',
     itemUrlTemplate: '/items/__ID__',
     linkId: 7,
+    linkName: 'News',
     isLive: false,
     ...over,
 });
@@ -44,46 +27,60 @@ const mountApp = (over = {}) => mount(LogApp, {
 });
 
 describe('LogApp', () => {
-    afterEach(() => { delete global.EventSource; });
+    afterEach(() => {
+        window.Craft.sendActionRequest = () => Promise.resolve({ data: {} });
+    });
 
-    it('renders the items and the per-action filter counts', () => {
+    it('renders the first page and per-action filter counts from the run counters', async () => {
         const w = mountApp();
 
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(2);
-        const created = w.findAll('.influx-log-filters li').find((li) => li.text().includes('created'));
+
+        // Counts come from the run counters, shown in the filter dropdown.
+        await w.findComponent({ name: 'LogFilterMenu' }).find('.btn').trigger('click');
+        const created = w.findAll('.influx-log-filter-option').find((o) => o.text().includes('created'));
         expect(created.text()).toContain('1');
     });
 
-    it('hides items whose action filter is toggled off', async () => {
+    it('re-queries the server (page 1, filtered) when a filter is toggled off', async () => {
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
+            data: { items: [{ id: 2, action: 'skipped', matchValue: 'B', message: '', elementHtml: null }], total: 1, counters: {}, done: false },
+        }));
+
         const w = mountApp();
+        await w.findComponent({ name: 'LogFilterMenu' }).find('.btn').trigger('click');
+        const created = w.findAll('.influx-log-filter-option').find((o) => o.text().includes('created'));
+        await created.trigger('click');
+        await flushPromises();
 
-        await w.find('#influx-log-filter-created').trigger('change');
-
-        // Only the 'skipped' row remains.
+        expect(window.Craft.sendActionRequest).toHaveBeenCalled();
+        expect(window.Craft.sendActionRequest.mock.calls[0][1]).toContain('/items');
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(1);
     });
 
-    it('does not open a stream for a finished log', () => {
-        global.EventSource = FakeEventSource;
-        FakeEventSource.last = null;
+    it('does not fetch on mount for a finished log', () => {
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({ data: { items: [], total: 0, counters: {}, done: true } }));
+
         mountApp({ isLive: false });
-        expect(FakeEventSource.last).toBe(null);
+
+        expect(window.Craft.sendActionRequest).not.toHaveBeenCalled();
     });
 
-    it('streams live items + counters when running, and closes on done', async () => {
-        global.EventSource = FakeEventSource;
+    it('fetches the current page on mount when live and refreshes counters', async () => {
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
+            data: {
+                items: [{ id: 3, action: 'created', matchValue: 'C', message: '', elementHtml: null }],
+                total: 1,
+                counters: { itemsSeen: 3, itemsCreated: 1, status: 'ok' },
+                done: true,
+            },
+        }));
+
         const w = mountApp({ isLive: true, log: { ...baseConfig().log, status: 'running' } });
-        const es = FakeEventSource.last;
+        await flushPromises();
 
-        expect(es.url).toContain('/logstream');
-
-        es.emit('item', { id: 3, action: 'created', matchValue: 'C', message: '', elementHtml: null });
-        es.emit('counters', { status: 'ok', itemsSeen: 3, itemsCreated: 2, itemsUpdated: 1, itemsUnchanged: 0, itemsSkipped: 0, itemsDeleted: 0 });
-        await w.vm.$nextTick();
-
-        expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(3);
-
-        es.emit('done', {});
-        expect(es.closed).toBe(true);
+        expect(window.Craft.sendActionRequest).toHaveBeenCalled();
+        expect(window.Craft.sendActionRequest.mock.calls[0][1]).toContain('/items');
+        expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(1);
     });
 });

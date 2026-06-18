@@ -9,6 +9,10 @@ class Install extends Migration
 {
     public function safeUp(): bool
     {
+        $this->dropTableIfExists(Table::LOG_ITEMS);
+        $this->dropTableIfExists(Table::LOGS);
+        $this->dropTableIfExists(Table::LINKS);
+
         $this->createTable(Table::LINKS, [
             'id'              => $this->primaryKey(),
             'name'            => $this->string()->notNull(),
@@ -47,6 +51,7 @@ class Install extends Migration
             'itemsUnchanged' => $this->integer()->defaultValue(0),
             'itemsSkipped'   => $this->integer()->defaultValue(0),
             'itemsDeleted'   => $this->integer()->defaultValue(0),
+            'itemsDisabled'  => $this->integer()->defaultValue(0),
             'startedAt'      => $this->dateTime()->notNull(),
             'finishedAt'     => $this->dateTime()->null(),
             'error'          => $this->text()->null(),
@@ -65,6 +70,7 @@ class Install extends Migration
             'matchValue'  => $this->string(255)->null(),
             'action'      => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
             'message'     => $this->text()->null(),
+            'fieldErrors' => $this->text()->null(),        // {handle: message} for fields whose strategy threw
             'payload'     => $this->longText()->null(),    // raw remote item JSON (optional)
             'dateCreated' => $this->dateTime()->notNull(),
             'dateUpdated' => $this->dateTime()->notNull(),

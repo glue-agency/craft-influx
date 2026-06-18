@@ -39,6 +39,11 @@ class LogsService extends Component
         return $log;
     }
 
+    /**
+     * @param array<string, string> $fieldErrors {handle: message} for fields
+     * whose strategy threw — stored so the drill-down can show each on its own
+     * field row even when re-inspection can't reproduce it.
+     */
     public function recordItem(
         LogRecord $log,
         ItemAction $action,
@@ -46,6 +51,7 @@ class LogsService extends Component
         ?string $matchValue = null,
         ?string $message = null,
         ?array $payload = null,
+        array $fieldErrors = [],
     ): void {
         if (! $log->id) {
             return;
@@ -57,6 +63,7 @@ class LogsService extends Component
         $item->matchValue = $matchValue !== null ? (string) $matchValue : null;
         $item->action = $action->value;
         $item->message = $message;
+        $item->fieldErrors = $fieldErrors !== [] ? json_encode($fieldErrors) : null;
         $item->payload = $payload !== null ? json_encode($payload) : null;
         $item->save(false);
 
@@ -143,31 +150,44 @@ class LogsService extends Component
     }
 
     /**
-     * All items of a log, oldest first.
+     * One page of a log's items, newest first, optionally restricted to a set
+     * of action values (empty = all). Powers the paginated log-detail view so
+     * the page never ships the whole run, and the live poll only ever fetches
+     * the page in view.
      *
+     * @param string[] $actions
      * @return LogItemRecord[]
      */
-    public function itemsForLog(LogRecord $log): array
+    public function itemPage(LogRecord $log, array $actions, int $offset, int $limit): array
     {
-        return LogItemRecord::find()
-            ->where(['logId' => $log->id])
-            ->orderBy(['id' => SORT_ASC])
+        $query = LogItemRecord::find()->where(['logId' => $log->id]);
+
+        if ($actions !== []) {
+            $query->andWhere(['action' => $actions]);
+        }
+
+        return $query
+            ->orderBy(['id' => SORT_DESC])
+            ->offset(max(0, $offset))
+            ->limit($limit)
             ->all();
     }
 
     /**
-     * A log's items newer than $lastId, oldest first — the live-stream poll
-     * fetches each batch since the last row it sent.
+     * Total items of a log matching the action filter (empty = all) — the
+     * page count the log-detail pager divides by.
      *
-     * @return LogItemRecord[]
+     * @param string[] $actions
      */
-    public function itemsForLogAfter(LogRecord $log, int $lastId): array
+    public function itemCount(LogRecord $log, array $actions): int
     {
-        return LogItemRecord::find()
-            ->where(['logId' => $log->id])
-            ->andWhere(['>', 'id', $lastId])
-            ->orderBy(['id' => SORT_ASC])
-            ->all();
+        $query = LogItemRecord::find()->where(['logId' => $log->id]);
+
+        if ($actions !== []) {
+            $query->andWhere(['action' => $actions]);
+        }
+
+        return (int) $query->count();
     }
 
     public function clear(): int

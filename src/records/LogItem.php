@@ -12,6 +12,7 @@ use GlueAgency\Influx\db\Table;
  * @property ?string $matchValue
  * @property string $action
  * @property ?string $message
+ * @property ?string $fieldErrors
  * @property ?string $payload
  */
 class LogItem extends ActiveRecord

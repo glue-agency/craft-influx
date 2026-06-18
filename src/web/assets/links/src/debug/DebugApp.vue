@@ -3,11 +3,11 @@
         <!-- Inspect lives in Craft's page-header action-buttons slot (rendered
              server-side in debug.twig), so it sits where every other CP primary
              action does. Teleport keeps it a reactive Vue button (disabled/label
-             track the stream) while placing it there; it falls back to rendering
+             track the fetch) while placing it there; it falls back to rendering
              in place when the target is absent (e.g. unit tests). -->
         <teleport :to="actionTarget" :disabled="!hasActionTarget">
-            <button type="button" class="btn submit" data-icon="search" :disabled="streaming" @click="reinspect">
-                {{ streaming ? $t('Inspecting…') : $t('Inspect') }}
+            <button type="button" class="btn submit" data-icon="search" :disabled="loading" @click="inspect">
+                {{ loading ? $t('Inspecting…') : $t('Inspect') }}
             </button>
         </teleport>
 
@@ -25,7 +25,7 @@
             <!-- Controls row. A form so Enter in any field re-inspects (and the
                  unit test can drive a submit); the visible trigger is the
                  page-header button above. -->
-            <form class="influx-feed-row influx-feed-controls" @submit.prevent="reinspect">
+            <form class="influx-feed-row influx-feed-controls" @submit.prevent="inspect">
                 <div class="influx-feed-cell">
                     <span class="influx-feed-eyebrow">{{ $t('Site') }}</span>
                     <span v-if="!sites.length" class="influx-feed-static">{{ $t('Default endpoint') }}</span>
@@ -126,9 +126,10 @@ const PROCESSING_LABELS = {
 };
 
 /**
- * The debug inspector page. Owns the site/offset/limit form, opens the SSE
- * stream and renders the meta panel + a live-growing list of DebugItem cards.
- * Re-inspecting reopens the stream in place (no full page reload).
+ * The debug inspector page. Owns the site/offset/limit form and renders the
+ * feed panel + a list of DebugItem cards from a single JSON fetch (the
+ * inspector only ever reads the first page, so there's nothing to stream).
+ * Inspecting again re-fetches in place — no full page reload.
  */
 export default {
     name: 'DebugApp',
@@ -149,9 +150,7 @@ export default {
             processing: this.config.processing || [],
             meta: null,
             items: [],
-            streaming: false,
-            streamError: false,
-            es: null,
+            loading: false,
             // Craft renders an empty action-buttons slot (see debug.twig) that
             // we Teleport the Inspect button into. Resolved in mounted(); until
             // then the Teleport is disabled and the button renders in place.
@@ -174,65 +173,45 @@ export default {
         },
 
         statusLabel() {
-            if (this.streamError) return this.$t('Stream closed.');
-            if (this.streaming) return this.$t('Streaming…');
-            return '';
+            return this.loading ? this.$t('Loading…') : '';
         },
     },
 
     mounted() {
         this.hasActionTarget = !!document.querySelector(this.actionTarget);
-        this.openStream();
-    },
-
-    beforeUnmount() {
-        this.closeStream();
+        this.inspect();
     },
 
     methods: {
-        reinspect() {
-            this.openStream();
-        },
-
-        openStream() {
-            this.closeStream();
+        inspect() {
             this.meta = null;
             this.items = [];
-            this.streamError = false;
-            this.streaming = true;
+            this.loading = true;
 
-            const base = this.config.streamUrl;
+            // Ignore a response that a newer inspect has superseded (rapid
+            // re-clicks) or that lands after the component is gone.
+            const token = this._reqToken = (this._reqToken || 0) + 1;
+
+            const base = this.config.inspectUrl;
             const params = new URLSearchParams();
             if (this.site) params.set('site', this.site);
             if (this.offset) params.set('offset', this.offset);
             params.set('limit', String(this.limit || 10));
             const url = base + (base.includes('?') ? '&' : '?') + params.toString();
 
-            const es = new EventSource(url, { withCredentials: true });
-            this.es = es;
-
-            es.addEventListener('meta', (e) => {
-                try { this.meta = JSON.parse(e.data); } catch (err) { /* keep loading */ }
+            window.Craft.sendActionRequest('GET', url).then((response) => {
+                if (token !== this._reqToken) return;
+                const data = response.data || {};
+                this.meta = data.meta || null;
+                this.items = data.items || [];
+            }).catch((err) => {
+                if (token !== this._reqToken) return;
+                // Surface as a feed-level error so the panel shows it.
+                this.meta = { error: err?.response?.data?.message || err?.message || this.$t('Inspection failed.') };
+                this.items = [];
+            }).finally(() => {
+                if (token === this._reqToken) this.loading = false;
             });
-            es.addEventListener('item', (e) => {
-                try { this.items.push(JSON.parse(e.data)); } catch (err) { /* skip bad frame */ }
-            });
-            es.addEventListener('done', () => {
-                this.streaming = false;
-                this.closeStream();
-            });
-            es.addEventListener('error', () => {
-                this.streaming = false;
-                this.streamError = true;
-                this.closeStream();
-            });
-        },
-
-        closeStream() {
-            if (this.es) {
-                this.es.close();
-                this.es = null;
-            }
         },
     },
 };

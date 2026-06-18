@@ -130,11 +130,19 @@ class DataService extends Component
 
     protected function get(string $url, array $headers = [], array $query = []): array
     {
+        $options = ['headers' => $headers];
+
+        // Only set Guzzle's `query` option when there are params to add. Passing
+        // it (even an empty array) makes Guzzle rebuild the URI's query string
+        // from that array, wiping any query already on the URL — which strips
+        // the `?page=2` off a paginator's next-page link, re-fetches page 1, and
+        // trips the "pagination loop detected" guard on the repeated next URL.
+        if ($query !== []) {
+            $options['query'] = $query;
+        }
+
         try {
-            $response = $this->client->get($url, [
-                'headers' => $headers,
-                'query'   => $query,
-            ]);
+            $response = $this->client->get($url, $options);
         } catch (GuzzleException $e) {
             throw new FeedFetchException(
                 "GET {$url} failed: " . $e->getMessage(),

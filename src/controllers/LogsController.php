@@ -7,7 +7,6 @@ use craft\helpers\UrlHelper;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
-use GlueAgency\Influx\services\EventStreamService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use GlueAgency\Influx\web\LogPresenter;
 use yii\web\NotFoundHttpException;
@@ -15,6 +14,8 @@ use yii\web\Response;
 
 class LogsController extends AbstractController
 {
+    public const ITEMS_PER_PAGE = 25;
+
     public function actionIndex(): Response
     {
         $page = max(1, (int) Craft::$app->getRequest()->getQueryParam('page', 1));
@@ -50,20 +51,27 @@ class LogsController extends AbstractController
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
-        // Extracted (not inlined into the array) so ECS doesn't align the
-        // arrow-fn `=>` against the surrounding array's arrows.
-        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemsForLog($log));
+        // Only the first page rides along in the bootstrap — the rest is paged
+        // in from actionItems(), so a huge run doesn't ship as one JSON blob.
+        // Extracted (not inlined) so ECS doesn't align the arrow-fn `=>`.
+        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE));
+
+        // The link this log belongs to (null if it has since been deleted) —
+        // logs only store the handle, so its id + name ride along in the config
+        // for the header's "back to link" cross-link.
+        $link = $plugin->links->getLinkByHandle($log->linkHandle);
 
         return $this->renderTemplate('influx/logs/view', [
             'config' => [
                 'log'             => $presenter->presentLog($log),
                 'items'           => $items,
-                'streamUrl'       => UrlHelper::cpUrl("influx/logs/{$log->id}/stream"),
+                'itemTotal'       => $plugin->logs->itemCount($log, []),
+                'perPage'         => self::ITEMS_PER_PAGE,
+                'itemsUrl'        => UrlHelper::cpUrl("influx/logs/{$log->id}/items"),
                 'itemUrlTemplate' => UrlHelper::cpUrl('influx/logs/items/__ID__'),
-                // id of the link this log belongs to (null if it was deleted),
-                // for the "back to link" cross-link — logs only store the handle.
-                'linkId' => $plugin->links->getLinkByHandle($log->linkHandle)?->id,
-                'isLive' => in_array($log->status, ['running', 'pending'], true),
+                'linkId'          => $link?->id,
+                'linkName'        => $link?->name,
+                'isLive'          => in_array($log->status, ['running', 'pending'], true),
             ],
         ]);
     }
@@ -121,61 +129,58 @@ class LogsController extends AbstractController
             $row['message'] = (string) $item->message;
         }
 
+        // Overlay the field errors captured at run time onto their rows — a
+        // dry-run re-inspection can't reproduce a non-deterministic failure
+        // (e.g. an asset upload), so the stored error is authoritative.
+        $fieldErrors = $item->fieldErrors ? json_decode($item->fieldErrors, true) : null;
+
+        if (is_array($fieldErrors) && ! empty($row['mappings'])) {
+            foreach ($row['mappings'] as &$mapping) {
+                $handle = $mapping['handle'] ?? null;
+
+                if ($handle !== null && isset($fieldErrors[$handle])) {
+                    $mapping['error'] = $fieldErrors[$handle];
+                }
+            }
+            unset($mapping);
+        }
+
         return $this->asJson(['row' => $row]);
     }
 
     /**
-     * SSE endpoint for live log updates. Streams per-item rows and counter
-     * refreshes while the run is in `running` / `pending` status, then a
-     * `done` sentinel once it settles. For finished logs it just emits the
-     * final counters + done immediately.
-     *
-     * The SSE transport lives in {@see EventStreamService}; this only owns the
-     * poll loop that produces the events.
+     * JSON endpoint backing the log-detail item list. Returns one page of
+     * items (newest first, optionally filtered to a set of `actions`), the
+     * total matching that filter, the refreshed counters/status, and whether
+     * the run has settled. Used for both pager navigation and the live poll
+     * (the client re-requests the page in view on an interval while running —
+     * Craft's queue-runner pattern — rather than holding an SSE connection
+     * and the PHP session lock open for the whole run).
      */
-    public function actionStream(int $id): void
+    public function actionItems(int $id): Response
     {
+        $this->requireAcceptsJson();
+
         if (! ($log = LogRecord::findOne($id))) {
             throw new NotFoundHttpException("Log #{$id} not found.");
         }
 
-        $lastId = (int) Craft::$app->getRequest()->getQueryParam('lastId', 0);
+        $request = Craft::$app->getRequest();
+        $page = max(1, (int) $request->getQueryParam('page', 1));
+        $actions = array_values(array_filter((array) $request->getQueryParam('actions', [])));
+
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
+        $offset = ($page - 1) * self::ITEMS_PER_PAGE;
+        // Extracted (not inlined) so ECS doesn't align the arrow-fn `=>`.
+        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE));
 
-        $plugin->eventStream->run(function(EventStreamService $stream) use ($plugin, $presenter, $log, $lastId) {
-            // Poll until the run finishes (or the client goes away). The first
-            // pass also catches any items already written between page-load and
-            // stream-connect.
-            $deadline = time() + 600; // hard cap: 10 minutes
-
-            while (true) {
-                foreach ($plugin->logs->itemsForLogAfter($log, $lastId) as $item) {
-                    $stream->send('item', $presenter->presentItem($item));
-                    $lastId = (int) $item->id;
-                }
-
-                // Refresh the log row for live counters + status.
-                $fresh = LogRecord::findOne($log->id);
-
-                if ($fresh) {
-                    $stream->send('counters', $presenter->presentCounters($fresh));
-                    $log = $fresh;
-                }
-
-                if (! in_array($log->status, ['running', 'pending'], true)) {
-                    break;
-                }
-
-                if ($stream->aborted() || time() > $deadline) {
-                    break;
-                }
-
-                sleep(1);
-            }
-
-            $stream->send('done', ['status' => (string) $log->status]);
-        });
+        return $this->asJson([
+            'items'    => $items,
+            'total'    => $plugin->logs->itemCount($log, $actions),
+            'counters' => $presenter->presentCounters($log),
+            'done'     => ! in_array($log->status, ['running', 'pending'], true),
+        ]);
     }
 
     /**

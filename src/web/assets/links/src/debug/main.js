@@ -6,7 +6,7 @@ import { installT } from '../lib/installT.js';
  * Boot the debug inspector. The host template renders a single mount point
  * carrying its bootstrap config as JSON:
  *
- *   <div data-influx-debug='{"streamUrl":"…","siteHandles":[…],…}'></div>
+ *   <div data-influx-debug='{"inspectUrl":"…","siteHandles":[…],…}'></div>
  */
 export function mountDebug(el) {
     let config = {};

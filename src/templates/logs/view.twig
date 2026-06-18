@@ -7,8 +7,15 @@
     { label: "Logs"|t("influx"), url: cpUrl("influx/logs") },
 ] %}
 
+{# Empty action-buttons slot for the SPA to Teleport its Pause/Resume button
+   into, so the live-stream control sits in the page header. Defining the block
+   is what makes Craft render the #action-buttons container. #}
+{% block actionButton %}
+    <div id="influx-log-actions" class="flex"></div>
+{% endblock %}
+
 {% block content %}
     {# Mount point for the Vue run-log viewer (LogApp). Bootstrap config
-       (summary, counters, items, stream URLs) rides along as JSON. #}
+       (summary, counters, items, poll URL) rides along as JSON. #}
     <div data-influx-log="{{ config|json_encode }}"></div>
 {% endblock %}

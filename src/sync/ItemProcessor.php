@@ -89,12 +89,24 @@ class ItemProcessor
         }
 
         $outcome = $this->applier->apply($context, $element, $item, $isNew);
+        $fieldErrors = $outcome->errorMessages();
+
+        $action = $outcome->changed
+            ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
+            : ItemAction::UNCHANGED;
+
+        // A field that threw never counts as a change, so an item whose only
+        // mapping failed would otherwise be logged as "unchanged" and hide the
+        // failure — surface it as an error instead. (The per-field errors
+        // themselves ride on the mapping results, persisted by the recorder
+        // and shown on each field's row, not lumped into the item message.)
+        if ($action === ItemAction::UNCHANGED && $fieldErrors !== []) {
+            $action = ItemAction::ERROR;
+        }
 
         return new ItemSyncResult(
             decision: $resolution->decision,
-            action: $outcome->changed
-                ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
-                : ItemAction::UNCHANGED,
+            action: $action,
             matchValue: $resolution->matchValue,
             element: $element,
             isNew: $isNew,
