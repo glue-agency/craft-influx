@@ -67,12 +67,19 @@ class LogPresenter
                 : '<span class="light">#' . $item->elementId . ' (gone)</span>';
         }
 
+        // How many fields errored — lets the viewer flag an item that still
+        // committed (created/updated) despite a field failure, which the
+        // green action tag alone would otherwise hide.
+        $fieldErrors = $item->fieldErrors ? json_decode($item->fieldErrors, true) : null;
+        $errorCount = is_array($fieldErrors) ? count($fieldErrors) : 0;
+
         return [
             'id'          => (int) $item->id,
             'action'      => (string) $item->action,
             'matchValue'  => (string) ($item->matchValue ?? ''),
             'message'     => (string) ($item->message ?? ''),
             'elementHtml' => $elementHtml,
+            'errorCount'  => $errorCount,
         ];
     }
 

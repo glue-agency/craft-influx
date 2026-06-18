@@ -13,9 +13,8 @@
                 <div>{{ $t('Changed?') }}</div>
             </div>
 
+            <template v-for="m in row.mappings" :key="m.handle">
             <div
-                v-for="m in row.mappings"
-                :key="m.handle"
                 class="influx-mapping-row influx-debug-field-row"
                 :data-changed="m.changed ? 'true' : null"
             >
@@ -43,7 +42,6 @@
                         <code v-if="!isNullish(m.parsedValue)" class="influx-debug-value">{{ m.parsedValue }}</code>
                         <span v-else class="light">—</span>
                     </template>
-                    <pre v-if="m.error" class="error">{{ m.error }}</pre>
                 </div>
 
                 <div>
@@ -58,6 +56,14 @@
                     <template v-if="m.note"><br><span class="light">{{ m.note }}</span></template>
                 </div>
             </div>
+
+            <!-- A field whose strategy errored gets its message inlined as a
+                 full-width band between this row and the next — the red
+                 counterpart to the green "changed" tint. The band carries the
+                 row's own column grid so the message lines up with the
+                 source-node column, not the field-name column. -->
+            <p v-if="m.error" class="influx-debug-field-error"><span>{{ m.error }}</span></p>
+            </template>
         </template>
 
         <details class="influx-debug-raw">
@@ -111,7 +117,8 @@ export default {
    .influx-mapping-row grid, widened to the inspector's six comparison columns.
    All targets here are this component's own elements, so scoped is safe. */
 .influx-mapping-headings.influx-debug-fields,
-.influx-mapping-row.influx-debug-field-row {
+.influx-mapping-row.influx-debug-field-row,
+.influx-debug-field-error {
     grid-template-columns:
         minmax(110px, 1fr)
         minmax(120px, 1.1fr)
@@ -138,6 +145,26 @@ export default {
 .influx-debug-field-row[data-changed="true"] {
     background: #eef9f1;
     box-shadow: inset 3px 0 0 #45a35e;
+}
+
+/* The red counterpart, for a field whose strategy errored: a full-width band
+   between this row and the next, carrying the message — mirroring the green
+   "changed" tint + inset rail. Same column grid + gap + padding as the rows, so
+   the message (placed from column 2) aligns with the source-node column. */
+.influx-debug-field-error {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 7px 12px;
+    background: #fde2e2;
+    box-shadow: inset 3px 0 0 #d64242;
+    color: #8a1f1f;
+}
+
+.influx-debug-field-error > span {
+    grid-column: 2 / -1;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .influx-debug-note { margin: 0; padding: 8px 12px 0; }

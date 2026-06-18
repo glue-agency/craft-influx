@@ -12,6 +12,12 @@
             <span v-else class="influx-log-element light">—</span>
             <span v-if="item.message" class="influx-log-message light">{{ item.message }}</span>
             <span class="influx-log-tag" :class="color">{{ item.action }}</span>
+            <span
+                v-if="hasFieldErrors"
+                class="influx-log-haserror"
+                data-icon="alert"
+                :title="errorTitle"
+            >{{ item.errorCount }}</span>
         </template>
 
         <p v-if="loading" class="light influx-log-detail-msg"><span class="spinner"></span> {{ $t('Loading…') }}</p>
@@ -54,6 +60,17 @@ export default {
     computed: {
         color() {
             return actionColor(this.item.action);
+        },
+
+        // A created/updated item can still carry field errors (a field failed
+        // but the element committed) — flag it, since its action tag reads as a
+        // clean success. An `error` item is already flagged by its tag.
+        hasFieldErrors() {
+            return this.item.errorCount > 0 && this.item.action !== 'error';
+        },
+
+        errorTitle() {
+            return this.$t('Saved despite {n} field error(s)', { n: this.item.errorCount });
         },
     },
 
@@ -122,6 +139,23 @@ export default {
 .influx-log-tag.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
 .influx-log-tag.pending { background: rgba(0, 0, 0, .08); color: #555; }
 .influx-log-tag.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
+
+/* "Saved but a field errored" — a red count badge beside the action tag, so a
+   green created/updated tag doesn't read as a fully clean run. */
+.influx-log-haserror {
+    flex: none;
+    margin-left: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 9px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #fde2e2;
+    color: #8a1f1f;
+    border: 1px solid #e7a3a3;
+}
 
 .influx-log-detail-msg { padding: 8px 12px; margin: 0; }
 </style>

@@ -31,20 +31,20 @@ describe('LogApp', () => {
         window.Craft.sendActionRequest = () => Promise.resolve({ data: {} });
     });
 
-    it('renders the first page and per-action filter counts from the run counters', async () => {
+    it('renders the first page and the status menu options', async () => {
         const w = mountApp();
 
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(2);
 
-        // Counts come from the run counters, shown in the filter dropdown.
+        // The status menu offers All + one row per action (no counts).
         await w.findComponent({ name: 'LogFilterMenu' }).find('.btn').trigger('click');
         const created = w.findAll('.influx-log-filter-option').find((o) => o.text().includes('created'));
-        expect(created.text()).toContain('1');
+        expect(created).toBeTruthy();
     });
 
-    it('re-queries the server (page 1, filtered) when a filter is toggled off', async () => {
+    it('re-queries the server (page 1, single action) when a status is picked', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
-            data: { items: [{ id: 2, action: 'skipped', matchValue: 'B', message: '', elementHtml: null }], total: 1, counters: {}, done: false },
+            data: { items: [{ id: 1, action: 'created', matchValue: 'A', message: '', elementHtml: null }], total: 1, counters: {}, done: false },
         }));
 
         const w = mountApp();
@@ -53,9 +53,23 @@ describe('LogApp', () => {
         await created.trigger('click');
         await flushPromises();
 
-        expect(window.Craft.sendActionRequest).toHaveBeenCalled();
-        expect(window.Craft.sendActionRequest.mock.calls[0][1]).toContain('/items');
+        const url = window.Craft.sendActionRequest.mock.calls[0][1];
+        expect(url).toContain('/items');
+        expect(url).toContain('status=created');
         expect(w.findAllComponents({ name: 'LogItem' }).length).toBe(1);
+    });
+
+    it('searches server-side (debounced) over match value + message', async () => {
+        vi.useFakeTimers();
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({ data: { items: [], total: 0, counters: {}, done: false } }));
+
+        const w = mountApp();
+        await w.find('.influx-log-search input').setValue('abc');
+        vi.advanceTimersByTime(300);
+        vi.useRealTimers();
+        await flushPromises();
+
+        expect(window.Craft.sendActionRequest.mock.calls[0][1]).toContain('search=abc');
     });
 
     it('does not fetch on mount for a finished log', () => {

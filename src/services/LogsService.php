@@ -121,17 +121,38 @@ class LogsService extends Component
     }
 
     /**
-     * One page of logs, newest first, plus the total for the pager.
+     * One page of logs, newest first, plus the total for the pager. Optionally
+     * restricted to a single run status (null = all).
      *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage): array
+    public function paginate(int $page, int $perPage, ?string $status = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
+
+        if ($status !== null) {
+            $query->andWhere(['status' => $status]);
+        }
+
         $total = (int) $query->count();
         $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();
 
         return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * The distinct run statuses currently stored, ascending — the option set
+     * for the overview's status filter, so it never offers a status no run has.
+     *
+     * @return string[]
+     */
+    public function distinctStatuses(): array
+    {
+        return LogRecord::find()
+            ->select('status')
+            ->distinct()
+            ->orderBy(['status' => SORT_ASC])
+            ->column();
     }
 
     /**
@@ -158,15 +179,9 @@ class LogsService extends Component
      * @param string[] $actions
      * @return LogItemRecord[]
      */
-    public function itemPage(LogRecord $log, array $actions, int $offset, int $limit): array
+    public function itemPage(LogRecord $log, array $actions, int $offset, int $limit, ?string $search = null): array
     {
-        $query = LogItemRecord::find()->where(['logId' => $log->id]);
-
-        if ($actions !== []) {
-            $query->andWhere(['action' => $actions]);
-        }
-
-        return $query
+        return $this->itemQuery($log, $actions, $search)
             ->orderBy(['id' => SORT_DESC])
             ->offset(max(0, $offset))
             ->limit($limit)
@@ -174,12 +189,24 @@ class LogsService extends Component
     }
 
     /**
-     * Total items of a log matching the action filter (empty = all) — the
-     * page count the log-detail pager divides by.
+     * Total items of a log matching the action + search filter (empty = all) —
+     * the page count the log-detail pager divides by.
      *
      * @param string[] $actions
      */
-    public function itemCount(LogRecord $log, array $actions): int
+    public function itemCount(LogRecord $log, array $actions, ?string $search = null): int
+    {
+        return (int) $this->itemQuery($log, $actions, $search)->count();
+    }
+
+    /**
+     * Base item query for a log, filtered by action (empty = all) and a free-
+     * text search over the match value + message. Shared by the page + count
+     * so the two always agree.
+     *
+     * @param string[] $actions
+     */
+    protected function itemQuery(LogRecord $log, array $actions, ?string $search): \craft\db\ActiveQuery
     {
         $query = LogItemRecord::find()->where(['logId' => $log->id]);
 
@@ -187,7 +214,14 @@ class LogsService extends Component
             $query->andWhere(['action' => $actions]);
         }
 
-        return (int) $query->count();
+        if ($search !== null && $search !== '') {
+            $query->andWhere(['or',
+                ['like', 'matchValue', $search],
+                ['like', 'message', $search],
+            ]);
+        }
+
+        return $query;
     }
 
     public function clear(): int

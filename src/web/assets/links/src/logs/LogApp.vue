@@ -29,6 +29,11 @@
                 <span class="influx-log-status" :class="statusClass">{{ log.status }}</span>
             </div>
 
+            <div v-if="endpointUrl" class="influx-log-endpoint">
+                <span class="influx-log-eyebrow">{{ $t('Endpoint') }}</span>
+                <a :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
+            </div>
+
             <div v-if="log.error" class="influx-log-error"><pre>{{ log.error }}</pre></div>
 
             <div class="influx-log-grid">
@@ -62,12 +67,23 @@
             <span v-if="streamLabel" class="light">— {{ streamLabel }}</span>
         </h2>
 
-        <log-filter-menu
-            :filter-defs="filterDefs"
-            :active-filters="activeFilters"
-            :filter-counts="filterCounts"
-            @toggle="toggleFilter"
-        />
+        <!-- Craft element-index-style toolbar: status menu + search, both
+             filtering server-side. -->
+        <div class="influx-log-toolbar">
+            <log-filter-menu
+                :filter-defs="filterDefs"
+                :model-value="activeAction"
+                @update:model-value="setAction"
+            />
+            <div class="texticon search icon influx-log-search">
+                <input
+                    type="text"
+                    class="text fullwidth"
+                    :placeholder="$t('Search match value or message')"
+                    v-model="search"
+                >
+            </div>
+        </div>
 
         <div class="influx-log-items">
             <log-item
@@ -84,7 +100,7 @@
             <button type="button" class="btn" :disabled="currentPage >= totalPages || loadingItems" @click="fetchPage(currentPage + 1)">{{ $t('Next') }} →</button>
         </nav>
 
-        <p v-if="!itemTotal && !isLive" class="light">{{ $t('No per-item rows.') }}</p>
+        <p v-if="!itemTotal && !isLive" class="light">{{ $t('No data to process') }}</p>
     </div>
 </template>
 
@@ -118,10 +134,6 @@ export default {
     },
 
     data() {
-        const filterDefs = FILTER_DEFS;
-        const activeFilters = {};
-        filterDefs.forEach((f) => { activeFilters[f.action] = true; });
-
         return {
             log: { ...this.config.log },
             // The current page only — newest-first, server-filtered. The rest
@@ -131,8 +143,11 @@ export default {
             perPage: this.config.perPage || 25,
             loadingItems: false,
             isLive: !!this.config.isLive,
-            filterDefs,
-            activeFilters,
+            filterDefs: FILTER_DEFS,
+            // Single-select action filter (null = All) + free-text search, both
+            // applied server-side via actionItems.
+            activeAction: null,
+            search: '',
             currentPage: 1,
             streamLabel: this.config.isLive ? this.$t('connecting…') : '',
             poller: null,
@@ -159,6 +174,10 @@ export default {
             return this.config.linkName || this.log.linkHandle;
         },
 
+        endpointUrl() {
+            return this.config.endpointUrl || null;
+        },
+
         statusClass() {
             if (this.log.status === 'ok') return 'live';
             if (this.log.status === 'error') return 'expired';
@@ -169,38 +188,13 @@ export default {
         totalPages() {
             return Math.max(1, Math.ceil(this.itemTotal / this.perPage));
         },
-
-        // Counts come from the run's own counters (the full-run totals), not
-        // from the loaded page — only one page is in memory at a time. Errors
-        // aren't a tracked counter, so they're whatever's left over from seen.
-        filterCounts() {
-            const c = this.log;
-            const counts = {
-                created:   c.itemsCreated || 0,
-                updated:   c.itemsUpdated || 0,
-                unchanged: c.itemsUnchanged || 0,
-                skipped:   c.itemsSkipped || 0,
-                deleted:   c.itemsDeleted || 0,
-                disabled:  c.itemsDisabled || 0,
-            };
-            const counted = Object.values(counts).reduce((sum, n) => sum + n, 0);
-            counts.error = Math.max(0, (c.itemsSeen || 0) - counted);
-
-            return counts;
-        },
-
-        // The action values currently toggled on — sent to the server as the
-        // page filter.
-        activeActions() {
-            return this.filterDefs.filter((f) => this.activeFilters[f.action]).map((f) => f.action);
-        },
     },
 
     watch: {
-        // Re-query from page 1 whenever the filter set changes.
-        activeFilters: {
-            deep: true,
-            handler() { this.fetchPage(1); },
+        // Debounce the search box, then re-query from page 1.
+        search() {
+            clearTimeout(this._searchTimer);
+            this._searchTimer = setTimeout(() => this.fetchPage(1), 300);
         },
     },
 
@@ -217,8 +211,9 @@ export default {
     },
 
     methods: {
-        toggleFilter(action) {
-            this.activeFilters[action] = ! this.activeFilters[action];
+        setAction(action) {
+            this.activeAction = action;
+            this.fetchPage(1);
         },
 
         pauseStream() {
@@ -250,25 +245,22 @@ export default {
         },
 
         // Fetch one page of items (server-filtered + paginated) and refresh the
-        // counters. The pager, the filter, and the live poll all route through
-        // here. Sends the active-action filter unless everything is on (then
-        // the server returns all); an empty selection shows nothing.
+        // counters. The pager, the status filter, the search box, and the live
+        // poll all route through here.
         fetchPage(page) {
             this.currentPage = Math.max(1, page);
-            const active = this.activeActions;
-
-            if (active.length === 0) {
-                this.items = [];
-                this.itemTotal = 0;
-
-                return;
-            }
 
             const params = new URLSearchParams();
             params.set('page', String(this.currentPage));
 
-            if (active.length < this.filterDefs.length) {
-                active.forEach((a) => params.append('actions[]', a));
+            // `status`, not `action`: Craft reserves the `action` query param
+            // for controller-action routing, so `?action=…` 404s the request.
+            if (this.activeAction) {
+                params.set('status', this.activeAction);
+            }
+
+            if (this.search.trim() !== '') {
+                params.set('search', this.search.trim());
             }
 
             const base = this.config.itemsUrl;
@@ -332,6 +324,20 @@ export default {
 }
 
 .influx-log-panel-bar .influx-log-cell { flex: 1 1 auto; }
+
+/* The endpoint this run fetched from — a full-width sub-row under the link bar
+   (URLs are long, so it wraps), hairline-separated from the run-info grid. */
+.influx-log-endpoint {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--hairline-color);
+}
+.influx-log-endpoint-url {
+    font-size: 12px;
+    word-break: break-all;
+}
 
 /* Status as a colour-coded pill (same palette as the action tags). */
 .influx-log-status {
@@ -406,4 +412,13 @@ export default {
     gap: 12px;
     margin-top: 14px;
 }
+
+/* Status menu + search, laid out like Craft's element-index toolbar. */
+.influx-log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+}
+.influx-log-search { flex: 1 1 auto; }
 </style>

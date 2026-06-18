@@ -18,6 +18,9 @@
             </div>
         </div>
 
+        <hr>
+        <h2>{{ $t('Pagination') }}</h2>
+
         <div class="field">
             <div class="heading"><label>{{ $t('Paginator node') }}</label></div>
             <div class="instructions">
@@ -39,7 +42,7 @@
         <div class="field">
             <div class="heading"><label>{{ $t('Total-count node') }}</label></div>
             <div class="instructions">
-                <p>{{ $t('Response node holding the total number of items, if the feed reports it — drives a real sync progress %.') }}</p>
+                <p>{{ $t('The node containing the total number of items.') }}</p>
             </div>
             <div class="input ltr">
                 <searchable-select
@@ -57,7 +60,7 @@
         <div class="field">
             <div class="heading"><label>{{ $t('Page-count node') }}</label></div>
             <div class="instructions">
-                <p>{{ $t('Response node holding the total number of pages, if the feed reports it.') }}</p>
+                <p>{{ $t('The node containing the total number of pages.') }}</p>
             </div>
             <div class="input ltr">
                 <searchable-select

@@ -18,15 +18,25 @@ class LogsController extends AbstractController
 
     public function actionIndex(): Response
     {
-        $page = max(1, (int) Craft::$app->getRequest()->getQueryParam('page', 1));
+        $request = Craft::$app->getRequest();
+        $page = max(1, (int) $request->getQueryParam('page', 1));
         $perPage = 50;
 
-        ['logs' => $logs, 'total' => $total] = Influx::getInstance()->logs->paginate($page, $perPage);
+        $plugin = Influx::getInstance();
+
+        // Optional single-status filter. Only statuses actually present are
+        // offered, and an unknown/empty value falls back to "all". (The param
+        // is `status`, not `action` — Craft reserves `action` for routing.)
+        $statuses = $plugin->logs->distinctStatuses();
+        $status = (string) $request->getQueryParam('status', '');
+        $status = in_array($status, $statuses, true) ? $status : null;
+
+        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $status);
 
         // handle => id / handle => name, so each row can link to its link's
         // edit screen by id and show its friendly name (logs only store the
         // handle); a deleted link is absent from both maps.
-        $links = Influx::getInstance()->links->getAllLinks();
+        $links = $plugin->links->getAllLinks();
         $linkIds = array_map(static fn($link)   => $link->id, $links);
         $linkNames = array_map(static fn($link) => $link->name, $links);
 
@@ -37,6 +47,8 @@ class LogsController extends AbstractController
             'total'     => $total,
             'linkIds'   => $linkIds,
             'linkNames' => $linkNames,
+            'status'    => $status,
+            'statuses'  => $statuses,
         ]);
     }
 
@@ -61,6 +73,12 @@ class LogsController extends AbstractController
         // for the header's "back to link" cross-link.
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
 
+        // The endpoint this run fetched from — the configured per-site URL,
+        // falling back to the link's base endpoint; null when the link is gone.
+        $endpointUrl = $link
+            ? (($log->siteHandle !== null ? $link->endpointForSite($log->siteHandle) : null) ?? $link->endpoint)
+            : null;
+
         return $this->renderTemplate('influx/logs/view', [
             'config' => [
                 'log'             => $presenter->presentLog($log),
@@ -71,6 +89,7 @@ class LogsController extends AbstractController
                 'itemUrlTemplate' => UrlHelper::cpUrl('influx/logs/items/__ID__'),
                 'linkId'          => $link?->id,
                 'linkName'        => $link?->name,
+                'endpointUrl'     => $endpointUrl,
                 'isLive'          => in_array($log->status, ['running', 'pending'], true),
             ],
         ]);
@@ -167,17 +186,22 @@ class LogsController extends AbstractController
 
         $request = Craft::$app->getRequest();
         $page = max(1, (int) $request->getQueryParam('page', 1));
-        $actions = array_values(array_filter((array) $request->getQueryParam('actions', [])));
+        // Single-select action filter (empty = all), plus a free-text search.
+        // The param is `status`, not `action`: Craft reserves `action` for
+        // controller-action routing, so `?action=…` would 404 the request.
+        $action = (string) $request->getQueryParam('status', '');
+        $actions = $action !== '' ? [$action] : [];
+        $search = trim((string) $request->getQueryParam('search', '')) ?: null;
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
         $offset = ($page - 1) * self::ITEMS_PER_PAGE;
         // Extracted (not inlined) so ECS doesn't align the arrow-fn `=>`.
-        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE));
+        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE, $search));
 
         return $this->asJson([
             'items'    => $items,
-            'total'    => $plugin->logs->itemCount($log, $actions),
+            'total'    => $plugin->logs->itemCount($log, $actions, $search),
             'counters' => $presenter->presentCounters($log),
             'done'     => ! in_array($log->status, ['running', 'pending'], true),
         ]);

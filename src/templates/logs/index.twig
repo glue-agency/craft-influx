@@ -11,11 +11,43 @@
 {% endblock %}
 
 {% block content %}
-    {% if logs is empty %}
+    {% set statusDots = { ok: 'live', error: 'expired' } %}
+
+    {% if logs is empty and not status %}
         <div class="zilch">
             <p>{{ "No runs yet."|t("influx") }}</p>
         </div>
     {% else %}
+        {# Server-rendered status filter: a native Craft menu (auto-wired by the
+           CP) whose options are links to ?status=…, dropping the page so the
+           filter always starts on page one. #}
+        <div class="influx-logs-toolbar" style="margin-bottom: 14px;">
+            <button type="button" class="btn menubtn">
+                <span class="status {{ status ? (statusDots[status] ?? 'pending') }}"></span>{{ (status ?? 'All')|t('influx') }}
+            </button>
+            <div class="menu">
+                <ul class="padded">
+                    <li>
+                        <a href="{{ cpUrl('influx/logs') }}"{% if not status %} class="sel"{% endif %}>
+                            <span class="status"></span>{{ "All"|t("influx") }}
+                        </a>
+                    </li>
+                    {% for s in statuses %}
+                        <li>
+                            <a href="{{ cpUrl('influx/logs', { status: s }) }}"{% if status == s %} class="sel"{% endif %}>
+                                <span class="status {{ statusDots[s] ?? 'pending' }}"></span>{{ s|t('influx') }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% if logs is empty %}
+            <div class="zilch">
+                <p>{{ "No runs match this status."|t("influx") }}</p>
+            </div>
+        {% else %}
         <table class="data fullwidth">
             <thead>
                 <tr>
@@ -50,7 +82,7 @@
                         </td>
                         <td>{{ log.trigger }}</td>
                         <td>
-                            <span class="status {{ log.status == "ok" ? "live" : (log.status == "error" ? "expired" : "pending") }}"></span>
+                            <span class="status {{ statusDots[log.status] ?? 'pending' }}"></span>
                             {{ log.status }}
                         </td>
                         <td>{{ log.itemsSeen }}</td>
@@ -72,15 +104,17 @@
 
         {% set totalPages = (total / perPage)|round(0, "ceil") %}
         {% if totalPages > 1 %}
+            {% set pagerParams = status ? { status: status } : {} %}
             <nav class="pagination" style="margin-top: 14px;">
                 {% if page > 1 %}
-                    <a class="btn" href="?page={{ page - 1 }}">← {{ "Previous"|t("influx") }}</a>
+                    <a class="btn" href="{{ cpUrl('influx/logs', pagerParams|merge({ page: page - 1 })) }}">← {{ "Previous"|t("influx") }}</a>
                 {% endif %}
                 <span class="light">{{ "Page"|t("influx") }} {{ page }} / {{ totalPages }}</span>
                 {% if page < totalPages %}
-                    <a class="btn" href="?page={{ page + 1 }}">{{ "Next"|t("influx") }} →</a>
+                    <a class="btn" href="{{ cpUrl('influx/logs', pagerParams|merge({ page: page + 1 })) }}">{{ "Next"|t("influx") }} →</a>
                 {% endif %}
             </nav>
+        {% endif %}
         {% endif %}
     {% endif %}
 {% endblock %}

@@ -2,30 +2,39 @@
     <div class="influx-log-filter">
         <button
             type="button"
-            class="btn menubtn"
+            class="btn menubtn influx-log-filter-btn"
             :class="{ active: open }"
             aria-haspopup="true"
             :aria-expanded="open ? 'true' : 'false'"
             @click.stop="open = !open"
         >
-            {{ label }}
+            <span class="status" :class="selectedColor"></span>{{ selectedLabel }}
         </button>
 
-        <!-- Craft element-index-style status menu: each action toggles its own
-             visibility, a checkmark marks the active ones, and the menu stays
-             open for multi-select. -->
+        <!-- Craft element-index-style status menu: pick All or a single action;
+             a checkmark marks the active row, the dot carries its colour. -->
         <div v-if="open" class="influx-log-filter-menu">
             <ul>
+                <li>
+                    <button
+                        type="button"
+                        class="influx-log-filter-option"
+                        :class="{ 'is-active': modelValue === null }"
+                        @click.stop="select(null)"
+                    >
+                        <span class="status"></span>
+                        <span class="influx-log-filter-label">{{ $t('All') }}</span>
+                    </button>
+                </li>
                 <li v-for="f in filterDefs" :key="f.action">
                     <button
                         type="button"
                         class="influx-log-filter-option"
-                        :class="{ 'is-active': activeFilters[f.action] }"
-                        @click.stop="$emit('toggle', f.action)"
+                        :class="{ 'is-active': modelValue === f.action }"
+                        @click.stop="select(f.action)"
                     >
                         <span class="status" :class="f.color"></span>
                         <span class="influx-log-filter-label">{{ $t(f.action) }}</span>
-                        <span class="influx-log-filter-count">{{ filterCounts[f.action] || 0 }}</span>
                     </button>
                 </li>
             </ul>
@@ -35,21 +44,21 @@
 
 <script>
 /**
- * The run-log action filter, as a Craft element-index-style status dropdown:
- * a menu button whose menu lists every action with a checkmark when active, a
- * status-coloured dot, and the current count. Multi-select — the menu stays
- * open and each click toggles one action's visibility via the `toggle` event.
+ * The run-log action filter, as a Craft element-index-style status menu: a
+ * pill button (native `.status` dot + the active label) opening a single-select
+ * menu of All + each action with its status dot and a checkmark on the active
+ * row. Emits `update:model-value` with the chosen action, or null for "All".
  */
 export default {
     name: 'LogFilterMenu',
 
     props: {
         filterDefs: { type: Array, required: true },
-        activeFilters: { type: Object, required: true },
-        filterCounts: { type: Object, required: true },
+        // The active action value, or null for "All".
+        modelValue: { type: String, default: null },
     },
 
-    emits: ['toggle'],
+    emits: ['update:modelValue'],
 
     data() {
         return {
@@ -58,26 +67,18 @@ export default {
     },
 
     computed: {
-        // Summarise the filter state on the trigger, mirroring the element
-        // index's status button (which shows the active filter).
-        label() {
-            const total = this.filterDefs.length;
-            const active = this.filterDefs.filter((f) => this.activeFilters[f.action]).length;
+        selectedLabel() {
+            return this.modelValue ? this.$t(this.modelValue) : this.$t('All');
+        },
 
-            if (active === total) {
-                return this.$t('All actions');
-            }
-
-            if (active === 0) {
-                return this.$t('No actions');
-            }
-
-            return this.$t('{n} of {total} actions', { n: active, total });
+        // The native Craft `.status` colour for the active action; the bare
+        // (hollow) status for "All".
+        selectedColor() {
+            return this.filterDefs.find((f) => f.action === this.modelValue)?.color ?? '';
         },
     },
 
     mounted() {
-        // Dismiss on outside click / Escape, like a native CP menu.
         this._onDocClick = (e) => {
             if (this.open && ! this.$el.contains(e.target)) {
                 this.open = false;
@@ -96,6 +97,16 @@ export default {
         document.removeEventListener('click', this._onDocClick);
         document.removeEventListener('keydown', this._onKey);
     },
+
+    methods: {
+        select(action) {
+            this.open = false;
+
+            if (action !== this.modelValue) {
+                this.$emit('update:modelValue', action);
+            }
+        },
+    },
 };
 </script>
 
@@ -103,16 +114,17 @@ export default {
 .influx-log-filter {
     position: relative;
     display: inline-block;
-    margin: 0 0 14px;
 }
 
-/* Menu panel — Craft-menu chrome (white card, hairline-ish shadow, rounded). */
+.influx-log-filter-btn .status { margin-right: 5px; }
+
+/* Menu panel — Craft-menu chrome (white card, soft shadow, rounded). */
 .influx-log-filter-menu {
     position: absolute;
     top: calc(100% + 3px);
     left: 0;
     z-index: 100;
-    min-width: 190px;
+    min-width: 200px;
     padding: 4px;
     background: var(--white);
     border-radius: var(--menu-border-radius, 5px);
@@ -135,14 +147,14 @@ export default {
     border: 0;
     border-radius: 4px;
     background: none;
-    font-size: 13px;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
 }
 
 .influx-log-filter-option:hover { background: var(--gray-100); }
 
-/* Checkmark in the left gutter for active actions, like a selected menu row. */
+/* Checkmark in the left gutter for the active row. */
 .influx-log-filter-option.is-active::before {
     content: '✓';
     position: absolute;
@@ -152,11 +164,4 @@ export default {
 }
 
 .influx-log-filter-label { color: var(--text-color); }
-
-.influx-log-filter-count {
-    margin-left: auto;
-    padding-left: 12px;
-    color: var(--light-text-color);
-    font-variant-numeric: tabular-nums;
-}
 </style>
