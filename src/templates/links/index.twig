@@ -4,6 +4,17 @@
 
 {% import "_includes/forms" as forms %}
 
+{% css %}
+/* The Sync-options menu otherwise inherits Craft's classic menu hover — a
+   medium-grey fill (--gray-500) with white text — which reads heavy next to the
+   rest of the UI. Override it (with enough specificity to beat Craft's own
+   rule) with the lighter hover the plugin's other menus use. */
+.menu.influx-sync-menu:not(.menu--disclosure) ul li .menu-option:not(.sel,.disabled):hover {
+    background-color: var(--gray-100);
+    color: var(--text-color);
+}
+{% endcss %}
+
 {% block actionButton %}
     {% if not readOnly %}
         <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
