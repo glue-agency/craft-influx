@@ -32,6 +32,7 @@ class Install extends Migration
             'processing'      => $this->text()->null(),
             'offset'          => $this->text()->null(),
             'backup'          => $this->boolean()->notNull()->defaultValue(false),
+            'sortOrder'       => $this->integer(),
             'dateCreated'     => $this->dateTime()->notNull(),
             'dateUpdated'     => $this->dateTime()->notNull(),
             'uid'             => $this->uid(),

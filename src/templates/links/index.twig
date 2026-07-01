@@ -13,6 +13,14 @@
     background-color: var(--gray-100);
     color: var(--text-color);
 }
+
+/* Drag-to-sort handles on the links table. */
+.influx-links-table .move.icon {
+    cursor: grab;
+}
+.influx-links-table tr.influx-dragging {
+    opacity: 0.4;
+}
 {% endcss %}
 
 {% block actionButton %}
@@ -56,6 +64,77 @@
             });
         });
         {% endjs %}
+
+        {# Drag-to-sort the links table by the leading `.move` handle. Reorders
+           the rows live during the drag (native HTML5 DnD, same mechanics as
+           the builder's SiteEndpointsTable), then POSTs the new UID order to
+           influx/links/reorder, which writes it back to Project Config. #}
+        {% js %}
+        (function () {
+            const tbody = document.querySelector('[data-influx-links-sortable]');
+            if (!tbody) {
+                return;
+            }
+
+            let dragRow = null;
+            let orderAtDragStart = null;
+
+            const currentOrder = function () {
+                return Array.from(tbody.children)
+                    .map(function (tr) { return tr.dataset.uid; })
+                    .filter(Boolean);
+            };
+
+            const persistOrder = function () {
+                Craft.sendActionRequest('POST', 'influx/links/reorder', { data: { uids: currentOrder() } })
+                    .then(function (response) {
+                        Craft.cp.displayNotice((response.data && response.data.message) || Craft.t('influx', 'Link order saved.'));
+                    })
+                    .catch(function (e) {
+                        const message = e.response && e.response.data && e.response.data.message;
+                        Craft.cp.displayError(message || Craft.t('influx', 'Couldn’t save link order.'));
+                    });
+            };
+
+            tbody.querySelectorAll('a.move').forEach(function (handle) {
+                const row = handle.closest('tr');
+                handle.setAttribute('draggable', 'true');
+
+                handle.addEventListener('dragstart', function (e) {
+                    dragRow = row;
+                    orderAtDragStart = currentOrder().join(',');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', row.dataset.uid || '');
+                    e.dataTransfer.setDragImage(row, 0, 0);
+                    row.classList.add('influx-dragging');
+                });
+
+                handle.addEventListener('dragend', function () {
+                    row.classList.remove('influx-dragging');
+                    const moved = dragRow;
+                    dragRow = null;
+                    if (moved && currentOrder().join(',') !== orderAtDragStart) {
+                        persistOrder();
+                    }
+                });
+            });
+
+            tbody.addEventListener('dragover', function (e) {
+                if (!dragRow) {
+                    return;
+                }
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const over = e.target.closest('tr');
+                if (!over || over === dragRow || over.parentNode !== tbody) {
+                    return;
+                }
+                const rect = over.getBoundingClientRect();
+                const after = (e.clientY - rect.top) > rect.height / 2;
+                tbody.insertBefore(dragRow, after ? over.nextSibling : over);
+            });
+        })();
+        {% endjs %}
     {% endif %}
 
     {% if links is empty %}
@@ -66,9 +145,10 @@
             {% endif %}
         </div>
     {% else %}
-        <table class="data fullwidth">
+        <table class="data fullwidth influx-links-table">
             <thead>
                 <tr>
+                    {% if not readOnly %}<th class="thin"></th>{% endif %}
                     <th>{{ "Name"|t("influx") }}</th>
                     <th>{{ "Handle"|t("influx") }}</th>
                     <th>{{ "Target"|t("influx") }}</th>
@@ -78,10 +158,15 @@
                     <th colspan="2">{{ "Actions"|t('influx') }}</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody{% if not readOnly %} data-influx-links-sortable{% endif %}>
                 {% for link in links %}
                     {% set lastRun = lastRuns[link.handle] ?? null %}
-                    <tr>
+                    <tr data-id="{{ link.id }}" data-uid="{{ link.uid }}">
+                        {% if not readOnly %}
+                            <td class="thin action">
+                                <a class="move icon" title="{{ 'Reorder'|t('influx') }}" role="button"></a>
+                            </td>
+                        {% endif %}
                         <td>
                             <a href="{{ cpUrl('influx/links/' ~ link.id) }}">
                                 <strong>{{ link.name }}</strong>

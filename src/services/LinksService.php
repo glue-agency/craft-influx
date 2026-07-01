@@ -60,12 +60,12 @@ class LinksService extends Component
 
         $this->links = [];
 
+        // Query order (sortOrder, then name) carries through — PHP preserves
+        // insertion order, so the handle-keyed array reads in display order.
         foreach ($this->createQuery()->all() as $row) {
             $link = $this->linkFromRow($row);
             $this->links[$link->handle] = $link;
         }
-
-        ksort($this->links);
 
         return $this->links;
     }
@@ -141,6 +141,11 @@ class LinksService extends Component
 
                 return false;
             }
+        }
+
+        // New (or otherwise unordered) links land at the end of the overview.
+        if ($link->sortOrder === null) {
+            $link->sortOrder = $this->nextSortOrder();
         }
 
         $link->ensureUid();
@@ -271,6 +276,7 @@ class LinksService extends Component
         $copy = clone $source;
         $copy->id = null;
         $copy->uid = null;
+        $copy->sortOrder = null; // Fresh position — the duplicate lands at the end.
         $copy->handle = $newHandle;
         $copy->name = $newName ?? ($source->name . ' (copy)');
 
@@ -280,6 +286,50 @@ class LinksService extends Component
         }
 
         return $copy;
+    }
+
+    /**
+     * Persist a new overview order from a list of link UIDs. Each moved link's
+     * full config node is written back to Project Config with its 1-based
+     * position; the PC change handler ({@see handleChangedLink}) then re-syncs
+     * the DB row. Mirrors the PC-is-the-deployment-channel path {@see saveLink}
+     * uses, so the order round-trips to YAML and deploys like any other link
+     * change. Unknown UIDs are ignored; links whose position is unchanged are
+     * left untouched to keep the YAML diff minimal.
+     *
+     * @param string[] $uids link UIDs in the desired order
+     */
+    public function saveOrder(array $uids): void
+    {
+        $byUid = [];
+
+        foreach ($this->getAllLinks() as $link) {
+            $byUid[$link->uid] = $link;
+        }
+
+        $pc = Craft::$app->getProjectConfig();
+        $order = 1;
+
+        foreach ($uids as $uid) {
+            $link = $byUid[$uid] ?? null;
+
+            if (! $link) {
+                continue;
+            }
+
+            if ($link->sortOrder !== $order) {
+                $link->sortOrder = $order;
+                $pc->set(
+                    self::CONFIG_LINKS_KEY . '.' . $uid,
+                    $link->getConfig(),
+                    "Reorder influx link “{$link->handle}”",
+                );
+            }
+
+            $order++;
+        }
+
+        $this->links = null;
     }
 
     // -- Project Config listeners --------------------------------------------
@@ -349,6 +399,7 @@ class LinksService extends Component
             'totalCountNode' => $config['totalCountNode'] ?? null,
             'pageCountNode'  => $config['pageCountNode'] ?? null,
             'backup'         => ! empty($config['backup']),
+            'sortOrder'      => isset($config['sortOrder']) ? (int) $config['sortOrder'] : null,
         ];
 
         foreach (Link::JSON_FIELDS as $key) {
@@ -358,11 +409,27 @@ class LinksService extends Component
         return $columns;
     }
 
+    /**
+     * The position to give a link that doesn't have one yet — one past the
+     * highest existing order, so new links land at the end of the overview.
+     */
+    protected function nextSortOrder(): int
+    {
+        $max = 0;
+
+        foreach ($this->getAllLinks() as $existing) {
+            $max = max($max, (int) $existing->sortOrder);
+        }
+
+        return $max + 1;
+    }
+
     protected function createQuery(): Query
     {
         return (new Query())
             ->select('*')
-            ->from(Table::LINKS);
+            ->from(Table::LINKS)
+            ->orderBy(['sortOrder' => SORT_ASC, 'name' => SORT_ASC]);
     }
 
     protected function linkFromRow(array $row): Link
@@ -381,6 +448,7 @@ class LinksService extends Component
         // Boolean / int columns come back as strings on some drivers.
         $row['backup'] = ! empty($row['backup']);
         $row['id'] = (int) $row['id'];
+        $row['sortOrder'] = isset($row['sortOrder']) ? (int) $row['sortOrder'] : null;
 
         // Drop columns Link doesn't know about; the Model base would warn.
         unset($row['dateCreated'], $row['dateUpdated']);

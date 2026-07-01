@@ -142,6 +142,21 @@ class LinkTest extends Unit
         $this->assertArrayNotHasKey('backup', $config);
     }
 
+    public function testSortOrderRoundTripsThroughConfigWhenSet(): void
+    {
+        $link = $this->link();
+        $link->sortOrder = 3;
+
+        $this->assertSame(3, $link->getConfig()['sortOrder']);
+    }
+
+    public function testGetConfigOmitsSortOrderWhenUnset(): void
+    {
+        // A never-saved link has no position yet; the empty-shape contract
+        // keeps it out of Project Config until LinksService assigns one.
+        $this->assertArrayNotHasKey('sortOrder', $this->link()->getConfig());
+    }
+
     public function testProcessingDefaultsToCreateAndUpdate(): void
     {
         $this->assertSame(['create', 'update'], $this->link()->processing);

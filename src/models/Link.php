@@ -78,6 +78,7 @@ class Link extends Model
         'processing',
         'offset',
         'backup',
+        'sortOrder',
     ];
 
     /**
@@ -210,6 +211,16 @@ class Link extends Model
      * Take a DB backup before this link runs.
      */
     public bool $backup = false;
+
+    /**
+     * 1-based manual position in the Links overview. Assigned on first save
+     * ({@see \GlueAgency\Influx\services\LinksService::saveLink()}) and
+     * rewritten by drag-to-sort
+     * ({@see \GlueAgency\Influx\services\LinksService::saveOrder()}). Null on a
+     * link that has never been saved; {@see \GlueAgency\Influx\services\LinksService::createQuery()}
+     * falls back to name order so those still sort deterministically.
+     */
+    public ?int $sortOrder = null;
 
     /** Memoized typed view over $mappings — see {@see getMappingCollection()}. */
     protected ?MappingCollection $mappingCollection = null;

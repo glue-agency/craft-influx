@@ -249,6 +249,25 @@ class LinksController extends AbstractController
         return $this->asSuccess(Craft::t('influx', 'Link deleted.'));
     }
 
+    /**
+     * Persist a drag-to-sort reorder of the links overview. Receives the link
+     * UIDs in their new order and writes the positions back through
+     * {@see \GlueAgency\Influx\services\LinksService::saveOrder()} (Project
+     * Config → DB). Mutating, so it needs `allowAdminChanges`.
+     */
+    public function actionReorder(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+        $this->assertWriteable();
+
+        $uids = Craft::$app->getRequest()->getRequiredBodyParam('uids');
+
+        Influx::getInstance()->links->saveOrder((array) $uids);
+
+        return $this->asSuccess(Craft::t('influx', 'Link order saved.'));
+    }
+
     public function actionDuplicate(): Response
     {
         $this->requirePostRequest();
