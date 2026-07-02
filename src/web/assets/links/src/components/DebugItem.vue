@@ -19,7 +19,7 @@
                 </span>
             </span>
 
-            <span class="influx-debug-tag" :class="color">{{ row.action }}</span>
+            <action-badge class="influx-debug-tag" :action="row.action" />
         </template>
 
         <debug-fields :row="row" />
@@ -29,7 +29,7 @@
 <script>
 import MappingGroupCard from './MappingGroupCard.vue';
 import DebugFields from './DebugFields.vue';
-import { actionColor } from '../lib/actionColors.js';
+import ActionBadge from './ActionBadge.vue';
 
 /**
  * One inspected item — the dry-run/log drill-down card. Renders the JSON `row`
@@ -42,32 +42,18 @@ import { actionColor } from '../lib/actionColors.js';
 export default {
     name: 'DebugItem',
 
-    components: { MappingGroupCard, DebugFields },
+    components: { MappingGroupCard, DebugFields, ActionBadge },
 
     props: {
         row: { type: Object, required: true },
-    },
-
-    computed: {
-        color() {
-            return actionColor(this.row.action);
-        },
     },
 };
 </script>
 
 <style scoped>
-/* Header chrome only — the field-comparison body lives in DebugFields. */
-.influx-debug-tag {
-    margin-left: auto;
-    border-radius: 9px;
-    padding: 2px 9px;
-    font-size: 11px;
-    font-weight: 600;
-}
-.influx-debug-tag.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
-.influx-debug-tag.pending { background: rgba(0, 0, 0, .08); color: #555; }
-.influx-debug-tag.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
+/* Header chrome only — the field-comparison body lives in DebugFields, the
+   tag's pill chrome + palette in ActionBadge; this just pins it right. */
+.influx-debug-tag { margin-left: auto; }
 
 .influx-debug-item-element { font-size: 13px; }
 

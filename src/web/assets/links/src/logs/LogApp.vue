@@ -21,12 +21,11 @@
              debug feed's quarter-width grid. -->
         <div class="influx-log-panel">
             <div class="influx-log-panel-bar">
-                <div class="influx-log-cell">
-                    <span class="influx-log-eyebrow">{{ $t('Link') }}</span>
+                <stat-cell class="influx-log-cell" :label="$t('Link')">
                     <a v-if="linkUrl" :href="linkUrl" class="influx-log-link">{{ linkName }}</a>
                     <span v-else class="influx-log-link">{{ linkName }}</span>
-                </div>
-                <span class="influx-log-status" :class="statusClass">{{ log.status }}</span>
+                </stat-cell>
+                <action-badge class="influx-log-status" :color="statusClass">{{ log.status }}</action-badge>
             </div>
 
             <div v-if="endpointUrl" class="influx-log-endpoint">
@@ -34,32 +33,23 @@
                 <a :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
             </div>
 
-            <div v-if="log.error" class="influx-log-error"><pre>{{ log.error }}</pre></div>
+            <error-panel v-if="log.error" class="influx-log-error" :error="log.error" />
 
-            <div class="influx-log-grid">
-                <div class="influx-log-cell">
-                    <span class="influx-log-eyebrow">{{ $t('Trigger') }}</span>
-                    <span class="influx-log-cell-v">{{ log.trigger }}</span>
-                </div>
-                <div class="influx-log-cell">
-                    <span class="influx-log-eyebrow">{{ $t('Started') }}</span>
-                    <span class="influx-log-cell-v">{{ log.startedAt }}</span>
-                </div>
-                <div class="influx-log-cell">
-                    <span class="influx-log-eyebrow">{{ $t('Finished') }}</span>
-                    <span class="influx-log-cell-v">{{ log.finishedAt || '—' }}</span>
-                </div>
-            </div>
+            <stats-grid align-top class="influx-log-grid">
+                <stat-cell class="influx-log-cell" :label="$t('Trigger')" :value="log.trigger" />
+                <stat-cell class="influx-log-cell" :label="$t('Started')" :value="log.startedAt" />
+                <stat-cell class="influx-log-cell" :label="$t('Finished')" :value="log.finishedAt || '—'" />
+            </stats-grid>
 
-            <div class="influx-log-grid influx-log-grid--divided">
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Seen') }}</span><span class="influx-log-cell-v">{{ log.itemsSeen }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Created') }}</span><span class="influx-log-cell-v">{{ log.itemsCreated }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Updated') }}</span><span class="influx-log-cell-v">{{ log.itemsUpdated }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Skipped') }}</span><span class="influx-log-cell-v">{{ log.itemsSkipped }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Unchanged') }}</span><span class="influx-log-cell-v">{{ log.itemsUnchanged }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Deleted') }}</span><span class="influx-log-cell-v">{{ log.itemsDeleted }}</span></div>
-                <div class="influx-log-cell"><span class="influx-log-eyebrow">{{ $t('Disabled') }}</span><span class="influx-log-cell-v">{{ log.itemsDisabled }}</span></div>
-            </div>
+            <stats-grid divided align-top class="influx-log-grid">
+                <stat-cell class="influx-log-cell" :label="$t('Seen')" :value="log.itemsSeen" />
+                <stat-cell class="influx-log-cell" :label="$t('Created')" :value="log.itemsCreated" />
+                <stat-cell class="influx-log-cell" :label="$t('Updated')" :value="log.itemsUpdated" />
+                <stat-cell class="influx-log-cell" :label="$t('Skipped')" :value="log.itemsSkipped" />
+                <stat-cell class="influx-log-cell" :label="$t('Unchanged')" :value="log.itemsUnchanged" />
+                <stat-cell class="influx-log-cell" :label="$t('Deleted')" :value="log.itemsDeleted" />
+                <stat-cell class="influx-log-cell" :label="$t('Disabled')" :value="log.itemsDisabled" />
+            </stats-grid>
         </div>
 
         <h2 class="influx-log-h2">
@@ -107,6 +97,10 @@
 <script>
 import LogItem from './LogItem.vue';
 import LogFilterMenu from './LogFilterMenu.vue';
+import ActionBadge from '../components/ActionBadge.vue';
+import ErrorPanel from '../components/ErrorPanel.vue';
+import StatsGrid from '../components/StatsGrid.vue';
+import StatCell from '../components/StatCell.vue';
 
 const FILTER_DEFS = [
     { action: 'created',   color: 'live' },
@@ -127,7 +121,7 @@ const FILTER_DEFS = [
 export default {
     name: 'LogApp',
 
-    components: { LogItem, LogFilterMenu },
+    components: { LogItem, LogFilterMenu, ActionBadge, ErrorPanel, StatsGrid, StatCell },
 
     props: {
         config: { type: Object, required: true },
@@ -339,36 +333,14 @@ export default {
     word-break: break-all;
 }
 
-/* Status as a colour-coded pill (same palette as the action tags). */
-.influx-log-status {
-    flex: none;
-    border-radius: 9px;
-    padding: 2px 10px;
-    font-size: 11px;
-    font-weight: 600;
-}
-.influx-log-status.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
-.influx-log-status.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
-.influx-log-status.pending { background: rgba(0, 0, 0, .08); color: #555; }
+/* Status pill chrome + palette live in ActionBadge; this pill just pins
+   itself in the flex bar and keeps its slightly wider padding (the compound
+   selector outweighs the badge's own padding regardless of CSS order). */
+.influx-log-status { flex: none; }
+.influx-action-badge.influx-log-status { padding: 2px 10px; }
 
-.influx-log-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px 18px;
-    align-items: start;
-    padding: 16px 18px;
-}
-
-/* Counters sit in the same panel as the run info, split off by a hairline. */
-.influx-log-grid--divided { border-top: 1px solid var(--hairline-color); }
-
-.influx-log-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
+/* Eyebrow for the endpoint sub-row only — the panel cells get theirs from
+   StatCell now. */
 .influx-log-eyebrow {
     font-size: 10px;
     font-weight: 600;
@@ -377,34 +349,17 @@ export default {
     color: var(--medium-text-color);
 }
 
-.influx-log-cell-v {
-    font-size: 13px;
-    color: var(--text-color);
-    word-break: break-word;
-}
-
-.influx-log-cell-v code { padding: 0; background: none; }
-
 /* Full-width error band between the header and the run info — red-ish field
-   with the error text, same palette as the error pills. */
+   with the error text, same palette as the error pills. The <pre> treatment
+   lives in ErrorPanel; the text colour is inherited from the band. */
 .influx-log-error {
     padding: 12px 18px;
     background: #fdecec;
     border-bottom: 1px solid var(--hairline-color);
-}
-.influx-log-error pre {
-    margin: 0;
-    font-size: 12px;
     color: #8a1f1f;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
 
 .influx-log-h2 { margin-top: 24px; }
-
-@media (max-width: 740px) {
-    .influx-log-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
 .influx-log-pager {
     display: flex;

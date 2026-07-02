@@ -11,7 +11,7 @@
             <span v-if="item.elementHtml" class="influx-log-element" v-html="item.elementHtml" @click.stop></span>
             <span v-else class="influx-log-element light">—</span>
             <span v-if="item.message" class="influx-log-message light">{{ item.message }}</span>
-            <span class="influx-log-tag" :class="color">{{ item.action }}</span>
+            <action-badge class="influx-log-tag" :action="item.action" />
             <span
                 v-if="hasFieldErrors"
                 class="influx-log-haserror"
@@ -29,7 +29,8 @@
 <script>
 import MappingGroupCard from '../components/MappingGroupCard.vue';
 import DebugFields from '../components/DebugFields.vue';
-import { actionColor } from '../lib/actionColors.js';
+import ActionBadge from '../components/ActionBadge.vue';
+import { requestErrorMessage } from '../lib/requestError.js';
 
 /**
  * One run-log item, presented as a collapsed debug-style card: the header
@@ -41,7 +42,7 @@ import { actionColor } from '../lib/actionColors.js';
 export default {
     name: 'LogItem',
 
-    components: { MappingGroupCard, DebugFields },
+    components: { MappingGroupCard, DebugFields, ActionBadge },
 
     props: {
         item: { type: Object, required: true },
@@ -58,10 +59,6 @@ export default {
     },
 
     computed: {
-        color() {
-            return actionColor(this.item.action);
-        },
-
         // A created/updated item can still carry field errors (a field failed
         // but the element committed) — flag it, since its action tag reads as a
         // clean success. An `error` item is already flagged by its tag.
@@ -96,7 +93,7 @@ export default {
                     this.errorMsg = data.message || this.$t('No content returned.');
                 }
             }).catch((err) => {
-                this.errorMsg = err?.response?.data?.message || err?.message || this.$t('Request failed.');
+                this.errorMsg = requestErrorMessage(err, this.$t('Request failed.'));
             }).finally(() => {
                 this.loading = false;
             });
@@ -127,18 +124,12 @@ export default {
     font-weight: normal;
 }
 
-/* Same pill palette as the debug inspector's action tag. */
+/* Pill chrome + palette live in ActionBadge — this just pins the tag to the
+   header's right edge. */
 .influx-log-tag {
     margin-left: auto;
     flex: none;
-    border-radius: 9px;
-    padding: 2px 9px;
-    font-size: 11px;
-    font-weight: 600;
 }
-.influx-log-tag.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
-.influx-log-tag.pending { background: rgba(0, 0, 0, .08); color: #555; }
-.influx-log-tag.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
 
 /* "Saved but a field errored" — a red count badge beside the action tag, so a
    green created/updated tag doesn't read as a fully clean run. */
