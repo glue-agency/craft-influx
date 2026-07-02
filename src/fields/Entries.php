@@ -4,11 +4,11 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\db\Table as CraftTable;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\Entry as CraftEntryElement;
 use craft\fields\BaseRelationField;
 use craft\fields\Entries as CraftEntriesField;
-use craft\helpers\Db;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\sync\FieldContext;
 
@@ -84,9 +84,9 @@ class Entries extends Relation
         $sectionIds = [];
 
         foreach ($sources as $source) {
-            $uid = $this->sourceUid($source, 'section:');
+            $id = $this->sourceIdByUid($source, 'section:', CraftTable::SECTIONS);
 
-            if ($uid !== null && ($id = Db::idByUid('{{%sections}}', $uid))) {
+            if ($id !== null) {
                 $sectionIds[] = $id;
             }
         }

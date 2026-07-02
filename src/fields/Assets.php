@@ -6,6 +6,7 @@ use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 use craft\fields\Assets as CraftAssetsField;
+use craft\models\Volume;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\FieldContext;
@@ -99,11 +100,7 @@ class Assets extends RelationalField
         // list of remote references to a list of element ids.
         $ids = [];
 
-        foreach (is_array($raw) ? $raw : [$raw] as $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-
+        foreach ($this->referenceValues($raw) as $value) {
             $asset = $mode === 'url' ? $this->resolveByUrl($context, (string) $value) : $this->findById($context, $value);
 
             if (! $asset) {
@@ -178,8 +175,8 @@ class Assets extends RelationalField
      * default upload location otherwise. Mirrors where a CP user's manual
      * upload through this field would land.
      *
-     * @return array{0: ?\craft\models\Volume, 1: string} Volume (null when
-     * the field has no resolvable volume source) and rendered subpath.
+     * @return array{0: ?Volume, 1: string} Volume (null when the field has no
+     * resolvable volume source) and rendered subpath.
      */
     protected function uploadLocation(FieldContext $context): array
     {
@@ -192,11 +189,7 @@ class Assets extends RelationalField
         $source = $field->restrictLocation ? $field->restrictedLocationSource : $field->defaultUploadLocationSource;
         $subpath = $field->restrictLocation ? $field->restrictedLocationSubpath : $field->defaultUploadLocationSubpath;
 
-        $volume = null;
-
-        if (is_string($source) && str_starts_with($source, 'volume:')) {
-            $volume = Craft::$app->getVolumes()->getVolumeByUid(substr($source, 7));
-        }
+        $volume = $this->volumeFromSource($source);
 
         $subpath = (string) ($subpath ?? '');
 
@@ -213,6 +206,23 @@ class Assets extends RelationalField
         }
 
         return [$volume, trim($subpath, '/')];
+    }
+
+    /**
+     * Resolve a `volume:UID` field source key to its Volume in this
+     * environment, or null when the key isn't a volume source or the UID
+     * doesn't resolve. Both the upload destination and the allowed-volume
+     * scoping decode volume sources this way.
+     */
+    protected function volumeFromSource(mixed $source): ?Volume
+    {
+        $uid = $this->sourceUid($source, 'volume:');
+
+        if ($uid === null) {
+            return null;
+        }
+
+        return Craft::$app->getVolumes()->getVolumeByUid($uid);
     }
 
     protected function matchExistingByUrl(FieldContext $context, string $url): ?Asset
@@ -284,12 +294,10 @@ class Assets extends RelationalField
         $ids = [];
 
         foreach ($sources as $source) {
-            if (is_string($source) && str_starts_with($source, 'volume:')) {
-                $volume = Craft::$app->getVolumes()->getVolumeByUid(substr($source, 7));
+            $volume = $this->volumeFromSource($source);
 
-                if ($volume) {
-                    $ids[] = $volume->id;
-                }
+            if ($volume) {
+                $ids[] = $volume->id;
             }
         }
 

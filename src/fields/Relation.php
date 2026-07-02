@@ -7,6 +7,7 @@ use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
+use craft\helpers\Db;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
@@ -184,21 +185,17 @@ abstract class Relation extends RelationalField
     {
         $raw = $context->mapping->resolve($context->item);
 
-        // resolve() already normalises empty to null; list elements are still
-        // guarded individually below.
+        // resolve() already normalises empty to null; empty entries within a
+        // list value are dropped by referenceValues().
         if ($raw === null) {
             return null;
         }
 
         $match = (string) $context->mapping->option('match', 'id');
-        $values = is_array($raw) ? $raw : [$raw];
 
         $ids = [];
 
-        foreach ($values as $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
+        foreach ($this->referenceValues($raw) as $value) {
             $element = $this->findOne($context, $match, $value);
 
             if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
@@ -220,18 +217,25 @@ abstract class Relation extends RelationalField
     }
 
     /**
-     * Extract the UID from a Craft field source key (`section:UID`,
-     * `group:UID`, `taggroup:UID`, ...) when it matches the given prefix, or
-     * null. Subclasses decode their own source flavour through this rather
-     * than repeating the `str_starts_with` + `explode` dance.
+     * Resolve a Craft field source key to the matching row id in THIS
+     * environment's given table. Source keys carry a Project-Config UID
+     * (`section:UID`, `group:UID`, ...) that's stable across environments;
+     * the row id it maps to is not, so it has to be looked up per environment.
+     * Returns null when the key doesn't match the prefix or no row carries
+     * that UID (an unknown/stale source key resolves to nothing rather than
+     * erroring).
      */
-    protected function sourceUid(mixed $source, string $prefix): ?string
+    protected function sourceIdByUid(mixed $source, string $prefix, string $table): ?int
     {
-        if (! is_string($source) || ! str_starts_with($source, $prefix)) {
+        $uid = $this->sourceUid($source, $prefix);
+
+        if ($uid === null) {
             return null;
         }
 
-        return explode(':', $source)[1] ?? null;
+        $id = Db::idByUid($table, $uid);
+
+        return $id ? (int) $id : null;
     }
 
     /**

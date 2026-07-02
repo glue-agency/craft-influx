@@ -119,19 +119,37 @@ abstract class Field
     /**
      * Whether the incoming value differs from what the element currently holds.
      * The sync engine uses this to skip elements that nothing has changed for.
+     *
+     * This is the template: it reads the current field value once and hands
+     * both values to {@see valueDiffers()}, which subclasses override to
+     * express their comparison semantics. Reading the field value can throw
+     * (a related-element query failing, a field mid-migration, ...); an
+     * unreadable current value ⇒ assume changed so the write still happens.
      */
     public function hasChanged(FieldContext $context, mixed $incoming): bool
     {
         try {
             $current = $context->element->getFieldValue($context->handle);
+
+            return $this->valueDiffers($context, $current, $incoming);
         } catch (Throwable) {
             return true;
         }
-
-        return $this->normalize($current) !== $this->normalize($incoming);
     }
 
     // -- shared helpers ----------------------------------------------------
+
+    /**
+     * Compare the element's current field value against the incoming one.
+     * Called by {@see hasChanged()} with the already-read current value, so
+     * the read-failure guard lives in one place. Default: normalise both
+     * sides and compare — subclasses override for type-specific semantics
+     * (id-set comparison, timestamp comparison, HTML-serialisation, ...).
+     */
+    protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
+    {
+        return $this->normalize($current) !== $this->normalize($incoming);
+    }
 
     /**
      * Project-config-friendly representation used to compare values for change

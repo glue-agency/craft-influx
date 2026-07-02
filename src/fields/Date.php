@@ -11,7 +11,6 @@ use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\sync\FieldContext;
-use Throwable;
 use yii\base\Event;
 
 class Date extends Field
@@ -96,16 +95,10 @@ class Date extends Field
         return $parsed;
     }
 
-    public function hasChanged(FieldContext $context, mixed $incoming): bool
+    protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
         if (! $incoming instanceof DateTimeInterface) {
-            return parent::hasChanged($context, $incoming);
-        }
-
-        try {
-            $current = $context->element->getFieldValue($context->handle);
-        } catch (Throwable) {
-            return true;
+            return parent::valueDiffers($context, $current, $incoming);
         }
 
         if (! $current instanceof DateTimeInterface) {

@@ -6,7 +6,6 @@ use Craft;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\MappingApplier;
-use Throwable;
 
 /**
  * Shared base for fields that store related-element ids and may write values
@@ -27,15 +26,14 @@ abstract class RelationalField extends Field
      * order, so a feed that reorders the same ids is a real change. A
      * null/empty parse clears the field, so it counts as changed only when ids
      * currently exist — clearing an already-empty field is not a needless save.
+     *
+     * `$current` is the field's element query; resolving it via `ids()` runs
+     * inside {@see Field::hasChanged()}'s try, so a failing query still lands
+     * on the "assume changed" guard exactly as before.
      */
-    public function hasChanged(FieldContext $context, mixed $incoming): bool
+    protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
-        try {
-            $currentIds = $context->element->getFieldValue($context->handle)?->ids() ?? [];
-        } catch (Throwable) {
-            return true;
-        }
-
+        $currentIds = $current?->ids() ?? [];
         $incomingIds = is_array($incoming) ? array_values($incoming) : [];
 
         return array_map('intval', array_values($currentIds)) !== array_map('intval', $incomingIds);
@@ -75,5 +73,39 @@ abstract class RelationalField extends Field
         if ((new MappingApplier())->applySubMappings($context, $element)) {
             Craft::$app->getElements()->saveElement($element, false);
         }
+    }
+
+    /**
+     * Extract the UID from a Craft field source key (`section:UID`,
+     * `group:UID`, `taggroup:UID`, `volume:UID`, ...) when it matches the given
+     * prefix, or null. Subclasses decode their own source flavour through this
+     * rather than repeating the `str_starts_with` + `explode` dance.
+     *
+     * Lives here rather than on {@see Relation} because {@see Assets} (which
+     * extends this base directly, not Relation) resolves `volume:` sources the
+     * same way.
+     */
+    protected function sourceUid(mixed $source, string $prefix): ?string
+    {
+        if (! is_string($source) || ! str_starts_with($source, $prefix)) {
+            return null;
+        }
+
+        return explode(':', $source)[1] ?? null;
+    }
+
+    /**
+     * Normalise a resolved node value into the flat list a relational parse
+     * iterates. A single source node can carry one value or an array of them
+     * (a JSON array of ids/urls), and empty entries (null / '') within that
+     * list are dropped so a stray blank doesn't turn into a lookup for nothing.
+     *
+     * @return list<mixed>
+     */
+    protected function referenceValues(mixed $raw): array
+    {
+        $values = is_array($raw) ? $raw : [$raw];
+
+        return array_values(array_filter($values, static fn(mixed $value): bool => $value !== null && $value !== ''));
     }
 }

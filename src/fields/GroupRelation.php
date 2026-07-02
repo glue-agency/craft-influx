@@ -6,7 +6,6 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
-use craft\helpers\Db;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\sync\FieldContext;
 
@@ -73,14 +72,6 @@ abstract class GroupRelation extends Relation
     /** Group id (this environment) from a source key matching the prefix, or null. */
     protected function sourceGroupId(mixed $source): ?int
     {
-        $uid = $this->sourceUid($source, $this->sourcePrefix());
-
-        if ($uid === null) {
-            return null;
-        }
-
-        $id = Db::idByUid($this->groupTable(), $uid);
-
-        return $id ? (int) $id : null;
+        return $this->sourceIdByUid($source, $this->sourcePrefix(), $this->groupTable());
     }
 }
