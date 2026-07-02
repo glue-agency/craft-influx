@@ -20,8 +20,8 @@ namespace GlueAgency\Influx\helpers;
  *   type:         one of the TYPE_* constants below
  *   handle:       key inside the form's value object — a mapping's
  *                 `options`, the link's `auth` slice, ... (TYPE_ELEMENT_SUB_FIELDS
- *                 is the exception: it writes the mapping's recursive
- *                 `nativeFields` channel)
+ *                 and TYPE_MATRIX_FIELDS are the exceptions: they write the
+ *                 mapping's recursive `nativeFields` / `fields` channels)
  *   label:        translated row label
  *   instructions: translated hint shown under the control (optional; may
  *                 contain markup — rendered as HTML)
@@ -32,7 +32,10 @@ namespace GlueAgency\Influx\helpers;
  *                 [{label, options: [{value,label}]}]
  *   localOptions: for valueMapTable — value → label map of the Craft field's
  *                 own options
- *   subFields:    for elementSubFields — one primitive node per row
+ *   subFields:    for elementSubFields / matrixFields — one primitive node
+ *                 per row
+ *   blockType:    for matrixFields — the block-type handle whose custom
+ *                 fields the node's rows cover
  *   showIf:       list of {handle, equals?} conditions against the current
  *                 form values; omitted `equals` means truthy. All must match.
  *
@@ -52,6 +55,7 @@ class BuilderSchema
     public const TYPE_LIGHTSWITCH = 'lightswitch';
     public const TYPE_VALUE_MAP_TABLE = 'valueMapTable';
     public const TYPE_ELEMENT_SUB_FIELDS = 'elementSubFields';
+    public const TYPE_MATRIX_FIELDS = 'matrixFields';
     public const TYPE_NOTE = 'note';
 
     /**
@@ -131,6 +135,25 @@ class BuilderSchema
     public static function elementSubFields(string $label, array $subFields, array $config = []): array
     {
         return self::node(self::TYPE_ELEMENT_SUB_FIELDS, 'nativeFields', $label, ['subFields' => $subFields] + $config);
+    }
+
+    /**
+     * Source-node + default rows for one Matrix block type's custom fields.
+     * Writes the mapping's recursive `fields` channel, not `options` — and
+     * unlike {@see elementSubFields()}' relative sub-paths, every row's node
+     * is an ABSOLUTE item path (see {@see \GlueAgency\Influx\fields\Matrix}).
+     *
+     * Declared once per block type: `config.blockType` carries the handle so
+     * the SPA can match a node against the mapping's selected `blockType`
+     * option, and a `showIf` on the same option keeps only the selected
+     * block type's card visible.
+     *
+     * @param list<array> $subFields One node per sub-field row.
+     * @param array{blockType?: string, instructions?: string, showIf?: array} $config
+     */
+    public static function matrixFields(string $label, array $subFields, array $config = []): array
+    {
+        return self::node(self::TYPE_MATRIX_FIELDS, 'fields', $label, ['subFields' => $subFields] + $config);
     }
 
     /**

@@ -396,6 +396,14 @@ class LinkBuilderService extends Component
             'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
             'missing mapping', '— no mapping —',
 
+            // MatrixFields.vue / ElementSubFields.vue (shared sub-field rows)
+            'Sub-fields with an active source node',
+            'Sub-fields whose saved source node is no longer in the fetched sample',
+            'Total sub-fields in this group',
+            '— use default —', 'Nodes',
+            'Search nodes…',
+            'Run “Fetch sample” to discover nodes.',
+
             // AuthTab.vue
             'Authentication type',
             'How Influx should authenticate against the remote API.',

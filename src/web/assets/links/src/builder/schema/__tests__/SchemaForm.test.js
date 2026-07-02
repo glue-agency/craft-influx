@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SchemaForm from '../SchemaForm.vue';
+import MatrixFields from '../inputs/MatrixFields.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
 
 /**
@@ -84,5 +85,71 @@ describe('SchemaForm', () => {
         expect(wrapper.emitted('update:nativeFields').at(-1))
             .toEqual([{ alt: { node: 'images.0.alt' } }]);
         expect(wrapper.emitted('update:options')).toBeUndefined();
+    });
+});
+
+// The Matrix strategy's schema shape: a plain blockType select plus one
+// matrixFields node PER block type, each gated to the select via showIf —
+// so the generic visibleNodes filter is what swaps the cards.
+const matrixSchema = [
+    { type: 'select', handle: 'blockType', label: 'Block type', default: 'quote', options: [
+        { value: 'quote', label: 'Quote' },
+        { value: 'stat', label: 'Stat' },
+    ] },
+    { type: 'matrixFields', handle: 'fields', label: 'Block fields', blockType: 'quote',
+        showIf: [{ handle: 'blockType', equals: 'quote' }],
+        subFields: [{ type: 'text', handle: 'quote', label: 'Quote (quote)' }] },
+    { type: 'matrixFields', handle: 'fields', label: 'Block fields', blockType: 'stat',
+        showIf: [{ handle: 'blockType', equals: 'stat' }],
+        subFields: [{ type: 'text', handle: 'number', label: 'Number (number)' }] },
+];
+
+const mountMatrixForm = (props = {}) => mount(SchemaForm, {
+    props: {
+        schema: matrixSchema,
+        options: {},
+        fields: {},
+        nodeOptions: [{ value: 'quotes.text', label: 'quotes.text' }],
+        ...props,
+    },
+    global: { mocks: { $t: (s) => s } },
+});
+
+describe('SchemaForm matrixFields', () => {
+    it('routes matrixFields nodes to MatrixFields, showing only the default block type\'s card', () => {
+        const wrapper = mountMatrixForm();
+
+        // The blockType select's display-only default gates the cards
+        // before the user touches anything.
+        const cards = wrapper.findAllComponents(MatrixFields);
+        expect(cards).toHaveLength(1);
+        expect(cards[0].props('node').blockType).toBe('quote');
+        expect(cards[0].text()).toContain('Quote (quote)');
+    });
+
+    it('swaps the visible card when the blockType option changes', async () => {
+        const wrapper = mountMatrixForm({ options: { blockType: 'stat' } });
+
+        let cards = wrapper.findAllComponents(MatrixFields);
+        expect(cards).toHaveLength(1);
+        expect(cards[0].props('node').blockType).toBe('stat');
+
+        await wrapper.setProps({ options: { blockType: 'quote' } });
+        cards = wrapper.findAllComponents(MatrixFields);
+        expect(cards).toHaveLength(1);
+        expect(cards[0].props('node').blockType).toBe('quote');
+    });
+
+    it('routes child rows through the fields channel, not options/nativeFields', () => {
+        const wrapper = mountMatrixForm();
+        // The child row's source-node control is the last SearchableSelect
+        // (the blockType select renders as one too).
+        const select = wrapper.findAllComponents(SearchableSelect).at(-1);
+        select.vm.$emit('update:modelValue', 'quotes.text');
+
+        expect(wrapper.emitted('update:fields').at(-1))
+            .toEqual([{ quote: { node: 'quotes.text' } }]);
+        expect(wrapper.emitted('update:options')).toBeUndefined();
+        expect(wrapper.emitted('update:nativeFields')).toBeUndefined();
     });
 });

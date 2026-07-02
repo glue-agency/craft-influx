@@ -5,11 +5,13 @@
                 :schema="schema"
                 :options="options"
                 :native-fields="nativeFields"
+                :fields="fields"
                 :node-options="nodeOptions"
                 :discovered-nodes="discoveredNodes"
                 :read-only="readOnly"
                 @update:options="onOptions"
                 @update:native-fields="onNativeFields"
+                @update:fields="onFields"
             />
         </div>
     </div>
@@ -30,9 +32,9 @@ import SchemaForm from '../builder/schema/SchemaForm.vue';
  * line); this component only mirrors it into `data-expanded`, which the
  * row's `:has()` tint selector in links.css keys off.
  *
- * Owns the local `options` / `nativeFields` models (seeded from the saved
- * mapping) and re-emits them pruned, which is the shape that lands in
- * Project Config via MappingRow.writeMapping().
+ * Owns the local `options` / `nativeFields` / `fields` models (seeded from
+ * the saved mapping) and re-emits them pruned, which is the shape that lands
+ * in Project Config via MappingRow.writeMapping().
  */
 export default {
     name: 'MappingExtras',
@@ -46,12 +48,13 @@ export default {
         readOnly: { type: Boolean, default: false },
     },
 
-    emits: ['update:options', 'update:nativeFields'],
+    emits: ['update:options', 'update:nativeFields', 'update:fields'],
 
     data() {
         return {
             options: { ...(this.saved?.options || {}) },
             nativeFields: { ...(this.saved?.nativeFields || {}) },
+            fields: { ...(this.saved?.fields || {}) },
         };
     },
 
@@ -70,7 +73,7 @@ export default {
          * sub-field paths so the dropdowns render before a sample exists.
          */
         nodeOptions() {
-            const saved = Object.values(this.nativeFields)
+            const saved = [...Object.values(this.nativeFields), ...Object.values(this.fields)]
                 .map((row) => row?.node)
                 .filter(Boolean);
             return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
@@ -95,6 +98,11 @@ export default {
         onNativeFields(next) {
             this.nativeFields = next;
             this.$emit('update:nativeFields', next);
+        },
+
+        onFields(next) {
+            this.fields = next;
+            this.$emit('update:fields', next);
         },
     },
 };

@@ -123,12 +123,28 @@
             :read-only="readOnly"
             @update:model-value="$emit('update:nativeFields', $event)"
         />
+
+        <!-- Matrix block sub-fields — one card per block type, but the
+             per-node showIf (against the blockType option) means only the
+             selected block type's card survives visibleNodes. Writes the
+             mapping's recursive `fields` channel (absolute item paths). -->
+        <matrix-fields
+            v-for="(node, idx) in matrixFieldNodes"
+            :key="'matrixfields-' + (node.blockType || idx)"
+            :node="node"
+            :model-value="fields"
+            :node-options="nodeOptions"
+            :discovered-nodes="discoveredNodes"
+            :read-only="readOnly"
+            @update:model-value="$emit('update:fields', $event)"
+        />
     </div>
 </template>
 
 <script>
 import SelectInput from './inputs/SelectInput.vue';
 import ElementSubFields from './inputs/ElementSubFields.vue';
+import MatrixFields from './inputs/MatrixFields.vue';
 import ValueMapTable from './inputs/ValueMapTable.vue';
 import TokenizedInput from '../TokenizedInput.vue';
 
@@ -138,18 +154,20 @@ import TokenizedInput from '../TokenizedInput.vue';
  * Dispatches purely on node *type* — it knows nothing about field kinds,
  * which is exactly what keeps "add a mapping kind" a single-PHP-file change.
  *
- * Stateless: values come from the `options` / `nativeFields` props, edits
- * emit fully-merged replacements upward. The parent owns the models.
+ * Stateless: values come from the `options` / `nativeFields` / `fields`
+ * props, edits emit fully-merged replacements upward. The parent owns the
+ * models.
  */
 export default {
     name: 'SchemaForm',
 
-    components: { SelectInput, ElementSubFields, ValueMapTable, TokenizedInput },
+    components: { SelectInput, ElementSubFields, MatrixFields, ValueMapTable, TokenizedInput },
 
     props: {
         schema: { type: Array, required: true },
         options: { type: Object, required: true },
         nativeFields: { type: Object, default: () => ({}) },
+        fields: { type: Object, default: () => ({}) },
         // Source-node candidates for elementSubFields selects.
         nodeOptions: { type: Array, default: () => [] },
         // The sample's discovered flatNodes, for per-sub-field missing
@@ -162,7 +180,7 @@ export default {
         readOnly: { type: Boolean, default: false },
     },
 
-    emits: ['update:options', 'update:nativeFields'],
+    emits: ['update:options', 'update:nativeFields', 'update:fields'],
 
     computed: {
         /**
@@ -182,12 +200,20 @@ export default {
         /** The field's own options (Match by, conflict, …) — everything
          *  except sub-field mapping groups. */
         optionNodes() {
-            return this.visibleNodes.filter((node) => node.type !== 'elementSubFields');
+            return this.visibleNodes.filter(
+                (node) => node.type !== 'elementSubFields' && node.type !== 'matrixFields',
+            );
         },
 
         /** Sub-field mapping nodes, rendered as nested group cards. */
         subFieldNodes() {
             return this.visibleNodes.filter((node) => node.type === 'elementSubFields');
+        },
+
+        /** Matrix block sub-field nodes — the visible (selected) block
+         *  type's card, writing the `fields` channel. */
+        matrixFieldNodes() {
+            return this.visibleNodes.filter((node) => node.type === 'matrixFields');
         },
     },
 
