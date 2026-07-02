@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use craft\base\Model;
+use craft\helpers\App;
 
 /**
  * Base for auth strategies. Strategies are real Craft/Yii models so per-type
@@ -39,5 +40,16 @@ abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterfa
     public static function editSchema(): array
     {
         return [];
+    }
+
+    /**
+     * Resolve `$VARNAME` / alias references in a stored setting at request
+     * time, so secrets stay out of Project Config. Null-safe: an unset
+     * setting resolves to '' (unreachable for required settings — every
+     * built-in strategy `require`s the values it applies).
+     */
+    protected function resolve(?string $value): string
+    {
+        return (string) App::parseEnv($value);
     }
 }

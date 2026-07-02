@@ -115,7 +115,7 @@
 
         <h2 class="influx-debug-h2">{{ $t('Items') }}</h2>
 
-        <debug-item v-for="(row, i) in items" :key="i" :row="row" />
+        <debug-item v-for="(row, i) in items" :key="`${inspectRun}:${i}`" :row="row" />
 
         <div v-if="statusLabel" class="light influx-debug-status">{{ statusLabel }}</div>
     </div>
@@ -167,6 +167,11 @@ export default {
             // then the Teleport is disabled and the button renders in place.
             actionTarget: '#influx-debug-actions',
             hasActionTarget: false,
+            // Monotonic per-inspect counter: guards against superseded
+            // responses (rapid re-clicks) AND keys the item rows so every
+            // inspect remounts them — expanded cards / open <details> from a
+            // previous payload must not bleed into positionally-matching rows.
+            inspectRun: 0,
         };
     },
 
@@ -201,7 +206,7 @@ export default {
 
             // Ignore a response that a newer inspect has superseded (rapid
             // re-clicks) or that lands after the component is gone.
-            const token = this._reqToken = (this._reqToken || 0) + 1;
+            const token = ++this.inspectRun;
 
             const base = this.config.inspectUrl;
             const params = new URLSearchParams();
@@ -211,17 +216,17 @@ export default {
             const url = base + (base.includes('?') ? '&' : '?') + params.toString();
 
             window.Craft.sendActionRequest('GET', url).then((response) => {
-                if (token !== this._reqToken) return;
+                if (token !== this.inspectRun) return;
                 const data = response.data || {};
                 this.meta = data.meta || null;
                 this.items = data.items || [];
             }).catch((err) => {
-                if (token !== this._reqToken) return;
+                if (token !== this.inspectRun) return;
                 // Surface as a feed-level error so the panel shows it.
                 this.meta = { error: err?.response?.data?.message || err?.message || this.$t('Inspection failed.') };
                 this.items = [];
             }).finally(() => {
-                if (token === this._reqToken) this.loading = false;
+                if (token === this.inspectRun) this.loading = false;
             });
         },
     },

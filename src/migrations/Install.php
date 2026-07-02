@@ -80,7 +80,9 @@ class Install extends Migration
             'uid'         => $this->uid(),
         ]);
 
-        $this->createIndex(null, Table::LOG_ITEMS, ['logId']);
+        // Composite: covers logId-only lookups via its leftmost prefix, and the
+        // per-action counts/filters on the log detail view.
+        $this->createIndex(null, Table::LOG_ITEMS, ['logId', 'action']);
         $this->createIndex(null, Table::LOG_ITEMS, ['elementId']);
         $this->createIndex(null, Table::LOG_ITEMS, ['action']);
 

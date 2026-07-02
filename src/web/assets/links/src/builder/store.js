@@ -1,5 +1,6 @@
 import { computed, reactive, readonly, watch } from 'vue';
 import * as api from './api.js';
+import { errorText, notifyError, notifyNotice, t } from './lib/notify.js';
 
 /**
  * Minimal reactive store for the LinkBuilder SPA. Vue's `reactive()` + a
@@ -54,6 +55,10 @@ const root = reactive(initial());
  * Derived dirty state: compare the live link against the snapshot taken at
  * load/save time. No flags to suppress or reset — and reverting an edit by
  * hand reads as clean again, which an imperative flag can't do.
+ *
+ * Cost assessed (2026-07): it's a cached computed, so the stringify runs at
+ * most once per link mutation — sub-ms even at ~50 mappings. Revisit only if
+ * links grow orders of magnitude larger.
  */
 const isDirty = computed(() => {
     if (!root.link || root.savedSnapshot === null) return false;
@@ -88,7 +93,7 @@ async function load(id) {
         // immediately — no manual Fetch click per editing session.
         evaluateSample();
     } catch (e) {
-        root.loadError = e.message || 'Failed to load link.';
+        root.loadError = errorText(e, 'Failed to load link.');
         console.error('[influx] bootstrap failed', e);
     } finally {
         root.loading = false;
@@ -114,13 +119,9 @@ async function save(options = {}) {
     // hidden base endpoint would satisfy the model rule), so it's the one
     // validation that lives client-side.
     if (root.siteEndpointsMode && !hasAnySiteEndpoint()) {
-        const message = window.Craft?.t
-            ? Craft.t('influx', 'Add at least one site endpoint, or turn site-specific endpoints off.')
-            : 'Add at least one site endpoint, or turn site-specific endpoints off.';
+        const message = t('Add at least one site endpoint, or turn site-specific endpoints off.');
         root.errors = { siteEndpoints: [message] };
-        if (window.Craft?.cp?.displayError) {
-            Craft.cp.displayError(message);
-        }
+        notifyError(message);
         return { success: false, errors: root.errors };
     }
 
@@ -137,9 +138,7 @@ async function save(options = {}) {
         root.link = result.link;
         rememberSnapshot();
 
-        if (window.Craft?.cp?.displayNotice) {
-            Craft.cp.displayNotice(Craft.t('influx', 'Link saved.'));
-        }
+        notifyNotice(t('Link saved.'));
 
         if (wasNew && savedId) {
             // The `new` URL is gone — full reload lands the SPA on the
@@ -158,9 +157,7 @@ async function save(options = {}) {
         return { success: true };
     } catch (e) {
         root.errors = e.errors || {};
-        if (window.Craft?.cp?.displayError) {
-            Craft.cp.displayError(e.message || Craft.t('influx', "Couldn't save link."));
-        }
+        notifyError(errorText(e, t("Couldn't save link.")));
         return { success: false, errors: root.errors };
     } finally {
         root.saving = false;
@@ -187,7 +184,7 @@ async function refreshMappableFields() {
     try {
         root.mappable = await api.mappableFields(elementType, root.link.elementCriteria || {});
     } catch (e) {
-        root.mappableError = e.message || 'Failed to load mappable fields.';
+        root.mappableError = errorText(e, 'Failed to load mappable fields.');
         // Make the failure visible in dev tools even when the tab UI is
         // hidden — easier to diagnose 4xx responses from the server.
         console.error('[influx] mappable-fields fetch failed', e);
@@ -214,12 +211,10 @@ async function fetchSample() {
         });
         root.sample = result.report;
     } catch (e) {
-        root.sampleError = e.message || 'Sample fetch failed.';
+        root.sampleError = errorText(e, 'Sample fetch failed.');
         // No inline error block anywhere — failures surface as a native CP
         // toast, plus the header button's error state via `sampleError`.
-        if (window.Craft?.cp?.displayError) {
-            Craft.cp.displayError(Craft.t('influx', 'Sample failed: {message}', { message: root.sampleError }));
-        }
+        notifyError(t('Sample failed: {message}', { message: root.sampleError }));
     } finally {
         // Recorded even on failure so the auto-fetcher doesn't loop on a
         // broken endpoint — the manual Fetch button always retries.

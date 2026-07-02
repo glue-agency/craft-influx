@@ -3,7 +3,6 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use craft\helpers\App;
 use GlueAgency\Influx\helpers\BuilderSchema;
 
 class QueryStringAuth extends AbstractAuthStrategy
@@ -42,6 +41,6 @@ class QueryStringAuth extends AbstractAuthStrategy
 
     public function apply(array &$headers, array &$query): void
     {
-        $query[$this->param] = App::parseEnv($this->token);
+        $query[$this->param] = $this->resolve($this->token);
     }
 }

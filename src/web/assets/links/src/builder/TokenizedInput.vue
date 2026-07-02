@@ -134,7 +134,10 @@ watch(() => props.modelValue, (next) => {
     setFromValue(next, tokenKinds.value);
 }, { immediate: true });
 
-watch(() => props.tokenGroups, () => recolor(tokenKinds.value), { deep: true });
+// Watch the derived name→kind map rather than deep-watching tokenGroups:
+// the store only ever replaces suggestions wholesale, and this skips the
+// hint-only churn a deep traversal would re-trigger on.
+watch(tokenKinds, (kinds) => recolor(kinds));
 
 const firstTextSegment = computed(() => segments.value.find(s => s.type === 'text') || null);
 

@@ -43,6 +43,27 @@ describe('DebugApp', () => {
         expect(window.Craft.sendActionRequest).toHaveBeenCalledTimes(1);
     });
 
+    it('remounts item rows on re-inspect so per-row state cannot go stale', async () => {
+        const payload = (action) => Promise.resolve({
+            data: { meta: { url: 'x' }, items: [{ action, mappings: [], raw: {} }] },
+        });
+        window.Craft.sendActionRequest = vi.fn(() => payload('would-update'));
+
+        const w = mountApp();
+        await flushPromises();
+        const firstRow = w.findComponent({ name: 'DebugItem' });
+
+        window.Craft.sendActionRequest = vi.fn(() => payload('would-create'));
+        await w.find('form').trigger('submit');
+        await flushPromises();
+
+        // A fresh inspect must produce a fresh component at the same position
+        // (keys include the inspect run), not patch the old one in place.
+        const secondRow = w.findComponent({ name: 'DebugItem' });
+        expect(secondRow.props('row').action).toBe('would-create');
+        expect(secondRow.vm).not.toBe(firstRow.vm);
+    });
+
     it('surfaces a failed fetch as a feed error', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.reject(new Error('boom')));
 

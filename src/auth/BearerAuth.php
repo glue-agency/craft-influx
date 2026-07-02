@@ -3,7 +3,6 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use craft\helpers\App;
 use GlueAgency\Influx\helpers\BuilderSchema;
 
 class BearerAuth extends AbstractAuthStrategy
@@ -37,6 +36,6 @@ class BearerAuth extends AbstractAuthStrategy
 
     public function apply(array &$headers, array &$query): void
     {
-        $headers['Authorization'] = 'Bearer ' . App::parseEnv($this->token);
+        $headers['Authorization'] = 'Bearer ' . $this->resolve($this->token);
     }
 }

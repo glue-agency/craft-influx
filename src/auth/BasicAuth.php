@@ -3,7 +3,6 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use craft\helpers\App;
 use GlueAgency\Influx\helpers\BuilderSchema;
 
 /**
@@ -50,7 +49,7 @@ class BasicAuth extends AbstractAuthStrategy
 
     public function apply(array &$headers, array &$query): void
     {
-        $credentials = App::parseEnv($this->username) . ':' . App::parseEnv($this->token);
+        $credentials = $this->resolve($this->username) . ':' . $this->resolve($this->token);
         $headers['Authorization'] = 'Basic ' . base64_encode($credentials);
     }
 }

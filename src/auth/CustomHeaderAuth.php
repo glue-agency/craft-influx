@@ -3,7 +3,6 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use craft\helpers\App;
 use GlueAgency\Influx\helpers\BuilderSchema;
 
 class CustomHeaderAuth extends AbstractAuthStrategy
@@ -42,6 +41,6 @@ class CustomHeaderAuth extends AbstractAuthStrategy
 
     public function apply(array &$headers, array &$query): void
     {
-        $headers[$this->header] = App::parseEnv($this->token);
+        $headers[$this->header] = $this->resolve($this->token);
     }
 }

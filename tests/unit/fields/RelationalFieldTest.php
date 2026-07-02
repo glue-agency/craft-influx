@@ -46,7 +46,7 @@ class RelationalFieldTest extends Unit
     {
         // RelationalField is abstract only for Field::parse(); apply() — the
         // method under test — is fully defined on the base.
-        return new class extends RelationalField {
+        return new class() extends RelationalField {
             public function parse(FieldContext $context): mixed
             {
                 return null;
