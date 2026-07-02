@@ -17,7 +17,7 @@
     <table class="data fullwidth fixed-layout">
         <tbody>
             <tr><th>{{ "Handle"|t("influx") }}</th><td><code>{{ link.handle }}</code></td></tr>
-            <tr><th>{{ "Element type"|t("influx") }}</th><td>{{ link.elementTypeLabel() }} <span class="light"><code>{{ link.elementType }}</code></span></td></tr>
+            <tr><th>{{ "Element type"|t("influx") }}</th><td>{{ presenter.elementTypeLabel(link) }} <span class="light"><code>{{ link.elementType }}</code></span></td></tr>
             <tr>
                 <th>{{ "Criteria"|t("influx") }}</th>
                 <td>

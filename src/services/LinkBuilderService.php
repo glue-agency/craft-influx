@@ -10,6 +10,7 @@ use craft\web\twig\variables\Cp;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\web\LinkBuilderSerializer;
 use Throwable;
 use yii\web\NotFoundHttpException;
 
@@ -27,6 +28,19 @@ use yii\web\NotFoundHttpException;
  */
 class LinkBuilderService extends Component
 {
+    /**
+     * Marshals a {@see Link} to / from the SPA's JSON wire shape — the shared
+     * instance this service serializes bootstrap / save payloads through.
+     */
+    protected LinkBuilderSerializer $serializer;
+
+    public function init(): void
+    {
+        parent::init();
+
+        $this->serializer = new LinkBuilderSerializer();
+    }
+
     /**
      * Initial payload the SPA needs to mount. Returns the link being edited
      * (or a fresh draft when `$id` is null) plus a small bundle of
@@ -58,7 +72,7 @@ class LinkBuilderService extends Component
         }
 
         return [
-            'link'    => $link->toBuilderArray(),
+            'link'    => $this->serializer->toArray($link),
             'options' => [
                 'elementTypes'      => $this->elementTypeOptions(),
                 'sections'          => $this->sectionOptions(),
@@ -101,7 +115,7 @@ class LinkBuilderService extends Component
             ? ($plugin->links->getLinkByUid($uid) ?? new Link())
             : new Link();
 
-        $link->applyBuilderPayload($payload);
+        $this->serializer->apply($link, $payload);
 
         if (! $plugin->links->saveLink($link)) {
             return [
@@ -111,7 +125,7 @@ class LinkBuilderService extends Component
             ];
         }
 
-        return ['success' => true, 'link' => $link->toBuilderArray()];
+        return ['success' => true, 'link' => $this->serializer->toArray($link)];
     }
 
     /**

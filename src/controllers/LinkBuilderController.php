@@ -74,7 +74,7 @@ class LinkBuilderController extends AbstractController
      *
      *   POST influx/link-builder/save
      *
-     * Body: JSON-serialised link state (see Link::toBuilderArray()).
+     * Body: JSON-serialised link state (see LinkBuilderSerializer::toArray()).
      */
     public function actionSave(): Response
     {

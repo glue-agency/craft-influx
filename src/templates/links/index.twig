@@ -174,14 +174,14 @@
                         </td>
                         <td><code>{{ link.handle }}</code></td>
                         <td>
-                            {{ link.elementTypeLabel() }}
-                            {% set targetCriteria = link.targetCriteriaLabel() %}
+                            {{ presenter.elementTypeLabel(link) }}
+                            {% set targetCriteria = presenter.targetCriteriaLabel(link) %}
                             {% if targetCriteria %}
                                 <span class="light">/ {{ targetCriteria }}</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% set siteLabels = link.siteLabels() %}
+                            {% set siteLabels = presenter.siteLabels(link) %}
                             {% if siteLabels is empty %}
                                 <span class="light">{{ "primary"|t("influx") }}</span>
                             {% else %}

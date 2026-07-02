@@ -10,6 +10,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\web\LinkPresenter;
 use Throwable;
 use yii\base\Action;
 use yii\web\NotFoundHttpException;
@@ -40,9 +41,10 @@ class LinksController extends AbstractController
     public function actionIndex(): Response
     {
         return $this->renderTemplate('influx/links/index', [
-            'links'    => Influx::getInstance()->links->getAllLinks(),
-            'lastRuns' => Influx::getInstance()->logs->lastRunPerLink(),
-            'readOnly' => $this->readOnly(),
+            'links'     => Influx::getInstance()->links->getAllLinks(),
+            'lastRuns'  => Influx::getInstance()->logs->lastRunPerLink(),
+            'presenter' => new LinkPresenter(),
+            'readOnly'  => $this->readOnly(),
         ]);
     }
 
@@ -60,6 +62,7 @@ class LinksController extends AbstractController
 
         return $this->renderTemplate('influx/links/view', [
             'link'       => $link,
+            'presenter'  => new LinkPresenter(),
             'recentLogs' => $recentLogs,
             'readOnly'   => $this->readOnly(),
         ]);

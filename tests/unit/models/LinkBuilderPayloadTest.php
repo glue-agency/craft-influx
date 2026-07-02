@@ -5,10 +5,11 @@ namespace GlueAgency\Influx\Tests\unit\models;
 use Codeception\Test\Unit;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
+use GlueAgency\Influx\web\LinkBuilderSerializer;
 
 /**
  * Contract test for the LinkBuilder wire shape. PHP is the authority
- * ({@see Link::toBuilderArray()}); the committed fixture is the contract
+ * ({@see LinkBuilderSerializer}); the committed fixture is the contract
  * artifact, and the SPA asserts its own assumptions against the same file
  * (see `src/web/assets/links/src/builder/__tests__/contract.test.js`).
  *
@@ -25,21 +26,27 @@ class LinkBuilderPayloadTest extends Unit
 
         $this->assertEquals(
             $this->fixture(),
-            $this->normalize($link->toBuilderArray()),
-            'Link::toBuilderArray() drifted from the committed wire-contract fixture.',
+            $this->normalize($this->serializer()->toArray($link)),
+            'LinkBuilderSerializer::toArray() drifted from the committed wire-contract fixture.',
         );
     }
 
     public function testApplyBuilderPayloadRoundTripsTheFixture(): void
     {
+        $serializer = $this->serializer();
         $link = new Link();
-        $link->applyBuilderPayload($this->fixture());
+        $serializer->apply($link, $this->fixture());
 
         $this->assertEquals(
             $this->fixture(),
-            $this->normalize($link->toBuilderArray()),
+            $this->normalize($serializer->toArray($link)),
             'Applying the fixture payload and re-serializing must be lossless.',
         );
+    }
+
+    protected function serializer(): LinkBuilderSerializer
+    {
+        return new LinkBuilderSerializer();
     }
 
     /**

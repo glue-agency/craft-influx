@@ -2,11 +2,8 @@
 
 namespace GlueAgency\Influx\models;
 
-use Craft;
 use craft\base\Model;
-use craft\elements\Entry;
 use craft\helpers\StringHelper;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -17,6 +14,19 @@ use GlueAgency\Influx\sync\RemoteItem;
  * Links are stored in Project Config under `influx.links.{uid}` — they
  * round-trip to YAML the same way sections, entry types, volumes, etc. do,
  * and obey the same `allowAdminChanges` gating.
+ *
+ * A plain state object: its serialized and presentation shapes live elsewhere,
+ * so the model only holds attributes and the invariants over them.
+ *  - {@see \GlueAgency\Influx\web\LinkBuilderSerializer} marshals the link to
+ *    and from the LinkBuilder SPA's JSON wire shape (was `toBuilderArray()` /
+ *    `applyBuilderPayload()`).
+ *  - {@see \GlueAgency\Influx\web\LinkPresenter} resolves the human-readable
+ *    labels the overview / view templates render (was `elementTypeLabel()`,
+ *    `targetCriteriaLabel()`, `siteLabels()`).
+ *  - {@see \GlueAgency\Influx\services\AuthService::applyToRequest()} applies
+ *    this link's auth to an outbound request.
+ *  - {@see \GlueAgency\Influx\enums\SyncDecision::decide()} decides the sync
+ *    action for a remote item.
  */
 class Link extends Model
 {
@@ -43,7 +53,8 @@ class Link extends Model
      *
      * Empty-shape contract: {@see getConfig()} strips empty values, so an empty
      * field is absent from Project Config and stored as NULL; the service reads
-     * a missing JSON column back as `[]`; {@see toBuilderArray()} casts the
+     * a missing JSON column back as `[]`;
+     * {@see \GlueAgency\Influx\web\LinkBuilderSerializer::toArray()} casts the
      * array-y fields to `{}` for the SPA. Three representations, reconciled here.
      */
     public const CONFIG_FIELDS = [
@@ -310,72 +321,6 @@ class Link extends Model
     }
 
     /**
-     * Marshal this link into the JSON wire shape the LinkBuilder SPA
-     * consumes — the single authority for that contract (the JS side
-     * documents it in `builder/types.js` and asserts it against the
-     * committed fixture in `tests/fixtures/link-payload.json`).
-     *
-     * Lives next to {@see getConfig()} deliberately: one model, all of its
-     * serialized shapes. Array-y attrs are cast to objects so empty ones
-     * JSON-encode as `{}` (the store treats them as keyed maps, not lists).
-     */
-    public function toBuilderArray(): array
-    {
-        return [
-            'id'              => $this->id,
-            'uid'             => $this->uid,
-            'handle'          => $this->handle ?? '',
-            'name'            => $this->name ?? '',
-            'elementType'     => $this->elementType ?: Entry::class,
-            'elementCriteria' => (object) ($this->elementCriteria ?? []),
-            'endpoint'        => $this->endpoint,
-            'itemEndpoint'    => $this->itemEndpoint,
-            'siteEndpoints'   => $this->siteEndpoints,
-            'offset'          => (object) ($this->offset ?? []),
-            'processing'      => array_values($this->processing ?? []),
-            'rootNode'        => $this->rootNode,
-            'paginatorNode'   => $this->paginatorNode,
-            'totalCountNode'  => $this->totalCountNode,
-            'pageCountNode'   => $this->pageCountNode,
-            'mappings'        => (object) ($this->mappings ?? []),
-            'match'           => (object) ($this->match ?? []),
-            'auth'            => (object) ($this->auth ?? []),
-            'backup'          => (bool) $this->backup,
-        ];
-    }
-
-    /**
-     * Apply a builder JSON payload onto this link. Mirrors the shape
-     * produced by {@see toBuilderArray()}. Unknown keys are silently
-     * dropped — Yii's `setAttributes(..., $safeOnly = true)` would do this
-     * for us, but we want to coerce a few fields (objects → arrays,
-     * trimming strings) before they hit the model.
-     */
-    public function applyBuilderPayload(array $payload): void
-    {
-        $strOrNull = static fn(mixed $v): ?string => is_string($v) && trim($v) !== '' ? trim($v) : null;
-
-        $this->handle = (string) ($payload['handle'] ?? $this->handle);
-        $this->name = (string) ($payload['name'] ?? $this->name);
-        $this->elementType = (string) ($payload['elementType'] ?? $this->elementType);
-
-        $this->elementCriteria = (array) ($payload['elementCriteria'] ?? []);
-        $this->endpoint = $strOrNull($payload['endpoint'] ?? null);
-        $this->itemEndpoint = $strOrNull($payload['itemEndpoint'] ?? null);
-        $this->setSiteEndpoints($payload['siteEndpoints'] ?? []);
-        $this->offset = (array) ($payload['offset'] ?? []);
-        $this->processing = array_values((array) ($payload['processing'] ?? []));
-        $this->rootNode = $strOrNull($payload['rootNode'] ?? null);
-        $this->paginatorNode = $strOrNull($payload['paginatorNode'] ?? null);
-        $this->totalCountNode = $strOrNull($payload['totalCountNode'] ?? null);
-        $this->pageCountNode = $strOrNull($payload['pageCountNode'] ?? null);
-        $this->mappings = (array) ($payload['mappings'] ?? []);
-        $this->match = (array) ($payload['match'] ?? []);
-        $this->auth = (array) ($payload['auth'] ?? []);
-        $this->backup = (bool) ($payload['backup'] ?? false);
-    }
-
-    /**
      * Resolve the auth service via the plugin singleton, returning null when
      * the plugin isn't bootstrapped (e.g. in standalone unit tests that
      * never set auth on the link, so the lookup is never reached).
@@ -478,70 +423,6 @@ class Link extends Model
         }
 
         return null;
-    }
-
-    /**
-     * Human-readable label for this link's element type — resolved through the
-     * registered target's `friendlyName()`, falling back to the class's short
-     * name when no target is registered for it.
-     */
-    public function elementTypeLabel(): string
-    {
-        return Influx::getInstance()->targets->friendlyNameFor($this->elementType);
-    }
-
-    /**
-     * Section + entry-type display labels for the target — e.g. "Movies /
-     * Feature" — resolved from the stored handles so the overview reads like
-     * the CP rather than echoing raw handles. Null when no section criteria is
-     * configured (the element type carries none, or it isn't set yet). Falls
-     * back to the handle when a section/type has since been removed.
-     */
-    public function targetCriteriaLabel(): ?string
-    {
-        $criteria = $this->elementCriteria ?? [];
-        $sectionHandle = $criteria['section'] ?? null;
-
-        if (! $sectionHandle) {
-            return null;
-        }
-
-        $section = Compat::getSectionByHandle($sectionHandle);
-        $parts = [$section?->name ?? $sectionHandle];
-
-        $typeHandle = $criteria['type'] ?? null;
-
-        if ($typeHandle) {
-            $typeName = null;
-
-            if ($section) {
-                foreach ($section->getEntryTypes() as $type) {
-                    if ($type->handle === $typeHandle) {
-                        $typeName = $type->name;
-
-                        break;
-                    }
-                }
-            }
-
-            $parts[] = $typeName ?? $typeHandle;
-        }
-
-        return implode(' / ', $parts);
-    }
-
-    /**
-     * Display names for the link's configured sites, for the overview — falls
-     * back to the handle when a site has since been removed.
-     *
-     * @return string[]
-     */
-    public function siteLabels(): array
-    {
-        return array_map(
-            static fn(string $handle): string => Craft::$app->getSites()->getSiteByHandle($handle)?->name ?? $handle,
-            $this->siteHandles(),
-        );
     }
 
     /**
