@@ -9,7 +9,8 @@ use GlueAgency\Influx\models\Link;
 /**
  * Output of {@see ItemProcessor::resolve()} — what one remote item matched
  * and what the run intends to do about it. Treat as read-only; the populate
- * phase consumes it, and element swaps go through {@see withElement()}.
+ * phase consumes it, and element swaps go through {@see withElement()},
+ * which re-derives the decision via {@see SyncDecision::decide()}.
  */
 class ItemResolution
 {
@@ -36,7 +37,7 @@ class ItemResolution
         return new self(
             $this->matchValue,
             $element,
-            $link->decideAction($this->matchValue, $element),
+            SyncDecision::decide($link, $this->matchValue, $element),
         );
     }
 }

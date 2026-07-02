@@ -3,12 +3,9 @@
 namespace GlueAgency\Influx\models;
 
 use Craft;
-use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
-use GlueAgency\Influx\enums\SyncDecision;
-use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -36,17 +33,6 @@ class Link extends Model
         self::PROCESSING_DELETE,
         self::PROCESSING_DELETE_FOR_SITE,
     ];
-
-    /** @deprecated Use {@see SyncDecision::CREATE} — {@see self::decideAction()} returns the enum now. */
-    public const DECISION_CREATE = self::PROCESSING_CREATE;
-    /** @deprecated Use {@see SyncDecision::UPDATE}. */
-    public const DECISION_UPDATE = self::PROCESSING_UPDATE;
-    /** @deprecated Use {@see SyncDecision::SKIP_NO_MATCH}. */
-    public const DECISION_SKIP_NO_MATCH = 'skip:no-match';
-    /** @deprecated Use {@see SyncDecision::SKIP_NO_CREATE}. */
-    public const DECISION_SKIP_NO_CREATE = 'skip:no-create';
-    /** @deprecated Use {@see SyncDecision::SKIP_NO_UPDATE}. */
-    public const DECISION_SKIP_NO_UPDATE = 'skip:no-update';
 
     /**
      * The config fields a Link serialises to — its Project Config keys, which
@@ -390,32 +376,6 @@ class Link extends Model
     }
 
     /**
-     * Mutates the given header / query arrays to add this link's auth
-     * credentials. The actual rule per auth type lives on the strategy
-     * classes in {@see \GlueAgency\Influx\auth}, dispatched via
-     * {@see \GlueAgency\Influx\services\AuthService}.
-     */
-    public function applyAuth(array &$headers, array &$query): void
-    {
-        if (empty($this->auth)) {
-            return;
-        }
-
-        $strategy = $this->authService()?->fromConfig($this->auth);
-
-        if (! $strategy) {
-            // Auth is configured but its type no longer resolves — e.g. a
-            // third-party strategy was unregistered after the link was saved.
-            // Fail loudly instead of firing the request unauthenticated.
-            throw new InfluxException(
-                "Link '{$this->handle}' has an unresolvable auth type '" . ($this->auth['type'] ?? '?') . "'.",
-            );
-        }
-
-        $strategy->apply($headers, $query);
-    }
-
-    /**
      * Resolve the auth service via the plugin singleton, returning null when
      * the plugin isn't bootstrapped (e.g. in standalone unit tests that
      * never set auth on the link, so the lookup is never reached).
@@ -614,29 +574,5 @@ class Link extends Model
     public function matchAttribute(): ?string
     {
         return $this->match['attribute'] ?? null;
-    }
-
-    /**
-     * Decide what a sync run should do with one remote item given its match
-     * value and the element (if any) that was found for it. Used by both
-     * {@see \GlueAgency\Influx\services\SynchronizationService::processItem()} for
-     * the real run and {@see \GlueAgency\Influx\services\DebugService::debugItem()}
-     * for the dry-run inspector, so both stay aligned on the rule.
-     */
-    public function decideAction(mixed $matchValue, ?ElementInterface $element): SyncDecision
-    {
-        if ($matchValue === null || $matchValue === '') {
-            return SyncDecision::SKIP_NO_MATCH;
-        }
-
-        if ($element === null) {
-            return in_array(self::PROCESSING_CREATE, $this->processing, true)
-                ? SyncDecision::CREATE
-                : SyncDecision::SKIP_NO_CREATE;
-        }
-
-        return in_array(self::PROCESSING_UPDATE, $this->processing, true)
-            ? SyncDecision::UPDATE
-            : SyncDecision::SKIP_NO_UPDATE;
     }
 }

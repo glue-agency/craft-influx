@@ -10,6 +10,7 @@ use GlueAgency\Influx\data\FeedInspector;
 use GlueAgency\Influx\data\FeedPage;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -48,7 +49,7 @@ class DataService extends Component
 
         $headers = [];
         $query = $queryParams;
-        $link->applyAuth($headers, $query);
+        Influx::getInstance()->auth->applyToRequest($link, $headers, $query);
 
         return $this->get($url, $headers, $query);
     }
@@ -63,7 +64,7 @@ class DataService extends Component
 
         $headers = [];
         $query = [];
-        $link->applyAuth($headers, $query);
+        Influx::getInstance()->auth->applyToRequest($link, $headers, $query);
 
         return $this->get($url, $headers, $query);
     }

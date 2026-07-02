@@ -35,38 +35,39 @@ use Throwable;
  * {@see \GlueAgency\Influx\fields\Field::hasChanged()}, native attributes via
  * the target's {@see \GlueAgency\Influx\targets\ElementTargetInterface::applyNativeAttribute()}
  * return value (the target owns the comparison because only it knows each
- * attribute's semantics — e.g. that `author` compares by id). A freshly-built
- * element forces the aggregate {@see MappingOutcome::$changed} (it always
- * saves), but per-row flags stay genuine: an empty/missing value landing on an
- * already-empty field is not a change, even on a new element, so the debug
- * view only flags rows that actually receive a differing value. The aggregate
- * flag is what the caller hangs the save decision on; the same applies to
- * related elements, which {@see applySubMappings()} reports as changed only
- * when a sub-mapping actually differed — so unchanged relations no longer
- * re-save on every sync.
+ * attribute's semantics — e.g. that `author` compares by id). Per-row flags
+ * stay genuine: an empty/missing value landing on an already-empty field is
+ * not a change, even on a freshly-built element, so the debug view only flags
+ * rows that actually receive a differing value. The caller folds these
+ * per-row flags into the item's save decision (seeding it "changed" for a new
+ * element, which always saves on its first pass); the same applies to related
+ * elements, which {@see applySubMappings()} reports as changed only when a
+ * sub-mapping actually differed — so unchanged relations no longer re-save on
+ * every sync.
  *
  * Saving is not this class's business.
  */
 class MappingApplier
 {
     /**
-     * @param bool $isNew When true the element is freshly built, so the
-     * aggregate outcome is forced "changed" (a new element always saves on the
-     * first pass). Per-row change flags stay genuine — an empty or missing
-     * field on a new element reads as unchanged, so the debug view only flags
-     * rows that actually receive a differing value.
+     * Walk the link's mappings against one remote item, writing the resolved
+     * values onto the element and returning one {@see MappingResult} per
+     * top-level mapping. Per-row change flags stay genuine — an empty or
+     * missing field reads as unchanged even on a freshly-built element, so the
+     * debug view only flags rows that actually receive a differing value. The
+     * caller folds these flags into the item's save decision.
+     *
+     * @return list<MappingResult>
      */
     public function apply(
         SyncContext $syncContext,
         ElementInterface $element,
         RemoteItem $item,
-        bool $isNew,
-    ): MappingOutcome {
+    ): array {
         $link = $syncContext->link;
         $target = $syncContext->target;
         $layout = $element->getFieldLayout();
 
-        $changed = $isNew;
         $results = [];
 
         foreach ($link->getMappingCollection() as $handle => $mapping) {
@@ -102,14 +103,10 @@ class MappingApplier
                 $result = $this->applyCustomField($context);
             }
 
-            if ($result->changed === true) {
-                $changed = true;
-            }
-
             $results[] = $result;
         }
 
-        return new MappingOutcome($changed, $results);
+        return $results;
     }
 
     /**

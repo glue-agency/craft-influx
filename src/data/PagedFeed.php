@@ -7,6 +7,7 @@ use Craft;
 use craft\helpers\UrlHelper;
 use Generator;
 use GlueAgency\Influx\exceptions\FeedFetchException;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -104,7 +105,7 @@ class PagedFeed implements IteratorAggregate
         } else {
             $headers = [];
             $query = [];
-            $this->link->applyAuth($headers, $query);
+            Influx::getInstance()->auth->applyToRequest($this->link, $headers, $query);
             $response = $this->data->fetchUrl($cursorUrl, $headers, $query);
         }
 

@@ -49,7 +49,7 @@ class ItemProcessor
 
         $element = $context->target->findByMatchValue($link, $matchValue, $context->siteId);
 
-        return new ItemResolution($matchValue, $element, $link->decideAction($matchValue, $element));
+        return new ItemResolution($matchValue, $element, SyncDecision::decide($link, $matchValue, $element));
     }
 
     /**
@@ -88,10 +88,21 @@ class ItemProcessor
             $element->siteId = $context->siteId;
         }
 
-        $outcome = $this->applier->apply($context, $element, $item, $isNew);
-        $fieldErrors = $outcome->errorMessages();
+        $results = $this->applier->apply($context, $element, $item);
 
-        $action = $outcome->changed
+        // A freshly-built element always saves on its first pass, so seed the
+        // aggregate "changed" from $isNew, then fold in each row: a field that
+        // threw never counts as a change (so the UNCHANGED→ERROR flip below can
+        // still catch an item whose only mapping failed).
+        $changed = $isNew;
+        $hasFieldErrors = false;
+
+        foreach ($results as $result) {
+            $changed = $changed || $result->changed === true;
+            $hasFieldErrors = $hasFieldErrors || $result->error !== null;
+        }
+
+        $action = $changed
             ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
             : ItemAction::UNCHANGED;
 
@@ -100,7 +111,7 @@ class ItemProcessor
         // failure — surface it as an error instead. (The per-field errors
         // themselves ride on the mapping results, persisted by the recorder
         // and shown on each field's row, not lumped into the item message.)
-        if ($action === ItemAction::UNCHANGED && $fieldErrors !== []) {
+        if ($action === ItemAction::UNCHANGED && $hasFieldErrors) {
             $action = ItemAction::ERROR;
         }
 
@@ -110,8 +121,8 @@ class ItemProcessor
             matchValue: $resolution->matchValue,
             element: $element,
             isNew: $isNew,
-            changed: $outcome->changed,
-            mappingResults: $outcome->results,
+            changed: $changed,
+            mappingResults: $results,
         );
     }
 
