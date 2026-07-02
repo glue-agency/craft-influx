@@ -4,12 +4,14 @@ namespace GlueAgency\Influx\helpers;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\base\FieldInterface as CraftFieldInterface;
 use craft\db\Table as CraftTable;
 use craft\elements\Entry;
 use craft\helpers\Cp;
 use craft\helpers\Db;
 use craft\helpers\Html;
 use craft\models\EntryType;
+use craft\models\FieldLayout;
 use craft\models\Section;
 use craft\services\Sections;
 use yii\web\Response;
@@ -73,6 +75,78 @@ class Compat
         return static::isCraft5()
             ? Craft::$app->getEntries()
             : Craft::$app->getSections();
+    }
+
+    // -- Matrix block types ----------------------------------------------------
+    // Craft 5 renamed Matrix block types to nested entry types: block-type
+    // discovery moved from $field->getBlockTypes() (MatrixBlockType[]) to
+    // $field->getEntryTypes() (EntryType[]), and blocks themselves from
+    // craft\elements\MatrixBlock to craft\elements\Entry. Both block-type
+    // objects still expose ->handle, ->name and ->getFieldLayout(); the two
+    // divergences (discovery + block-element construction) live entirely here.
+
+    /**
+     * Normalized block-type descriptors for a Matrix field. Feature-detects the
+     * Craft 5 nested-entry-type API (getEntryTypes()) and falls back to the
+     * Craft 4 getBlockTypes() path. The returned layout is what a caller reads
+     * to resolve a block's child fields by handle.
+     *
+     * @return list<array{handle: string, name: string, layout: ?FieldLayout}>
+     */
+    public static function matrixBlockTypes(CraftFieldInterface $field): array
+    {
+        $blockTypes = method_exists($field, 'getEntryTypes')
+            ? $field->getEntryTypes()
+            : $field->getBlockTypes();
+
+        $normalized = [];
+
+        foreach ($blockTypes as $blockType) {
+            $normalized[] = [
+                'handle' => $blockType->handle,
+                'name'   => $blockType->name,
+                'layout' => $blockType->getFieldLayout(),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * A throwaway, never-saved block element of the given block type — used
+     * only as a layout/context carrier so a child field strategy can resolve
+     * its Craft field and coerce a value. Returns null when the handle doesn't
+     * resolve to a block type on the field.
+     *
+     * Craft 5: a new craft\elements\Entry bound to the matching EntryType.
+     * Craft 4: a craft\elements\MatrixBlock — instantiated through a string
+     * class name so this file never hard-references a symbol absent from the
+     * Craft 5 vendor tree.
+     */
+    public static function newMatrixBlock(CraftFieldInterface $field, string $typeHandle): ?ElementInterface
+    {
+        if (method_exists($field, 'getEntryTypes')) {
+            foreach ($field->getEntryTypes() as $entryType) {
+                if ($entryType->handle === $typeHandle) {
+                    return new Entry(['typeId' => $entryType->id]);
+                }
+            }
+
+            return null;
+        }
+
+        foreach ($field->getBlockTypes() as $blockType) {
+            if ($blockType->handle === $typeHandle) {
+                $class = 'craft\\elements\\MatrixBlock';
+
+                return new $class([
+                    'typeId'  => $blockType->id,
+                    'fieldId' => $field->id,
+                ]);
+            }
+        }
+
+        return null;
     }
 
     // -- Model / element differences ------------------------------------------

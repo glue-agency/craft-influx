@@ -137,6 +137,19 @@ abstract class Field
         }
     }
 
+    /**
+     * Whether the feed addresses this mapping for the given item — the gate
+     * {@see \GlueAgency\Influx\sync\MappingApplier} consults before running the
+     * strategy at all. Default: the mapping's own node/default addressing.
+     * Strategies whose value derives from SUB-mappings rather than an own node
+     * ({@see Matrix}) override this, because a node-less parent mapping would
+     * otherwise always read as unaddressed.
+     */
+    public function addressed(FieldContext $context): bool
+    {
+        return $context->mapping->addressedBy($context->item);
+    }
+
     // -- shared helpers ----------------------------------------------------
 
     /**

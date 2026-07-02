@@ -281,20 +281,27 @@ class MappingApplier
     /**
      * THE single definition of how a custom field is mapped — shared by the top
      * level and by every sub-mapping at any depth. Parses, applies the
-     * empty/active policy, detects change, and writes. Strategy errors are not
-     * caught here: the caller decides whether to capture (top level) or let
-     * them propagate to a parent relation row (sub-mappings).
+     * empty/active policy, detects change, and writes. The addressed gate is
+     * delegated to the strategy ({@see \GlueAgency\Influx\fields\Field::addressed()})
+     * so a node-less parent whose value derives from sub-mappings (Matrix) can
+     * still run. Strategy errors are not caught here: the caller decides whether
+     * to capture (top level) or let them propagate to a parent relation row
+     * (sub-mappings).
      */
     protected function mapCustomField(FieldContext $context): MappingResult
     {
         $rawValue = $context->mapping->rawValue($context->item);
         $currentValue = $this->safeFieldValue($context->element, $context->handle);
+        $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
 
         // The feed only touches a field it addresses: a node it provides a
         // value for (even an explicit empty string), or an explicit default. A
         // node that's simply absent from this item is left untouched — the feed
         // isn't saying "make this empty", it just doesn't mention the field.
-        if (! $context->mapping->addressedBy($context->item)) {
+        // The strategy owns the gate ({@see Field::addressed()}) because a
+        // node-less parent (Matrix) is addressed via its sub-mappings, not its
+        // own node.
+        if (! $strategy->addressed($context)) {
             return new MappingResult(
                 handle: $context->handle,
                 node: $context->mapping->node,
@@ -306,8 +313,6 @@ class MappingApplier
                 note: 'Feed has no value for this field — left untouched.',
             );
         }
-
-        $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
 
         // An addressed-but-empty value (explicit empty string, or one that no
         // longer resolves) clears the field — the feed is authoritative. The

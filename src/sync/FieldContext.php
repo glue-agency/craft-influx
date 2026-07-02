@@ -87,12 +87,19 @@ class FieldContext
      * a related element. Item, link and dry-run flag carry over; depth is
      * incremented and capped.
      *
+     * `$item` overrides the remote item the sub-mapping resolves against.
+     * Relational sub-mappings pass nothing and inherit the parent's item;
+     * {@see \GlueAgency\Influx\fields\Matrix} descends with a synthetic
+     * single-value item so a child strategy's own resolve() yields exactly one
+     * block's value.
+     *
      * @throws MappingDepthException past MAX_DEPTH
      */
     public function descend(
         ElementInterface $subElement,
         FieldMapping $subMapping,
         ?CraftFieldInterface $craftField = null,
+        ?RemoteItem $item = null,
     ): self {
         if ($this->depth + 1 > self::MAX_DEPTH) {
             throw new MappingDepthException(
@@ -105,7 +112,7 @@ class FieldContext
             craftField: $craftField,
             handle: $subMapping->handle,
             mapping: $subMapping,
-            item: $this->item,
+            item: $item ?? $this->item,
             link: $this->link,
             element: $subElement,
             dryRun: $this->dryRun,
