@@ -79,11 +79,10 @@ class LinksController extends AbstractController
         // The debug inspector is a Vue app (DebugApp) — ship the full bundle.
         Craft::$app->getView()->registerAssetBundle(LinksAsset::class);
 
-        $limit = (int) Craft::$app->getRequest()->getQueryParam('limit', DebugService::DEFAULT_LIMIT);
-        $limit = max(1, min($limit, 500));
+        $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);
 
         $siteHandles = $link->siteHandles();
-        $requestedSite = Craft::$app->getRequest()->getQueryParam('site');
+        $requestedSite = $this->stringQueryParam('site');
         $selectedSite = $requestedSite !== null && in_array($requestedSite, $siteHandles, true)
             ? $requestedSite
             : ($siteHandles[0] ?? null);
@@ -96,7 +95,7 @@ class LinksController extends AbstractController
         ], $siteHandles);
 
         $offsetHandles = array_keys($link->offset ?? []);
-        $requestedOffset = Craft::$app->getRequest()->getQueryParam('offset');
+        $requestedOffset = $this->stringQueryParam('offset');
         $selectedOffset = $requestedOffset !== null && in_array($requestedOffset, $offsetHandles, true)
             ? $requestedOffset
             : null;
@@ -127,16 +126,15 @@ class LinksController extends AbstractController
             throw new NotFoundHttpException("Link {$id} not found.");
         }
 
-        $request = Craft::$app->getRequest();
-        $limit = max(1, min((int) $request->getQueryParam('limit', DebugService::DEFAULT_LIMIT), 500));
+        $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);
 
-        $siteHandle = $request->getQueryParam('site') ?: null;
+        $siteHandle = $this->stringQueryParam('site');
 
         if ($siteHandle !== null && ! in_array($siteHandle, $link->siteHandles(), true)) {
             $siteHandle = null;
         }
 
-        $offset = $request->getQueryParam('offset') ?: null;
+        $offset = $this->stringQueryParam('offset');
 
         if ($offset !== null && ! isset($link->offset[$offset])) {
             $offset = null;

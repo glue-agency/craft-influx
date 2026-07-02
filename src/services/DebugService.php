@@ -3,13 +3,9 @@
 namespace GlueAgency\Influx\services;
 
 use craft\base\Component;
-use craft\base\ElementInterface;
-use craft\elements\db\ElementQueryInterface;
-use DateTimeInterface;
 use Generator;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\OffsetPreset;
@@ -18,6 +14,7 @@ use GlueAgency\Influx\sync\ItemResolution;
 use GlueAgency\Influx\sync\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\web\ItemRowPresenter;
 use Throwable;
 
 /**
@@ -37,17 +34,17 @@ class DebugService extends Component
     protected ItemProcessor $itemProcessor;
 
     /**
-     * Memoized handle => friendly-name maps, keyed by link, so a multi-item
-     * dry-run resolves the target's mappable fields once rather than per item.
-     *
-     * @var array<string, array<string, string>>
+     * Shapes resolved elements + mapping results into the Twig/JS row arrays
+     * the debug view renders. Kept separate from the orchestration here so the
+     * presentation is unit-testable without booting a sync.
      */
-    protected array $fieldLabelCache = [];
+    protected ItemRowPresenter $rows;
 
     public function init(): void
     {
         parent::init();
         $this->itemProcessor = new ItemProcessor();
+        $this->rows = new ItemRowPresenter();
     }
 
     /**
@@ -215,7 +212,7 @@ class DebugService extends Component
         $row['matchValue'] = $resolution->matchValue;
 
         if ($resolution->element) {
-            $row['element'] = $this->describeElement($resolution->element);
+            $row['element'] = $this->rows->presentElement($resolution->element);
         }
 
         try {
@@ -247,7 +244,7 @@ class DebugService extends Component
                         $remoteItem,
                         new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::UPDATE),
                     );
-                    $row['mappings'] = $this->presentMappingResults($preview->mappingResults, $resolution->element, $this->fieldLabels($link, $target));
+                    $row['mappings'] = $this->rows->presentMappingResults($preview->mappingResults, $resolution->element, $this->rows->fieldLabels($link, $target));
                 } catch (Throwable $e) {
                     $row['error'] = $e->getMessage();
                 }
@@ -259,131 +256,9 @@ class DebugService extends Component
         $row['action'] = $result->action->dryRunLabel();
 
         if ($result->element !== null) {
-            $row['mappings'] = $this->presentMappingResults($result->mappingResults, $result->element, $this->fieldLabels($link, $target));
+            $row['mappings'] = $this->rows->presentMappingResults($result->mappingResults, $result->element, $this->rows->fieldLabels($link, $target));
         }
 
         return $row;
-    }
-
-    /**
-     * Render {@see MappingResult}s into the Twig/JS-facing row shape —
-     * values described (stringified, truncated), parsed values run through
-     * the Craft field's normalizeValue for display parity with the editor.
-     *
-     * @param list<\GlueAgency\Influx\sync\MappingResult> $results
-     * @param array<string, string> $labels handle => friendly field name
-     * @return list<array>
-     */
-    protected function presentMappingResults(array $results, ElementInterface $element, array $labels = []): array
-    {
-        $layout = $element->getFieldLayout();
-        $rows = [];
-
-        foreach ($results as $result) {
-            $parsedValue = $result->parsedValue;
-
-            if (! $result->native && $parsedValue !== null) {
-                $craftField = $layout?->getFieldByHandle($result->handle);
-
-                if ($craftField) {
-                    try {
-                        $parsedValue = $craftField->normalizeValue($parsedValue, $element);
-                    } catch (Throwable) {
-                        // Display-only nicety; fall back to the raw parse.
-                    }
-                }
-            }
-
-            $rows[] = [
-                'handle'       => $result->handle,
-                'label'        => $labels[$result->handle] ?? $result->handle,
-                'node'         => $result->node,
-                'default'      => $result->default,
-                'native'       => $result->native,
-                'rawValue'     => $this->describeValue($result->rawValue),
-                'parsedValue'  => $this->describeValue($parsedValue),
-                'currentValue' => $this->describeValue($result->currentValue),
-                'changed'      => $result->changed,
-                'note'         => $result->note,
-                'error'        => $result->error,
-            ];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * Handle => friendly field name for a link, sourced from the target's
-     * mappable fields (the same labels the builder's mapping list shows).
-     * Memoized per link so a multi-item dry-run resolves them once.
-     *
-     * @return array<string, string>
-     */
-    protected function fieldLabels(Link $link, ElementTargetInterface $target): array
-    {
-        $key = $link->uid ?? $link->handle;
-
-        if (! isset($this->fieldLabelCache[$key])) {
-            $labels = [];
-
-            foreach ($target->getMappableFields($link) as $field) {
-                if (isset($field['handle'])) {
-                    $labels[$field['handle']] = $field['name'] ?? $field['handle'];
-                }
-            }
-            $this->fieldLabelCache[$key] = $labels;
-        }
-
-        return $this->fieldLabelCache[$key];
-    }
-
-    /**
-     * @return list<array>
-     */
-    protected function describeElement(ElementInterface $element): array
-    {
-        return [
-            'id'        => $element->id,
-            'title'     => (string) ($element->title ?? '#' . $element->id),
-            'cpEditUrl' => $element->getCpEditUrl(),
-            'siteId'    => $element->siteId,
-            'chipHtml'  => Compat::elementChipHtml($element, ['hyperlink' => true]),
-        ];
-    }
-
-    /**
-     * Make a value safe to render in Twig — scalar through, objects/arrays to
-     * a compact string representation. Truncated so a giant CKEditor blob
-     * doesn't blow up the page.
-     */
-    protected function describeValue(mixed $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        if (is_scalar($value)) {
-            $str = (string) $value;
-        } elseif ($value instanceof DateTimeInterface) {
-            $str = $value->format('Y-m-d H:i:s');
-        } elseif ($value instanceof ElementQueryInterface) {
-            $ids = [];
-
-            try {
-                $ids = $value->ids();
-            } catch (Throwable) {
-            }
-            $str = '[' . implode(', ', array_map('strval', $ids)) . ']';
-        } elseif (is_object($value) && method_exists($value, '__toString')) {
-            $str = (string) $value;
-        } else {
-            $str = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '';
-        }
-
-        if (strlen($str) > 500) {
-            $str = substr($str, 0, 500) . '…';
-        }
-
-        return $str;
     }
 }

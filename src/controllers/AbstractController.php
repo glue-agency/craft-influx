@@ -65,4 +65,35 @@ abstract class AbstractController extends Controller
             );
         }
     }
+
+    /**
+     * Read a query param as an int, falling back to `$default` when absent,
+     * then clamping to `[$min, $max]` (either bound optional). The shared
+     * shape behind the paginators' `page` (min 1) and the debug view's `limit`
+     * (min 1, max 500).
+     */
+    protected function intQueryParam(string $name, int $default, ?int $min = null, ?int $max = null): int
+    {
+        $value = (int) Craft::$app->getRequest()->getQueryParam($name, $default);
+
+        if ($min !== null) {
+            $value = max($min, $value);
+        }
+
+        if ($max !== null) {
+            $value = min($max, $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Read a query param as a trimmed string, normalising an absent or
+     * whitespace-only value to null (so callers can `?? default` / whitelist
+     * without re-trimming).
+     */
+    protected function stringQueryParam(string $name): ?string
+    {
+        return trim((string) Craft::$app->getRequest()->getQueryParam($name, '')) ?: null;
+    }
 }

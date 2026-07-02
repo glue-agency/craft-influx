@@ -18,8 +18,7 @@ class LogsController extends AbstractController
 
     public function actionIndex(): Response
     {
-        $request = Craft::$app->getRequest();
-        $page = max(1, (int) $request->getQueryParam('page', 1));
+        $page = $this->intQueryParam('page', 1, 1);
         $perPage = 50;
 
         $plugin = Influx::getInstance();
@@ -28,7 +27,7 @@ class LogsController extends AbstractController
         // offered, and an unknown/empty value falls back to "all". (The param
         // is `status`, not `action` — Craft reserves `action` for routing.)
         $statuses = $plugin->logs->distinctStatuses();
-        $status = (string) $request->getQueryParam('status', '');
+        $status = $this->stringQueryParam('status');
         $status = in_array($status, $statuses, true) ? $status : null;
 
         ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $status);
@@ -63,15 +62,16 @@ class LogsController extends AbstractController
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
-        // Only the first page rides along in the bootstrap — the rest is paged
-        // in from actionItems(), so a huge run doesn't ship as one JSON blob.
-        // Extracted (not inlined) so ECS doesn't align the arrow-fn `=>`.
-        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE));
 
         // The link this log belongs to (null if it has since been deleted) —
         // logs only store the handle, so its id + name ride along in the config
-        // for the header's "back to link" cross-link.
+        // for the header's "back to link" cross-link. Its element type also
+        // lets the presenter batch-load the page's elements in one query.
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
+
+        // Only the first page rides along in the bootstrap — the rest is paged
+        // in from actionItems(), so a huge run doesn't ship as one JSON blob.
+        $items = $presenter->presentItems($plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE), $link?->elementType);
 
         // The endpoint this run fetched from — the configured per-site URL,
         // falling back to the link's base endpoint; null when the link is gone.
@@ -148,21 +148,11 @@ class LogsController extends AbstractController
             $row['message'] = (string) $item->message;
         }
 
-        // Overlay the field errors captured at run time onto their rows — a
-        // dry-run re-inspection can't reproduce a non-deterministic failure
-        // (e.g. an asset upload), so the stored error is authoritative.
-        $fieldErrors = $item->fieldErrors ? json_decode($item->fieldErrors, true) : null;
-
-        if (is_array($fieldErrors) && ! empty($row['mappings'])) {
-            foreach ($row['mappings'] as &$mapping) {
-                $handle = $mapping['handle'] ?? null;
-
-                if ($handle !== null && isset($fieldErrors[$handle])) {
-                    $mapping['error'] = $fieldErrors[$handle];
-                }
-            }
-            unset($mapping);
-        }
+        // Overlay the field errors captured at run time onto their mapping
+        // rows — the stored error is authoritative (a dry-run re-inspection
+        // can't reproduce a non-deterministic failure like an asset upload).
+        $presenter = new LogPresenter();
+        $row['mappings'] = $presenter->overlayFieldErrors($row['mappings'] ?? [], $presenter->fieldErrors($item->fieldErrors));
 
         return $this->asJson(['row' => $row]);
     }
@@ -184,20 +174,22 @@ class LogsController extends AbstractController
             throw new NotFoundHttpException("Log #{$id} not found.");
         }
 
-        $request = Craft::$app->getRequest();
-        $page = max(1, (int) $request->getQueryParam('page', 1));
+        $page = $this->intQueryParam('page', 1, 1);
         // Single-select action filter (empty = all), plus a free-text search.
         // The param is `status`, not `action`: Craft reserves `action` for
         // controller-action routing, so `?action=…` would 404 the request.
-        $action = (string) $request->getQueryParam('status', '');
-        $actions = $action !== '' ? [$action] : [];
-        $search = trim((string) $request->getQueryParam('search', '')) ?: null;
+        $action = $this->stringQueryParam('status');
+        $actions = $action !== null ? [$action] : [];
+        $search = $this->stringQueryParam('search');
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
         $offset = ($page - 1) * self::ITEMS_PER_PAGE;
-        // Extracted (not inlined) so ECS doesn't align the arrow-fn `=>`.
-        $items = array_map(fn($item) => $presenter->presentItem($item), $plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE, $search));
+
+        // The owning link's element type lets the presenter batch-load this
+        // page's elements in one query (null when the link has been deleted).
+        $link = $plugin->links->getLinkByHandle($log->linkHandle);
+        $items = $presenter->presentItems($plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE, $search), $link?->elementType);
 
         return $this->asJson([
             'items'    => $items,
