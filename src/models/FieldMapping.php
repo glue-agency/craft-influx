@@ -43,6 +43,14 @@ class FieldMapping
     /** Recursive sub-mappings for a related element's native attributes. */
     protected array $nativeFields = [];
 
+    /**
+     * Per-block-type sub-mapping trees for a Matrix field, keyed by block-type
+     * handle; each entry is itself a FieldMapping-shaped config (fields /
+     * nativeFields). Mirrors Feed Me's stored shape
+     * (`'blocks' => ['text' => ['fields' => [...]]]`).
+     */
+    protected array $blocks = [];
+
     /** The exact config array this mapping was built from. */
     protected array $config = [];
 
@@ -54,6 +62,7 @@ class FieldMapping
         array $options,
         array $fields,
         array $nativeFields,
+        array $blocks,
         array $config,
     ) {
         $this->handle = $handle;
@@ -63,6 +72,7 @@ class FieldMapping
         $this->options = $options;
         $this->fields = $fields;
         $this->nativeFields = $nativeFields;
+        $this->blocks = $blocks;
         $this->config = $config;
     }
 
@@ -78,6 +88,7 @@ class FieldMapping
             options: is_array($config['options'] ?? null) ? $config['options'] : [],
             fields: is_array($config['fields'] ?? null) ? $config['fields'] : [],
             nativeFields: is_array($config['nativeFields'] ?? null) ? $config['nativeFields'] : [],
+            blocks: is_array($config['blocks'] ?? null) ? $config['blocks'] : [],
             config: $config,
         );
     }
@@ -183,6 +194,38 @@ class FieldMapping
     public function nativeSubMappings(): MappingCollection
     {
         return MappingCollection::fromConfig($this->nativeFields);
+    }
+
+    /**
+     * Whether this mapping carries any per-block-type sub-mapping trees (the
+     * Matrix `blocks` channel).
+     */
+    public function hasBlockMappings(): bool
+    {
+        return ! empty($this->blocks);
+    }
+
+    /**
+     * The per-block-type sub-mapping trees, keyed by block-type handle. Each
+     * entry is built via {@see fromConfig()} so the per-type tree reuses
+     * {@see subMappings()} / {@see nativeSubMappings()} verbatim — a block
+     * type's config is just a node-less FieldMapping with fields / nativeFields.
+     * Non-array entries are skipped defensively.
+     *
+     * @return array<string, FieldMapping>
+     */
+    public function blockMappings(): array
+    {
+        $built = [];
+
+        foreach ($this->blocks as $typeHandle => $entry) {
+            if (! is_string($typeHandle) || ! is_array($entry)) {
+                continue;
+            }
+            $built[$typeHandle] = self::fromConfig($typeHandle, $entry);
+        }
+
+        return $built;
     }
 
     /**

@@ -17,32 +17,55 @@ use GlueAgency\Influx\sync\RemoteItem;
 
 /**
  * Mapping strategy for Craft's Matrix field. Turns a remote list into Matrix
- * blocks of a single, fixed block type — one child-mapping tree ({@see fields}
- * / {@see nativeFields}) shared across every block, index-zipped from the
- * per-child value lists the parent item resolves.
+ * blocks across ANY of the field's block types (Feed Me-style) — the mapping
+ * carries a per-block-type sub-mapping tree under a `blocks` channel
+ * ({@see FieldMapping::blockMappings()}), keyed by block-type handle. Each
+ * entry is itself a node-less FieldMapping-shaped config
+ * (`{fields: {...}, nativeFields: {...}}`) whose child node paths are ABSOLUTE
+ * (resolved against the top-level item, exactly like relational sub-mappings).
+ *
+ * The persisted shape mirrors Feed Me's:
+ *
+ *   mappings[<matrixHandle>] = {
+ *       blocks: {
+ *           text:  { fields: { body: { node: 'content.body' } } },
+ *           quote: { fields: { text: { node: 'quotes.text' } },
+ *                    nativeFields: { title: { node: 'quotes.author' } } },
+ *       },
+ *   }
+ *
+ * WITHIN a single block type the semantics are unchanged from the old
+ * single-type engine: only active children ({@see FieldMapping::isActive()})
+ * contribute; {@see RemoteItem}'s collapsed-list semantics turn `seasons.year`
+ * into the list of every season's year; blocks are built by index-zipping those
+ * per-child value lists; a per-index missing value just leaves that key absent
+ * on that block; each child value is coerced through its own strategy via a
+ * synthetic single-value {@see RemoteItem} + {@see FieldContext::descend()}.
+ *
+ * ACROSS block types blocks are GROUPED BY TYPE, never interleaved: the field's
+ * block types are walked in their DECLARED order ({@see blockTypeHandles()}),
+ * each configured type emits all of its zipped blocks, and the `newN` counter
+ * runs continuously across every type (new1, new2, … global) so block output
+ * order is deterministic.
  *
  * The parent Matrix mapping row itself has NO node: its value comes entirely
- * from its sub-mappings, whose node paths are ABSOLUTE (resolved against the
- * top-level item, exactly like relational sub-mappings). {@see RemoteItem}'s
- * collapsed-list semantics turn `seasons.year` into the list of every season's
- * year; blocks are built by index-zipping those per-child lists. Only
- * sub-mappings with an actual mapping ({@see FieldMapping::isActive()})
- * contribute — a per-index missing value just leaves that key absent on that
- * block.
- *
- * Extends {@see Field} directly (NOT {@see DefaultField}, NOT
- * {@see RelationalField}): it neither writes related ids nor persists
- * sub-elements — it builds Craft's flat serialized Matrix value shape
- * (`['new1' => ['type' => …, 'enabled' => true, 'fields' => […]]]`), which the
- * inherited {@see apply()} hands to `setFieldValue`. Blocks are only ever
- * persisted by the OWNER element's save, so {@see parse()} is dry-run-safe by
- * construction: it creates nothing, saves nothing, and coerces child values
- * through their own strategies purely in memory.
+ * from the per-type sub-mappings. Extends {@see Field} directly (NOT
+ * {@see DefaultField}, NOT {@see RelationalField}): it neither writes related
+ * ids nor persists sub-elements — it builds Craft's flat serialized Matrix
+ * value shape (`['new1' => ['type' => …, 'enabled' => true, 'fields' => […]]]`),
+ * which the inherited {@see apply()} hands to `setFieldValue`. Blocks are only
+ * ever persisted by the OWNER element's save, so {@see parse()} is
+ * dry-run-safe by construction: it creates nothing, saves nothing, and coerces
+ * child values through their own strategies purely in memory.
  *
  * Sync semantics are full-replace: every incoming block gets a fresh `newN`
  * key, so a sync rebuilds the field's blocks from the feed.
  * {@see valueDiffers()} compares a mapped-keys-only fingerprint so an
- * unchanged feed never triggers a destructive replace.
+ * unchanged feed never triggers a destructive replace — the mapped handle sets
+ * are resolved PER TYPE, and a current block of a type the feed doesn't
+ * configure fingerprints on its type alone, so it always reads as a difference
+ * (the feed is authoritative; the replace that drops it converges on the next
+ * run).
  *
  * Known v1 limitation — array-valued child nodes mis-fan: a child node that
  * resolves to a flat array for ONE block is indistinguishable from per-block
@@ -70,24 +93,18 @@ class Matrix extends Field
             ];
         }
 
-        $typeOptions = [];
-
-        foreach ($blockTypes as $blockType) {
-            $typeOptions[] = [
-                'value' => $blockType['handle'],
-                'label' => $blockType['name'],
-            ];
-        }
-
         $schema = [
-            BuilderSchema::select('blockType', Craft::t('influx', 'Block type'), $typeOptions, [
-                'default' => $blockTypes[0]['handle'],
-            ]),
+            BuilderSchema::note(
+                Craft::t('influx', 'Sub-field source nodes are absolute item paths (seasons.year, not year): each resolves to one value per block. Only mapped sub-fields are written, and blocks are created per type from its own mapped nodes.'),
+            ),
         ];
 
-        // One sub-field card per block type, each gated to the selected
-        // `blockType` option via showIf — the SPA only ever shows the card
-        // matching the block type the blocks will be built as.
+        // One always-visible card per block type (Feed Me-style): the card
+        // is labeled with the type's name, carries the type's custom fields
+        // as rows, and reads/writes its own `blocks.<handle>.fields` slice
+        // of the mapping. A type without custom fields still gets its card —
+        // the SPA renders an empty-state hint so the full type list stays
+        // visible.
         foreach ($blockTypes as $blockType) {
             $subFields = [];
             $layout = $blockType['layout'];
@@ -100,33 +117,29 @@ class Matrix extends Field
             }
 
             $schema[] = BuilderSchema::matrixFields(
-                Craft::t('influx', 'Block fields'),
+                $blockType['name'],
                 $subFields,
-                [
-                    'blockType' => $blockType['handle'],
-                    'showIf'    => [['handle' => 'blockType', 'equals' => $blockType['handle']]],
-                ],
+                ['blockType' => $blockType['handle']],
             );
         }
-
-        $schema[] = BuilderSchema::note(
-            Craft::t('influx', 'Sub-field source nodes are absolute item paths (seasons.year, not year): each resolves to one value per block, and blocks are index-zipped from those lists. Only mapped sub-fields are written to the blocks.'),
-        );
 
         return $schema;
     }
 
     /**
-     * A node-less Matrix row is addressed via its sub-mappings, never its own
-     * (absent) node — so it's addressed when ANY active sub-mapping (custom
-     * `fields` or `nativeFields`) is addressed for this item. An inactive-only
-     * or entirely-unaddressed row leaves the field untouched.
+     * A node-less Matrix row is addressed via its per-type sub-mappings, never
+     * its own (absent) node — so it's addressed when ANY active sub-mapping
+     * (custom `fields` or `nativeFields`), in ANY configured block-type tree,
+     * is addressed for this item. A row whose every configured type has only
+     * inactive or entirely-unaddressed children leaves the field untouched.
      */
     public function addressed(FieldContext $context): bool
     {
-        foreach ($this->activeSubMappings($context) as $sub) {
-            if ($sub->addressedBy($context->item)) {
-                return true;
+        foreach ($context->mapping->blockMappings() as $typeMapping) {
+            foreach ($this->activeChildren($typeMapping) as $sub) {
+                if ($sub->addressedBy($context->item)) {
+                    return true;
+                }
             }
         }
 
@@ -134,22 +147,68 @@ class Matrix extends Field
     }
 
     /**
-     * Build the flat serialized Matrix value from the mapping's sub-mappings.
+     * Build the flat serialized Matrix value from the mapping's per-block-type
+     * sub-mapping trees. Block types are walked in the field's declared order;
+     * types with no configured entry are skipped, so output blocks are grouped
+     * by type in field order with a continuous `newN` counter.
      *
-     * @throws MappingValueException when the configured block type is missing
-     * or unknown for the field
+     * @throws MappingValueException when a configured block-type handle is
+     * unknown for the field, or a throwaway block can't be built
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
      */
     public function parse(FieldContext $context): mixed
     {
-        $typeHandle = (string) $context->mapping->option('blockType', '');
+        $configured = $context->mapping->blockMappings();
 
-        if ($typeHandle === '' || ! in_array($typeHandle, $this->blockTypeHandles($context), true)) {
-            throw new MappingValueException(
-                "Matrix mapping '{$context->handle}' has an unknown block type '{$typeHandle}'.",
-            );
+        // Validate every configured type handle against the field's block
+        // types up front — an unknown handle is a config error, not a per-item
+        // "no data" case, so it throws rather than silently emitting nothing.
+        $fieldHandles = $this->blockTypeHandles($context);
+
+        foreach (array_keys($configured) as $typeHandle) {
+            if (! in_array($typeHandle, $fieldHandles, true)) {
+                throw new MappingValueException(
+                    "Matrix mapping '{$context->handle}' has an unknown block type '{$typeHandle}'.",
+                );
+            }
         }
 
+        $blocks = [];
+        $index = 0;
+
+        // Field-declared order — deterministic, grouped by type. Skip types the
+        // mapping doesn't configure.
+        foreach ($fieldHandles as $typeHandle) {
+            if (! isset($configured[$typeHandle])) {
+                continue;
+            }
+
+            $index = $this->appendTypeBlocks($context, $typeHandle, $configured[$typeHandle], $blocks, $index);
+        }
+
+        // addressed() was true, so the feed spoke — but every contributing
+        // child across every configured type resolved to null. The feed is
+        // authoritative: return an explicit clear rather than leaving stale
+        // blocks.
+        return $blocks;
+    }
+
+    /**
+     * Zip one block type's active children into blocks, appending them to
+     * `$blocks` with sequential `new{N}` keys continued from `$index`. Returns
+     * the updated index so the caller keeps the counter continuous across types.
+     *
+     * @param array<string, mixed> $blocks accumulator, mutated in place
+     * @throws MappingValueException when the throwaway block can't be built
+     * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
+     */
+    protected function appendTypeBlocks(
+        FieldContext $context,
+        string $typeHandle,
+        FieldMapping $typeMapping,
+        array &$blocks,
+        int $index,
+    ): int {
         // Collect each active child's per-block value list, keyed by handle,
         // split into the native (title/slug) and custom channels. resolve()
         // reads the child's absolute node against the top-level item; null
@@ -157,7 +216,7 @@ class Matrix extends Field
         $customLists = [];
         $customSubs = [];
 
-        foreach ($this->activeSubMappings($context) as $sub) {
+        foreach ($this->activeSubMappings($typeMapping) as $sub) {
             $resolved = $sub->resolve($context->item);
 
             if ($resolved === null) {
@@ -170,7 +229,7 @@ class Matrix extends Field
 
         $nativeLists = [];
 
-        foreach ($this->activeNativeSubMappings($context) as $sub) {
+        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
             $resolved = $sub->resolve($context->item);
 
             if ($resolved === null) {
@@ -180,13 +239,10 @@ class Matrix extends Field
             $nativeLists[$sub->handle] = $this->valueList($resolved);
         }
 
-        // addressed() was true, so the feed spoke — but every contributing
-        // child resolved to null. The feed is authoritative: return an explicit
-        // clear rather than leaving stale blocks.
         $blockCount = $this->maxLength($customLists, $nativeLists);
 
         if ($blockCount === 0) {
-            return [];
+            return $index;
         }
 
         $blockElement = $this->blockElement($context, $typeHandle);
@@ -198,8 +254,6 @@ class Matrix extends Field
         }
 
         $layout = $blockElement->getFieldLayout();
-
-        $blocks = [];
 
         for ($i = 0; $i < $blockCount; $i++) {
             $row = [
@@ -235,15 +289,22 @@ class Matrix extends Field
                 );
             }
 
-            $blocks['new' . ($i + 1)] = $row;
+            $index++;
+            $blocks['new' . $index] = $row;
         }
 
-        return $blocks;
+        return $index;
     }
 
     /**
      * Full-replace fingerprint comparison, restricted to the mapped child
-     * handles so an unchanged feed never triggers a destructive rebuild.
+     * handles so an unchanged feed never triggers a destructive rebuild. The
+     * mapped handle sets are PER TYPE: each incoming row is fingerprinted with
+     * its own type's mapped handles, and each current block with its type's
+     * mapped handles when that type is configured. A current block of a type
+     * the feed doesn't configure fingerprints on its type alone — so it never
+     * matches an incoming block and the comparison differs, dropping it on the
+     * replace (the feed is authoritative).
      *
      * `$incoming` is the parsed blocks array (or []/null); `$current` is the
      * field's current value — an element query. A non-query current (or one
@@ -257,21 +318,41 @@ class Matrix extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        $incomingBlocks = is_array($incoming) ? array_values($incoming) : [];
+        // Per-type mapped handle sets, resolved once for the whole comparison.
+        $customByType = [];
+        $nativeByType = [];
 
-        $customHandles = array_keys($this->activeCustomHandles($context));
-        $nativeHandles = array_keys($this->activeNativeHandles($context));
+        foreach ($context->mapping->blockMappings() as $typeHandle => $typeMapping) {
+            $customByType[$typeHandle] = array_keys($this->activeCustomHandles($typeMapping));
+            $nativeByType[$typeHandle] = array_keys($this->activeNativeHandles($typeMapping));
+        }
+
+        $incomingBlocks = is_array($incoming) ? array_values($incoming) : [];
 
         $incomingPrint = [];
 
         foreach ($incomingBlocks as $row) {
-            $incomingPrint[] = $this->incomingFingerprint($row, $customHandles, $nativeHandles);
+            $type = (string) ($row['type'] ?? '');
+            $incomingPrint[] = $this->incomingFingerprint(
+                $row,
+                $customByType[$type] ?? [],
+                $nativeByType[$type] ?? [],
+            );
         }
 
         $currentPrint = [];
 
         foreach ($current->all() as $block) {
-            $currentPrint[] = $this->currentFingerprint($block, $customHandles, $nativeHandles);
+            $type = $block->getType()->handle;
+
+            // A block whose type the feed doesn't configure fingerprints on its
+            // type alone — no mapped handles to read, so it can never match an
+            // incoming block, and the comparison differs.
+            $currentPrint[] = $this->currentFingerprint(
+                $block,
+                $customByType[$type] ?? [],
+                $nativeByType[$type] ?? [],
+            );
         }
 
         return json_encode($currentPrint) !== json_encode($incomingPrint);
@@ -375,8 +456,8 @@ class Matrix extends Field
     // -- introspection seams (overridable in tests) ---------------------------
 
     /**
-     * The block-type handles declared on the Matrix field. Extracted so tests
-     * can stub block-type discovery without booting Craft.
+     * The block-type handles declared on the Matrix field, in declared order.
+     * Extracted so tests can stub block-type discovery without booting Craft.
      *
      * @return list<string>
      */
@@ -410,23 +491,38 @@ class Matrix extends Field
     // -- shared helpers -------------------------------------------------------
 
     /**
-     * Active custom sub-mappings for this Matrix row.
+     * Every active child (custom + native) of one block type's sub-mapping
+     * tree — used by {@see addressed()} to test whether the feed speaks to the
+     * type at all.
      *
      * @return list<FieldMapping>
      */
-    protected function activeSubMappings(FieldContext $context): array
+    protected function activeChildren(FieldMapping $typeMapping): array
     {
-        return $this->filterActive($context->mapping->subMappings());
+        return array_merge(
+            $this->activeSubMappings($typeMapping),
+            $this->activeNativeSubMappings($typeMapping),
+        );
     }
 
     /**
-     * Active native sub-mappings (title/slug) for this Matrix row.
+     * Active custom sub-mappings for one block type's tree.
      *
      * @return list<FieldMapping>
      */
-    protected function activeNativeSubMappings(FieldContext $context): array
+    protected function activeSubMappings(FieldMapping $typeMapping): array
     {
-        return $this->filterActive($context->mapping->nativeSubMappings());
+        return $this->filterActive($typeMapping->subMappings());
+    }
+
+    /**
+     * Active native sub-mappings (title/slug) for one block type's tree.
+     *
+     * @return list<FieldMapping>
+     */
+    protected function activeNativeSubMappings(FieldMapping $typeMapping): array
+    {
+        return $this->filterActive($typeMapping->nativeSubMappings());
     }
 
     /**
@@ -447,15 +543,16 @@ class Matrix extends Field
     }
 
     /**
-     * Active custom sub-mapping handles, keyed by handle (order-preserving set).
+     * Active custom sub-mapping handles for one block type, keyed by handle
+     * (order-preserving set).
      *
      * @return array<string, true>
      */
-    protected function activeCustomHandles(FieldContext $context): array
+    protected function activeCustomHandles(FieldMapping $typeMapping): array
     {
         $handles = [];
 
-        foreach ($this->activeSubMappings($context) as $sub) {
+        foreach ($this->activeSubMappings($typeMapping) as $sub) {
             $handles[$sub->handle] = true;
         }
 
@@ -463,15 +560,15 @@ class Matrix extends Field
     }
 
     /**
-     * Active native sub-mapping handles, keyed by handle.
+     * Active native sub-mapping handles for one block type, keyed by handle.
      *
      * @return array<string, true>
      */
-    protected function activeNativeHandles(FieldContext $context): array
+    protected function activeNativeHandles(FieldMapping $typeMapping): array
     {
         $handles = [];
 
-        foreach ($this->activeNativeSubMappings($context) as $sub) {
+        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
             $handles[$sub->handle] = true;
         }
 

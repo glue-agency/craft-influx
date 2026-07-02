@@ -5,13 +5,13 @@
                 :schema="schema"
                 :options="options"
                 :native-fields="nativeFields"
-                :fields="fields"
+                :blocks="blocks"
                 :node-options="nodeOptions"
                 :discovered-nodes="discoveredNodes"
                 :read-only="readOnly"
                 @update:options="onOptions"
                 @update:native-fields="onNativeFields"
-                @update:fields="onFields"
+                @update:blocks="onBlocks"
             />
         </div>
     </div>
@@ -32,7 +32,7 @@ import SchemaForm from '../builder/schema/SchemaForm.vue';
  * line); this component only mirrors it into `data-expanded`, which the
  * row's `:has()` tint selector in links.css keys off.
  *
- * Owns the local `options` / `nativeFields` / `fields` models (seeded from
+ * Owns the local `options` / `nativeFields` / `blocks` models (seeded from
  * the saved mapping) and re-emits them pruned, which is the shape that lands
  * in Project Config via MappingRow.writeMapping().
  */
@@ -48,13 +48,13 @@ export default {
         readOnly: { type: Boolean, default: false },
     },
 
-    emits: ['update:options', 'update:nativeFields', 'update:fields'],
+    emits: ['update:options', 'update:nativeFields', 'update:blocks'],
 
     data() {
         return {
             options: { ...(this.saved?.options || {}) },
             nativeFields: { ...(this.saved?.nativeFields || {}) },
-            fields: { ...(this.saved?.fields || {}) },
+            blocks: { ...(this.saved?.blocks || {}) },
         };
     },
 
@@ -70,10 +70,14 @@ export default {
         /**
          * Source-node candidates for sub-field dropdowns: the latest
          * Fetch-sample nodes straight off the store, merged with saved
-         * sub-field paths so the dropdowns render before a sample exists.
+         * sub-field paths — the flat `nativeFields` rows plus every block
+         * type's nested `blocks.*.fields` rows — so the dropdowns render
+         * before a sample exists.
          */
         nodeOptions() {
-            const saved = [...Object.values(this.nativeFields), ...Object.values(this.fields)]
+            const blockRows = Object.values(this.blocks)
+                .flatMap((entry) => Object.values(entry?.fields || {}));
+            const saved = [...Object.values(this.nativeFields), ...blockRows]
                 .map((row) => row?.node)
                 .filter(Boolean);
             return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
@@ -100,9 +104,9 @@ export default {
             this.$emit('update:nativeFields', next);
         },
 
-        onFields(next) {
-            this.fields = next;
-            this.$emit('update:fields', next);
+        onBlocks(next) {
+            this.blocks = next;
+            this.$emit('update:blocks', next);
         },
     },
 };

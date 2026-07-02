@@ -88,7 +88,7 @@
             :read-only="false"
             @update:options="onOptionsUpdate"
             @update:nativeFields="onNativeFieldsUpdate"
-            @update:fields="onFieldsUpdate"
+            @update:blocks="onBlocksUpdate"
         />
     </div>
 </template>
@@ -163,14 +163,14 @@ export default {
 
         // Saved shape MappingExtras consumes for its initial UI state —
         // we never re-pass a different identity after mount, so the
-        // emits-only flow stays clean. `nativeFields` / `fields` ride along
-        // so saved sub-field mappings (asset alt/title, Matrix block
+        // emits-only flow stays clean. `nativeFields` / `blocks` ride along
+        // so saved sub-field mappings (asset alt/title, Matrix per-block-type
         // children) re-hydrate on edit.
         extrasSaved() {
             return {
                 options: this.mapping.options || {},
                 nativeFields: this.mapping.nativeFields || {},
-                fields: this.mapping.fields || {},
+                blocks: this.mapping.blocks || {},
             };
         },
 
@@ -259,8 +259,8 @@ export default {
             this.writeMapping('nativeFields', nativeFields);
         },
 
-        onFieldsUpdate(fields) {
-            this.writeMapping('fields', fields);
+        onBlocksUpdate(blocks) {
+            this.writeMapping('blocks', blocks);
         },
 
         /**

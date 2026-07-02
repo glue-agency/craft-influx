@@ -403,6 +403,7 @@ class LinkBuilderService extends Component
             '— use default —', 'Nodes',
             'Search nodes…',
             'Run “Fetch sample” to discover nodes.',
+            'This block type has no mappable sub-fields.',
 
             // AuthTab.vue
             'Authentication type',

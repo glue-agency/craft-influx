@@ -14,9 +14,11 @@ use GlueAgency\Influx\models\Link;
  * The conversion is best-effort by design: the two plugins overlap heavily —
  * Influx's mapping options (`match`, `create`, `group`, ...) deliberately
  * mirror Feed Me's — but not perfectly. Whatever can't be
- * carried over (Matrix block mappings, parent entries, non-JSON feed types,
- * ...) is reported as a warning on the {@see FeedMeConversion} so the user
- * can finish the link in the builder instead of silently losing config.
+ * carried over (parent entries, non-JSON feed types, ...) is reported as a
+ * warning on the {@see FeedMeConversion} so the user can finish the link in
+ * the builder instead of silently losing config. Matrix `blocks` mappings DO
+ * carry over — each block type's `fields` recurse through the same conversion
+ * ({@see convertMatrixBlocks()}).
  *
  * Feed Me / Influx vocabulary map:
  *
@@ -306,8 +308,9 @@ class FeedMeConverter
     /**
      * fieldMapping → mappings. Node paths swap Feed Me's `/` separators for
      * Influx's Hash dot-paths; sentinel nodes translate to "skip" /
-     * "useDefault"; sub-field maps recurse. Matrix `blocks` mappings are
-     * dropped — Influx doesn't support block-shaped mapping yet.
+     * "useDefault"; sub-field maps recurse. Matrix `blocks` mappings convert
+     * per block type via {@see convertMatrixBlocks()} (Influx's `blocks`
+     * channel mirrors Feed Me's stored shape).
      *
      * @param array $fieldMapping decoded Feed Me fieldMapping
      * @param bool $topLevel whether these handles are element-level (native
@@ -337,8 +340,14 @@ class FeedMeConverter
                 $handle = self::NATIVE_HANDLE_MAP[$handle] ?? $handle;
             }
 
-            if (isset($info['blocks'])) {
-                $this->warn("Matrix field '{$handle}' was dropped — Influx does not support Matrix block mapping yet.");
+            if (is_array($info['blocks'] ?? null)) {
+                $blocks = $this->convertMatrixBlocks((string) $handle, $info['blocks']);
+
+                // Nothing mapped inside any block type → skip silently, like
+                // any other no-op mapping.
+                if ($blocks !== []) {
+                    $mappings[$handle] = ['blocks' => $blocks];
+                }
 
                 continue;
             }
@@ -351,6 +360,61 @@ class FeedMeConverter
         }
 
         return $mappings;
+    }
+
+    /**
+     * Convert a Feed Me Matrix `blocks` map into Influx's per-block-type
+     * sub-mapping trees. Feed Me nests block-type mappings as
+     * `blocks.<typeHandle>.fields.<childHandle>` — custom fields only; there
+     * are no per-type native-attribute rows to carry. Each type's `fields`
+     * recurse through {@see convertMappings()} (topLevel false), so node
+     * separators, sentinels (no-import / use-default), defaults and warnings
+     * all apply per child. A block type whose fields all resolve to no-ops is
+     * omitted; any per-type key other than `fields` that actually carries
+     * mappings is warned and dropped.
+     *
+     * @param array $blocks decoded Feed Me `blocks` map
+     * @return array<string, array{fields: array}>
+     */
+    protected function convertMatrixBlocks(string $handle, array $blocks): array
+    {
+        $converted = [];
+
+        foreach ($blocks as $typeHandle => $typeInfo) {
+            if (! is_string($typeHandle) || ! is_array($typeInfo)) {
+                continue;
+            }
+
+            $fields = is_array($typeInfo['fields'] ?? null)
+                ? $this->convertMappings($typeInfo['fields'], false)
+                : [];
+
+            $this->warnUnsupportedBlockKeys($handle, $typeHandle, $typeInfo);
+
+            if ($fields !== []) {
+                $converted[$typeHandle] = ['fields' => $fields];
+            }
+        }
+
+        return $converted;
+    }
+
+    /**
+     * Warn about per-block-type keys Influx can't carry. Only `fields` is
+     * supported; a `fields`-only entry is silent. An `attributes` key (or any
+     * other) that holds mappings is dropped with a warning so the user knows
+     * to finish it in the builder.
+     *
+     * @param array $typeInfo one block type's decoded Feed Me config
+     */
+    protected function warnUnsupportedBlockKeys(string $handle, string $typeHandle, array $typeInfo): void
+    {
+        foreach ($typeInfo as $key => $value) {
+            if ($key === 'fields' || ! is_array($value) || $value === []) {
+                continue;
+            }
+            $this->warn("Matrix field '{$handle}' block type '{$typeHandle}' had unsupported '{$key}' mappings, which were dropped; re-map them on the block fields in the builder.");
+        }
     }
 
     /**

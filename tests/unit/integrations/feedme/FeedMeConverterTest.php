@@ -329,7 +329,7 @@ class FeedMeConverterTest extends Unit
         $this->assertWarningMatching('/counterpart/', $conversion);
     }
 
-    public function testMatrixBlocksAreDroppedWithWarning(): void
+    public function testMatrixBlocksConvertToBlocksChannel(): void
     {
         $conversion = $this->convert([
             'fieldMapping' => [
@@ -339,8 +339,46 @@ class FeedMeConverterTest extends Unit
             ],
         ]);
 
+        $this->assertSame(
+            ['blocks' => ['text' => ['fields' => ['body' => ['node' => 'body']]]]],
+            $conversion->link->mappings['contentBlocks'],
+        );
+        $this->assertNoWarningMatching('/Matrix/', $conversion);
+    }
+
+    public function testMatrixBlockChildNodePathsSwapSlashesForDots(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'quote' => ['fields' => ['text' => ['node' => 'quotes/text', 'default' => '']]],
+                    ],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(
+            ['blocks' => ['quote' => ['fields' => ['text' => ['node' => 'quotes.text']]]]],
+            $link->mappings['contentBlocks'],
+        );
+    }
+
+    public function testMatrixBlockWithOnlyNoImportChildIsOmitted(): void
+    {
+        // A block type whose only child is "don't import" carries nothing, so
+        // that type — and, since it's the only one, the whole Matrix mapping —
+        // is omitted, like any other no-op mapping.
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => ['text' => ['fields' => ['body' => ['node' => 'noimport', 'default' => '']]]],
+                ],
+            ],
+        ]);
+
         $this->assertArrayNotHasKey('contentBlocks', $conversion->link->mappings);
-        $this->assertWarningMatching('/Matrix/', $conversion);
+        $this->assertNoWarningMatching('/Matrix/', $conversion);
     }
 
     public function testRelatedElementSubFieldsRecurse(): void

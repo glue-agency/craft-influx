@@ -21,7 +21,7 @@ namespace GlueAgency\Influx\helpers;
  *   handle:       key inside the form's value object — a mapping's
  *                 `options`, the link's `auth` slice, ... (TYPE_ELEMENT_SUB_FIELDS
  *                 and TYPE_MATRIX_FIELDS are the exceptions: they write the
- *                 mapping's recursive `nativeFields` / `fields` channels)
+ *                 mapping's recursive `nativeFields` / `blocks` channels)
  *   label:        translated row label
  *   instructions: translated hint shown under the control (optional; may
  *                 contain markup — rendered as HTML)
@@ -38,6 +38,8 @@ namespace GlueAgency\Influx\helpers;
  *                 fields the node's rows cover
  *   showIf:       list of {handle, equals?} conditions against the current
  *                 form values; omitted `equals` means truthy. All must match.
+ *                 (Ignored on matrixFields nodes — every block type's card
+ *                 renders at once.)
  *
  * Loosely modeled on Formie's SchemaHelper, deliberately tiny: ~7 node
  * types instead of 40, one-key conditions instead of an expression language.
@@ -139,21 +141,24 @@ class BuilderSchema
 
     /**
      * Source-node + default rows for one Matrix block type's custom fields.
-     * Writes the mapping's recursive `fields` channel, not `options` — and
-     * unlike {@see elementSubFields()}' relative sub-paths, every row's node
-     * is an ABSOLUTE item path (see {@see \GlueAgency\Influx\fields\Matrix}).
+     * Writes the block type's slice of the mapping's recursive `blocks`
+     * channel (`blocks.<blockType>.fields`), not `options` — and unlike
+     * {@see elementSubFields()}' relative sub-paths, every row's node is an
+     * ABSOLUTE item path (see {@see \GlueAgency\Influx\fields\Matrix}).
      *
-     * Declared once per block type: `config.blockType` carries the handle so
-     * the SPA can match a node against the mapping's selected `blockType`
-     * option, and a `showIf` on the same option keeps only the selected
-     * block type's card visible.
+     * Declared once per block type, Feed Me-style: every type's card renders
+     * at once (never showIf-gated), `config.blockType` names the slice a card
+     * reads and writes, and the label carries the block type's name so the
+     * cards read like Feed Me's block groups. An empty `$subFields` list is
+     * valid — the SPA renders the card with an empty-state hint so a
+     * fieldless block type still reads as "nothing mappable here".
      *
      * @param list<array> $subFields One node per sub-field row.
-     * @param array{blockType?: string, instructions?: string, showIf?: array} $config
+     * @param array{blockType?: string, instructions?: string} $config
      */
     public static function matrixFields(string $label, array $subFields, array $config = []): array
     {
-        return self::node(self::TYPE_MATRIX_FIELDS, 'fields', $label, ['subFields' => $subFields] + $config);
+        return self::node(self::TYPE_MATRIX_FIELDS, 'blocks', $label, ['subFields' => $subFields] + $config);
     }
 
     /**
