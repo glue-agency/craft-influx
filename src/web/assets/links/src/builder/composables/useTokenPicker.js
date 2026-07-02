@@ -1,9 +1,11 @@
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
+import { useListHighlight } from './useListHighlight.js';
 
 /**
  * The picker state machine for the tokenized input — everything about
- * *which* items to show and *which one* is highlighted, with no DOM
- * knowledge. Two operating modes:
+ * *which* items to show and *which one* is highlighted (the highlight
+ * mechanics delegate to {@see useListHighlight}), with no DOM knowledge.
+ * Two operating modes:
  *
  *   - Triggered: the user types `$`, `@`, or `{` inside a text segment.
  *     The text from the trigger char to the cursor is a live query —
@@ -30,8 +32,6 @@ export function useTokenPicker({ groups, segmentValue }) {
     // the query is segment.value.slice(startPos, cursorPos).
     const triggerState = ref(null);
     const cursorPos = ref(0);
-    // Index into the flat filtered list, set by hover or arrow keys.
-    const highlightedIndex = ref(0);
 
     const pickerVisible = computed(() => manualOpen.value || triggerState.value !== null);
 
@@ -75,15 +75,15 @@ export function useTokenPicker({ groups, segmentValue }) {
 
     const flatItems = computed(() => filteredGroups.value.flatMap(g => g.data));
 
-    const highlightedItem = computed(() => flatItems.value[highlightedIndex.value] || null);
+    // Highlight index + wrap-around movement + the shared menu-key
+    // dispatcher, clamped to the filtered list by the composable's own
+    // shrink watcher.
+    const {
+        highlightedIndex, moveHighlight, reset: resetHighlight,
+        onListKeydown, scrollHighlightedIntoView,
+    } = useListHighlight({ count: () => flatItems.value.length });
 
-    // Reset the highlight when the filtered list changes shape so the
-    // keyboard cursor doesn't land off the end.
-    watch(filteredGroups, () => {
-        if (highlightedIndex.value >= flatItems.value.length) {
-            highlightedIndex.value = 0;
-        }
-    });
+    const highlightedItem = computed(() => flatItems.value[highlightedIndex.value] || null);
 
     /** Cursor bookkeeping without trigger side effects (text input flow). */
     function setCursor(pos) {
@@ -122,7 +122,7 @@ export function useTokenPicker({ groups, segmentValue }) {
         }
 
         triggerState.value = { segId, startPos: cursor - 1 };
-        highlightedIndex.value = 0;
+        resetHighlight();
     }
 
     /**
@@ -152,12 +152,12 @@ export function useTokenPicker({ groups, segmentValue }) {
 
     function clearTrigger() {
         triggerState.value = null;
-        highlightedIndex.value = 0;
+        resetHighlight();
     }
 
     function openManual() {
         searchQuery.value = '';
-        highlightedIndex.value = 0;
+        resetHighlight();
         manualOpen.value = true;
     }
 
@@ -170,17 +170,11 @@ export function useTokenPicker({ groups, segmentValue }) {
         manualOpen.value ? closeManual() : openManual();
     }
 
-    /** Wraps around the ends to ease quick scrubbing in long lists. */
-    function moveHighlight(delta) {
-        const n = flatItems.value.length;
-        if (n === 0) return;
-        highlightedIndex.value = (highlightedIndex.value + delta + n) % n;
-    }
-
     return {
         manualOpen, searchQuery, triggerState, cursorPos, highlightedIndex,
         pickerVisible, effectiveQuery, filteredGroups, flatItems, highlightedItem,
         setCursor, trackCursor, maybeOpenTrigger, maybeCloseTrigger, clearTrigger,
         openManual, closeManual, toggleManual, moveHighlight,
+        onListKeydown, scrollHighlightedIntoView,
     };
 }

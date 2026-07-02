@@ -1,5 +1,5 @@
 <template>
-    <div class="influx-tokenized-picker-menu" role="menu">
+    <div class="influx-tokenized-picker-menu" role="menu" data-influx-scroll>
         <!-- Search input only shows for manually-opened pickers; when
              triggered by a keystroke in the URL itself, that input IS the
              search and a second one would be confusing. -->
@@ -33,6 +33,7 @@
                         class="influx-tokenized-picker-item"
                         :class="{ highlighted: highlightedIndex === item._flatIdx }"
                         role="menuitem"
+                        :data-flat-idx="item._flatIdx"
                         @mousemove="$emit('highlight', item._flatIdx)"
                         @mousedown.prevent
                         @click="$emit('select', item)"

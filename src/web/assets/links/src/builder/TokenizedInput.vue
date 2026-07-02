@@ -81,7 +81,8 @@
  * markup in TokenChip / TokenPickerMenu.
  *
  * Keyboard nav (active whenever the picker is visible):
- *   - ArrowDown / ArrowUp: move the highlight across the flat filtered list.
+ *   - ArrowDown / ArrowUp: move the highlight across the flat filtered list
+ *                          (the menu scrolls to follow it).
  *   - Enter:               commit the highlighted item.
  *   - Escape:              close the picker (clears trigger state too).
  *
@@ -225,28 +226,12 @@ function onTextInput(seg, e) {
 }
 
 function onTextKeydown(seg, e) {
-    // Picker-driven keys while a trigger is active in this segment.
+    // Picker-driven keys while a trigger is active in this segment. Escape
+    // only cancels the trigger here — the manual picker has its own search
+    // input, so it never routes through a text segment.
     if (picker.pickerVisible.value && picker.triggerState.value?.segId === seg.id) {
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            picker.moveHighlight(1);
-            return;
-        }
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            picker.moveHighlight(-1);
-            return;
-        }
-        if (e.key === 'Enter') {
-            if (picker.highlightedItem.value) {
-                e.preventDefault();
-                commitSelection(picker.highlightedItem.value);
-            }
-            return;
-        }
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            picker.clearTrigger();
+        if (picker.onListKeydown(e, { commit: commitHighlighted, close: picker.clearTrigger })) {
+            nextTick(() => picker.scrollHighlightedIntoView(pickerWrap.value));
             return;
         }
     }
@@ -268,20 +253,17 @@ function onTextKeydown(seg, e) {
 }
 
 function onSearchKeydown(e) {
-    if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        picker.moveHighlight(1);
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        picker.moveHighlight(-1);
-    } else if (e.key === 'Enter') {
-        if (picker.highlightedItem.value) {
-            e.preventDefault();
-            commitSelection(picker.highlightedItem.value);
-        }
-    } else if (e.key === 'Escape') {
-        e.preventDefault();
-        picker.closeManual();
+    // Manual mode: Escape closes the whole manual picker (vs. the trigger
+    // flow above, which only clears the trigger).
+    if (picker.onListKeydown(e, { commit: commitHighlighted, close: picker.closeManual })) {
+        nextTick(() => picker.scrollHighlightedIntoView(pickerWrap.value));
+    }
+}
+
+/** Enter commits whatever the highlight sits on — nothing when empty. */
+function commitHighlighted() {
+    if (picker.highlightedItem.value) {
+        commitSelection(picker.highlightedItem.value);
     }
 }
 
@@ -322,6 +304,9 @@ function commitSelection(item) {
 
 // ---- outside clicks ----
 
+// Deliberately NOT useDropdown: that composable dismisses against a single
+// root element, while this picker has two zones — manual mode closes on
+// clicks outside the picker wrap, trigger mode outside the whole component.
 function onDocumentMousedown(e) {
     if (!picker.pickerVisible.value) return;
     const insideComponent = rootEl.value?.contains(e.target);
