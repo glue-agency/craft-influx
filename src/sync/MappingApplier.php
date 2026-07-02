@@ -99,6 +99,7 @@ class MappingApplier
                     link: $link,
                     element: $element,
                     dryRun: $syncContext->dryRun,
+                    lookups: $syncContext->lookups,
                 );
                 $result = $this->applyCustomField($context);
             }
@@ -197,7 +198,7 @@ class MappingApplier
         }
 
         try {
-            $changed = $syncContext->target->applyNativeAttribute($element, $handle, $item, $mapping);
+            $changed = $syncContext->target->applyNativeAttribute($syncContext, $element, $handle, $item, $mapping);
         } catch (Throwable $e) {
             return new MappingResult(
                 handle: $handle,

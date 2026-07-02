@@ -37,6 +37,15 @@ class SyncContext
      */
     public bool $dryRun = false;
 
+    /**
+     * Per-run memo of element lookups (relations, authors). Isolation is
+     * automatic: every runner builds a fresh context, so one run never reads
+     * another's cache. A queued, page-per-step run builds a context per step,
+     * so its cache spans a single page rather than the whole run — fewer hits,
+     * still correct. Constructed here, never injected.
+     */
+    public ElementLookupCache $lookups;
+
     public function __construct(
         Link $link,
         ElementTargetInterface $target,
@@ -51,6 +60,7 @@ class SyncContext
         $this->siteHandle = $siteHandle;
         $this->trigger = $trigger;
         $this->dryRun = $dryRun;
+        $this->lookups = new ElementLookupCache();
     }
 
     /**

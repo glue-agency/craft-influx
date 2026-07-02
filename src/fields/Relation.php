@@ -196,10 +196,14 @@ abstract class Relation extends RelationalField
         $ids = [];
 
         foreach ($this->referenceValues($raw) as $value) {
-            $element = $this->findOne($context, $match, $value);
+            $element = $this->lookup($context, $match, $value);
 
             if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
+
+                // Flip the cached miss to a hit: without this, every later item
+                // carrying the same value would re-create the element (dupes).
+                $context->lookups?->put($this->elementType(), $match, $this->lookupScope($context), $value, $element);
             }
 
             if ($element) {
@@ -209,6 +213,40 @@ abstract class Relation extends RelationalField
         }
 
         return $ids ?: null;
+    }
+
+    /**
+     * findOne(), memoized on the run's element-lookup cache. Feeds repeat the
+     * same relation values across many items; the cache collapses those to a
+     * single query (and caches misses too). Falls straight through to an
+     * uncached {@see findOne()} when no cache is present (contexts built
+     * directly, e.g. in tests).
+     */
+    protected function lookup(FieldContext $context, string $match, mixed $value): ?ElementInterface
+    {
+        if ($context->lookups === null) {
+            return $this->findOne($context, $match, $value);
+        }
+
+        return $context->lookups->remember(
+            $this->elementType(),
+            $match,
+            $this->lookupScope($context),
+            $value,
+            fn(): ?ElementInterface => $this->findOne($context, $match, $value),
+        );
+    }
+
+    /**
+     * Cache scope for this field's lookups: the Craft field's id. Scope matters
+     * because {@see scopeBySources()} narrows the lookup by the field's own
+     * sources, so the same value can resolve to different elements per field —
+     * they must not share a cache slot. Empty string when there's no Craft
+     * field (native/test contexts), which still keys consistently.
+     */
+    protected function lookupScope(FieldContext $context): string
+    {
+        return (string) ($context->craftField->id ?? '');
     }
 
     protected function shouldCreate(FieldContext $context): bool

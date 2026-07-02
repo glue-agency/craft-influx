@@ -9,6 +9,7 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\SyncContext;
 use Stringable;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
@@ -40,7 +41,9 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
      * methods first to translate values that aren't directly assignable (e.g.
      * coercing Entry's `enabled` to a bool) — see the convention documented
-     * on {@see ElementTargetInterface::applyNativeAttribute()}.
+     * on {@see ElementTargetInterface::applyNativeAttribute()}. The run's
+     * {@see SyncContext} is passed to those parsers (first argument) so they
+     * can reach the run's element-lookup cache.
      *
      * The caller ({@see \GlueAgency\Influx\sync\MappingApplier}) only invokes
      * this for an actively-mapped handle, so an empty resolved value here means
@@ -50,6 +53,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * overrides own their own attribute-aware comparison).
      */
     public function applyNativeAttribute(
+        SyncContext $context,
         ElementInterface $element,
         string $handle,
         RemoteItem $item,
@@ -58,7 +62,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         $method = 'parse' . ucfirst($handle);
 
         if (method_exists($this, $method)) {
-            return (bool) $this->{$method}($element, $item, $mapping);
+            return (bool) $this->{$method}($context, $element, $item, $mapping);
         }
 
         $value = $mapping->resolve($item);

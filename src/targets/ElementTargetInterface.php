@@ -6,6 +6,7 @@ use craft\base\ElementInterface;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\SyncContext;
 
 /**
  * Adapter that lets the sync engine talk to any element type. One
@@ -78,13 +79,16 @@ interface ElementTargetInterface
      * Convention: {@see AbstractElementTarget} dispatches to a
      * `parse{Handle}()` method on the target when one exists — declare
      * `parseEnabled()`, `parsePostDate()`, ... (signature:
-     * `(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool`)
+     * `(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool`)
      * for attributes that need translation, and let the generic assignment
-     * handle the rest. Every handle a target supports this way must also be
-     * reported by {@see getMappableFields()} — link saving prunes mapping
-     * handles that aren't in that list.
+     * handle the rest. The run's {@see SyncContext} is threaded through so a
+     * parser can reach the run's element-lookup cache (e.g. resolving Entry's
+     * `author` through {@see SyncContext::$lookups}). Every handle a target
+     * supports this way must also be reported by {@see getMappableFields()} —
+     * link saving prunes mapping handles that aren't in that list.
      */
     public function applyNativeAttribute(
+        SyncContext $context,
         ElementInterface $element,
         string $handle,
         RemoteItem $item,

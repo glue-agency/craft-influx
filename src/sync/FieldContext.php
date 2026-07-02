@@ -52,6 +52,14 @@ class FieldContext
     /** Current sub-mapping recursion depth (0 = top-level mapping). */
     public int $depth = 0;
 
+    /**
+     * The run's element-lookup cache, carried down from the {@see SyncContext}
+     * so relation strategies can memo their lookups. Null when a context is
+     * built directly (e.g. in tests) without a run behind it — strategies fall
+     * back to querying uncached in that case.
+     */
+    public ?ElementLookupCache $lookups = null;
+
     public function __construct(
         ?CraftFieldInterface $craftField,
         string $handle,
@@ -61,6 +69,7 @@ class FieldContext
         ElementInterface $element,
         bool $dryRun = false,
         int $depth = 0,
+        ?ElementLookupCache $lookups = null,
     ) {
         $this->craftField = $craftField;
         $this->handle = $handle;
@@ -70,6 +79,7 @@ class FieldContext
         $this->element = $element;
         $this->dryRun = $dryRun;
         $this->depth = $depth;
+        $this->lookups = $lookups;
     }
 
     /**
@@ -100,6 +110,7 @@ class FieldContext
             element: $subElement,
             dryRun: $this->dryRun,
             depth: $this->depth + 1,
+            lookups: $this->lookups,
         );
     }
 }

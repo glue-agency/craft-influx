@@ -22,6 +22,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\support\EntryTypeResolver;
 
 /**
@@ -215,7 +216,7 @@ class EntryTarget extends AbstractElementTarget
      * truncate safely instead of letting the save fail. Mirrors feed-me's
      * title hygiene.
      */
-    protected function parseTitle(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseTitle(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
@@ -234,7 +235,7 @@ class EntryTarget extends AbstractElementTarget
      * way Craft does when auto-generating (respects limitAutoSlugsToAscii
      * and allowUppercaseInSlug).
      */
-    protected function parseSlug(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseSlug(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
@@ -252,7 +253,7 @@ class EntryTarget extends AbstractElementTarget
      * then assign as `authorIds`. Falls back to the mapping's `default` (a
      * user-id picked via elementSelect) when no node value is present.
      */
-    protected function parseAuthor(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseAuthor(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         /** @var Entry $element */
         // Compare current author id(s) against the INTENDED id — computed here,
@@ -260,7 +261,7 @@ class EntryTarget extends AbstractElementTarget
         // author relation back on an unsaved element is unreliable). An empty
         // value, or one that matches no user, clears the author.
         $before = Compat::entryAuthorIds($element);
-        $newId = $this->resolveAuthorId($item, $mapping);
+        $newId = $this->resolveAuthorId($context, $item, $mapping);
 
         Compat::setEntryAuthor($element, $newId);
 
@@ -276,27 +277,27 @@ class EntryTarget extends AbstractElementTarget
      * picked default id through, say, the `email` strategy finds nobody and
      * wrongly clears the author.)
      */
-    protected function resolveAuthorId(RemoteItem $item, FieldMapping $mapping): ?int
+    protected function resolveAuthorId(SyncContext $context, RemoteItem $item, FieldMapping $mapping): ?int
     {
         $nodeValue = $mapping->rawValue($item);
 
         if ($nodeValue !== null && $nodeValue !== '') {
-            return $this->findUser((string) $mapping->option('match', 'id'), $nodeValue)?->id;
+            return $this->findUser($context, (string) $mapping->option('match', 'id'), $nodeValue)?->id;
         }
 
         if ($mapping->useDefault && $mapping->default !== null && $mapping->default !== '') {
-            return $this->findUser('id', $mapping->default)?->id;
+            return $this->findUser($context, 'id', $mapping->default)?->id;
         }
 
         return null;
     }
 
-    protected function parsePostDate(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parsePostDate(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         return $this->assignDate($element, 'postDate', $item, $mapping);
     }
 
-    protected function parseExpiryDate(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseExpiryDate(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         return $this->assignDate($element, 'expiryDate', $item, $mapping);
     }
@@ -307,7 +308,7 @@ class EntryTarget extends AbstractElementTarget
      * directly — that's why the native mappable is `enabled`, not `status`.)
      * Truthy spellings follow the Lightswitch field strategy.
      */
-    protected function parseEnabled(ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
@@ -374,17 +375,28 @@ class EntryTarget extends AbstractElementTarget
         return DateTimeHelper::toDateTime($value) ?: null;
     }
 
-    protected function findUser(string $match, mixed $value): ?User
+    /**
+     * Resolve a user by the given match strategy, memoized on the run's lookup
+     * cache under the `author` scope. Feeds routinely repeat the same author
+     * across many items, so caching collapses those to a single query. Users
+     * are never created by the sync, so an author miss can't go stale within a
+     * run — the cached null is always correct for that run.
+     */
+    protected function findUser(SyncContext $context, string $match, mixed $value): ?User
     {
-        $query = User::find()->status(null);
-        match ($match) {
-            'id'       => $query->id((int) $value),
-            'username' => $query->username((string) $value),
-            'email'    => $query->email((string) $value),
-            default    => $query->$match($value),
-        };
+        $element = $context->lookups->remember(User::class, $match, 'author', (string) $value, function() use ($match, $value) {
+            $query = User::find()->status(null);
+            match ($match) {
+                'id'       => $query->id((int) $value),
+                'username' => $query->username((string) $value),
+                'email'    => $query->email((string) $value),
+                default    => $query->$match($value),
+            };
 
-        return $query->one();
+            return $query->one();
+        });
+
+        return $element instanceof User ? $element : null;
     }
 
     // -- mappable-field metadata ----------------------------------------------

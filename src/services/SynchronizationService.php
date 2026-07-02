@@ -180,12 +180,19 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        foreach ($page->items as $item) {
-            try {
-                $this->processItem($context, $item, $log);
-            } catch (Throwable $e) {
-                $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
+        // Flush at the page boundary — and in a finally so a throw escaping the
+        // loop still persists rows for items already saved this step. A retried
+        // queue step then re-processes only the un-flushed tail.
+        try {
+            foreach ($page->items as $item) {
+                try {
+                    $this->processItem($context, $item, $log);
+                } catch (Throwable $e) {
+                    $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
+                }
             }
+        } finally {
+            $plugin->logs->flush($log);
         }
 
         if ($onProgress !== null) {
@@ -374,6 +381,10 @@ class SynchronizationService extends Component
                     $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
                 }
             }
+
+            // Flush per page so the DB rows/counters match what progress
+            // reports (progress reads the live in-memory itemsSeen).
+            $plugin->logs->flush($log);
 
             // Report progress once per page (not per item) to keep the queue
             // writes bounded; itemsSeen is the cumulative count across sites.
