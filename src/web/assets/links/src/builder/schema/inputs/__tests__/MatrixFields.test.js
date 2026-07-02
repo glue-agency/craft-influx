@@ -19,8 +19,8 @@ const node = {
     label: 'Quote',
     blockType: 'quote',
     subFields: [
-        { type: 'text', handle: 'quote', label: 'Quote (quote)' },
-        { type: 'text', handle: 'cite', label: 'Cite (cite)' },
+        { type: 'text', handle: 'quote', label: 'Quote' },
+        { type: 'text', handle: 'cite', label: 'Cite' },
     ],
 };
 
@@ -41,6 +41,14 @@ const mountFields = (props = {}) => mount(MatrixFields, {
 const nodeSelect = (wrapper, idx) => wrapper.findAllComponents(SearchableSelect).at(idx);
 
 describe('MatrixFields', () => {
+    it('renders each row as name label + code handle, like other sub-field rows', () => {
+        const wrapper = mountFields();
+        const firstRow = wrapper.find('.sub-field-row label');
+
+        expect(firstRow.text()).toContain('Quote');
+        expect(firstRow.find('code.handle').text()).toBe('quote');
+    });
+
     it('writes a picked node under blocks[type].fields[handle].node', () => {
         const wrapper = mountFields();
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'quotes.text');

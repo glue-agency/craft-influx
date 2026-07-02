@@ -39,8 +39,13 @@
             <code class="handle light">{{ field.handle }}</code>
         </div>
 
+        <!-- subfieldsOnly fields (fieldMeta flag, e.g. Matrix) carry no source
+             node or default of their own — their value derives entirely from
+             the extras below. The cells stay so the row keeps the shared grid
+             columns; they just render empty. -->
         <div>
             <searchable-select
+                v-if="!subfieldsOnly"
                 :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
                 :options="sourceNodeOptions"
                 searchable
@@ -56,7 +61,8 @@
                  - `select` → searchable single-select
                  - `element` → not yet supported in the SPA (followup)
                  - anything else → plain text -->
-            <template v-if="field.defaultType === 'select'">
+            <template v-if="subfieldsOnly" />
+            <template v-else-if="field.defaultType === 'select'">
                 <searchable-select
                     :model-value="mapping.default ?? ''"
                     :options="defaultSelectOptions"
@@ -142,6 +148,12 @@ export default {
         // schema — no separate flag to keep in sync.
         hasExtras() {
             return (this.field.fieldMeta?.schema || []).length > 0;
+        },
+
+        // The strategy declared its value derives entirely from sub-mappings
+        // (Matrix): the row shows no source-node select and no default editor.
+        subfieldsOnly() {
+            return !!this.field.fieldMeta?.subfieldsOnly;
         },
 
         // Toggle copy ships translated through fieldMeta.labels (the shared

@@ -60,7 +60,16 @@ export default {
 
         mappedCount() {
             return this.group.fields.reduce((count, f) => {
-                return count + (this.link.mappings?.[f.handle]?.node ? 1 : 0);
+                const mapping = this.link.mappings?.[f.handle];
+
+                // subfieldsOnly fields (Matrix) never carry a node of their
+                // own — they count as mapped when any sub-mapping content
+                // was saved on the row.
+                if (f.fieldMeta?.subfieldsOnly) {
+                    return count + (Object.keys(mapping || {}).length ? 1 : 0);
+                }
+
+                return count + (mapping?.node ? 1 : 0);
             }, 0);
         },
 

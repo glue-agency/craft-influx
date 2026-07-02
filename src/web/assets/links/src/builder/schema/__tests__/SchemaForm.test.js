@@ -88,16 +88,15 @@ describe('SchemaForm', () => {
     });
 });
 
-// The Matrix strategy's schema shape: a leading note plus one matrixFields
-// node PER block type (labeled with the type's name, Feed Me-style) —
-// every card renders at once and reads/writes its own slice of the
-// mapping's `blocks` channel. There is no gating select.
+// The Matrix strategy's schema shape: one matrixFields node PER block type
+// (labeled with the type's name, Feed Me-style) — every card renders at
+// once and reads/writes its own slice of the mapping's `blocks` channel.
+// There is no gating select and no leading note.
 const matrixSchema = [
-    { type: 'note', handle: '', label: '', text: 'Sub-field source nodes are absolute item paths.' },
     { type: 'matrixFields', handle: 'blocks', label: 'Quote', blockType: 'quote',
-        subFields: [{ type: 'text', handle: 'quote', label: 'Quote (quote)' }] },
+        subFields: [{ type: 'text', handle: 'quote', label: 'Quote' }] },
     { type: 'matrixFields', handle: 'blocks', label: 'Stat', blockType: 'stat',
-        subFields: [{ type: 'text', handle: 'number', label: 'Number (number)' }] },
+        subFields: [{ type: 'text', handle: 'number', label: 'Number' }] },
 ];
 
 const mountMatrixForm = (props = {}) => mount(SchemaForm, {
@@ -119,8 +118,8 @@ describe('SchemaForm matrixFields', () => {
         expect(cards).toHaveLength(2);
         expect(cards[0].props('node').blockType).toBe('quote');
         expect(cards[1].props('node').blockType).toBe('stat');
-        expect(cards[0].text()).toContain('Quote (quote)');
-        expect(cards[1].text()).toContain('Number (number)');
+        expect(cards[0].text()).toContain('Quote');
+        expect(cards[1].text()).toContain('Number');
     });
 
     it('never showIf-gates matrixFields nodes', () => {

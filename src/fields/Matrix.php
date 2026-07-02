@@ -93,18 +93,15 @@ class Matrix extends Field
             ];
         }
 
-        $schema = [
-            BuilderSchema::note(
-                Craft::t('influx', 'Sub-field source nodes are absolute item paths (seasons.year, not year): each resolves to one value per block. Only mapped sub-fields are written, and blocks are created per type from its own mapped nodes.'),
-            ),
-        ];
+        $schema = [];
 
         // One always-visible card per block type (Feed Me-style): the card
         // is labeled with the type's name, carries the type's custom fields
         // as rows, and reads/writes its own `blocks.<handle>.fields` slice
         // of the mapping. A type without custom fields still gets its card —
         // the SPA renders an empty-state hint so the full type list stays
-        // visible.
+        // visible. Row labels carry the field NAME only; the SPA renders the
+        // handle separately, styled like every other sub-field row.
         foreach ($blockTypes as $blockType) {
             $subFields = [];
             $layout = $blockType['layout'];
@@ -112,7 +109,7 @@ class Matrix extends Field
             foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
                 $subFields[] = BuilderSchema::text(
                     $customField->handle,
-                    $customField->name . ' (' . $customField->handle . ')',
+                    $customField->name,
                 );
             }
 
@@ -124,6 +121,19 @@ class Matrix extends Field
         }
 
         return $schema;
+    }
+
+    /**
+     * The Matrix row's value derives entirely from its sub-mappings — there is
+     * no source node or default on the row itself. `subfieldsOnly` tells the
+     * SPA's MappingRow to render neither control; any other strategy whose
+     * value comes solely from its extras can declare the same flag.
+     */
+    public function fieldMeta(CraftFieldInterface $field): array
+    {
+        return [
+            'subfieldsOnly' => true,
+        ];
     }
 
     /**

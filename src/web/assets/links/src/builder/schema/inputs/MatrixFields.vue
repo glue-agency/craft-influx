@@ -45,8 +45,6 @@
             :key="sub.handle"
             :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
         >
-            <!-- No separate handle line here: the PHP-declared label already
-                 carries it — "Field name (handle)". -->
             <label>
                 {{ sub.label }}
                 <span v-if="isMissing(sub.handle)"
@@ -54,6 +52,7 @@
                       :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
                     {{ $t('missing mapping') }}
                 </span>
+                <code class="handle light">{{ sub.handle }}</code>
             </label>
             <searchable-select
                 :model-value="rowFor(sub.handle).node"
