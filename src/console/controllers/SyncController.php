@@ -71,9 +71,12 @@ class SyncController extends Controller
             $this->stdout("→ Syncing '{$link->handle}'\n");
 
             try {
-                // The sync runs async on the queue, so the log's counters are
-                // still zero here — nothing meaningful to report beyond the
-                // dispatch itself.
+                // syncLink() runs synchronously here and returns one log per
+                // site — the console reports only the dispatch, so the return is
+                // ignored; the per-site logs are viewable in the CP. A single
+                // site failing its own feed fetch is isolated to that site's log
+                // and does NOT abort the run or change the exit code (D3); only a
+                // non-fetch throw propagates here and returns SOFTWARE.
                 $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE, $this->site);
                 $this->success('done.');
             } catch (Throwable $e) {

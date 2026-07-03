@@ -14,24 +14,21 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 use RuntimeException;
 
 /**
- * Routing spec for the two missing-elements sweep entry points — the fix for a
- * real multi-site incident where a per-site global-delete sweep, run once per
- * site against DISJOINT per-site feeds, deleted 605 of 639 entries (site A's
- * sweep deleted site B's feed elements as "missing", site B's re-created them,
- * then site B's sweep deleted site A's). The corrected semantics:
+ * Routing spec for the single missing-elements sweep
+ * ({@see SynchronizationService::sweepMissing()}). One pass resolves one policy
+ * and applies it in that same pass — there is no run-end second sweep and the
+ * flags no longer compose. The corrected semantics guarding the original
+ * multi-site incident (a global delete run per site against DISJOINT feeds
+ * deleting one site's elements as "missing" from another's feed):
  *
- *   - DISABLED / DELETED_FOR_SITE — sweep PER SITE (in {@see SynchronizationService::sweepMissing()}),
- *     scoped to the just-finished site.
- *   - DELETED (global delete) — sweep ONCE PER RUN (in
- *     {@see SynchronizationService::sweepMissingForRun()}), after the last
- *     site, over the union of every site's seen-set — never per site.
- *   - The two sweeps COMPOSE: a link flagged for both disable and delete fires
- *     the per-site disable AND the run-end delete — the real multi-site case
- *     where per-site disable corrects cross-site leaks and run-end delete
- *     removes elements missing from every feed.
- *   - A site-scoped run on a multi-endpoint link refuses the global-delete
- *     sweep (it can't see the other sites' feeds) and records a SKIPPED row.
- *   - Any site's unattributed errors block the run-end global-delete sweep.
+ *   - DISABLED / DELETED_FOR_SITE — sweep scoped to the just-finished site.
+ *   - DELETED (global delete) — only ever resolves on a no-site-endpoints link
+ *     (validation forbids DELETE + site endpoints), so its single pass is the
+ *     unscoped `[null]` scope and the delete is cross-site (siteId null).
+ *   - D2 guard: a link that somehow pairs DELETE with site endpoints (a
+ *     hand-edited config) skips the delete and records a SKIPPED row rather
+ *     than deleting cross-site off one site's feed.
+ *   - Any unattributed errors block the sweep.
  *
  * No Craft boot: {@see SynchronizationService::applySweep()} (the code that
  * actually queries + deletes) and {@see SynchronizationService::logSweepSkip()}
@@ -42,8 +39,6 @@ use RuntimeException;
  */
 class MissingSweepRoutingTest extends Unit
 {
-    // -- per-site sweep (sweepMissing) ----------------------------------------
-
     public function testDisabledSweepsPerSite(): void
     {
         $service = $this->service();
@@ -57,26 +52,47 @@ class MissingSweepRoutingTest extends Unit
 
     public function testDeleteForSiteSweepsPerSiteWhenScoped(): void
     {
+        $link = $this->link(['update', 'delete-for-site']);
+        $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
         $service = $this->service();
-        $context = $this->context($this->link(['update', 'delete-for-site']), siteId: 7, siteHandle: 'fr');
+        $context = $this->context($link, siteId: 7, siteHandle: 'fr');
 
         $service->publicSweepMissing($context, [9], 0, $this->log());
 
         $this->assertSame([[ItemAction::DELETED_FOR_SITE, [9], 7]], $service->sweeps);
     }
 
-    public function testDeleteDoesNotSweepPerSite(): void
+    public function testDeleteSweepsUnscopedOnNoSiteEndpointsLink(): void
     {
-        // The incident's root cause: global delete must NEVER sweep in the
-        // per-site path — sweepMissing() is a no-op for it (the run-end sweep
-        // owns it), so a per-site pass can't delete another site's feed.
+        // A no-site-endpoints link runs its single pass with siteId null; the
+        // global delete sweeps cross-site (siteId null → target uses
+        // siteId('*')->unique() and delete() removes the whole element).
         $service = $this->service();
-        $context = $this->context($this->link(['update', 'delete']), siteId: 5, siteHandle: 'nl');
+        $context = $this->context($this->link(['update', 'delete']), siteId: null, siteHandle: null);
+
+        $service->publicSweepMissing($context, [1, 2, 3], 0, $this->log());
+
+        $this->assertSame([[ItemAction::DELETED, [1, 2, 3], null]], $service->sweeps);
+        $this->assertSame([], $service->skips);
+    }
+
+    public function testDeleteOnSiteEndpointsLinkSkipsViaD2Guard(): void
+    {
+        // A hand-edited config pairing DELETE with site endpoints must never
+        // delete cross-site off one site's feed — the D2 guard skips it and
+        // records a SKIPPED row.
+        $link = $this->link(['update', 'delete']);
+        $link->siteEndpoints = [
+            ['site' => 'nl', 'endpoint' => 'https://example.test/nl'],
+            ['site' => 'fr', 'endpoint' => 'https://example.test/fr'],
+        ];
+        $service = $this->service();
+        $context = $this->context($link, siteId: 5, siteHandle: 'nl');
 
         $service->publicSweepMissing($context, [1, 2], 0, $this->log());
 
         $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertCount(1, $service->skips);
     }
 
     public function testPerSiteSweepBailsOnUnattributedErrors(): void
@@ -92,6 +108,8 @@ class MissingSweepRoutingTest extends Unit
 
     public function testDeleteForSiteSkipsWhenNotScopedToASite(): void
     {
+        // delete-for-site with no site scope (the [null] pass) can't scope the
+        // deletion — records a skip and sweeps nothing.
         $service = $this->service();
         $context = $this->context($this->link(['delete-for-site']), siteId: null, siteHandle: null);
 
@@ -101,143 +119,10 @@ class MissingSweepRoutingTest extends Unit
         $this->assertCount(1, $service->skips);
     }
 
-    // -- run-end sweep (sweepMissingForRun) -----------------------------------
-
-    public function testDeleteSweepsOnceAtRunEndWithTheUnionUnscoped(): void
-    {
-        // The union of every site's seen ids, swept once, siteId null (unscoped
-        // → the target uses siteId('*')->unique()). An element is deleted only
-        // when NO site mentioned it.
-        $service = $this->service();
-        $context = $this->context($this->link(['update', 'delete']), siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2, 3], 0, $this->log(), null);
-
-        $this->assertSame([[ItemAction::DELETED, [1, 2, 3], null]], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testRunEndSweepIsNoopForPerSitePolicies(): void
+    public function testNoMissingFlagSweepsNothing(): void
     {
         $service = $this->service();
-        $context = $this->context($this->link(['disable']), siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2], 0, $this->log(), null);
-
-        $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testSiteScopedDeleteOnMultiEndpointLinkSkipsAndSweepsNothing(): void
-    {
-        // A run restricted to one site of a link with per-site endpoints can't
-        // read the other feeds that co-own the delete decision — it must record
-        // a skip and sweep nothing (the incident's disjoint-feed shape).
-        $link = $this->link(['delete']);
-        $link->siteEndpoints = [
-            ['site' => 'nl', 'endpoint' => 'https://example.test/nl'],
-            ['site' => 'fr', 'endpoint' => 'https://example.test/fr'],
-        ];
-        $service = $this->service();
-        $context = $this->context($link, siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2], 0, $this->log(), 'nl');
-
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
-    }
-
-    public function testSiteScopedDeleteOnSingleEndpointLinkStillSweeps(): void
-    {
-        // A single-endpoint (or single-site) link covers "every site" trivially,
-        // so a site-scoped run may still sweep.
-        $link = $this->link(['delete']);
-        $link->siteEndpoints = [
-            ['site' => 'nl', 'endpoint' => 'https://example.test/nl'],
-        ];
-        $service = $this->service();
-        $context = $this->context($link, siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2], 0, $this->log(), 'nl');
-
-        $this->assertSame([[ItemAction::DELETED, [1, 2], null]], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testRunEndDeleteBailsWhenAnySiteHadUnattributedErrors(): void
-    {
-        // Site 1 errored, site 2 was clean — the run-wide error count is what
-        // reaches the run-end sweep, and any at all blocks the whole delete.
-        $service = $this->service();
-        $context = $this->context($this->link(['delete']), siteId: 5, siteHandle: 'fr');
-
-        $service->publicSweepMissingForRun($context, [1, 2, 3], 2, $this->log(), null);
-
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
-    }
-
-    // -- composition (both sweeps fire in one run) ----------------------------
-
-    public function testDisableAndDeleteLinkFiresPerSiteDisable(): void
-    {
-        // Composed link: the per-site path still fires the DISABLE (delete no
-        // longer suppresses it), scoped to the just-finished site.
-        $service = $this->service();
-        $context = $this->context($this->link(['disable', 'delete']), siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissing($context, [1, 2], 0, $this->log());
-
-        $this->assertSame([[ItemAction::DISABLED, [1, 2], 5]], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testDisableAndDeleteLinkFiresRunEndDelete(): void
-    {
-        // Same composed link: the run-end path fires the DELETE over the union,
-        // unscoped. Both sweeps run for one link in one run.
-        $service = $this->service();
-        $context = $this->context($this->link(['disable', 'delete']), siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2, 3], 0, $this->log(), null);
-
-        $this->assertSame([[ItemAction::DELETED, [1, 2, 3], null]], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testDeleteForSiteAndDeleteLinkFiresBothSweeps(): void
-    {
-        // delete-for-site per site + global delete at run end.
-        $link = $this->link(['delete-for-site', 'delete']);
-
-        $perSite = $this->service();
-        $perSite->publicSweepMissing($this->context($link, siteId: 7, siteHandle: 'fr'), [9], 0, $this->log());
-        $this->assertSame([[ItemAction::DELETED_FOR_SITE, [9], 7]], $perSite->sweeps);
-
-        $runEnd = $this->service();
-        $runEnd->publicSweepMissingForRun($this->context($link, siteId: 7, siteHandle: 'fr'), [9, 10], 0, $this->log(), null);
-        $this->assertSame([[ItemAction::DELETED, [9, 10], null]], $runEnd->sweeps);
-    }
-
-    public function testDisableOnlyFiresNoRunEndSweep(): void
-    {
-        // Disable-only link: per-site disable only, the run-end sweep is a
-        // no-op (no DELETE flag) — nothing swept, no skip row.
-        $service = $this->service();
-        $context = $this->context($this->link(['disable']), siteId: 5, siteHandle: 'nl');
-
-        $service->publicSweepMissingForRun($context, [1, 2], 0, $this->log(), null);
-
-        $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
-    }
-
-    public function testDeleteOnlyFiresNoPerSiteSweep(): void
-    {
-        // Delete-only link: run-end delete only, the per-site sweep is a no-op
-        // (no per-site flag) — nothing swept, no skip row.
-        $service = $this->service();
-        $context = $this->context($this->link(['delete']), siteId: 5, siteHandle: 'nl');
+        $context = $this->context($this->link(['create', 'update']), siteId: 5, siteHandle: 'nl');
 
         $service->publicSweepMissing($context, [1, 2], 0, $this->log());
 
@@ -270,11 +155,6 @@ class MissingSweepRoutingTest extends Unit
             public function publicSweepMissing(SyncContext $context, array $seenIds, int $unattributedErrors, LogRecord $log): void
             {
                 $this->sweepMissing($context, $seenIds, $unattributedErrors, $log);
-            }
-
-            public function publicSweepMissingForRun(SyncContext $context, array $seenIds, int $unattributedErrors, LogRecord $log, ?string $requestedSite): void
-            {
-                $this->sweepMissingForRun($context, $seenIds, $unattributedErrors, $log, $requestedSite);
             }
 
             protected function applySweep(SyncContext $context, ItemAction $policy, array $seenIds, ?int $siteId, LogRecord $log): void

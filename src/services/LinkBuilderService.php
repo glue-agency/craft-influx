@@ -370,6 +370,8 @@ class LinkBuilderService extends Component
             'Enable if the external service supports resource localisation.',
             'The link runs once per listed site and writes localized data to the same canonical element.',
             'Processing actions',
+            'Not available with site-specific endpoints — use “delete the site-specific row only”.',
+            'Needs site-specific endpoints — use plain “delete” instead.',
 
             // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',

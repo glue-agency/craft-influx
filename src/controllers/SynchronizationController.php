@@ -41,7 +41,26 @@ class SynchronizationController extends AbstractController
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        Craft::$app->getQueue()->push(new SyncLinkJob([
+        $queue = Craft::$app->getQueue();
+        $siteHandles = $link->siteHandles();
+
+        // An all-sites trigger on a multi-endpoint link fans out to ONE job per
+        // site, each scoped to (and logged for) its own site. A single-site
+        // trigger, or a link with 0/1 site endpoints, pushes a single job.
+        if ($site === null && count($siteHandles) > 1) {
+            foreach ($siteHandles as $handle) {
+                $queue->push(new SyncLinkJob([
+                    'linkHandle' => $link->handle,
+                    'offset'     => $offset,
+                    'site'       => $handle,
+                    'trigger'    => SyncTrigger::CP->value,
+                ]));
+            }
+
+            return $this->asSuccess(Craft::t('influx', 'Syncs queued for {n} sites.', ['n' => count($siteHandles)]));
+        }
+
+        $queue->push(new SyncLinkJob([
             'linkHandle' => $link->handle,
             'offset'     => $offset,
             'site'       => $site,

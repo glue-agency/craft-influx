@@ -213,7 +213,9 @@ class LogsService extends Component
     /**
      * Most recent log per link handle, keyed by handle — powers the "last
      * run" column on the links index. One newest-first query, keeping the
-     * first (newest) row seen for each handle.
+     * first (newest) row seen for each handle. A multi-site link now produces
+     * one log per site per run, so this returns the newest SITE log for the
+     * link (the most recently finished site's outcome), not a run-spanning log.
      *
      * @return array<string, LogRecord>
      */

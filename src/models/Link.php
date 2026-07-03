@@ -235,7 +235,41 @@ class Link extends Model
             [['match'], 'validateMatch'],
             [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
+            [['processing'], 'validateProcessing'],
         ]);
+    }
+
+    /**
+     * Gate the two delete policies by endpoint shape. Global `delete` is a
+     * no-site-endpoints-only, single-pass policy; `delete-for-site` only makes
+     * sense when the link runs per site. The two are mutually exclusive with
+     * respect to the link's endpoint shape, so a payload that pairs the wrong
+     * delete policy with the wrong shape is rejected here (the reactive builder
+     * disables the offending checkbox, but this is the server-side backstop).
+     */
+    public function validateProcessing(string $attribute): void
+    {
+        $value = $this->$attribute;
+
+        if (! is_array($value)) {
+            return;
+        }
+
+        $hasSiteEndpoints = ! empty($this->siteEndpoints);
+
+        if ($hasSiteEndpoints && in_array(self::PROCESSING_DELETE, $value, true)) {
+            $this->addError(
+                $attribute,
+                'Global delete isn’t allowed with site-specific endpoints — use “delete the site-specific row only”.',
+            );
+        }
+
+        if (! $hasSiteEndpoints && in_array(self::PROCESSING_DELETE_FOR_SITE, $value, true)) {
+            $this->addError(
+                $attribute,
+                '“Delete the site-specific row only” needs site-specific endpoints — use plain delete instead.',
+            );
+        }
     }
 
     public function validateMatch(string $attribute): void

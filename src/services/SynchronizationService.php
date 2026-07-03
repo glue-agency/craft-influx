@@ -29,20 +29,21 @@ use Throwable;
  *   1. Pre-run hooks (event, optional backup).
  *   2. For each configured site (or the primary site if none configured),
  *      fetch the JSON payload, walk paginated pages, and process every item.
+ *      Each site runs under its own log (an all-sites run fans out to one queue
+ *      job per site).
  *   3. Per item: match-or-build the target element, apply mappings, check for
  *      changes, save (or skip), and log.
- *   4. The missing-elements sweep — disable/delete the elements this link owns
- *      that the feed didn't mention. Governed by the link's `processing` flags
- *      and gated by a clean-pass guard (a run with any item that failed without
- *      a resolvable element does NOT sweep, since the seen-set can't be
- *      trusted). Its timing depends on the policy:
- *        - PER SITE (disable / delete-for-site): once each site's pages are
- *          exhausted, scoped to that site — an element missing from one site's
- *          feed is disabled/removed FOR that site only (see {@see sweepMissing()}).
- *        - ONCE PER RUN (global delete): after the LAST site, over the union of
- *          every site's seen-set, unscoped — an element is deleted entirely
- *          only when NO site's feed mentioned it (see {@see sweepMissingForRun()}).
- *   5. Post-run hooks (event, log finalisation).
+ *   4. The missing-elements sweep — disable/delete the elements this scope owns
+ *      that the feed didn't mention. One pass resolves ONE policy
+ *      ({@see perSitePolicy()}) and applies it in that same pass, once the
+ *      scope's pages are exhausted, gated by a clean-pass guard (a pass with
+ *      any item that failed without a resolvable element does NOT sweep, since
+ *      the seen-set can't be trusted). Policy precedence:
+ *      DELETE > DELETE_FOR_SITE > DISABLE. DELETE only ever resolves on a
+ *      no-site-endpoints link (validation forbids DELETE + site endpoints), so
+ *      it sweeps the single `[null]` scope unscoped; DISABLE / DELETE_FOR_SITE
+ *      sweep scoped to the running site (see {@see sweepMissing()}).
+ *   5. Post-run hooks (event, log finalisation) — once per site log.
  */
 class SynchronizationService extends Component
 {
@@ -79,13 +80,30 @@ class SynchronizationService extends Component
      * Run a full link sync synchronously (console / per-element / CP-direct);
      * the queued, page-per-step path lives in {@see batchStep()}.
      *
+     * ONE LOG PER SITE: an all-sites run over N configured sites produces N
+     * logs, each with its `siteHandle` set and every counter/item/sweep row
+     * (including its own per-pass missing-elements sweep) contained to that
+     * site. A site-scoped run, or a link with no site endpoints, produces one
+     * log (siteHandle carries the requested scope, or null).
+     *
+     * A site whose feed fails to fetch fails THAT site's log and the run
+     * CONTINUES with the next site (per-site isolation); a non-fetch failure
+     * still propagates.
+     *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
      * @param string|null $siteHandle Restrict the run to a single configured
      * site; null runs every site the link is configured for.
      * @param callable|null $onProgress fn(int $seen, ?int $total): called once
-     * per fetched page with the running items-seen count and the feed's
+     * per fetched page with THIS site's running items-seen count and the feed's
      * reported total (null when it doesn't report one). Null for synchronous
      * runs that don't need it.
+     * @return list<LogRecord> Every log produced — one per site. The console
+     * caller ignores this (the queue-side path reports progress); it exists so
+     * programmatic callers can inspect each site's outcome.
+     * @throws InfluxException when a beforeSyncLink listener cancels the run.
+     * @throws \Throwable for non-fetch failures escaping a site's processing
+     * (fetch failures are isolated per site via {@see FeedFetchException} and
+     * do not propagate).
      */
     public function syncLink(
         Link $link,
@@ -93,9 +111,11 @@ class SynchronizationService extends Component
         SyncTrigger $trigger = SyncTrigger::CONSOLE,
         ?string $siteHandle = null,
         ?callable $onProgress = null,
-    ): LogRecord {
+    ): array {
         $plugin = Influx::getInstance();
 
+        // The before-event fires ONCE for the whole run; cancelling it cancels
+        // every site.
         $beforeEvent = new SyncLinkEvent(['link' => $link]);
         $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
 
@@ -110,35 +130,39 @@ class SynchronizationService extends Component
 
         [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
-        $log = $this->runWithLog($link, $trigger, function(LogRecord $log) use ($link, $target, $trigger, $queryParams, $siteHandles, $siteHandle, $onProgress) {
-            // The union of every site's seen-set and the run's total count of
-            // unattributed errors — the inputs to the run-end global-delete
-            // sweep, which can only fire once every site's feed has been read
-            // (an element is deleted only when NO site mentioned it).
-            $runSeen = [];
-            $runUnattributedErrors = 0;
-            $lastContext = null;
+        // Each site runs under its OWN log with its OWN per-pass sweep — a
+        // fetch failure fails THIS site's log and the run CONTINUES with the
+        // next site (per-site isolation). A non-fetch throw still propagates.
+        $logs = [];
 
-            foreach ($siteHandles as $handle) {
-                $context = SyncContext::forSite($link, $target, $handle, $trigger);
-                $lastContext = $context;
+        foreach ($siteHandles as $handle) {
+            $context = SyncContext::forSite($link, $target, $handle, $trigger);
+            $log = $plugin->logs->start($link, $trigger, $handle);
 
-                $siteResult = $this->processSite($context, $queryParams, $log, $onProgress);
-
-                foreach ($siteResult['seenIds'] as $id) {
-                    $runSeen[$id] = true;
-                }
-                $runUnattributedErrors += $siteResult['unattributedErrors'];
+            try {
+                $this->processSite($context, $queryParams, $log, $onProgress);
+                $plugin->logs->finish($log);
+            } catch (FeedFetchException $e) {
+                $plugin->logs->fail($log, $e->getMessage());
             }
 
-            // Global delete sweeps once, after the last site, over the union.
-            if ($lastContext !== null) {
-                $this->sweepMissingForRun($lastContext, array_keys($runSeen), $runUnattributedErrors, $log, $siteHandle);
-            }
-        }, $siteHandle);
+            $logs[] = $log;
+            $this->fireAfterSyncLink($link, $log);
+        }
 
-        $afterEvent = new SyncLinkEvent([
+        return $logs;
+    }
+
+    /**
+     * Fire EVENT_AFTER_SYNC_LINK for one finished log, carrying its site handle
+     * and its own final counters. Fired once per site log — the one place the
+     * after-event is assembled from a record.
+     */
+    protected function fireAfterSyncLink(Link $link, LogRecord $log): void
+    {
+        $this->trigger(self::EVENT_AFTER_SYNC_LINK, new SyncLinkEvent([
             'link'           => $link,
+            'siteHandle'     => $log->siteHandle,
             'itemsSeen'      => (int) $log->itemsSeen,
             'itemsCreated'   => (int) $log->itemsCreated,
             'itemsUpdated'   => (int) $log->itemsUpdated,
@@ -146,40 +170,34 @@ class SynchronizationService extends Component
             'itemsSkipped'   => (int) $log->itemsSkipped,
             'itemsDeleted'   => (int) $log->itemsDeleted,
             'itemsDisabled'  => (int) $log->itemsDisabled,
-        ]);
-        $this->trigger(self::EVENT_AFTER_SYNC_LINK, $afterEvent);
-
-        return $log;
+        ]));
     }
 
     /**
      * Advance a queued, resumable run by one feed page. {@see SyncLinkJob}
      * calls this each step and re-queues itself with the returned state until
-     * `done` — so one log spans the whole run while each page is its own queue
-     * step (it survives worker timeouts; the synchronous {@see syncLink()} path
-     * is left untouched). A fetch failure fails the run and stops; per-item
-     * failures still become error rows and the run carries on.
+     * `done` — so one log spans this job's single scope while each page is its
+     * own queue step (it survives worker timeouts; the synchronous
+     * {@see syncLink()} path is left untouched). A fetch failure fails the run
+     * and stops; per-item failures still become error rows and the run carries
+     * on.
      *
-     * The missing-elements sweep needs the seen-set, but the set is built one
-     * page per step — so it rides the state array, accumulated across steps.
-     * The per-site and run-end sweeps compose and need DIFFERENT sets, so two
-     * pairs ride the state:
-     *   - `seenIds` / `unattributedErrors` — this site's set, feeding the
-     *     PER-SITE sweep (disable / delete-for-site). Consumed once the site's
-     *     last page is done, then reset so the next site starts clean.
-     *   - `runSeenIds` / `runUnattributedErrors` — the UNION across every site,
-     *     feeding the RUN-END global-delete sweep (an element is deleted only
-     *     when NO site's feed mentioned it). NEVER reset mid-run; only
-     *     accumulated when the link carries the DELETE flag ({@see runPolicy()})
-     *     — disable-only links skip it so the payload doesn't bloat.
-     * The run set rides the queue payload: fine for feeds up to tens of
-     * thousands of ids; flag as a known bound (a feed far larger than that
-     * would bloat the job row and should page the sweep differently — and the
-     * global-delete union spans every site, so it's the larger case).
+     * ONE SCOPE PER JOB: each job walks a single scope's pages — one configured
+     * site (an all-sites run fans out to one job per site in the controller),
+     * or the single `[null]` scope of a no-site-endpoints link. When the last
+     * page is done it fires the single missing-elements sweep, closes the log,
+     * and reports `done`. There is no cross-site advance.
      *
-     * @param array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, runSeenIds?: list<int>, runUnattributedErrors?: int} $state
+     * The missing-elements sweep needs the scope's seen-set, but the set is
+     * built one page per step — so `seenIds`/`unattributedErrors` ride the
+     * state array, accumulated across steps and consumed once the last page is
+     * done. The set rides the queue payload: fine for feeds up to tens of
+     * thousands of ids; flag as a known bound (a feed far larger would bloat
+     * the job row and should page the sweep differently).
+     *
+     * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
-     * @return array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, runSeenIds: list<int>, runUnattributedErrors: int, done: bool}
+     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, done: bool}
      */
     public function batchStep(
         string $linkHandle,
@@ -199,10 +217,14 @@ class SynchronizationService extends Component
         $state['done'] = false;
         $state['seenIds'] ??= [];
         $state['unattributedErrors'] ??= 0;
-        $state['runSeenIds'] ??= [];
-        $state['runUnattributedErrors'] ??= 0;
         $target = $this->resolveTarget($link);
-        $sites = $this->runSites($link, $requestedSite);
+
+        // Validate the requested scope (null = the single no-site-endpoints
+        // scope; a handle must be one the link is configured for).
+        if ($requestedSite !== null && ! in_array($requestedSite, $link->siteHandles(), true)) {
+            throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$requestedSite}'.");
+        }
+
         [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
 
         // The first step opens the log; later steps reload the run in progress.
@@ -217,11 +239,10 @@ class SynchronizationService extends Component
             }
         }
 
-        $siteHandle = $sites[$state['siteIndex']] ?? null;
-        $context = SyncContext::forSite($link, $target, $siteHandle, $trigger);
+        $context = SyncContext::forSite($link, $target, $requestedSite, $trigger);
 
         try {
-            $page = $plugin->data->page($link, $siteHandle, $state['cursorUrl'], $queryParams, $state['page']);
+            $page = $plugin->data->page($link, $requestedSite, $state['cursorUrl'], $queryParams, $state['page']);
         } catch (Throwable $e) {
             // A page fetch failed — fail the run and stop (no retry).
             $plugin->logs->fail($log, $e->getMessage());
@@ -230,22 +251,15 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // The run-end global-delete sweep needs the UNION across every site;
-        // only accumulate it when the link carries the DELETE flag, so a
-        // disable-only run doesn't bloat the payload with a set nothing reads.
-        $accumulateRun = $this->runPolicy($link) !== null;
-
-        // Dedupe the running seen-sets as value-keyed maps (lists re-derived on
+        // Dedupe the running seen-set as a value-keyed map (list re-derived on
         // write-back), so a re-processed tail after a retried step can't
-        // double-count. The per-site set resets each site; the run set is the
-        // never-reset union.
+        // double-count.
         $seen = array_fill_keys($state['seenIds'], true);
-        $runSeen = array_fill_keys($state['runSeenIds'], true);
 
         // Flush at the page boundary — and in a finally so a throw escaping the
         // loop still persists rows for items already saved this step. A retried
         // queue step then re-processes only the un-flushed tail (and re-folds
-        // its ids into the seen-sets, hence the dedupe above).
+        // its ids into the seen-set, hence the dedupe above).
         try {
             foreach ($page->items as $item) {
                 try {
@@ -253,24 +267,15 @@ class SynchronizationService extends Component
 
                     if ($elementId !== null) {
                         $seen[$elementId] = true;
-
-                        if ($accumulateRun) {
-                            $runSeen[$elementId] = true;
-                        }
                     }
                 } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
                     $state['unattributedErrors']++;
-
-                    if ($accumulateRun) {
-                        $state['runUnattributedErrors']++;
-                    }
                 }
             }
         } finally {
             $plugin->logs->flush($log);
             $state['seenIds'] = array_keys($seen);
-            $state['runSeenIds'] = array_keys($runSeen);
         }
 
         if ($onProgress !== null) {
@@ -295,32 +300,12 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // Site finished. The PER-SITE sweep (disable / delete-for-site) runs
-        // now, scoped to this site, off the set accumulated across its steps —
-        // then the per-site set ALWAYS resets so the next site starts clean.
-        // The run set (runSeenIds/runUnattributedErrors) is the never-reset
-        // UNION across every site: it keeps accumulating and feeds the run-end
-        // global-delete sweep after the last site. The two compose — a link
-        // flagged for both disable and delete sweeps here per site AND at run
-        // end.
+        // Scope finished. Run the single missing-elements sweep over the set
+        // accumulated across this scope's steps, then close the log — the job
+        // walks no further sites.
         $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
-
-        $state['seenIds'] = [];
-        $state['unattributedErrors'] = 0;
-
-        // Advance to the next site, or finish the whole run.
-        $state['siteIndex']++;
-        $state['cursorUrl'] = null;
-        $state['page'] = 1;
-
-        if ($state['siteIndex'] >= count($sites)) {
-            // Last site done — fire the run-end global-delete sweep over the
-            // accumulated union (a no-op when the link lacks the DELETE flag).
-            $this->sweepMissingForRun($context, $state['runSeenIds'], $state['runUnattributedErrors'], $log, $requestedSite);
-
-            $this->finishSync($link, $log);
-            $state['done'] = true;
-        }
+        $this->finishSync($link, $log);
+        $state['done'] = true;
 
         return $state;
     }
@@ -348,22 +333,14 @@ class SynchronizationService extends Component
 
     /**
      * Finalise a run: close the log and fire the after-event with the final
-     * counters.
+     * counters. Carries the log's `siteHandle` so the batch path's after-event
+     * matches the synchronous path's ({@see fireAfterSyncLink()}) shape.
      */
     protected function finishSync(Link $link, LogRecord $log): void
     {
         Influx::getInstance()->logs->finish($log);
 
-        $this->trigger(self::EVENT_AFTER_SYNC_LINK, new SyncLinkEvent([
-            'link'           => $link,
-            'itemsSeen'      => (int) $log->itemsSeen,
-            'itemsCreated'   => (int) $log->itemsCreated,
-            'itemsUpdated'   => (int) $log->itemsUpdated,
-            'itemsUnchanged' => (int) $log->itemsUnchanged,
-            'itemsSkipped'   => (int) $log->itemsSkipped,
-            'itemsDeleted'   => (int) $log->itemsDeleted,
-            'itemsDisabled'  => (int) $log->itemsDisabled,
-        ]));
+        $this->fireAfterSyncLink($link, $log);
     }
 
     /**
@@ -451,25 +428,20 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Walk every page of the feed for one site and process every item.
-     * Pagination mechanics (fetching, cycle guards, URL normalization) live
-     * in {@see \GlueAgency\Influx\data\PagedFeed}.
+     * Walk every page of the feed for one site (or the single [null] scope of a
+     * no-site-endpoints link) and process every item. Pagination mechanics
+     * (fetching, cycle guards, URL normalization) live in
+     * {@see \GlueAgency\Influx\data\PagedFeed}.
      *
-     * The per-site missing-elements sweep (disable / delete-for-site) fires
-     * here, once this site's pages are exhausted — an element missing from
-     * THIS site's feed is disabled/removed FOR this site only. The GLOBAL
-     * delete policy does NOT sweep here: it needs the union of every site's
-     * seen-set (an element is deleted only when NO site mentioned it), so this
-     * method returns its seen-set and unattributed-error count and lets
-     * {@see syncLink()} fire the run-end sweep after the last site.
+     * The missing-elements sweep fires here once this scope's pages are
+     * exhausted — one pass, one resolved policy ({@see sweepMissing()}). For a
+     * site pass it's scoped to that site (disable / delete-for-site); for the
+     * no-site-endpoints [null] pass a global delete sweeps cross-site.
      *
-     * @return array{seenIds: list<int>, unattributedErrors: int} This site's
-     * seen-set and unattributed-error count, for the run-end global-delete
-     * sweep to accumulate across sites.
      * @throws FeedFetchException on fetch failures, paginator URL cycles, or
      * runaway pagination.
      */
-    protected function processSite(SyncContext $context, array $queryParams, LogRecord $log, ?callable $onProgress = null): array
+    protected function processSite(SyncContext $context, array $queryParams, LogRecord $log, ?callable $onProgress = null): void
     {
         $plugin = Influx::getInstance();
 
@@ -523,17 +495,10 @@ class SynchronizationService extends Component
             }
         }
 
-        // Site fully walked — run the PER-SITE sweep (disable / delete-for-site)
-        // over the elements it owns that this site's feed never mentioned. For
-        // the global-delete policy this is a no-op (sweepMissing() bails on it);
-        // the run-end sweep handles that from the returned union.
-        // flush() inside sweepMissing() persists its rows.
+        // Scope fully walked — run the single missing-elements sweep over the
+        // elements this scope owns that its feed never mentioned. One pass, one
+        // resolved policy. flush() inside sweepMissing() persists its rows.
         $this->sweepMissing($context, array_keys($seenIds), $unattributedErrors, $log);
-
-        return [
-            'seenIds'            => array_keys($seenIds),
-            'unattributedErrors' => $unattributedErrors,
-        ];
     }
 
     /**
@@ -643,25 +608,31 @@ class SynchronizationService extends Component
     }
 
     /**
-     * The PER-SITE missing-elements action a link's `processing` flags call
-     * for, or null when neither per-site flag is set. Fires once after each
-     * site's pages, scoped to that site — an element missing from one site's
-     * feed is disabled/removed FOR that site only.
+     * The single missing-elements action a link's `processing` flags call for,
+     * or null when no missing-elements flag is set. Resolved once per pass and
+     * applied in that same pass — there is no run-end second sweep.
      *
-     * Precedence when both per-site flags are set — the more destructive wins:
+     * Precedence when several flags are set — the more destructive wins,
+     * and a global delete supersedes the rest (there's no point disabling
+     * elements you're about to delete outright):
      *
-     *   DELETE_FOR_SITE  >  DISABLE
+     *   DELETE  >  DELETE_FOR_SITE  >  DISABLE
      *
-     * The global DELETE flag does NOT participate: per-site and run-end sweeps
-     * COMPOSE (both may fire in one run), so a link flagged
-     * `['disable', 'delete']` disables cross-site leaks per site AND deletes
-     * run-wide-missing elements at run end. {@see runPolicy()} owns DELETE.
+     * Validation ({@see Link::validateProcessing()}) forbids DELETE alongside
+     * site endpoints and DELETE_FOR_SITE without them, so in practice DELETE
+     * only resolves on a no-site-endpoints link and DELETE_FOR_SITE only on a
+     * site-endpoints link — but the sweep keeps a defensive guard (D2) against
+     * a hand-edited config that pairs DELETE with site endpoints.
      *
      * Pure: reads only {@see Link::$processing}, so it's unit-tested without a
      * Craft boot.
      */
     protected function perSitePolicy(Link $link): ?ItemAction
     {
+        if (in_array(Link::PROCESSING_DELETE, $link->processing, true)) {
+            return ItemAction::DELETED;
+        }
+
         if (in_array(Link::PROCESSING_DELETE_FOR_SITE, $link->processing, true)) {
             return ItemAction::DELETED_FOR_SITE;
         }
@@ -674,37 +645,17 @@ class SynchronizationService extends Component
     }
 
     /**
-     * The RUN-END missing-elements action a link's `processing` flags call for,
-     * or null when the global DELETE flag isn't set. The global delete fires
-     * once after the last site, over the union of every site's seen-set: the
-     * element row is destroyed entirely, so it must be missing from EVERY
-     * site's feed.
-     *
-     * Independent of {@see perSitePolicy()} — the two compose. When both
-     * resolve non-null an element the per-site sweep already disabled can then
-     * be deleted by the run-end sweep, leaving two log rows for it; that's
-     * accepted (the disable corrected the site-visibility leak the moment the
-     * site finished; the delete removes an element no feed carries).
-     *
-     * Pure: reads only {@see Link::$processing}, so it's unit-tested without a
-     * Craft boot.
-     */
-    protected function runPolicy(Link $link): ?ItemAction
-    {
-        return in_array(Link::PROCESSING_DELETE, $link->processing, true)
-            ? ItemAction::DELETED
-            : null;
-    }
-
-    /**
-     * The PER-SITE missing-elements sweep (disable / delete-for-site), run once
-     * after each site's pages are exhausted — step 4 of the run lifecycle,
-     * scoped to the just-finished site. The GLOBAL delete policy is NOT swept
-     * here ({@see perSitePolicy()} ignores it); {@see sweepMissingForRun()}
-     * handles that once, after the last site. The two sweeps COMPOSE: a link
-     * flagged for both disable and delete fires this sweep per site AND the
-     * run-end delete — an element may be disabled here then deleted at run end
-     * (two log rows), which is accepted.
+     * The single missing-elements sweep, run once per pass after that scope's
+     * pages are exhausted — step 4 of the run lifecycle. Handles all three
+     * policies ({@see perSitePolicy()} resolves exactly one):
+     *   - DISABLED: site pass → {@see ElementTargetInterface::disableForSite()}
+     *     (leave the element live in its other sites); no-site-endpoints pass
+     *     (siteId null) → {@see ElementTargetInterface::disable()}.
+     *   - DELETED_FOR_SITE: needs a site — a siteless pass logs one SKIPPED row.
+     *   - DELETED: the whole element is destroyed. Only ever resolves on a
+     *     no-site-endpoints link (validation forbids DELETE + site endpoints),
+     *     so the pass is the single `[null]` scope and the delete is unscoped
+     *     ({@see applyMissingAction()} routes DELETED → target->delete()).
      *
      * Safety first: a sweep acts on the COMPLEMENT of the seen-set, so it's
      * only safe when the seen-set is complete. If any item failed WITHOUT a
@@ -714,14 +665,12 @@ class SynchronizationService extends Component
      * one SKIPPED row (not ERROR — an error would flip the run's status
      * perception; SKIPPED tells the user why nothing was swept).
      *
-     * Mode is derived from the run's site scope and the policy:
-     *   - DISABLED: site run → {@see ElementTargetInterface::disableForSite()}
-     *     (leave the element live in its other sites); global run →
-     *     {@see ElementTargetInterface::disable()}.
-     *   - DELETED_FOR_SITE: needs a site — a global (siteless) run logs one
-     *     SKIPPED row and returns.
+     * Defensive guard (D2): validation forbids DELETE alongside site endpoints,
+     * but a hand-edited config could still pair them. Rather than cross-site
+     * delete off one site's feed, a link with site endpoints resolving to
+     * DELETED skips the delete, warns, and logs one SKIPPED row.
      *
-     * @param list<int> $seenIds Element ids present in this site's feed.
+     * @param list<int> $seenIds Element ids present in this scope's feed.
      * @param int $unattributedErrors Items that failed with no resolvable
      * element — any at all disables the sweep.
      */
@@ -730,9 +679,6 @@ class SynchronizationService extends Component
         $link = $context->link;
         $policy = $this->perSitePolicy($link);
 
-        // Only the per-site policies sweep here; global delete rides the run.
-        // The two compose: a link flagged for both disable AND delete sweeps
-        // here per site (disable/delete-for-site) and again at run end (delete).
         if ($policy === null) {
             return;
         }
@@ -753,6 +699,25 @@ class SynchronizationService extends Component
             return;
         }
 
+        // D2 guard: a global delete must never fire on a link with site
+        // endpoints — deleting off one site's feed would nuke content the other
+        // sites still carry. Validation forbids the combo; this is the runtime
+        // backstop against a hand-edited config.
+        if ($policy === ItemAction::DELETED && ! empty($link->getSiteEndpoints())) {
+            $this->warnSweepSkipped(
+                "Influx: missing-elements delete sweep skipped for link '{$link->handle}'"
+                . ' — global delete is not allowed with site-specific endpoints (would delete '
+                . 'cross-site off a single site\'s feed).',
+            );
+            $this->logSweepSkip(
+                $log,
+                'Missing-elements delete sweep skipped: global delete is not allowed with '
+                . 'site-specific endpoints — use “delete the site-specific row only”.',
+            );
+
+            return;
+        }
+
         // delete-for-site is meaningless without a site to scope to.
         if ($policy === ItemAction::DELETED_FOR_SITE && $context->siteId === null) {
             $this->logSweepSkip(
@@ -767,106 +732,12 @@ class SynchronizationService extends Component
     }
 
     /**
-     * The RUN-END global-delete sweep, fired once after the last site — the
-     * only sweep for the {@see ItemAction::DELETED} policy. An element is
-     * deleted entirely only when NO site's feed mentioned it, so it sweeps the
-     * UNION of every site's seen-set against an UNSCOPED candidate query
-     * (`siteId('*')->unique()`, every status). No-op when the link doesn't
-     * carry the DELETE flag (see {@see runPolicy()}). Composes with the
-     * per-site sweep: both fire when a link is flagged for disable AND delete.
-     *
-     * Two guards gate it:
-     *   - Clean-pass, but across the WHOLE run: unattributed errors from ANY
-     *     site make the union untrustworthy, so the run-end sweep bails and
-     *     logs one SKIPPED row (a feed item that errored before it could be
-     *     matched, on any site, might belong to an element we'd wrongly delete).
-     *   - Site-scoped run on a multi-endpoint link: a run restricted to one
-     *     site ($requestedSite) can't read the OTHER sites' feeds, yet those
-     *     feeds co-own the delete decision (an element the other sites still
-     *     carry must not be deleted). So on a multi-endpoint link a site-scoped
-     *     run does NOT sweep — it records one SKIPPED row explaining an
-     *     all-sites run is required. Single-endpoint and single-site links are
-     *     exempt: "every site" is trivially the one site the run covers.
-     *
-     * The context passed in is the last site's — but the global delete routes
-     * through {@see ElementTargetInterface::delete()} regardless of site, so a
-     * siteless clone is used for the candidate query and the apply, making the
-     * cross-site scope explicit rather than leaning on the last site's id.
-     *
-     * @param list<int> $seenIds Union of every site's seen element ids.
-     * @param int $unattributedErrors Run-wide count of items that failed with
-     * no resolvable element — any at all disables the sweep.
-     * @param string|null $requestedSite The single site this run was scoped to
-     * (null = an all-sites run), used for the multi-endpoint guard.
-     */
-    protected function sweepMissingForRun(
-        SyncContext $context,
-        array $seenIds,
-        int $unattributedErrors,
-        LogRecord $log,
-        ?string $requestedSite = null,
-    ): void {
-        $link = $context->link;
-        $policy = $this->runPolicy($link);
-
-        // Only the global-delete policy sweeps at run end.
-        if ($policy === null) {
-            return;
-        }
-
-        // A site-scoped run on a link with multiple site endpoints can't see
-        // the other sites' feeds, which co-own the delete decision — refuse to
-        // sweep rather than delete elements those unseen feeds still carry.
-        if ($requestedSite !== null && count($link->siteHandles()) > 1) {
-            $this->logSweepSkip(
-                $log,
-                'Missing-elements delete sweep skipped: this run was scoped to a single site, '
-                . 'but the link has per-site endpoints whose feeds also define which elements '
-                . 'are still owned. Run an all-sites sync so the delete decision sees every feed.',
-            );
-
-            return;
-        }
-
-        // Clean-pass guard across the whole run: any site's unattributed errors
-        // make the union untrustworthy.
-        if ($unattributedErrors > 0) {
-            $this->warnSweepSkipped(
-                "Influx: global missing-elements delete sweep skipped for link '{$link->handle}'"
-                . " — {$unattributedErrors} item(s) across the run failed without a resolvable "
-                . 'element, so the seen-set union cannot be trusted.',
-            );
-            $this->logSweepSkip(
-                $log,
-                "Missing-elements delete sweep skipped: {$unattributedErrors} item(s) failed without a resolvable element.",
-            );
-
-            return;
-        }
-
-        // The global delete is cross-site: run the candidate query and apply
-        // against a siteless context (siteId null) so the target's
-        // missingElementsQuery() uses siteId('*')->unique() and delete() acts
-        // on the whole element, whatever the last site processed happened to be.
-        $runContext = new SyncContext(
-            link: $link,
-            target: $context->target,
-            siteId: null,
-            siteHandle: null,
-            trigger: $context->trigger,
-        );
-
-        $this->applySweep($runContext, $policy, $seenIds, null, $log);
-    }
-
-    /**
      * The shared sweep body: build the target's candidate query, status-filter
      * it per policy, walk it in batches, and apply the policy action to each
      * element — logging a success row, an ERROR row on a failed/false save, or
-     * an ERROR row on a thrown failure. Both {@see sweepMissing()} (per site)
-     * and {@see sweepMissingForRun()} (run-end global delete) route here, so
-     * the per-element loop, the false-vs-success discipline, and the tail
-     * flush live in exactly one place.
+     * an ERROR row on a thrown failure. {@see sweepMissing()} routes here for
+     * all three policies, so the per-element loop, the false-vs-success
+     * discipline, and the tail flush live in exactly one place.
      *
      * DISABLED only touches still-enabled elements (skip the churn of
      * re-disabling); the delete policies consider every status. A save that

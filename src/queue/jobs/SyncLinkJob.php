@@ -8,35 +8,31 @@ use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 
 /**
- * Queue job that runs a link sync one feed page per step: each execution
- * processes a single page and, if there's another page (or another site),
- * re-queues itself with the carried run state — so one log spans the whole run
- * while no single step holds the worker long enough to time out on a big feed.
- * A feed with no paginator simply finishes after the first step.
+ * Queue job that runs one scope of a link sync, one feed page per step: each
+ * execution processes a single page and, if there's another page, re-queues
+ * itself with the carried run state — so one log spans this job's scope while
+ * no single step holds the worker long enough to time out on a big feed. A feed
+ * with no paginator simply finishes after the first step.
+ *
+ * ONE JOB PER SCOPE: an all-sites CP trigger fans out to one job per configured
+ * site (each with its own `site`, its own log); a single-site or
+ * no-site-endpoints trigger pushes one job. A job never advances to another
+ * site — it walks its own scope's pages, sweeps once, and finishes.
  *
  * CP-side triggers push the job (with no state) so the request returns
  * immediately; console runs stay synchronous via {@see \GlueAgency\Influx\services\SynchronizationService::syncLink()}.
  *
  * Carried run state (all re-pushed verbatim each step):
- *   - logId/siteIndex/cursorUrl/page — where the walk is.
- *   - seenIds (list<int>) / unattributedErrors (int) — THIS site's set, feeding
- *     the PER-SITE sweep (disable / delete-for-site). Reset when a site's last
- *     page is done. Dropping them between steps would make the sweep
- *     over-disable (it would only ever "see" the final page's items), so they
- *     must survive across steps. unattributedErrors counts items that failed
- *     WITHOUT a resolvable element — any at all makes the site's sweep bail.
- *   - runSeenIds (list<int>) / runUnattributedErrors (int) — the UNION across
- *     every site, feeding the RUN-END global-delete sweep (an element is
- *     deleted only when NO site's feed mentioned it). NEVER reset mid-run; only
- *     accumulated when the link carries the DELETE flag, so disable-only runs
- *     don't carry a set nothing reads. See
- *     {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()} —
- *     the per-site and run-end sweeps COMPOSE, so both pairs ride the payload.
+ *   - logId/cursorUrl/page — where the walk is.
+ *   - seenIds (list<int>) / unattributedErrors (int) — this scope's set, feeding
+ *     the missing-elements sweep. Dropping them between steps would make the
+ *     sweep over-disable (it would only ever "see" the final page's items), so
+ *     they must survive across steps. unattributedErrors counts items that
+ *     failed WITHOUT a resolvable element — any at all makes the sweep bail.
  *
- * runSeenIds rides the serialised job payload, so its size grows with the item
+ * seenIds rides the serialised job payload, so its size grows with the item
  * count: fine for feeds up to tens of thousands of ids; a feed far larger than
- * that would bloat the job row and should page the sweep differently — and the
- * global-delete union spans every site, so it's the larger case.
+ * that would bloat the job row and should page the sweep differently.
  */
 class SyncLinkJob extends BaseJob
 {
@@ -55,15 +51,13 @@ class SyncLinkJob extends BaseJob
     // Run state carried across steps; defaults are the first step's values, so
     // an initial push (handle/offset/site/trigger only) starts a fresh run.
     public ?int $logId = null;
-    public int $siteIndex = 0;
     public ?string $cursorUrl = null;
     public int $page = 1;
 
     /**
-     * Element ids THIS site's feed has mentioned so far, feeding the per-site
-     * sweep (disable / delete-for-site). Excluded from that sweep — MUST
-     * survive across steps or the sweep over-disables. Reset when a site's last
-     * page is done, by
+     * Element ids this scope's feed has mentioned so far, feeding the
+     * missing-elements sweep. Excluded from that sweep — MUST survive across
+     * steps or the sweep over-disables. See
      * {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()}.
      *
      * @var list<int>
@@ -71,29 +65,10 @@ class SyncLinkJob extends BaseJob
     public array $seenIds = [];
 
     /**
-     * Items that failed with no resolvable element on THIS site — any at all
-     * makes the site's sweep bail. Carried across steps alongside
-     * {@see self::$seenIds}; reset per site.
+     * Items that failed with no resolvable element in this scope — any at all
+     * makes the sweep bail. Carried across steps alongside {@see self::$seenIds}.
      */
     public int $unattributedErrors = 0;
-
-    /**
-     * The UNION of every site's seen element ids, feeding the run-end
-     * global-delete sweep (an element is deleted only when NO site's feed
-     * mentioned it). NEVER reset mid-run; only accumulated when the link
-     * carries the DELETE flag. Composes with {@see self::$seenIds} — both pairs
-     * ride every step's payload.
-     *
-     * @var list<int>
-     */
-    public array $runSeenIds = [];
-
-    /**
-     * Run-wide count of items that failed with no resolvable element — any at
-     * all makes the run-end global-delete sweep bail. Carried alongside
-     * {@see self::$runSeenIds}; never reset mid-run.
-     */
-    public int $runUnattributedErrors = 0;
 
     public function execute($queue): void
     {
@@ -107,14 +82,11 @@ class SyncLinkJob extends BaseJob
             $trigger,
             $this->site,
             [
-                'logId'                 => $this->logId,
-                'siteIndex'             => $this->siteIndex,
-                'cursorUrl'             => $this->cursorUrl,
-                'page'                  => $this->page,
-                'seenIds'               => $this->seenIds,
-                'unattributedErrors'    => $this->unattributedErrors,
-                'runSeenIds'            => $this->runSeenIds,
-                'runUnattributedErrors' => $this->runUnattributedErrors,
+                'logId'              => $this->logId,
+                'cursorUrl'          => $this->cursorUrl,
+                'page'               => $this->page,
+                'seenIds'            => $this->seenIds,
+                'unattributedErrors' => $this->unattributedErrors,
             ],
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
@@ -136,21 +108,18 @@ class SyncLinkJob extends BaseJob
         );
 
         if (empty($state['done'])) {
-            // More pages (or sites) to go — re-queue the next step on the same
-            // log so the whole run reads as one log entry.
+            // More pages to go — re-queue the next step on the same log so this
+            // scope's whole walk reads as one log entry.
             Craft::$app->getQueue()->push(new self([
-                'linkHandle'            => $this->linkHandle,
-                'offset'                => $this->offset,
-                'site'                  => $this->site,
-                'trigger'               => $this->trigger,
-                'logId'                 => $state['logId'],
-                'siteIndex'             => $state['siteIndex'],
-                'cursorUrl'             => $state['cursorUrl'],
-                'page'                  => $state['page'],
-                'seenIds'               => $state['seenIds'],
-                'unattributedErrors'    => $state['unattributedErrors'],
-                'runSeenIds'            => $state['runSeenIds'],
-                'runUnattributedErrors' => $state['runUnattributedErrors'],
+                'linkHandle'         => $this->linkHandle,
+                'offset'             => $this->offset,
+                'site'               => $this->site,
+                'trigger'            => $this->trigger,
+                'logId'              => $state['logId'],
+                'cursorUrl'          => $state['cursorUrl'],
+                'page'               => $state['page'],
+                'seenIds'            => $state['seenIds'],
+                'unattributedErrors' => $state['unattributedErrors'],
             ]));
         }
     }
