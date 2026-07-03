@@ -236,38 +236,18 @@ class LogsService extends Component
     }
 
     /**
-     * One page of logs, newest first, plus the total for the pager. Optionally
-     * restricted to a single run status (null = all).
+     * One page of logs, newest first, plus the total for the pager.
      *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage, ?string $status = null): array
+    public function paginate(int $page, int $perPage): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
-
-        if ($status !== null) {
-            $query->andWhere(['status' => $status]);
-        }
 
         $total = (int) $query->count();
         $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();
 
         return ['logs' => $logs, 'total' => $total];
-    }
-
-    /**
-     * The distinct run statuses currently stored, ascending — the option set
-     * for the overview's status filter, so it never offers a status no run has.
-     *
-     * @return string[]
-     */
-    public function distinctStatuses(): array
-    {
-        return LogRecord::find()
-            ->select('status')
-            ->distinct()
-            ->orderBy(['status' => SORT_ASC])
-            ->column();
     }
 
     /**

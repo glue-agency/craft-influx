@@ -24,14 +24,7 @@ class LogsController extends AbstractController
 
         $plugin = Influx::getInstance();
 
-        // Optional single-status filter. Only statuses actually present are
-        // offered, and an unknown/empty value falls back to "all". (The param
-        // is `status`, not `action` — Craft reserves `action` for routing.)
-        $statuses = $plugin->logs->distinctStatuses();
-        $status = $this->stringQueryParam('status');
-        $status = in_array($status, $statuses, true) ? $status : null;
-
-        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $status);
+        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage);
 
         // handle => id / handle => name, so each row can link to its link's
         // edit screen by id and show its friendly name (logs only store the
@@ -47,8 +40,6 @@ class LogsController extends AbstractController
             'total'     => $total,
             'linkIds'   => $linkIds,
             'linkNames' => $linkNames,
-            'status'    => $status,
-            'statuses'  => $statuses,
         ]);
     }
 
