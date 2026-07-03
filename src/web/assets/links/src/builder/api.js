@@ -117,6 +117,14 @@ export async function save(payload) {
     });
 }
 
+export async function deleteLink(uid) {
+    const url = resolve('delete', 'influx/links/delete');
+    return request(url, {
+        method: 'POST',
+        body: JSON.stringify({ uid }),
+    });
+}
+
 export async function mappableFields(elementType, criteria) {
     const url = resolve('mappableFields', 'influx/link-builder/mappable-fields');
     const params = new URLSearchParams({ elementType });

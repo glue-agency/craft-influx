@@ -83,9 +83,12 @@ class LinkBuilderService extends Component
                 'authStrategies'    => $this->authStrategyDefinitions(),
             ],
             'meta' => [
-                'isNew'         => $isNew,
-                'readOnly'      => $readOnly,
-                'handle'        => $link->handle ?: null,
+                'isNew'    => $isNew,
+                'readOnly' => $readOnly,
+                'handle'   => $link->handle ?: null,
+                // Delete goes by UID (the Project Config key) — the header
+                // menu's Delete action posts it to influx/links/delete.
+                'uid'           => $link->uid ?: null,
                 'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
                 'csrfToken'     => Craft::$app->getRequest()->getCsrfToken(),
                 // Environment-variable + Craft-alias suggestions for the
@@ -342,6 +345,9 @@ class LinkBuilderService extends Component
 
             // HeaderActions.vue
             'Save', 'Saving…', 'More save options', 'Save and continue editing',
+            'Delete link',
+            'Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.',
+            'Link deleted.', "Couldn't delete link.",
             'Fetch sample', 'Refetch sample', 'Fetching…', 'Fetching sample…',
             'Set a Base Endpoint on the General tab first',
             'Last attempt failed: {message}',

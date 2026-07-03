@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 vi.mock('../api.js', () => ({
     bootstrap: vi.fn(),
     save: vi.fn(),
+    deleteLink: vi.fn(),
     sample: vi.fn(),
     mappableFields: vi.fn(),
     renderElementSelect: vi.fn(),
@@ -23,7 +24,7 @@ const bootstrapPayload = () => ({
         mappings: { title: { node: 'name' } },
     },
     options: {},
-    meta: { isNew: false, csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x' },
+    meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x' },
 });
 
 const apiError = (message, errors = {}) => {
@@ -92,6 +93,25 @@ describe('store', () => {
         expect(store.ui.link.name).toBe('Changed (normalized)');
         expect(store.ui.errors).toEqual({});
         expect(store.isDirty.value).toBe(false);
+    });
+
+    it('deletes by the bootstrapped uid and reports success', async () => {
+        api.deleteLink.mockResolvedValue({ success: true, message: 'Link deleted.' });
+
+        const result = await store.deleteLink();
+
+        expect(api.deleteLink).toHaveBeenCalledWith('link-uid-1');
+        expect(result.success).toBe(true);
+    });
+
+    it('reports failure and stays put when the delete request fails', async () => {
+        api.deleteLink.mockRejectedValue(apiError('Link not found.'));
+
+        const result = await store.deleteLink();
+
+        expect(result.success).toBe(false);
+        // The link is still loaded — nothing was torn down client-side.
+        expect(store.link.handle).toBe('articles');
     });
 
     it('stores the ApiError message as sampleError when the sample fetch fails', async () => {

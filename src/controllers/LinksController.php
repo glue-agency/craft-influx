@@ -223,23 +223,19 @@ class LinksController extends AbstractController
 
         if ($this->readOnly()) {
             Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
-        } elseif (! $isNew && $link->uid) {
-            $response->addAltAction(Craft::t('app', 'Delete'), [
-                'action'      => 'influx/links/delete',
-                'destructive' => true,
-                'confirm'     => Craft::t('influx', 'Are you sure you want to delete this link?'),
-                'redirect'    => 'influx/links',
-                'params'      => ['uid' => $link->uid],
-            ]);
         }
 
         return $response;
     }
 
+    /**
+     * Delete a link by UID. Serves both callers: the overview's per-row form
+     * (regular POST → success flash + posted redirect) and the builder's
+     * header menu (JSON → the SPA shows the notice and navigates itself).
+     */
     public function actionDelete(): Response
     {
         $this->requirePostRequest();
-        $this->requireAcceptsJson();
 
         $uid = Craft::$app->getRequest()->getRequiredBodyParam('uid');
 

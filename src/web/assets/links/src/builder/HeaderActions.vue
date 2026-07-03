@@ -55,6 +55,19 @@
                             >{{ $t('Save and continue editing') }}</a>
                         </li>
                     </ul>
+
+                    <template v-if="canDelete">
+                        <hr>
+                        <ul>
+                            <li>
+                                <a
+                                    href="#"
+                                    class="error"
+                                    @click.prevent="doDelete"
+                                >{{ $t('Delete link') }}</a>
+                            </li>
+                        </ul>
+                    </template>
                 </div>
             </div>
         </div>
@@ -98,6 +111,12 @@ export default {
     computed: {
         canSave() {
             return !!this.ui.link && store.isDirty.value && !this.ui.saving;
+        },
+
+        // Delete needs a persisted link (a uid) and a writable environment —
+        // a brand-new unsaved link has nothing to delete yet.
+        canDelete() {
+            return !!this.ui.meta?.uid && !this.ui.meta?.isNew && !this.ui.meta?.readOnly;
         },
 
         saveLabel() {
@@ -186,6 +205,17 @@ export default {
             // Toast + redirect logic lives in store.save() so Cmd+S and
             // both buttons here share identical behavior.
             store.save({ continueEditing: keepEditing });
+        },
+
+        doDelete() {
+            if (!this.canDelete) return;
+
+            if (!window.confirm(this.$t('Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.'))) {
+                return;
+            }
+
+            // Toast + redirect live in the store action.
+            store.deleteLink();
         },
     },
 };

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, bootstrap, configureActionUrls, configureCsrf, save } from '../api.js';
+import { ApiError, bootstrap, configureActionUrls, configureCsrf, deleteLink, save } from '../api.js';
 
 const jsonResponse = (body, { status = 200 } = {}) => ({
     ok: status >= 200 && status < 300,
@@ -21,6 +21,17 @@ describe('request envelope', () => {
         fetch.mockResolvedValue(jsonResponse({ success: true, link: { handle: 'articles' } }));
         const result = await save({ handle: 'articles' });
         expect(result.link.handle).toBe('articles');
+    });
+
+    it('deleteLink POSTs the uid to the delete action', async () => {
+        fetch.mockResolvedValue(jsonResponse({ success: true, message: 'Link deleted.' }));
+        await deleteLink('abc-123');
+
+        const [url, init] = fetch.mock.calls[0];
+        // No pre-registered 'delete' URL — falls back to the action path.
+        expect(url).toContain('influx/links/delete');
+        expect(init.method).toBe('POST');
+        expect(JSON.parse(init.body)).toEqual({ uid: 'abc-123' });
     });
 
     it('throws ApiError on a {success: false} body even with HTTP 200', async () => {

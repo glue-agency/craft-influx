@@ -299,6 +299,28 @@ function setSiteEndpointsMode(on) {
     evaluateSample();
 }
 
+/**
+ * Delete the saved link and land back on the links overview. Confirmation
+ * is the caller's job (the header menu) — this action just executes.
+ * Unsaved edits are irrelevant once the link itself is gone, so the
+ * snapshot is refreshed first and the dirty guard can't block the exit.
+ */
+async function deleteLink() {
+    const uid = root.meta?.uid;
+    if (!uid || root.saving) return { success: false };
+
+    try {
+        await api.deleteLink(uid);
+        rememberSnapshot();
+        notifyNotice(t('Link deleted.'));
+        window.location.href = Craft.getCpUrl('influx/links');
+        return { success: true, redirected: true };
+    } catch (e) {
+        notifyError(errorText(e, t("Couldn't delete link.")));
+        return { success: false };
+    }
+}
+
 async function refreshEndpointTokenSuggestions() {
     if (!root.link) return;
     const { suggestions } = await api.endpointTokenSuggestions(
@@ -317,6 +339,7 @@ export const store = {
     isDirty,
     load,
     save,
+    deleteLink,
     fetchSample,
     evaluateSample,
     setSiteEndpointsMode,

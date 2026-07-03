@@ -63,6 +63,14 @@
                 form.querySelector('input[name="newHandle"]').value = answer.trim();
             });
         });
+
+        document.querySelectorAll('.influx-delete-form').forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                if (!window.confirm({{ "Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay."|t("influx")|json_encode|raw }})) {
+                    e.preventDefault();
+                }
+            });
+        });
         {% endjs %}
 
         {# Drag-to-sort the links table by the leading `.move` handle. Reorders
@@ -239,6 +247,13 @@
                                     {{ hiddenInput("handle", link.handle) }}
                                     {{ hiddenInput("newHandle", "") }}
                                 </form>
+
+                                <form id="influx-delete-{{ link.handle }}" method="post" accept-charset="UTF-8" class="influx-delete-form" hidden>
+                                    {{ csrfInput() }}
+                                    {{ actionInput("influx/links/delete") }}
+                                    {{ redirectInput("influx/links") }}
+                                    {{ hiddenInput("uid", link.uid) }}
+                                </form>
                             {% endif %}
 
                             <div class="btngroup">
@@ -309,6 +324,14 @@
                                             data-icon="duplicate"
                                             title="{{ 'Duplicate'|t('influx') }}">
                                         {{ "Duplicate"|t("influx") }}
+                                    </button>
+
+                                    <button type="submit"
+                                            form="influx-delete-{{ link.handle }}"
+                                            class="btn"
+                                            data-icon="trash"
+                                            title="{{ 'Delete'|t('influx') }}">
+                                        {{ "Delete"|t("influx") }}
                                     </button>
                                 {% endif %}
                             </div>
