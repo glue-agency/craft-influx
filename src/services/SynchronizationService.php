@@ -5,6 +5,8 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
+use craft\db\Query;
+use craft\db\Table as CraftTable;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
@@ -362,11 +364,23 @@ class SynchronizationService extends Component
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
-        return $this->runWithLog($link, SyncTrigger::ELEMENT, function(LogRecord $log) use ($plugin, $link, $target, $element) {
-            foreach ($link->syncSiteHandles() as $siteHandle) {
+        $siteHandles = $this->elementSyncSites($link, $element);
+
+        if ($siteHandles === []) {
+            throw new InfluxException(
+                "Element #{$element->id} doesn't exist in any of the sites link '{$link->handle}' is configured for.",
+            );
+        }
+
+        return $this->runWithLog($link, SyncTrigger::ELEMENT, function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandles) {
+            foreach ($siteHandles as $siteHandle) {
                 $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
-                $item = new RemoteItem($plugin->data->fetchOne($link, $tokens));
+
+                // Single-resource responses carry the same envelope as the
+                // list feed — unwrap via the link's rootNode or every match
+                // path misses and the item logs as an inexplicable skip.
+                $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);
 
                 try {
                     $this->processItem($context, $item, $log);
@@ -377,6 +391,47 @@ class SynchronizationService extends Component
 
             $plugin->cooldown->mark($link, $element);
         });
+    }
+
+    /**
+     * The subset of the link's sync sites a SINGLE-element sync should run:
+     * only the sites the element actually has a site row in. A per-site-
+     * endpoints link owns each site's elements through that site's feed, so
+     * running the other sites' passes would either skip (update-only) or —
+     * worse, with create enabled — clone the resource into a site whose feed
+     * never mentioned it. The `[null]` scope of a no-site-endpoints link
+     * always passes through.
+     *
+     * @return list<string|null>
+     */
+    protected function elementSyncSites(Link $link, ElementInterface $element): array
+    {
+        $siteIds = array_map(
+            static fn($id): int => (int) $id,
+            (new Query())
+                ->select(['siteId'])
+                ->from(CraftTable::ELEMENTS_SITES)
+                ->where(['elementId' => $element->id])
+                ->column(),
+        );
+
+        $handles = [];
+
+        foreach ($link->syncSiteHandles() as $siteHandle) {
+            if ($siteHandle === null) {
+                $handles[] = null;
+
+                continue;
+            }
+
+            $site = Craft::$app->getSites()->getSiteByHandle($siteHandle);
+
+            if ($site && in_array((int) $site->id, $siteIds, true)) {
+                $handles[] = $siteHandle;
+            }
+        }
+
+        return $handles;
     }
 
     /**

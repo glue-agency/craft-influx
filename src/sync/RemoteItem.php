@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\sync;
 
+use Cake\Utility\Hash;
 use Throwable;
 
 /**
@@ -19,6 +20,42 @@ class RemoteItem
     public function __construct(array $data)
     {
         $this->data = $data;
+    }
+
+    /**
+     * Build an item from a SINGLE-resource response (a link's itemEndpoint),
+     * unwrapping the same envelope the list feed declares via `rootNode` —
+     * APIs that wrap their collection (`{"data": [...]}`) almost always wrap
+     * the single resource the same way (`{"data": {...}}`), and feeding the
+     * enveloped response into the pipeline makes every match path miss.
+     *
+     * Unwrap rules, most-specific first:
+     *   - no rootNode configured → the response IS the item;
+     *   - the rootNode holds an object → that object is the item;
+     *   - the rootNode holds a list → its first array element (some APIs
+     *     return a one-item collection for a single-resource fetch);
+     *   - the rootNode is absent/scalar → the response as-is (the item
+     *     endpoint returns the bare object even though the list is enveloped).
+     */
+    public static function fromItemResponse(array $response, ?string $rootNode): self
+    {
+        if (! $rootNode) {
+            return new self($response);
+        }
+
+        $value = Hash::get($response, $rootNode);
+
+        if (is_array($value) && $value !== []) {
+            if (! array_is_list($value)) {
+                return new self($value);
+            }
+
+            if (is_array($value[0])) {
+                return new self($value[0]);
+            }
+        }
+
+        return new self($response);
     }
 
     /**
