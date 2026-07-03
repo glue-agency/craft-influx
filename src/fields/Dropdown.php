@@ -41,8 +41,8 @@ class Dropdown extends Field
                 'match',
                 Craft::t('influx', 'Match by'),
                 [
-                    ['value' => 'value', 'label' => Craft::t('influx', 'Option value')],
-                    ['value' => 'label', 'label' => Craft::t('influx', 'Option label')],
+                    ['value' => 'label', 'label' => Craft::t('influx', 'Label')],
+                    ['value' => 'value', 'label' => Craft::t('influx', 'Value')],
                 ],
                 ['default' => 'value'],
             ),
