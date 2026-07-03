@@ -326,11 +326,12 @@
                                         {{ "Duplicate"|t("influx") }}
                                     </button>
 
-                                    {# Craft's `caution` button variant — the CP's stock
-                                       destructive styling (red text on a red-050 fill). #}
+                                    {# Craft's global `.error` on a plain btn: red label +
+                                       glyph, but the normal button chrome — so it sits
+                                       flush in the btngroup (the `caution` fill didn't). #}
                                     <button type="submit"
                                             form="influx-delete-{{ link.handle }}"
-                                            class="btn caution"
+                                            class="btn error"
                                             data-icon="trash"
                                             title="{{ 'Delete'|t('influx') }}">
                                         {{ "Delete"|t("influx") }}
