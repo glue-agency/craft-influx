@@ -3,7 +3,7 @@
          subfields variant, so SchemaForm's subgrid rules keep matching. One
          card exists per block type and ALL of them render at once (Feed
          Me-style) — each card reads and writes only its own type's slice. -->
-    <mapping-group-card variant="subfields" :label="node.label">
+    <mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
         <template #tags>
             <span class="pill pill-mapped"
                   :data-mapped="mappedCount"
@@ -154,6 +154,13 @@ export default {
         /** This card's own slice: its block type's child `fields` map. */
         typeFields() {
             return this.modelValue[this.node.blockType]?.fields || {};
+        },
+
+        // Cards with saved rows start open; untouched block types start
+        // collapsed so a many-type Matrix doesn't wall the mapping tab.
+        // Seeds the card's initial state only — toggling stays free.
+        hasSavedRows() {
+            return Object.keys(this.typeFields).length > 0;
         },
 
         /** Sub-fields with an active source node — the header's pill. */

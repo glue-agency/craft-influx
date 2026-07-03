@@ -41,6 +41,16 @@ const mountFields = (props = {}) => mount(MatrixFields, {
 const nodeSelect = (wrapper, idx) => wrapper.findAllComponents(SearchableSelect).at(idx);
 
 describe('MatrixFields', () => {
+    it('starts collapsed without saved rows, open with them', () => {
+        const empty = mountFields();
+        expect(empty.find('.influx-mapping-group').classes()).toContain('collapsed');
+
+        const saved = mountFields({
+            modelValue: { quote: { fields: { quote: { node: 'quotes.text' } } } },
+        });
+        expect(saved.find('.influx-mapping-group').classes()).not.toContain('collapsed');
+    });
+
     it('renders each row as name label + code handle, like other sub-field rows', () => {
         const wrapper = mountFields();
         const firstRow = wrapper.find('.sub-field-row label');

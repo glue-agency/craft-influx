@@ -3,7 +3,7 @@
          MappingGroupCard, with the subfields variant so SchemaForm's subgrid
          rules keep matching. Sub-field mappings ARE mappings, so they get the
          same furniture (chevron, mapped/missing pills, column headings). -->
-    <mapping-group-card variant="subfields" :label="node.label">
+    <mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
         <template #tags>
             <span class="pill pill-mapped"
                   :data-mapped="mappedCount"
@@ -121,6 +121,12 @@ export default {
         /** @returns the sub-field nodes (BuilderSchema primitives). */
         subFieldList() {
             return this.node.subFields || [];
+        },
+
+        // Cards with saved rows start open; untouched ones start collapsed.
+        // Seeds the card's initial state only — toggling stays free.
+        hasSavedRows() {
+            return Object.keys(this.modelValue).length > 0;
         },
 
         /** Sub-fields with an active source node — the header's pill. */
