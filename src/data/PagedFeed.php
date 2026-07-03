@@ -22,20 +22,9 @@ use Throwable;
  *   - next URLs are normalized (Craft alias resolution; root-relative paths
  *     resolved against the endpoint host — mirrors feed-me's
  *     DataType::setupPaginationUrl());
- *   - next URLs inherit the endpoint's own query params (see below);
  *   - a seen-URL set turns paginator cycles into a {@see FeedFetchException}
  *     instead of an infinite loop;
  *   - {@see MAX_PAGES} caps runaway chains that never repeat a URL.
- *
- * Why next URLs inherit params: a site endpoint like `…/api/properties?language=fr`
- * often returns a `links.next` of `…/api/properties?page=2` — no language. Left
- * verbatim, pages 2+ would silently walk the DEFAULT-language feed, and since
- * per-language content is disjoint most of the FR feed would be unreachable.
- * So {@see nextUrl()} merges into every next URL any param MISSING from it,
- * sourced from the resolved configured endpoint's query string and from the
- * run's {@see $queryParams} (an offset preset's params, applied to the first
- * fetch only). Params already on the next URL always win — `page=2` survives,
- * and an API that echoes `language` keeps its own value.
  *
  * Consumed by both the sync run (all pages) and the debug inspector (breaks
  * after page one), so neither carries its own fetch/paginator-peek code.
@@ -168,94 +157,7 @@ class PagedFeed implements IteratorAggregate
             return null;
         }
 
-        // Merge here (not in the iterator) so EVERY consumer — the synchronous
-        // getIterator() walk AND the batchStep cursor path — carries the final,
-        // param-complete URL, including into the cycle-detection seen-set.
-        return $this->withPreservedParams($this->normalizeUrl($url));
-    }
-
-    /**
-     * Fold the endpoint's own query params into a next URL that's missing them
-     * (the language=fr → page=2 problem — see the class docblock). The next
-     * URL's own params always win; only genuinely absent keys are added. The
-     * URL's scheme/host/path/fragment are left untouched.
-     *
-     * The base params come from {@see baseQueryParams()} — a seam a unit test
-     * can override to exercise the merge without a Craft boot.
-     */
-    protected function withPreservedParams(string $nextUrl): string
-    {
-        $base = $this->baseQueryParams();
-
-        if (! $base) {
-            return $nextUrl;
-        }
-
-        $parts = parse_url($nextUrl);
-
-        // Unparseable — hand it on untouched; the fetch layer names the URL if
-        // it fails.
-        if ($parts === false) {
-            return $nextUrl;
-        }
-
-        $existing = [];
-
-        if (isset($parts['query'])) {
-            parse_str($parts['query'], $existing);
-        }
-
-        // The next URL's params win: union with $existing taking precedence.
-        $merged = $existing + $base;
-
-        if ($merged === $existing) {
-            return $nextUrl;
-        }
-
-        $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
-        $host = $parts['host'] ?? '';
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-        $path = $parts['path'] ?? '';
-        $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
-        $query = http_build_query($merged);
-
-        return $scheme . $host . $port . $path . ($query !== '' ? '?' . $query : '') . $fragment;
-    }
-
-    /**
-     * The query params a next URL should inherit when it's missing them: the
-     * resolved configured endpoint's own query string, unioned with the run's
-     * {@see $queryParams} (offset-preset params). The endpoint's params win over
-     * the preset's on a key clash (the endpoint is the more specific source).
-     *
-     * Uses {@see \GlueAgency\Influx\data\EndpointResolver::listUrl()} — the same
-     * authoritative resolution the run's first fetch uses — NOT the display
-     * variant; neither applies auth (auth is added per-request in {@see page()}),
-     * so no auth param leaks into a next URL. Overridable so the merge is
-     * unit-testable without resolving a real endpoint.
-     *
-     * @return array<string, string>
-     */
-    protected function baseQueryParams(): array
-    {
-        $params = [];
-
-        try {
-            $endpoint = $this->data->endpoints()->listUrl($this->link, $this->siteHandle);
-            $query = parse_url($endpoint, PHP_URL_QUERY);
-
-            if (is_string($query) && $query !== '') {
-                parse_str($query, $params);
-            }
-        } catch (Throwable) {
-            // No resolvable endpoint (misconfigured/env-less) — the first fetch
-            // surfaces that; here we simply contribute no base params.
-        }
-
-        // Cast the preset's scalar values so the union is a uniform string map.
-        $preset = array_map(static fn($value): string => (string) $value, $this->queryParams);
-
-        return $params + $preset;
+        return $this->normalizeUrl($url);
     }
 
     /**
