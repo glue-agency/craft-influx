@@ -8,82 +8,94 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\SynchronizationService;
 
 /**
- * Precedence spec for {@see SynchronizationService::missingPolicy()} — the rule
- * that maps a link's `processing` flags onto which missing-elements action a
- * sweep performs. The most destructive action wins when more than one is
- * enabled (a delete subsumes a disable):
+ * Spec for the two resolvers that map a link's `processing` flags onto the
+ * missing-elements sweeps — {@see SynchronizationService::perSitePolicy()} and
+ * {@see SynchronizationService::runPolicy()}. They are INDEPENDENT: per-site
+ * and run-end sweeps COMPOSE, so a link flagged for both disable and delete
+ * resolves a per-site DISABLED *and* a run-end DELETED (rather than delete
+ * suppressing disable via a single precedence chain, as it once did).
  *
- *   DELETE  >  DELETE_FOR_SITE  >  DISABLE
+ *   - perSitePolicy — among the per-site flags, DELETE_FOR_SITE beats DISABLE;
+ *     null when neither is set. The global DELETE flag does NOT participate.
+ *   - runPolicy — DELETED when the global DELETE flag is set, else null.
  *
- * No Craft boot: missingPolicy() reads only {@see Link::$processing}, and the
+ * No Craft boot: both resolvers read only {@see Link::$processing}, and the
  * service's init() builds a plain {@see \GlueAgency\Influx\sync\ItemProcessor}
  * that touches no app services — so a bare service instance is enough. The
- * method is protected, so an anonymous subclass exposes it (same seam the rest
- * of the suite favours over reflection).
+ * methods are protected, so an anonymous subclass exposes them (same seam the
+ * rest of the suite favours over reflection).
  */
 class MissingPolicyTest extends Unit
 {
-    public function testNoneEnabledYieldsNull(): void
+    public function testNoneEnabledYieldsNullForBoth(): void
     {
-        $this->assertNull($this->policyFor(['create', 'update']));
-        $this->assertNull($this->policyFor([]));
+        $this->assertResolves(['create', 'update'], null, null);
+        $this->assertResolves([], null, null);
     }
 
-    public function testDisableAlone(): void
+    public function testDisableOnlyIsPerSiteOnly(): void
     {
-        $this->assertSame(ItemAction::DISABLED, $this->policyFor(['create', 'update', 'disable']));
+        $this->assertResolves(['create', 'update', 'disable'], ItemAction::DISABLED, null);
     }
 
-    public function testDeleteForSiteAlone(): void
+    public function testDeleteForSiteOnlyIsPerSiteOnly(): void
     {
-        $this->assertSame(ItemAction::DELETED_FOR_SITE, $this->policyFor(['update', 'delete-for-site']));
+        $this->assertResolves(['update', 'delete-for-site'], ItemAction::DELETED_FOR_SITE, null);
     }
 
-    public function testDeleteAlone(): void
+    public function testDeleteOnlyIsRunOnly(): void
     {
-        $this->assertSame(ItemAction::DELETED, $this->policyFor(['update', 'delete']));
+        $this->assertResolves(['update', 'delete'], null, ItemAction::DELETED);
     }
 
-    public function testDeleteBeatsDeleteForSite(): void
+    public function testDisableAndDeleteComposePerSiteDisableAndRunDelete(): void
     {
-        $this->assertSame(ItemAction::DELETED, $this->policyFor(['delete', 'delete-for-site']));
+        // The real multi-site use case: per-site disable corrects cross-site
+        // visibility leaks each run, the run-end delete removes elements missing
+        // from every feed. Both fire — delete no longer suppresses disable.
+        $this->assertResolves(['create', 'update', 'disable', 'delete'], ItemAction::DISABLED, ItemAction::DELETED);
     }
 
-    public function testDeleteForSiteBeatsDisable(): void
+    public function testDeleteForSiteAndDeleteComposeDfsPerSiteAndRunDelete(): void
     {
-        $this->assertSame(ItemAction::DELETED_FOR_SITE, $this->policyFor(['disable', 'delete-for-site']));
+        $this->assertResolves(['update', 'delete-for-site', 'delete'], ItemAction::DELETED_FOR_SITE, ItemAction::DELETED);
     }
 
-    public function testDeleteBeatsDisable(): void
+    public function testDeleteForSiteBeatsDisablePerSite(): void
     {
-        $this->assertSame(ItemAction::DELETED, $this->policyFor(['disable', 'delete']));
+        $this->assertResolves(['disable', 'delete-for-site'], ItemAction::DELETED_FOR_SITE, null);
     }
 
-    public function testDeleteWinsWhenAllThreeSet(): void
+    public function testAllThreeComposeDfsPerSiteAndRunDelete(): void
     {
-        $this->assertSame(
-            ItemAction::DELETED,
-            $this->policyFor(['disable', 'delete-for-site', 'delete']),
-        );
+        // DELETE_FOR_SITE wins the per-site slot over DISABLE; DELETE owns the
+        // run slot independently.
+        $this->assertResolves(['disable', 'delete-for-site', 'delete'], ItemAction::DELETED_FOR_SITE, ItemAction::DELETED);
     }
 
     /**
-     * Resolve the missing policy for a link with the given processing flags.
+     * Assert both resolvers for a link with the given processing flags.
      *
      * @param list<string> $processing
      */
-    private function policyFor(array $processing): ?ItemAction
+    private function assertResolves(array $processing, ?ItemAction $expectedPerSite, ?ItemAction $expectedRun): void
     {
         $link = new Link();
         $link->processing = $processing;
 
         $service = new class() extends SynchronizationService {
-            public function publicMissingPolicy(Link $link): ?ItemAction
+            public function publicPerSitePolicy(Link $link): ?ItemAction
             {
-                return $this->missingPolicy($link);
+                return $this->perSitePolicy($link);
+            }
+
+            public function publicRunPolicy(Link $link): ?ItemAction
+            {
+                return $this->runPolicy($link);
             }
         };
 
-        return $service->publicMissingPolicy($link);
+        $this->assertSame($expectedPerSite, $service->publicPerSitePolicy($link), 'per-site policy');
+        $this->assertSame($expectedRun, $service->publicRunPolicy($link), 'run policy');
     }
 }

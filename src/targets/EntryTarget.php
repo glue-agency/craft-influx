@@ -113,21 +113,23 @@ class EntryTarget extends AbstractElementTarget
 
     /**
      * Candidate set for the missing-elements sweep: every entry this link owns
-     * (same section/type scoping as {@see findByMatchValue()}) that carries a
-     * non-empty match value, minus the ids the run just saw. Returns null when
-     * the link has no match attribute — without one there's no safe way to tell
-     * which entries this link manages, so nothing is swept.
+     * (same section/type scoping as {@see findByMatchValue()}), minus the ids
+     * the run just saw. Returns null only when the link has no match attribute
+     * at all — such a link can't sync, so there's nothing to sweep.
      *
-     * The `:notempty:` guard is only applied when the match attribute is a
-     * custom field: native identifiers (id/uid/slug/title) are always set, and
-     * `:notempty:` isn't a native-attribute param method — passing it there
-     * would filter on a literal string, not "is set".
+     * Feed-authoritative scope: the link's element criteria (section/type) ARE
+     * the ownership boundary — every entry inside that scope is managed by this
+     * link. So an entry with an EMPTY match value is a sweep candidate too: no
+     * feed item can ever match it (matching keys on the match value), so it is
+     * permanently "missing from the feed" and belongs in the candidate set.
+     * (The earlier `:notempty:` refinement — added on the theory that a blank
+     * match value meant "not ours" — is dropped: the criteria scope already
+     * answers "is this ours", and blank-keyed orphans are exactly what the
+     * sweep is meant to clear.)
      */
     public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface
     {
-        $matchAttr = $link->matchAttribute();
-
-        if (! $matchAttr) {
+        if (! $link->matchAttribute()) {
             return null;
         }
 
@@ -145,13 +147,6 @@ class EntryTarget extends AbstractElementTarget
             $query->siteId($siteId);
         } else {
             $query->siteId('*')->unique();
-        }
-
-        // Only entries carrying a match value are candidates — but `:notempty:`
-        // is a custom-field param, not a native one. Natives are always set, so
-        // skip the refinement for them.
-        if (! in_array($matchAttr, ['id', 'uid', 'slug', 'title'], true)) {
-            $query->{$matchAttr}(':notempty:');
         }
 
         // Exclude the ids the run just touched — Craft's 'not' prefix syntax.
