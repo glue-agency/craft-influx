@@ -326,9 +326,11 @@
                                         {{ "Duplicate"|t("influx") }}
                                     </button>
 
+                                    {# Craft's `caution` button variant — the CP's stock
+                                       destructive styling (red text on a red-050 fill). #}
                                     <button type="submit"
                                             form="influx-delete-{{ link.handle }}"
-                                            class="btn"
+                                            class="btn caution"
                                             data-icon="trash"
                                             title="{{ 'Delete'|t('influx') }}">
                                         {{ "Delete"|t("influx") }}

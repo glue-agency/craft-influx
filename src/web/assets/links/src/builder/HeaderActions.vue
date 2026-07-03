@@ -60,9 +60,12 @@
                         <hr>
                         <ul>
                             <li>
+                                <!-- `error` + data-icon ride Craft's own destructive
+                                     menu-item styling: red text, red trash glyph. -->
                                 <a
                                     href="#"
                                     class="error"
+                                    data-icon="trash"
                                     @click.prevent="doDelete"
                                 >{{ $t('Delete link') }}</a>
                             </li>
