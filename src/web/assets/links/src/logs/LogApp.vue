@@ -28,9 +28,21 @@
                 <action-badge class="influx-log-status" :color="statusClass">{{ log.status }}</action-badge>
             </div>
 
+            <!-- The endpoint(s) this run fetched from. A site-scoped run (or a
+                 link with no per-site endpoints) shows the one URL; an all-sites
+                 run on a link with per-site endpoints lists one line per site. -->
             <div v-if="endpointUrl" class="influx-log-endpoint">
                 <span class="influx-log-eyebrow">{{ $t('Endpoint') }}</span>
                 <a :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
+            </div>
+
+            <div v-else-if="endpoints.length" class="influx-log-endpoint">
+                <span class="influx-log-eyebrow">{{ $t('Endpoints') }}</span>
+                <code
+                    v-for="endpoint in endpoints"
+                    :key="endpoint.site"
+                    class="influx-log-endpoint-url influx-log-endpoint-line"
+                >{{ endpoint.site }}: {{ endpoint.url }}</code>
             </div>
 
             <error-panel v-if="log.error" class="influx-log-error" :error="log.error" />
@@ -170,6 +182,13 @@ export default {
 
         endpointUrl() {
             return this.config.endpointUrl || null;
+        },
+
+        // Per-site endpoints for an all-sites run on a link with site endpoints
+        // (empty when a single endpointUrl is shown instead — the two are
+        // mutually exclusive server-side).
+        endpoints() {
+            return this.config.endpoints || [];
         },
 
         statusClass() {
@@ -331,6 +350,11 @@ export default {
 .influx-log-endpoint-url {
     font-size: 12px;
     word-break: break-all;
+}
+/* Per-site lines stack, one endpoint each (all-sites run over site endpoints). */
+.influx-log-endpoint-line {
+    display: block;
+    background: none;
 }
 
 /* Status pill chrome + palette live in ActionBadge; this pill just pins

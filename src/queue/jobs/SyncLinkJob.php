@@ -16,6 +16,20 @@ use GlueAgency\Influx\Influx;
  *
  * CP-side triggers push the job (with no state) so the request returns
  * immediately; console runs stay synchronous via {@see \GlueAgency\Influx\services\SynchronizationService::syncLink()}.
+ *
+ * Carried run state (all re-pushed verbatim each step):
+ *   - logId/siteIndex/cursorUrl/page — where the walk is.
+ *   - seenIds (list<int>) — the ids the feed mentioned so far for the CURRENT
+ *     site; the missing-elements sweep excludes these, so dropping them between
+ *     steps makes the sweep over-disable (it would only ever "see" the final
+ *     page's items). {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()}
+ *     accumulates it and resets it when a site's last page is done.
+ *   - unattributedErrors (int) — items that failed WITHOUT a resolvable element
+ *     this site; any at all makes the sweep bail (the seen-set is incomplete).
+ *
+ * seenIds rides the serialised job payload, so its size grows with the site's
+ * item count: fine for feeds up to tens of thousands of ids; a feed far larger
+ * than that would bloat the job row and should page the sweep differently.
  */
 class SyncLinkJob extends BaseJob
 {
@@ -38,6 +52,21 @@ class SyncLinkJob extends BaseJob
     public ?string $cursorUrl = null;
     public int $page = 1;
 
+    /**
+     * Element ids the feed has mentioned so far for the current site. Excluded
+     * from the missing-elements sweep — MUST survive across steps or the sweep
+     * over-disables. Reset per site by {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()}.
+     *
+     * @var list<int>
+     */
+    public array $seenIds = [];
+
+    /**
+     * Items that failed with no resolvable element this site — any at all makes
+     * the sweep bail. Carried across steps alongside {@see self::$seenIds}.
+     */
+    public int $unattributedErrors = 0;
+
     public function execute($queue): void
     {
         // tryFrom (not from) so a job serialised with an unexpected trigger
@@ -50,10 +79,12 @@ class SyncLinkJob extends BaseJob
             $trigger,
             $this->site,
             [
-                'logId'     => $this->logId,
-                'siteIndex' => $this->siteIndex,
-                'cursorUrl' => $this->cursorUrl,
-                'page'      => $this->page,
+                'logId'              => $this->logId,
+                'siteIndex'          => $this->siteIndex,
+                'cursorUrl'          => $this->cursorUrl,
+                'page'               => $this->page,
+                'seenIds'            => $this->seenIds,
+                'unattributedErrors' => $this->unattributedErrors,
             ],
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
@@ -78,14 +109,16 @@ class SyncLinkJob extends BaseJob
             // More pages (or sites) to go — re-queue the next step on the same
             // log so the whole run reads as one log entry.
             Craft::$app->getQueue()->push(new self([
-                'linkHandle' => $this->linkHandle,
-                'offset'     => $this->offset,
-                'site'       => $this->site,
-                'trigger'    => $this->trigger,
-                'logId'      => $state['logId'],
-                'siteIndex'  => $state['siteIndex'],
-                'cursorUrl'  => $state['cursorUrl'],
-                'page'       => $state['page'],
+                'linkHandle'         => $this->linkHandle,
+                'offset'             => $this->offset,
+                'site'               => $this->site,
+                'trigger'            => $this->trigger,
+                'logId'              => $state['logId'],
+                'siteIndex'          => $state['siteIndex'],
+                'cursorUrl'          => $state['cursorUrl'],
+                'page'               => $state['page'],
+                'seenIds'            => $state['seenIds'],
+                'unattributedErrors' => $state['unattributedErrors'],
             ]));
         }
     }

@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
@@ -73,11 +74,14 @@ class LogsController extends AbstractController
         // in from actionItems(), so a huge run doesn't ship as one JSON blob.
         $items = $presenter->presentItems($plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE), $link?->elementType);
 
-        // The endpoint this run fetched from — the configured per-site URL,
-        // falling back to the link's base endpoint; null when the link is gone.
-        $endpointUrl = $link
-            ? (($log->siteHandle !== null ? $link->endpointForSite($log->siteHandle) : null) ?? $link->endpoint)
-            : null;
+        // The endpoint(s) this run fetched from. Three cases:
+        //   - site-scoped run ($log->siteHandle set): the one site endpoint it
+        //     used (falling back to the base if that site has no dedicated one);
+        //   - all-sites run on a link WITH per-site endpoints: no single URL is
+        //     right (the base is never fetched), so list every site endpoint;
+        //   - all-sites run with no site endpoints: the base endpoint.
+        // A deleted link ($link === null) has neither.
+        ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $this->resolveEndpointDisplay($log, $link);
 
         return $this->renderTemplate('influx/logs/view', [
             'config' => [
@@ -90,9 +94,59 @@ class LogsController extends AbstractController
                 'linkId'          => $link?->id,
                 'linkName'        => $link?->name,
                 'endpointUrl'     => $endpointUrl,
+                'endpoints'       => $endpoints,
                 'isLive'          => in_array($log->status, ['running', 'pending'], true),
             ],
         ]);
+    }
+
+    /**
+     * Work out what to show in the log viewer's "Endpoint" row. Returns exactly
+     * one of two populated shapes (see {@see actionView()} for the three cases):
+     *
+     *   - `endpointUrl` set, `endpoints` null — a single URL (site-scoped run,
+     *     or an all-sites run on a link with no per-site endpoints);
+     *   - `endpoints` a `[{site, url}]` list, `endpointUrl` null — an all-sites
+     *     run on a link that HAS per-site endpoints (the base is never fetched,
+     *     so no single URL is honest).
+     *
+     * Both null when the link has since been deleted.
+     *
+     * @return array{endpointUrl: ?string, endpoints: ?list<array{site: string, url: string}>}
+     */
+    protected function resolveEndpointDisplay(LogRecord $log, ?Link $link): array
+    {
+        if ($link === null) {
+            return ['endpointUrl' => null, 'endpoints' => null];
+        }
+
+        // Site-scoped run: the one endpoint that site used (base as fallback).
+        if ($log->siteHandle !== null) {
+            $url = $link->endpointForSite($log->siteHandle) ?? $link->endpoint;
+
+            return ['endpointUrl' => $url, 'endpoints' => null];
+        }
+
+        $siteHandles = $link->siteHandles();
+
+        // All-sites run on a link with per-site endpoints: list every one — the
+        // base was never fetched, so a single URL would misrepresent the run.
+        if ($siteHandles !== []) {
+            $endpoints = [];
+
+            foreach ($siteHandles as $handle) {
+                $url = $link->endpointForSite($handle) ?? $link->endpoint;
+
+                if ($url !== null) {
+                    $endpoints[] = ['site' => $handle, 'url' => $url];
+                }
+            }
+
+            return ['endpointUrl' => null, 'endpoints' => $endpoints];
+        }
+
+        // All-sites run with no per-site endpoints: the base endpoint.
+        return ['endpointUrl' => $link->endpoint, 'endpoints' => null];
     }
 
     /**

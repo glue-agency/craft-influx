@@ -110,7 +110,7 @@ class SynchronizationService extends Component
                 $context = SyncContext::forSite($link, $target, $handle, $trigger);
                 $this->processSite($context, $queryParams, $log, $onProgress);
             }
-        });
+        }, $siteHandle);
 
         $afterEvent = new SyncLinkEvent([
             'link'           => $link,
@@ -171,7 +171,7 @@ class SynchronizationService extends Component
 
         // The first step opens the log; later steps reload the run in progress.
         if (($state['logId'] ?? null) === null) {
-            $log = $this->startSync($link, $trigger);
+            $log = $this->startSync($link, $trigger, $requestedSite);
             $state['logId'] = $log->id;
         } else {
             $log = LogRecord::findOne($state['logId']);
@@ -266,8 +266,11 @@ class SynchronizationService extends Component
     /**
      * Begin a run: fire the cancellable before-event, take the backup, open the
      * log. Shared with {@see batchStep()}; {@see syncLink()} does this inline.
+     *
+     * @param string|null $siteHandle The site this run was scoped to (null =
+     * an all-sites run), recorded on the log — see {@see runWithLog()}.
      */
-    protected function startSync(Link $link, SyncTrigger $trigger): LogRecord
+    protected function startSync(Link $link, SyncTrigger $trigger, ?string $siteHandle = null): LogRecord
     {
         $beforeEvent = new SyncLinkEvent(['link' => $link]);
         $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
@@ -278,7 +281,7 @@ class SynchronizationService extends Component
 
         Influx::getInstance()->backup->backupForLink($link);
 
-        return Influx::getInstance()->logs->start($link, $trigger);
+        return Influx::getInstance()->logs->start($link, $trigger, $siteHandle);
     }
 
     /**
@@ -338,13 +341,6 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Run a body within the log lifecycle: start a log, run the body (which
-     * does the actual per-site work and receives the {@see LogRecord}), then
-     * finish — or, if anything throws, fail the log and re-throw. The one place
-     * the start/finish/fail/re-throw scaffold lives, shared by {@see syncLink()}
-     * and {@see syncElement()}.
-     */
-    /**
      * Sites a run should cover: a single requested site (validated against the
      * link's configured endpoints), or every configured site when none is
      * requested. The one place "which sites does this run touch" is decided.
@@ -364,10 +360,21 @@ class SynchronizationService extends Component
         return [$siteHandle];
     }
 
-    protected function runWithLog(Link $link, SyncTrigger $trigger, callable $body): LogRecord
+    /**
+     * Run a body within the log lifecycle: start a log, run the body (which
+     * does the actual per-site work and receives the {@see LogRecord}), then
+     * finish — or, if anything throws, fail the log and re-throw. The one place
+     * the start/finish/fail/re-throw scaffold lives, shared by {@see syncLink()}
+     * and {@see syncElement()}.
+     *
+     * @param string|null $siteHandle The site this run was SCOPED to (null = an
+     * all-sites run), recorded on the log so the viewer can show which site's
+     * endpoint was fetched.
+     */
+    protected function runWithLog(Link $link, SyncTrigger $trigger, callable $body, ?string $siteHandle = null): LogRecord
     {
         $logs = Influx::getInstance()->logs;
-        $log = $logs->start($link, $trigger);
+        $log = $logs->start($link, $trigger, $siteHandle);
 
         try {
             $body($log);
@@ -585,8 +592,11 @@ class SynchronizationService extends Component
      * The candidate query (from the target) is status-filtered per policy —
      * DISABLED skips already-disabled elements (no churn); the delete policies
      * consider every status — and walked in batches so memory stays bounded.
-     * Each element's action is wrapped in its own try/catch: one failure logs
-     * an error row and the sweep carries on.
+     * Each element's action is wrapped in its own try/catch: a thrown failure
+     * logs an error row and the sweep carries on. A save that returns false
+     * WITHOUT throwing (a validation failure that didn't persist) is likewise
+     * an ERROR row, never a success row — the log must not claim a
+     * disable/delete that never landed.
      *
      * @param list<int> $seenIds Element ids present in this site's feed.
      * @param int $unattributedErrors Items that failed with no resolvable
@@ -649,13 +659,29 @@ class SynchronizationService extends Component
 
         foreach ($query->batch(100) as $elements) {
             foreach ($elements as $element) {
+                $matchValue = $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null;
+
                 try {
-                    $this->applyMissingAction($context, $policy, $element);
+                    // A false return means the save didn't persist (validation,
+                    // etc.) — record an ERROR row, NOT a success row, so the log
+                    // never claims a disable/delete that never happened.
+                    if (! $this->applyMissingAction($context, $policy, $element)) {
+                        $plugin->logs->recordItem(
+                            $log,
+                            ItemAction::ERROR,
+                            $element->id,
+                            $matchValue,
+                            "Missing-elements {$policy->value} failed to save.",
+                        );
+
+                        continue;
+                    }
+
                     $plugin->logs->recordItem(
                         $log,
                         $policy,
                         $element->id,
-                        $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null,
+                        $matchValue,
                         'Missing from feed.',
                     );
                 } catch (Throwable $e) {
@@ -677,18 +703,23 @@ class SynchronizationService extends Component
      * {@see sweepMissing()} so the mode-per-policy dispatch reads as a single
      * expression. The site scope is read off the context: DISABLED on a site
      * run disables only that site; a global DISABLED disables the element.
+     *
+     * Returns the target call's boolean result: false means the save did NOT
+     * persist (e.g. a validation error), which {@see sweepMissing()} turns into
+     * an ERROR row instead of a false-positive success row. An unknown policy
+     * returns false (nothing was applied — never log it as done).
      */
-    protected function applyMissingAction(SyncContext $context, ItemAction $policy, ElementInterface $element): void
+    protected function applyMissingAction(SyncContext $context, ItemAction $policy, ElementInterface $element): bool
     {
         $target = $context->target;
 
-        match ($policy) {
+        return match ($policy) {
             ItemAction::DELETED          => $target->delete($element),
             ItemAction::DELETED_FOR_SITE => $target->deleteForSite($element, (int) $context->siteId),
             ItemAction::DISABLED         => $context->siteId !== null
                 ? $target->disableForSite($element, $context->siteId)
                 : $target->disable($element),
-            default => null,
+            default => false,
         };
     }
 

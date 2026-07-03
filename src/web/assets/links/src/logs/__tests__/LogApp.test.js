@@ -80,6 +80,33 @@ describe('LogApp', () => {
         expect(window.Craft.sendActionRequest).not.toHaveBeenCalled();
     });
 
+    it('renders a single endpoint URL when one is supplied', () => {
+        const w = mountApp({ endpointUrl: 'https://ex.test/api?language=fr' });
+
+        const link = w.find('.influx-log-endpoint-url');
+        expect(link.exists()).toBe(true);
+        expect(link.text()).toContain('language=fr');
+        // No per-site list when a single URL is shown.
+        expect(w.findAll('.influx-log-endpoint-line').length).toBe(0);
+    });
+
+    it('lists per-site endpoints for an all-sites run over site endpoints', () => {
+        const w = mountApp({
+            endpointUrl: null,
+            endpoints: [
+                { site: 'nl', url: 'https://ex.test/api?language=nl' },
+                { site: 'fr', url: 'https://ex.test/api?language=fr' },
+            ],
+        });
+
+        const lines = w.findAll('.influx-log-endpoint-line');
+        expect(lines.length).toBe(2);
+        expect(lines[0].text()).toContain('nl');
+        expect(lines[0].text()).toContain('language=nl');
+        expect(lines[1].text()).toContain('fr');
+        expect(lines[1].text()).toContain('language=fr');
+    });
+
     it('fetches the current page on mount when live and refreshes counters', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
             data: {
