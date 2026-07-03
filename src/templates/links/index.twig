@@ -64,10 +64,10 @@
             });
         });
 
-        document.querySelectorAll('.influx-delete-form').forEach(function (form) {
-            form.addEventListener('submit', function (e) {
-                if (!window.confirm({{ "Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay."|t("influx")|json_encode|raw }})) {
-                    e.preventDefault();
+        document.querySelectorAll('[data-influx-delete-form]').forEach(function (anchor) {
+            anchor.addEventListener('click', function () {
+                if (window.confirm({{ "Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay."|t("influx")|json_encode|raw }})) {
+                    document.getElementById(anchor.dataset.influxDeleteForm).submit();
                 }
             });
         });
@@ -164,6 +164,7 @@
                     <th>{{ "Processing"|t("influx") }}</th>
                     <th>{{ "Last run"|t("influx") }}</th>
                     <th colspan="2">{{ "Actions"|t('influx') }}</th>
+                    {% if not readOnly %}<th class="thin"></th>{% endif %}
                 </tr>
             </thead>
             <tbody{% if not readOnly %} data-influx-links-sortable{% endif %}>
@@ -248,7 +249,7 @@
                                     {{ hiddenInput("newHandle", "") }}
                                 </form>
 
-                                <form id="influx-delete-{{ link.handle }}" method="post" accept-charset="UTF-8" class="influx-delete-form" hidden>
+                                <form id="influx-delete-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
                                     {{ csrfInput() }}
                                     {{ actionInput("influx/links/delete") }}
                                     {{ redirectInput("influx/links") }}
@@ -325,20 +326,22 @@
                                             title="{{ 'Duplicate'|t('influx') }}">
                                         {{ "Duplicate"|t("influx") }}
                                     </button>
-
-                                    {# Craft's global `.error` on a plain btn: red label +
-                                       glyph, but the normal button chrome — so it sits
-                                       flush in the btngroup (the `caution` fill didn't). #}
-                                    <button type="submit"
-                                            form="influx-delete-{{ link.handle }}"
-                                            class="btn error"
-                                            data-icon="trash"
-                                            title="{{ 'Delete'|t('influx') }}">
-                                        {{ "Delete"|t("influx") }}
-                                    </button>
                                 {% endif %}
                             </div>
                         </td>
+                        {% if not readOnly %}
+                            {# Craft's native table-row delete: the bare ✕ icon in its
+                               own trailing thin cell (same markup the QueueManager and
+                               deprecation-log tables use). Click → confirm → submits
+                               the hidden delete form above. #}
+                            <td class="thin action">
+                                <a class="delete icon"
+                                   title="{{ 'Delete'|t('influx') }}"
+                                   aria-label="{{ 'Delete'|t('influx') }}"
+                                   role="button"
+                                   data-influx-delete-form="influx-delete-{{ link.handle }}"></a>
+                            </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
