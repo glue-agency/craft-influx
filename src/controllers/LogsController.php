@@ -254,6 +254,24 @@ class LogsController extends AbstractController
     }
 
     /**
+     * POST influx/logs/delete — drops one log row (its items cascade).
+     */
+    public function actionDelete(): Response
+    {
+        $this->requirePostRequest();
+
+        $id = (int) Craft::$app->getRequest()->getRequiredBodyParam('id');
+
+        if (! ($log = LogRecord::findOne($id))) {
+            throw new NotFoundHttpException("Log #{$id} not found.");
+        }
+
+        Influx::getInstance()->logs->delete($log);
+
+        return $this->asSuccess(Craft::t('influx', 'Log #{id} deleted.', ['id' => $id]));
+    }
+
+    /**
      * POST influx/logs/clear — drops every log row.
      */
     public function actionClear(): Response

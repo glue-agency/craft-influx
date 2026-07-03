@@ -13,6 +13,16 @@
 {% block content %}
     {% set statusDots = { ok: 'live', error: 'expired' } %}
 
+    {% js %}
+    document.querySelectorAll('[data-influx-delete-form]').forEach(function (anchor) {
+        anchor.addEventListener('click', function () {
+            if (window.confirm({{ "Delete this log entry?"|t("influx")|json_encode|raw }})) {
+                document.getElementById(anchor.dataset.influxDeleteForm).submit();
+            }
+        });
+    });
+    {% endjs %}
+
     {% if logs is empty %}
         <div class="zilch">
             <p>{{ "No runs yet."|t("influx") }}</p>
@@ -31,6 +41,7 @@
                     <th>{{ "Unchanged"|t("influx") }}</th>
                     <th>{{ "Skipped"|t("influx") }}</th>
                     <th>{{ "Duration"|t("influx") }}</th>
+                    <th class="thin"></th>
                 </tr>
             </thead>
             <tbody>
@@ -66,6 +77,22 @@
                             {% else %}
                                 <span class="light">—</span>
                             {% endif %}
+                        </td>
+                        {# Craft's native table-row delete: the bare ✕ icon in its own
+                           trailing thin cell, same as the links overview. Click →
+                           confirm → submits the row's hidden delete form. #}
+                        <td class="thin action">
+                            <form id="influx-delete-log-{{ log.id }}" method="post" accept-charset="UTF-8" hidden>
+                                {{ csrfInput() }}
+                                {{ actionInput("influx/logs/delete") }}
+                                {{ redirectInput("influx/logs") }}
+                                {{ hiddenInput("id", log.id) }}
+                            </form>
+                            <a class="delete icon"
+                               title="{{ 'Delete'|t('influx') }}"
+                               aria-label="{{ 'Delete'|t('influx') }}"
+                               role="button"
+                               data-influx-delete-form="influx-delete-log-{{ log.id }}"></a>
                         </td>
                     </tr>
                 {% endfor %}

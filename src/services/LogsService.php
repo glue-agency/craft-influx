@@ -319,6 +319,14 @@ class LogsService extends Component
         return $query;
     }
 
+    /**
+     * Drop one log row; its item rows go with it via the FK cascade.
+     */
+    public function delete(LogRecord $log): void
+    {
+        $log->delete();
+    }
+
     public function clear(): int
     {
         return LogRecord::deleteAll();
