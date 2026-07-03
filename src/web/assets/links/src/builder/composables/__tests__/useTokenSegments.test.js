@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseSegments, serializeSegments, useTokenSegments } from '../useTokenSegments.js';
+import {
+    parseSegments, segmentAtOffset, serializedOffsetOf, serializeSegments, useTokenSegments,
+} from '../useTokenSegments.js';
 
 const KINDS = { '$API_BASE': 'env', '@data': 'alias', '{id}': 'element' };
 
@@ -39,6 +41,38 @@ describe('parseSegments / serializeSegments', () => {
         expect(segments.map(s => s.type)).toEqual(['text', 'token', 'text']);
         expect(segments[0].value).toBe('');
         expect(segments[2].value).toBe('');
+    });
+});
+
+describe('serializedOffsetOf / segmentAtOffset', () => {
+    // 'https://' (8) + '$API_BASE' (9 as a chip) + '/items' (6)
+    const segs = parseSegments('https://$API_BASE/items', KINDS);
+    const [head, , tail] = segs;
+
+    it('maps a mid-segment cursor to its absolute serialized offset and back', () => {
+        expect(serializedOffsetOf(segs, head.id, 4)).toBe(4);
+        expect(segmentAtOffset(segs, 4)).toEqual({ segId: head.id, cursorPos: 4 });
+
+        expect(serializedOffsetOf(segs, tail.id, 2)).toBe('https://$API_BASE'.length + 2);
+        expect(segmentAtOffset(segs, 19)).toEqual({ segId: tail.id, cursorPos: 2 });
+    });
+
+    it('keeps boundary offsets on the text segment that owns them', () => {
+        // End of the head text — stays on the head, not inside the chip.
+        expect(segmentAtOffset(segs, 8)).toEqual({ segId: head.id, cursorPos: 8 });
+        // Exactly after the chip — start of the tail.
+        expect(serializedOffsetOf(segs, tail.id, 0)).toBe(17);
+        expect(segmentAtOffset(segs, 17)).toEqual({ segId: tail.id, cursorPos: 0 });
+    });
+
+    it('lands offsets inside a chip right after it', () => {
+        expect(segmentAtOffset(segs, 12)).toEqual({ segId: tail.id, cursorPos: 0 });
+    });
+
+    it('clamps past-the-end offsets, cursor positions, and unknown ids', () => {
+        expect(segmentAtOffset(segs, 999)).toEqual({ segId: tail.id, cursorPos: tail.value.length });
+        expect(serializedOffsetOf(segs, head.id, 999)).toBe(8);
+        expect(serializedOffsetOf(segs, -1, 3)).toBe('https://$API_BASE/items'.length);
     });
 });
 

@@ -2,9 +2,11 @@
     <div
         ref="rootEl"
         class="influx-tokenized-input"
-        :class="{ disabled }"
+        :class="{ disabled, 'all-selected': allSelected }"
         @click="onContainerClick"
         @focusout="onFocusOut"
+        @copy="onCopy"
+        @cut="onCut"
     >
         <div class="influx-tokenized-segments">
             <template v-for="seg in segments" :key="seg.id">
@@ -22,6 +24,7 @@
                     autocorrect="off"
                     @input="onTextInput(seg, $event)"
                     @keydown="onTextKeydown(seg, $event)"
+                    @paste="onPaste(seg, $event)"
                     @keyup="picker.trackCursor(seg.id, $event.target.selectionStart ?? 0); lastFocusedSegId = seg.id"
                     @mouseup="picker.trackCursor(seg.id, $event.target.selectionStart ?? 0); lastFocusedSegId = seg.id"
                     @focus="onTextFocus(seg, $event)"
@@ -89,12 +92,21 @@
  * Boundary edits (always on):
  *   - Backspace at position 0 of a text segment removes the preceding chip.
  *   - Delete at end-of-text removes the following chip.
+ *
+ * Select-all + clipboard (native selection can't span the separate segment
+ * inputs, and chips aren't text — so the component owns these):
+ *   - Cmd/Ctrl+A selects the WHOLE value component-wide; Escape, caret
+ *     moves, clicks, and focus changes drop the selection.
+ *   - Copy/Cut while all-selected write the full serialized value; Cut
+ *     also clears it. Typing replaces it, like over a native selection.
+ *   - Paste splices into the serialized value and re-parses it, so pasted
+ *     `$VAR` / `@alias` / `{placeholder}` tokens chip-ify.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TokenChip from './components/TokenChip.vue';
 import TokenPickerMenu from './components/TokenPickerMenu.vue';
 import { useTokenPicker } from './composables/useTokenPicker.js';
-import { useTokenSegments } from './composables/useTokenSegments.js';
+import { segmentAtOffset, serializedOffsetOf, useTokenSegments } from './composables/useTokenSegments.js';
 
 const props = defineProps({
     modelValue:  { type: String, default: '' },
@@ -156,6 +168,11 @@ const pickerWrap = ref(null);
 const textRefs = {};
 const lastFocusedSegId = ref(null);
 
+// Component-level "everything is selected" state (Cmd/Ctrl+A) — native
+// selection can't span the segment inputs, so this flag stands in for it
+// and the copy/cut/paste/typing handlers below honor it.
+const allSelected = ref(false);
+
 function setTextRef(id, el) {
     if (el) {
         textRefs[id] = el;
@@ -183,11 +200,15 @@ function focusSegment(id, cursorPos) {
  */
 function onFocusOut(e) {
     if (!rootEl.value?.contains(e.relatedTarget)) {
+        allSelected.value = false;
         emit('blur');
     }
 }
 
 function onContainerClick(e) {
+    // Any click inside the component (segments, chips, picker) collapses a
+    // component-level selection — same as clicking into a native selection.
+    allSelected.value = false;
     if (e.target !== rootEl.value && !e.target.matches('.influx-tokenized-segments')) return;
     const last = segments.value[segments.value.length - 1];
     if (last?.type === 'text') {
@@ -196,6 +217,7 @@ function onContainerClick(e) {
 }
 
 function onTextFocus(seg, e) {
+    allSelected.value = false;
     lastFocusedSegId.value = seg.id;
     picker.setCursor(e.target.selectionStart ?? 0);
     // Switching segments cancels any in-flight trigger — the trigger lives
@@ -226,6 +248,21 @@ function onTextInput(seg, e) {
 }
 
 function onTextKeydown(seg, e) {
+    // Cmd/Ctrl+A: a URL-style field's expected select-all is the WHOLE
+    // value, not one segment — swap the native behavior for the component-
+    // level selection (which supersedes any in-flight picker).
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key?.toLowerCase() === 'a') {
+        e.preventDefault();
+        picker.clearTrigger();
+        picker.closeManual();
+        allSelected.value = true;
+        return;
+    }
+
+    if (allSelected.value && onAllSelectedKeydown(e)) {
+        return;
+    }
+
     // Picker-driven keys while a trigger is active in this segment. Escape
     // only cancels the trigger here — the manual picker has its own search
     // input, so it never routes through a text segment.
@@ -264,6 +301,121 @@ function onSearchKeydown(e) {
 function commitHighlighted() {
     if (picker.highlightedItem.value) {
         commitSelection(picker.highlightedItem.value);
+    }
+}
+
+// ---- select-all + clipboard ----
+
+/**
+ * Keys while the whole value is selected. Returns true when the key was
+ * consumed (the caller then skips picker routing and boundary chip-eats).
+ */
+function onAllSelectedKeydown(e) {
+    // Modified keys fall through: Cmd+C/X/V land on the copy/cut/paste
+    // handlers below, everything else keeps its native meaning.
+    if (e.metaKey || e.ctrlKey || e.altKey) return false;
+
+    if (e.key === 'Escape') {
+        allSelected.value = false;
+        return true;
+    }
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+        // Caret moves drop the selection; the native default proceeds.
+        allSelected.value = false;
+        return false;
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        clearAll();
+        return true;
+    }
+    if (e.key?.length === 1) {
+        // A printable char replaces the whole value — exactly like typing
+        // over a native full selection.
+        e.preventDefault();
+        replaceAll(e.key);
+        return true;
+    }
+    return false;
+}
+
+/** Replace the whole value with a single typed character. */
+function replaceAll(char) {
+    allSelected.value = false;
+    setFromValue(char, tokenKinds.value);
+    emit('update:modelValue', serialize());
+
+    // One char can never parse into a chip, so this is THE text segment.
+    const seg = segments.value[segments.value.length - 1];
+    picker.setCursor(char.length);
+    // Typing `$` / `@` / `{` over the selection starts a trigger, just as
+    // it would after clearing the field and typing it (no-op otherwise).
+    picker.maybeOpenTrigger(seg.id, '', char, char.length);
+    focusSegment(seg.id, char.length);
+}
+
+/** Clear the whole value (all-selected Backspace/Delete, and cut). */
+function clearAll() {
+    allSelected.value = false;
+    setFromValue('', tokenKinds.value);
+    emit('update:modelValue', '');
+    focusSegment(segments.value[0].id, 0);
+}
+
+/**
+ * Copy/cut bubble up here from whichever segment input holds focus. Only
+ * the all-selected state is intercepted — a partial selection inside one
+ * segment is native text and copies fine on its own.
+ */
+function onCopy(e) {
+    if (!allSelected.value || !e.clipboardData) return;
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', serialize());
+}
+
+function onCut(e) {
+    if (!allSelected.value || !e.clipboardData) return;
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', serialize());
+    clearAll();
+}
+
+/**
+ * Paste is always intercepted: the pasted text is spliced into the
+ * serialized value and the whole thing re-parsed, so known `$` / `@`
+ * tokens and `{...}` placeholders chip-ify instead of landing as plain
+ * text (native paste could only ever write into one segment anyway).
+ */
+function onPaste(seg, e) {
+    if (!e.clipboardData) return;
+    e.preventDefault();
+
+    const pasted = e.clipboardData.getData('text/plain').replace(/[\r\n]/g, '');
+
+    let fullValue;
+    let endOffset; // absolute serialized offset where the pasted text ends
+
+    if (allSelected.value) {
+        allSelected.value = false;
+        fullValue = pasted;
+        endOffset = pasted.length;
+    } else {
+        const start = e.target.selectionStart ?? seg.value.length;
+        const end = e.target.selectionEnd ?? start;
+        endOffset = serializedOffsetOf(segments.value, seg.id, start) + pasted.length;
+        seg.value = seg.value.slice(0, start) + pasted + seg.value.slice(end);
+        fullValue = serialize();
+    }
+
+    // Re-parsing rebuilds every segment id — drop any trigger anchored to
+    // the old ones before the swap.
+    picker.clearTrigger();
+    setFromValue(fullValue, tokenKinds.value);
+    emit('update:modelValue', serialize());
+
+    const landing = segmentAtOffset(segments.value, endOffset);
+    if (landing) {
+        focusSegment(landing.segId, landing.cursorPos);
     }
 }
 
@@ -403,6 +555,19 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMoused
 }
 .influx-tokenized-text:disabled {
     cursor: not-allowed;
+}
+
+/* Component-level select-all (Cmd/Ctrl+A): native selection can't span the
+   separate segment inputs, so paint an equivalent highlight — a selection-
+   blue wash over the text segments and a matching ring around the chips
+   (they keep their kind colors, so a tint alone would get lost). */
+.influx-tokenized-input.all-selected .influx-tokenized-text {
+    background: hsla(208deg, 90%, 60%, 0.25);
+    border-radius: 2px;
+}
+.influx-tokenized-input.all-selected .influx-tokenized-chip {
+    outline: 2px solid hsla(208deg, 90%, 55%, 0.5);
+    outline-offset: 0;
 }
 
 /* Inline chip — sized to slot inside the monospaced text flow without

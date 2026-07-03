@@ -53,6 +53,58 @@ export function serializeSegments(segments) {
 }
 
 /**
+ * Absolute offset into the serialized value of a cursor position inside a
+ * text segment — chips count their full `name` length. Cursor positions
+ * beyond the segment clamp to its end; unknown segment ids clamp to the
+ * end of the serialized value.
+ *
+ * @param {Array} segments
+ * @param {number} segId Id of the text segment holding the cursor.
+ * @param {number} cursorPos Cursor position within that segment's value.
+ */
+export function serializedOffsetOf(segments, segId, cursorPos) {
+    let offset = 0;
+    for (const seg of segments) {
+        const length = seg.type === 'text' ? seg.value.length : seg.name.length;
+        if (seg.type === 'text' && seg.id === segId) {
+            return offset + Math.max(0, Math.min(cursorPos, length));
+        }
+        offset += length;
+    }
+    return offset;
+}
+
+/**
+ * The text segment holding an absolute serialized offset, as
+ * `{segId, cursorPos}` — the inverse of {@see serializedOffsetOf}, used to
+ * restore the cursor across a re-parse (which rebuilds every segment id).
+ * Offsets inside a chip land right AFTER it (start of the following text
+ * segment); past-the-end offsets clamp to the end of the last text
+ * segment. Null only for a (malformed) list without text segments.
+ *
+ * @param {Array} segments
+ * @param {number} offset
+ */
+export function segmentAtOffset(segments, offset) {
+    let remaining = Math.max(0, offset);
+    let lastText = null;
+    for (const seg of segments) {
+        if (seg.type === 'text') {
+            lastText = seg;
+            if (remaining <= seg.value.length) {
+                return { segId: seg.id, cursorPos: remaining };
+            }
+            remaining -= seg.value.length;
+        } else {
+            // Inside (or at the end of) the chip → snap to just after it;
+            // the guaranteed following text segment picks it up at 0.
+            remaining = Math.max(0, remaining - seg.name.length);
+        }
+    }
+    return lastText ? { segId: lastText.id, cursorPos: lastText.value.length } : null;
+}
+
+/**
  * @param {{onChange: (value: string) => void}} config Called after every
  * mutation with the serialized value (feeds v-model upward).
  */
