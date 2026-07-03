@@ -23,6 +23,9 @@ use GlueAgency\Influx\db\Table;
  * @property string $startedAt
  * @property ?string $finishedAt
  * @property ?string $error
+ * @property string $dateCreated
+ * @property string $dateUpdated
+ * @property string $uid
  */
 class Log extends ActiveRecord
 {

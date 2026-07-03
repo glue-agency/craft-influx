@@ -14,6 +14,9 @@ use GlueAgency\Influx\db\Table;
  * @property ?string $message
  * @property ?string $fieldErrors
  * @property ?string $payload
+ * @property string $dateCreated
+ * @property string $dateUpdated
+ * @property string $uid
  */
 class LogItem extends ActiveRecord
 {

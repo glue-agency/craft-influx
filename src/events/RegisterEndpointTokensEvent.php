@@ -18,8 +18,8 @@ use yii\base\Event;
  * event fires.
  *
  *   Event::on(
- *       SynchronizationService::class,
- *       SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKENS,
+ *       EndpointTokensService::class,
+ *       EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKENS,
  *       function (RegisterEndpointTokensEvent $event) {
  *           $event->tokens['authorEmail'] = $event->element->getAuthor()?->email ?? '';
  *       }

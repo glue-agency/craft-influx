@@ -20,8 +20,8 @@ use yii\base\Event;
  * Twig template falls back to `custom`) or supply their own slug.
  *
  *   Event::on(
- *       SynchronizationService::class,
- *       SynchronizationService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS,
+ *       EndpointTokensService::class,
+ *       EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS,
  *       function (RegisterEndpointTokenSuggestionsEvent $event) {
  *           $event->suggestions[] = [
  *               'kind'  => 'authors',

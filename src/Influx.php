@@ -55,7 +55,7 @@ use yii\base\Event;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.8.0';
+    public string $schemaVersion = '1.0.0';
 
     public bool $hasCpSettings = false;
 
@@ -104,6 +104,16 @@ class Influx extends Plugin
     protected function createSettingsModel(): ?Model
     {
         return Craft::createObject(Settings::class);
+    }
+
+    /**
+     * Craft removes `plugins.influx` on uninstall, but the links live under
+     * the plugin's OWN root `influx` key — drop it too, so an uninstall
+     * leaves no orphaned config in project.yaml.
+     */
+    protected function beforeUninstall(): void
+    {
+        Craft::$app->getProjectConfig()->remove('influx');
     }
 
     public function getCpNavItem(): ?array

@@ -56,17 +56,6 @@ class SynchronizationService extends Component
     public const EVENT_AFTER_ITEM = 'afterItem';
 
     /**
-     * @deprecated The endpoint-token machinery moved to
-     * {@see EndpointTokensService} — attach listeners there. These triggers
-     * no longer fire from this class.
-     */
-    public const EVENT_REGISTER_ENDPOINT_TOKENS = 'registerEndpointTokens';
-    /**
-     * @deprecated See {@see EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS}.
-     */
-    public const EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS = 'registerEndpointTokenSuggestions';
-
-    /**
      * The shared per-item pipeline. Also used (dry-run) by
      * {@see DebugService} — the logic exists exactly once.
      */

@@ -27,7 +27,7 @@
         "handle": "influx",
         "name": "Influx",
         "developer": "Glue Agency",
-        "documentationUrl": "",
+        "documentationUrl": "https://bitbucket.org/glue-team/craft-influx/src/master/README.md",
         "class": "GlueAgency\\Influx\\Influx"
     },
     "config": {

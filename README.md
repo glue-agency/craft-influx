@@ -15,8 +15,8 @@ FeedMe carries a lot of historical surface area (XML, CSV, complex UIs, project-
 
 ## Requirements
 
-- Craft CMS 5.0+
-- PHP 8.2+
+- Craft CMS 4.0+ or 5.0+
+- PHP 8.1+
 
 ## Installation
 
