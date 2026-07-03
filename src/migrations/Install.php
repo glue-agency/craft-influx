@@ -47,6 +47,8 @@ class Install extends Migration
             'linkHandle'     => $this->string(100)->notNull(),
             'trigger'        => $this->string(30)->notNull(),    // console | cp | element | queue
             'siteHandle'     => $this->string(100)->null(),
+            'offsetHandle'   => $this->string(100)->null(),      // sliding-window preset the run used
+            'elementId'      => $this->integer()->null(),        // resource a single-element run was triggered for
             'status'         => $this->string(20)->notNull(),    // running | ok | error
             'itemsSeen'      => $this->integer()->defaultValue(0),
             'itemsCreated'   => $this->integer()->defaultValue(0),

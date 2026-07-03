@@ -58,12 +58,24 @@ class LogsService extends Component
      * @var array<int, LogItemBuffer>
      */
     protected array $buffers = [];
-    public function start(Link $link, SyncTrigger $trigger, ?string $siteHandle = null): LogRecord
-    {
+    /**
+     * @param string|null $siteHandle Site the run is scoped to (null = all).
+     * @param string|null $offsetHandle Sliding-window preset the run applied.
+     * @param int|null $elementId Resource a single-element run was triggered for.
+     */
+    public function start(
+        Link $link,
+        SyncTrigger $trigger,
+        ?string $siteHandle = null,
+        ?string $offsetHandle = null,
+        ?int $elementId = null,
+    ): LogRecord {
         $log = new LogRecord();
         $log->linkHandle = $link->handle;
         $log->trigger = $trigger->value;
         $log->siteHandle = $siteHandle;
+        $log->offsetHandle = $offsetHandle;
+        $log->elementId = $elementId;
         $log->status = 'running';
         $log->startedAt = Db::prepareDateForDb(new DateTime());
 

@@ -9,6 +9,7 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\web\ItemRowPresenter;
 use GlueAgency\Influx\web\LogPresenter;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -65,7 +66,10 @@ class LogsController extends AbstractController
         // in from actionItems(), so a huge run doesn't ship as one JSON blob.
         $items = $presenter->presentItems($plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE), $link?->elementType);
 
-        // The endpoint(s) this run fetched from. Three cases:
+        // The endpoint(s) this run fetched from. Four cases:
+        //   - single-element run ($log->elementId set): the item endpoint
+        //     template (tokens vary per element/site, so the template is the
+        //     honest constant);
         //   - site-scoped run ($log->siteHandle set): the one site endpoint it
         //     used (falling back to the base if that site has no dedicated one);
         //   - all-sites run on a link WITH per-site endpoints: no single URL is
@@ -86,17 +90,39 @@ class LogsController extends AbstractController
                 'linkName'        => $link?->name,
                 'endpointUrl'     => $endpointUrl,
                 'endpoints'       => $endpoints,
+                'resourceHtml'    => $this->resolveResourceDisplay($log, $link),
                 'isLive'          => in_array($log->status, ['running', 'pending'], true),
             ],
         ]);
     }
 
     /**
+     * The "Resource" row for a single-element run: the element chip for the
+     * resource the run was triggered for, or a "(gone)" note when it has since
+     * been deleted. Null for whole-feed runs, which have no single resource.
+     */
+    protected function resolveResourceDisplay(LogRecord $log, ?Link $link): ?string
+    {
+        if ($log->elementId === null) {
+            return null;
+        }
+
+        $element = Craft::$app->getElements()->getElementById((int) $log->elementId, $link?->elementType);
+
+        if (! $element) {
+            return '<span class="light">#' . (int) $log->elementId . ' (gone)</span>';
+        }
+
+        return (new ItemRowPresenter())->elementChip($element);
+    }
+
+    /**
      * Work out what to show in the log viewer's "Endpoint" row. Returns exactly
-     * one of two populated shapes (see {@see actionView()} for the three cases):
+     * one of two populated shapes (see {@see actionView()} for the four cases):
      *
-     *   - `endpointUrl` set, `endpoints` null — a single URL (site-scoped run,
-     *     or an all-sites run on a link with no per-site endpoints);
+     *   - `endpointUrl` set, `endpoints` null — a single URL (single-element
+     *     run's item-endpoint template, a site-scoped run, or an all-sites run
+     *     on a link with no per-site endpoints);
      *   - `endpoints` a `[{site, url}]` list, `endpointUrl` null — an all-sites
      *     run on a link that HAS per-site endpoints (the base is never fetched,
      *     so no single URL is honest).
@@ -109,6 +135,12 @@ class LogsController extends AbstractController
     {
         if ($link === null) {
             return ['endpointUrl' => null, 'endpoints' => null];
+        }
+
+        // Single-element run: it fetched the item endpoint, not the feed —
+        // the template (tokens unresolved) is the honest constant to show.
+        if ($log->elementId !== null) {
+            return ['endpointUrl' => $link->itemEndpoint, 'endpoints' => null];
         }
 
         // Site-scoped run: the one endpoint that site used (base as fallback).

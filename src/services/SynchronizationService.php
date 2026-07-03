@@ -130,7 +130,8 @@ class SynchronizationService extends Component
         $target = $this->resolveTarget($link);
         $siteHandles = $this->runSites($link, $siteHandle);
 
-        [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+        $preset = OffsetPreset::forLink($link, $offset);
+        [$queryParams] = $preset?->resolve() ?? [[], null];
 
         // Each site runs under its OWN log with its OWN per-pass sweep — a
         // fetch failure fails THIS site's log and the run CONTINUES with the
@@ -139,7 +140,7 @@ class SynchronizationService extends Component
 
         foreach ($siteHandles as $handle) {
             $context = SyncContext::forSite($link, $target, $handle, $trigger);
-            $log = $plugin->logs->start($link, $trigger, $handle);
+            $log = $plugin->logs->start($link, $trigger, $handle, $preset?->handle);
 
             try {
                 $this->processSite($context, $queryParams, $log, $onProgress);
@@ -227,11 +228,12 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$requestedSite}'.");
         }
 
-        [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+        $preset = OffsetPreset::forLink($link, $offset);
+        [$queryParams] = $preset?->resolve() ?? [[], null];
 
         // The first step opens the log; later steps reload the run in progress.
         if (($state['logId'] ?? null) === null) {
-            $log = $this->startSync($link, $trigger, $requestedSite);
+            $log = $this->startSync($link, $trigger, $requestedSite, $preset?->handle);
             $state['logId'] = $log->id;
         } else {
             $log = LogRecord::findOne($state['logId']);
@@ -317,9 +319,12 @@ class SynchronizationService extends Component
      * log. Shared with {@see batchStep()}; {@see syncLink()} does this inline.
      *
      * @param string|null $siteHandle The site this run was scoped to (null =
-     * an all-sites run), recorded on the log — see {@see runWithLog()}.
+     * an all-sites run), recorded on the log so the viewer can show which
+     * site's endpoint was fetched.
+     * @param string|null $offsetHandle The sliding-window preset the run was
+     * triggered with (null = the full feed), recorded on the log.
      */
-    protected function startSync(Link $link, SyncTrigger $trigger, ?string $siteHandle = null): LogRecord
+    protected function startSync(Link $link, SyncTrigger $trigger, ?string $siteHandle = null, ?string $offsetHandle = null): LogRecord
     {
         $beforeEvent = new SyncLinkEvent(['link' => $link]);
         $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
@@ -330,7 +335,7 @@ class SynchronizationService extends Component
 
         Influx::getInstance()->backup->backupForLink($link);
 
-        return Influx::getInstance()->logs->start($link, $trigger, $siteHandle);
+        return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle);
     }
 
     /**
@@ -372,7 +377,7 @@ class SynchronizationService extends Component
             );
         }
 
-        return $this->runWithLog($link, SyncTrigger::ELEMENT, function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandles) {
+        return $this->runWithLog($link, SyncTrigger::ELEMENT, $element->id, function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandles) {
             foreach ($siteHandles as $siteHandle) {
                 $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
@@ -458,17 +463,16 @@ class SynchronizationService extends Component
      * Run a body within the log lifecycle: start a log, run the body (which
      * does the actual per-site work and receives the {@see LogRecord}), then
      * finish — or, if anything throws, fail the log and re-throw. The one place
-     * the start/finish/fail/re-throw scaffold lives, shared by {@see syncLink()}
-     * and {@see syncElement()}.
+     * the start/finish/fail/re-throw scaffold lives — {@see syncElement()}'s
+     * lifecycle wrapper.
      *
-     * @param string|null $siteHandle The site this run was SCOPED to (null = an
-     * all-sites run), recorded on the log so the viewer can show which site's
-     * endpoint was fetched.
+     * @param int|null $elementId The resource a single-element run was
+     * triggered for, recorded on the log so the viewer can name it.
      */
-    protected function runWithLog(Link $link, SyncTrigger $trigger, callable $body, ?string $siteHandle = null): LogRecord
+    protected function runWithLog(Link $link, SyncTrigger $trigger, ?int $elementId, callable $body): LogRecord
     {
         $logs = Influx::getInstance()->logs;
-        $log = $logs->start($link, $trigger, $siteHandle);
+        $log = $logs->start($link, $trigger, null, null, $elementId);
 
         try {
             $body($log);

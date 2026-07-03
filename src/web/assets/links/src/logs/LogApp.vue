@@ -45,10 +45,20 @@
                 >{{ endpoint.site }}: {{ endpoint.url }}</code>
             </div>
 
+            <!-- Single-resource run: the element the run was triggered for —
+                 a server-rendered Craft chip (same markup as the item rows'
+                 element column), or a "(gone)" note once it's been deleted. -->
+            <div v-if="resourceHtml" class="influx-log-endpoint influx-log-resource">
+                <span class="influx-log-eyebrow">{{ $t('Resource') }}</span>
+                <span v-html="resourceHtml"></span>
+            </div>
+
             <error-panel v-if="log.error" class="influx-log-error" :error="log.error" />
 
             <stats-grid align-top class="influx-log-grid">
                 <stat-cell class="influx-log-cell" :label="$t('Trigger')" :value="log.trigger" />
+                <stat-cell v-if="log.siteHandle" class="influx-log-cell" :label="$t('Site')" :value="log.siteHandle" />
+                <stat-cell v-if="log.offsetHandle" class="influx-log-cell" :label="$t('Offset')" :value="log.offsetHandle" />
                 <stat-cell class="influx-log-cell" :label="$t('Started')" :value="log.startedAt" />
                 <stat-cell class="influx-log-cell" :label="$t('Finished')" :value="log.finishedAt || '—'" />
             </stats-grid>
@@ -189,6 +199,12 @@ export default {
         // mutually exclusive server-side).
         endpoints() {
             return this.config.endpoints || [];
+        },
+
+        // Server-rendered chip for the element a single-resource run was
+        // triggered for (null for whole-feed runs).
+        resourceHtml() {
+            return this.config.resourceHtml || null;
         },
 
         statusClass() {

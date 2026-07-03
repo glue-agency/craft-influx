@@ -39,10 +39,12 @@ class LogPresenter
     public function presentLog(LogRecord $log): array
     {
         return [
-            'id'         => (int) $log->id,
-            'linkHandle' => (string) $log->linkHandle,
-            'trigger'    => (string) $log->trigger,
-            'startedAt'  => $this->datetime($log->startedAt),
+            'id'           => (int) $log->id,
+            'linkHandle'   => (string) $log->linkHandle,
+            'trigger'      => (string) $log->trigger,
+            'siteHandle'   => $log->siteHandle,
+            'offsetHandle' => $log->offsetHandle,
+            'startedAt'    => $this->datetime($log->startedAt),
         ] + $this->presentCounters($log);
     }
 

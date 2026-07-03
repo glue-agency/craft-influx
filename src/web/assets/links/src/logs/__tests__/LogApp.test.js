@@ -107,6 +107,37 @@ describe('LogApp', () => {
         expect(lines[1].text()).toContain('language=fr');
     });
 
+    it('renders the resource chip for a single-element run', () => {
+        const w = mountApp({
+            endpointUrl: '@syncUrl/api/properties/{importId}',
+            resourceHtml: '<span class="chip">Unit A</span>',
+        });
+
+        const resource = w.find('.influx-log-resource');
+        expect(resource.exists()).toBe(true);
+        expect(resource.text()).toContain('Resource');
+        expect(resource.html()).toContain('Unit A');
+    });
+
+    it('omits the resource row for whole-feed runs', () => {
+        const w = mountApp({ endpointUrl: 'https://ex.test/api' });
+
+        expect(w.find('.influx-log-resource').exists()).toBe(false);
+    });
+
+    it('shows site and offset cells only when the run recorded them', () => {
+        const bare = mountApp();
+        expect(bare.text()).not.toContain('Offset');
+
+        const w = mountApp({
+            log: { ...baseConfig().log, siteHandle: 'fr', offsetHandle: 'hour' },
+        });
+
+        const labels = w.findAll('.influx-log-cell').map((c) => c.text());
+        expect(labels.some((t) => t.includes('Site') && t.includes('fr'))).toBe(true);
+        expect(labels.some((t) => t.includes('Offset') && t.includes('hour'))).toBe(true);
+    });
+
     it('fetches the current page on mount when live and refreshes counters', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
             data: {
