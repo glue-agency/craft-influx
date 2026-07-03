@@ -44,11 +44,12 @@
     </div>
 
     <!-- Grid layout (default): the extras share the mapping rows' column
-         grid, with everything placed on the source-node column onward.
-         Two dedicated structures: the field's own options (Match by, …)
-         grouped in one bordered fieldset card, then element sub-field
-         mappings as nested collapsible groups reusing the main list's
-         group chrome. -->
+         grid. Two dedicated structures: the field's own options (Match
+         by, …) grouped in one bordered fieldset card on the source-node
+         column onward, then element sub-field mappings as nested
+         collapsible groups reusing the main list's group chrome — those
+         cards span all three columns so their rows read like parent
+         mapping rows. -->
     <div v-else class="influx-schema-form">
         <div v-if="optionNodes.length" class="extras-options" role="group">
             <template v-for="(node, idx) in optionNodes" :key="node.handle || idx">
@@ -257,11 +258,13 @@ export default {
    the parent mapping row's 3-column grid so labels and controls line up
    with the Field / Source-node / Default-value columns above. */
 
-/* The grid form sits on the mapping rows' column grid: everything —
-   the options fieldset and the sub-field groups — starts at the
-   source-node column's left edge and runs to the row's right edge. The
-   field-name column stays empty: these are details *of* the field above,
-   not siblings.
+/* The grid form sits on the mapping rows' column grid. The field's own
+   option nodes start at the source-node column's left edge and run to the
+   row's right edge — the field-name column stays empty: they're details
+   *of* the field above, not siblings. The sub-field group cards
+   (elementSubFields / matrixFields) instead span all three columns and
+   join the shared tracks via subgrid, so their rows read exactly like
+   parent mapping rows — see the .influx-subfields-group rules below.
 
    Scoped to :not(.is-stacked): the stacked variant (Auth tab) renders
    plain Craft .field blocks and must NOT inherit this grid, or each field
@@ -324,16 +327,15 @@ export default {
 }
 
 /* Sub-field rows mirror the parent mapping rows — label in the first
-   column, node select + default in their own columns. No chevron gutter
-   here: sub-fields never collapse individually. The min-width puts a
-   floor under the fit-content() track below so very short labels don't
-   collapse the column. */
+   column, node select + default in their own columns. The 22px left
+   inset mirrors the parent rows' .meta chevron gutter (links.css) so the
+   label text lines up exactly under the parent field names; the gutter
+   stays empty — sub-fields never collapse individually. */
 .influx-schema-form .sub-field-row > label {
-    min-width: 100px;
     font-size: 13px;
     font-weight: 600;
     color: inherit;
-    padding-top: 6px;
+    padding: 6px 0 0 22px;
     line-height: 1.2;
 }
 
@@ -356,19 +358,39 @@ export default {
 
 /* Sub-field mapping groups reuse the main list's .influx-mapping-group
    chrome (white card, clickable header, mapped/missing pills) — defined
-   in links.css. Only the nested-context spacing lives here. */
-.influx-schema-form .influx-mapping-group {
-    margin: 10px 0 6px;
+   in MappingGroupCard.vue. Unlike the option nodes, the cards break out
+   of the "column 2 onward" placement: each card spans the full row width
+   and becomes a column subgrid of the schema form (whose tracks replicate
+   the parent mapping row's), so a sub-field row reads exactly like a
+   parent row — label under label, node select under node select, default
+   under default. The -1px side margins cancel the card's 1px border in
+   the subgrid track math (margin + border = 0 per edge), keeping the
+   card's tracks exactly on the outer ones; the border simply hangs 1px
+   outside them, into the parent row's padding. */
+.influx-schema-form:not(.is-stacked) > .influx-subfields-group {
+    grid-column: 1 / -1;
+    margin: 10px -1px 6px;
+    display: grid;
+    /* Fixed template first as the no-subgrid fallback — same template and
+       gap over the same net width as the outer grid, so the fr math
+       resolves to matching tracks. */
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: subgrid;
+    column-gap: 12px;
 }
 
-/* One shared grid for the sub-fields card body: the label column shrinks
-   to its widest label/handle (capped) so the node select and default
-   value get every spare pixel. Rows join the shared tracks via subgrid,
-   staying aligned despite the content sizing; their fixed template above
-   is the no-subgrid fallback. */
+/* The card header (type name + pills) spans all three columns; the body
+   is a pass-through subgrid handing the tracks down to the headings and
+   rows. */
+.influx-schema-form:not(.is-stacked) > .influx-subfields-group > .influx-mapping-group-header {
+    grid-column: 1 / -1;
+}
+
 .influx-schema-form .influx-subfields-group > .influx-mapping-group-body {
+    grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: fit-content(200px) minmax(200px, 1.4fr) minmax(140px, 1fr);
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: subgrid;
     column-gap: 12px;
 }
 
@@ -385,19 +407,29 @@ export default {
 .influx-schema-form .influx-subfields-group .influx-mapping-headings,
 .influx-schema-form .influx-subfields-group .sub-field-row {
     /* Fixed template first as the no-subgrid fallback; subgrid joins the
-       headings and rows to the card body's content-sized tracks. */
-    grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.4fr) minmax(140px, 1fr);
+       headings and rows to the card's shared (outer) tracks. */
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
     grid-template-columns: subgrid;
 }
 
-/* Sub-field rows have no chevron gutter, so the Field heading doesn't
-   need the 22px inset the main list's headings carry. */
-.influx-schema-form .influx-subfields-group .influx-mapping-headings > div:first-child {
-    padding-left: 0;
+/* The in-card headings drop links.css's 12px side padding — horizontal
+   padding on a subgrid shrinks its first/last tracks, which would knock
+   the columns off the shared grid. Insets live inside the cells instead:
+   the Field heading mirrors the main list's 22px gutter so it stays flush
+   with the parent field names and the sub-field labels below. */
+.influx-schema-form .influx-subfields-group .influx-mapping-headings {
+    padding: 6px 0;
 }
 
+.influx-schema-form .influx-subfields-group .influx-mapping-headings > div:first-child {
+    padding-left: 22px;
+}
+
+/* No horizontal padding either — the row is a subgrid too. Its cells'
+   insets: the label carries the 22px gutter (rule above); the selects sit
+   flush on their tracks like the parent row's. The 6px vertical rhythm
+   comes from the base .sub-field-row rule. */
 .influx-schema-form .influx-mapping-group .sub-field-row {
-    padding: 6px 12px;
     border-bottom: 1px solid rgba(0, 0, 0, .05);
 }
 

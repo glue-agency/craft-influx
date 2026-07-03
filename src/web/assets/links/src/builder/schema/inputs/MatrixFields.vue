@@ -32,7 +32,8 @@
 
         <!-- Same column headings as the main mapping list — block sub-field
              rows are mappings too. Joined to the card's shared grid in
-             SchemaForm.vue so the labels track the content-sized columns. -->
+             SchemaForm.vue, which subgrids down from the parent mapping rows'
+             tracks so the columns align with the row above. -->
         <div v-else class="influx-mapping-headings">
             <div>{{ $t('Field') }}</div>
             <div>{{ $t('Source node') }}</div>

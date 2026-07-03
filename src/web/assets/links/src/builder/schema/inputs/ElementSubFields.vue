@@ -24,8 +24,9 @@
         <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
 
         <!-- Same column headings as the main mapping list — sub-field rows are
-             mappings too. Joined to the card's shared grid in SchemaForm.vue
-             so the labels track the content-sized columns. -->
+             mappings too. Joined to the card's shared grid in SchemaForm.vue,
+             which subgrids down from the parent mapping rows' tracks so the
+             columns align with the row above. -->
         <div class="influx-mapping-headings">
             <div>{{ $t('Field') }}</div>
             <div>{{ $t('Source node') }}</div>
