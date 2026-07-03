@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
 use craft\elements\Entry;
 use craft\elements\User;
 use craft\fieldlayoutelements\CustomField;
@@ -108,6 +109,60 @@ class EntryTarget extends AbstractElementTarget
         }
 
         return $query->one();
+    }
+
+    /**
+     * Candidate set for the missing-elements sweep: every entry this link owns
+     * (same section/type scoping as {@see findByMatchValue()}) that carries a
+     * non-empty match value, minus the ids the run just saw. Returns null when
+     * the link has no match attribute — without one there's no safe way to tell
+     * which entries this link manages, so nothing is swept.
+     *
+     * The `:notempty:` guard is only applied when the match attribute is a
+     * custom field: native identifiers (id/uid/slug/title) are always set, and
+     * `:notempty:` isn't a native-attribute param method — passing it there
+     * would filter on a literal string, not "is set".
+     */
+    public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface
+    {
+        $matchAttr = $link->matchAttribute();
+
+        if (! $matchAttr) {
+            return null;
+        }
+
+        $query = Entry::find();
+
+        if (isset($link->elementCriteria['section'])) {
+            $query->section($link->elementCriteria['section']);
+        }
+
+        if (isset($link->elementCriteria['type'])) {
+            $query->type($link->elementCriteria['type']);
+        }
+
+        if ($siteId) {
+            $query->siteId($siteId);
+        } else {
+            $query->siteId('*')->unique();
+        }
+
+        // Only entries carrying a match value are candidates — but `:notempty:`
+        // is a custom-field param, not a native one. Natives are always set, so
+        // skip the refinement for them.
+        if (! in_array($matchAttr, ['id', 'uid', 'slug', 'title'], true)) {
+            $query->{$matchAttr}(':notempty:');
+        }
+
+        // Exclude the ids the run just touched — Craft's 'not' prefix syntax.
+        // An empty seen-set means no items matched: leave the id param off so
+        // the whole owned set is a candidate (the policy's status filter and
+        // the unattributed-errors guard still gate what actually gets swept).
+        if ($seenIds !== []) {
+            $query->id(array_merge(['not'], $seenIds));
+        }
+
+        return $query;
     }
 
     public function buildNew(Link $link, ?int $siteId = null): Entry

@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\services;
 
+use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\data\PagedFeed;
@@ -30,10 +31,13 @@ use Throwable;
  *      fetch the JSON payload, walk paginated pages, and process every item.
  *   3. Per item: match-or-build the target element, apply mappings, check for
  *      changes, save (or skip), and log.
- *   4. Post-run hooks (event, log finalisation).
- *
- * Deletion of items that disappeared remotely is intentionally NOT handled in
- * this first cut — see README "Roadmap".
+ *   4. Per site, once its pages are exhausted: the missing-elements sweep —
+ *      disable/delete the elements this link owns that the feed didn't
+ *      mention (see {@see sweepMissing()}). Governed by the link's
+ *      `processing` flags and gated by a clean-pass guard: a run with any
+ *      item that failed without a resolvable element does NOT sweep, since the
+ *      seen-set can't be trusted.
+ *   5. Post-run hooks (event, log finalisation).
  */
 class SynchronizationService extends Component
 {
@@ -131,9 +135,17 @@ class SynchronizationService extends Component
      * is left untouched). A fetch failure fails the run and stops; per-item
      * failures still become error rows and the run carries on.
      *
-     * @param array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int} $state
+     * The missing-elements sweep needs the whole site's seen-set, but the set
+     * is built one page per step — so it rides the state array (`seenIds`,
+     * `unattributedErrors`), accumulated across steps and consumed once the
+     * site's last page is done, then reset for the next site. seenIds therefore
+     * rides the queue payload: fine for feeds up to tens of thousands of ids;
+     * flag as a known bound (a feed far larger than that would bloat the job
+     * row and should page the sweep differently).
+     *
+     * @param array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
-     * @return array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, done: bool}
+     * @return array{logId: ?int, siteIndex: int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, done: bool}
      */
     public function batchStep(
         string $linkHandle,
@@ -151,6 +163,8 @@ class SynchronizationService extends Component
         }
 
         $state['done'] = false;
+        $state['seenIds'] ??= [];
+        $state['unattributedErrors'] ??= 0;
         $target = $this->resolveTarget($link);
         $sites = $this->runSites($link, $requestedSite);
         [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
@@ -180,19 +194,31 @@ class SynchronizationService extends Component
             return $state;
         }
 
+        // Dedupe the running seen-set as a value-keyed map (list re-derived on
+        // write-back), so a re-processed tail after a retried step can't
+        // double-count.
+        $seen = array_fill_keys($state['seenIds'], true);
+
         // Flush at the page boundary — and in a finally so a throw escaping the
         // loop still persists rows for items already saved this step. A retried
-        // queue step then re-processes only the un-flushed tail.
+        // queue step then re-processes only the un-flushed tail (and re-folds
+        // its ids into $seen, hence the dedupe above).
         try {
             foreach ($page->items as $item) {
                 try {
-                    $this->processItem($context, $item, $log);
+                    $elementId = $this->processItem($context, $item, $log);
+
+                    if ($elementId !== null) {
+                        $seen[$elementId] = true;
+                    }
                 } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
+                    $state['unattributedErrors']++;
                 }
             }
         } finally {
             $plugin->logs->flush($log);
+            $state['seenIds'] = array_keys($seen);
         }
 
         if ($onProgress !== null) {
@@ -217,7 +243,14 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // Site finished — advance to the next, or finish the whole run.
+        // Site finished — sweep the elements it owns that never appeared in
+        // the feed, using the set accumulated across this site's steps, then
+        // reset both keys so the next site starts with a clean seen-set.
+        $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
+        $state['seenIds'] = [];
+        $state['unattributedErrors'] = 0;
+
+        // Advance to the next site, or finish the whole run.
         $state['siteIndex']++;
         $state['cursorUrl'] = null;
         $state['page'] = 1;
@@ -366,6 +399,13 @@ class SynchronizationService extends Component
         $total = null;
         $firstPageSize = null;
 
+        // The sweep's inputs, accumulated across every page of this site.
+        // seenIds protects present items from being swept; unattributedErrors
+        // is the count of items that failed WITHOUT a resolvable element — any
+        // such failure means the seen-set is incomplete, so the sweep bails.
+        $seenIds = [];
+        $unattributedErrors = 0;
+
         foreach ($plugin->data->pages($context->link, $context->siteHandle, $queryParams) as $page) {
             if ($firstPageSize === null) {
                 $firstPageSize = count($page->items);
@@ -376,9 +416,14 @@ class SynchronizationService extends Component
                 // errors abort (they throw from the pages() iterator), but
                 // per-item failures become an error row and the run goes on.
                 try {
-                    $this->processItem($context, $item, $log);
+                    $elementId = $this->processItem($context, $item, $log);
+
+                    if ($elementId !== null) {
+                        $seenIds[$elementId] = true;
+                    }
                 } catch (Throwable $e) {
                     $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
+                    $unattributedErrors++;
                 }
             }
 
@@ -397,14 +442,24 @@ class SynchronizationService extends Component
                 $onProgress((int) $log->itemsSeen, $total);
             }
         }
+
+        // Site fully walked — sweep the elements it owns that the feed never
+        // mentioned. flush() inside sweepMissing() persists its rows.
+        $this->sweepMissing($context, array_keys($seenIds), $unattributedErrors, $log);
     }
 
     /**
      * Run one remote item through the shared pipeline, firing the item
      * events at the phase seams and logging the outcome. The logic itself
      * lives in {@see ItemProcessor} — this method only owns events + logs.
+     *
+     * Returns the id of the element this item resolved to (or null when it
+     * matched none), regardless of the row outcome — SKIPPED and ERROR rows
+     * included. The callers collect these ids as the run's "seen set": an
+     * item PRESENT in the feed must never be swept as missing, whatever its
+     * per-item result. A no-match item contributes null (nothing to protect).
      */
-    protected function processItem(SyncContext $context, RemoteItem $item, LogRecord $log): void
+    protected function processItem(SyncContext $context, RemoteItem $item, LogRecord $log): ?int
     {
         $plugin = Influx::getInstance();
         $link = $context->link;
@@ -424,7 +479,7 @@ class SynchronizationService extends Component
             if ($beforeEvent->skip) {
                 $plugin->logs->recordItem($log, ItemAction::SKIPPED, $resolution->element?->id, $this->matchValueString($resolution->matchValue), null, $item->raw());
 
-                return;
+                return $resolution->element?->id;
             }
 
             // Allow listeners to swap in a different element. The decision is
@@ -438,7 +493,7 @@ class SynchronizationService extends Component
         if ($result->decision->isSkip()) {
             $plugin->logs->recordItem($log, ItemAction::SKIPPED, $result->element?->id, $this->matchValueString($result->matchValue), $result->message, $item->raw());
 
-            return;
+            return $result->element?->id;
         }
 
         $afterMappingEvent = new SyncItemEvent([
@@ -462,6 +517,8 @@ class SynchronizationService extends Component
         );
 
         $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);
+
+        return $result->element?->id;
     }
 
     /**
@@ -472,6 +529,167 @@ class SynchronizationService extends Component
     protected function matchValueString(mixed $value): ?string
     {
         return $value !== null ? (string) $value : null;
+    }
+
+    /**
+     * Which missing-elements action a link's `processing` flags call for, or
+     * null when none is enabled. Precedence when more than one is set — the
+     * most destructive wins, because a delete subsumes a disable:
+     *
+     *   DELETE  >  DELETE_FOR_SITE  >  DISABLE
+     *
+     * Pure: reads only {@see Link::$processing}, so it's unit-tested without a
+     * Craft boot.
+     */
+    protected function missingPolicy(Link $link): ?ItemAction
+    {
+        if (in_array(Link::PROCESSING_DELETE, $link->processing, true)) {
+            return ItemAction::DELETED;
+        }
+
+        if (in_array(Link::PROCESSING_DELETE_FOR_SITE, $link->processing, true)) {
+            return ItemAction::DELETED_FOR_SITE;
+        }
+
+        if (in_array(Link::PROCESSING_DISABLE, $link->processing, true)) {
+            return ItemAction::DISABLED;
+        }
+
+        return null;
+    }
+
+    /**
+     * Disable/delete the elements this link owns that the feed never
+     * mentioned. Runs once per site after its pages are exhausted — the
+     * clean-pass step 4 of the run lifecycle.
+     *
+     * Safety first: a sweep acts on the COMPLEMENT of the seen-set, so it's
+     * only safe when the seen-set is complete. If any item failed WITHOUT a
+     * resolvable element ($unattributedErrors > 0) the set is untrustworthy —
+     * an element that's actually in the feed but errored before it could be
+     * matched would be swept as missing. So the sweep bails, warns, and logs
+     * one SKIPPED row (not ERROR — an error would flip the run's status
+     * perception; SKIPPED tells the user why nothing was swept).
+     *
+     * Mode is derived from the run's site scope and the policy:
+     *   - DISABLED: site run → {@see ElementTargetInterface::disableForSite()}
+     *     (leave the element live in its other sites); global run →
+     *     {@see ElementTargetInterface::disable()}.
+     *   - DELETED_FOR_SITE: needs a site — a global run logs one SKIPPED row
+     *     and returns.
+     *   - DELETED: full {@see ElementTargetInterface::delete()} regardless of
+     *     site scope. Configured semantic: an element missing from THIS site's
+     *     feed is deleted entirely. Multi-site users who want per-site removal
+     *     choose delete-for-site instead.
+     *
+     * The candidate query (from the target) is status-filtered per policy —
+     * DISABLED skips already-disabled elements (no churn); the delete policies
+     * consider every status — and walked in batches so memory stays bounded.
+     * Each element's action is wrapped in its own try/catch: one failure logs
+     * an error row and the sweep carries on.
+     *
+     * @param list<int> $seenIds Element ids present in this site's feed.
+     * @param int $unattributedErrors Items that failed with no resolvable
+     * element — any at all disables the sweep.
+     */
+    protected function sweepMissing(SyncContext $context, array $seenIds, int $unattributedErrors, LogRecord $log): void
+    {
+        $plugin = Influx::getInstance();
+        $link = $context->link;
+        $policy = $this->missingPolicy($link);
+
+        if ($policy === null) {
+            return;
+        }
+
+        // Clean-pass guard: never sweep off a seen-set we couldn't fully build.
+        if ($unattributedErrors > 0) {
+            Craft::warning(
+                "Influx: missing-elements sweep skipped for link '{$link->handle}'"
+                . ($context->siteHandle !== null ? " (site '{$context->siteHandle}')" : '')
+                . " — {$unattributedErrors} item(s) failed without a resolvable element, "
+                . 'so the missing-set cannot be trusted.',
+                __METHOD__,
+            );
+            $plugin->logs->recordItem(
+                $log,
+                ItemAction::SKIPPED,
+                null,
+                null,
+                "Missing-elements sweep skipped: {$unattributedErrors} item(s) failed without a resolvable element.",
+            );
+
+            return;
+        }
+
+        // delete-for-site is meaningless without a site to scope to.
+        if ($policy === ItemAction::DELETED_FOR_SITE && $context->siteId === null) {
+            $plugin->logs->recordItem(
+                $log,
+                ItemAction::SKIPPED,
+                null,
+                null,
+                'Missing-elements sweep skipped: delete-for-site needs a site-scoped run.',
+            );
+
+            return;
+        }
+
+        $query = $context->target->missingElementsQuery($link, $seenIds, $context->siteId);
+
+        if ($query === null) {
+            return;
+        }
+
+        // DISABLED only touches still-enabled elements (skip the churn of
+        // re-disabling); the delete policies consider every status.
+        $query->status($policy === ItemAction::DISABLED ? 'enabled' : null);
+
+        $matchAttr = $link->matchAttribute();
+
+        foreach ($query->batch(100) as $elements) {
+            foreach ($elements as $element) {
+                try {
+                    $this->applyMissingAction($context, $policy, $element);
+                    $plugin->logs->recordItem(
+                        $log,
+                        $policy,
+                        $element->id,
+                        $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null,
+                        'Missing from feed.',
+                    );
+                } catch (Throwable $e) {
+                    $plugin->logs->recordItem($log, ItemAction::ERROR, $element->id, null, $e->getMessage());
+                }
+            }
+        }
+
+        // The sweep can add hundreds of rows; the buffer auto-flushes at 100,
+        // but finish the tail explicitly. On the synchronous path finish()
+        // flushes again (harmless — the buffer is then empty); on the
+        // batchStep path nothing else flushes before the state returns, so
+        // this is the flush that persists the sweep's rows.
+        $plugin->logs->flush($log);
+    }
+
+    /**
+     * Apply the resolved missing-action to one element. Kept apart from
+     * {@see sweepMissing()} so the mode-per-policy dispatch reads as a single
+     * expression. The site scope is read off the context: DISABLED on a site
+     * run disables only that site; a global DISABLED disables the element.
+     */
+    protected function applyMissingAction(SyncContext $context, ItemAction $policy, ElementInterface $element): void
+    {
+        $target = $context->target;
+
+        match ($policy) {
+            ItemAction::DELETED          => $target->delete($element),
+            ItemAction::DELETED_FOR_SITE => $target->deleteForSite($element, (int) $context->siteId),
+            ItemAction::DISABLED         => $context->siteId !== null
+                ? $target->disableForSite($element, $context->siteId)
+                : $target->disable($element),
+            default => null,
+        };
     }
 
     protected function fireAfterItem(

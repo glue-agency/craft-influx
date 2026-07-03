@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\targets;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
 use DateTimeInterface;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
@@ -156,6 +157,21 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         return Craft::$app->getElements()->saveElement($element, false);
     }
 
+    /**
+     * Disable the element in one site only. `setEnabledForSite([$siteId =>
+     * false])` (the siteId-keyed array form) is stable across Craft 4 and 5 —
+     * no Compat seam needed. The whole-element `enabled` flag is left alone so
+     * the element stays live in its other sites; only the passed site's
+     * per-site row flips off. Saved with validation off (mirrors {@see
+     * disable()}), so a since-invalidated element still persists its status.
+     */
+    public function disableForSite(ElementInterface $element, int $siteId): bool
+    {
+        $element->setEnabledForSite([$siteId => false]);
+
+        return Craft::$app->getElements()->saveElement($element, false);
+    }
+
     public function delete(ElementInterface $element): bool
     {
         return Craft::$app->getElements()->deleteElement($element);
@@ -166,6 +182,17 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         Compat::deleteElementForSite($element, $siteId);
 
         return true;
+    }
+
+    /**
+     * Default: no missing-elements query. A target that can't safely enumerate
+     * "everything this link owns" opts out of the sweep by returning null here;
+     * the sweep then does nothing for that element type. Targets that can (see
+     * {@see EntryTarget}) override with a scoped, seen-excluding query.
+     */
+    public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface
+    {
+        return null;
     }
 
     public function getMappableFields(Link $link): array

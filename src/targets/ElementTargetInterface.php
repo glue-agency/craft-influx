@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\targets;
 
 use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -130,9 +131,34 @@ interface ElementTargetInterface
 
     public function disable(ElementInterface $element): bool;
 
+    /**
+     * Disable the element in a single site only (leaving its other sites
+     * enabled). Used by the missing-elements sweep on a site-scoped run:
+     * disabling the whole element when only one site's feed dropped it would
+     * wrongly hide it everywhere. The passed element must already be loaded in
+     * that site (the sweep query scopes it) so the per-site flag lands on the
+     * right row.
+     */
+    public function disableForSite(ElementInterface $element, int $siteId): bool;
+
     public function delete(ElementInterface $element): bool;
 
     public function deleteForSite(ElementInterface $element, int $siteId): bool;
+
+    /**
+     * Query for elements this link owns that were NOT seen in the feed — the
+     * candidate set for the missing-elements sweep. Mirrors the scoping of
+     * {@see findByMatchValue()} (section/type/match-attribute) so the sweep
+     * only ever considers elements this link actually manages, then excludes
+     * the ids the run just touched so a same-run create can never be swept.
+     *
+     * @param list<int> $seenIds Element ids present in this run's feed — excluded.
+     * @param int|null $siteId Scope to one site (site-scoped run) or null for
+     * a cross-site (`siteId('*')->unique()`) candidate set.
+     * @return \craft\elements\db\ElementQueryInterface|null Null when the link
+     * has no resolvable match attribute (nothing safe to sweep).
+     */
+    public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface;
 
     /**
      * Fields the link can map to. Drives the per-field mapping UI on the
