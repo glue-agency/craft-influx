@@ -16,11 +16,14 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
  * Checkboxes, MultiSelect. Registered against `BaseOptionsField` so a single
  * strategy covers the whole family.
  *
- *   options.valueMap: optional remote → local rewrite. Values not present
- *                     in the map pass through unchanged.
+ *   options.match: 'value' (default — pass through) or 'label' (translate
+ *   the feed's human-readable labels to stored option values, trimmed and
+ *   case-insensitive; unmatched values pass through).
  *
  * Validating that the resulting value is part of the configured option set
- * is Craft's job, not the strategy's.
+ * is Craft's job, not the strategy's. Label lookups here go through a
+ * {@see Dropdown::labelToValueMap()} override — the no-boot suite can't
+ * build a real BaseOptionsField.
  */
 class DropdownTest extends Unit
 {
@@ -33,37 +36,63 @@ class DropdownTest extends Unit
         );
     }
 
-    public function testPassThroughWhenNoValueMap(): void
+    public function testPassesThroughByDefault(): void
     {
         $context = $this->context(
             feed: ['region' => 'north'],
             mapping: ['node' => 'region'],
         );
-        $this->assertSame('north', (new Dropdown())->parse($context));
+        $this->assertSame('north', $this->strategy()->parse($context));
     }
 
-    public function testValueMapRewritesIncomingValue(): void
+    public function testLabelMatchTranslatesToOptionValue(): void
     {
         $context = $this->context(
-            feed: ['region' => 'EN'],
+            feed: ['epc' => 'Zeer energiezuinig (A+)'],
             mapping: [
-                'node'    => 'region',
-                'options' => ['valueMap' => ['EN' => 'english', 'NL' => 'dutch']],
+                'node'    => 'epc',
+                'options' => ['match' => 'label'],
             ],
         );
-        $this->assertSame('english', (new Dropdown())->parse($context));
+        $this->assertSame('aPlus', $this->strategy()->parse($context));
     }
 
-    public function testValueNotInMapPassesThrough(): void
+    public function testLabelMatchIsTrimmedAndCaseInsensitive(): void
     {
         $context = $this->context(
-            feed: ['region' => 'south'],
+            feed: ['epc' => '  zeer energiezuinig (a+) '],
             mapping: [
-                'node'    => 'region',
-                'options' => ['valueMap' => ['EN' => 'english']],
+                'node'    => 'epc',
+                'options' => ['match' => 'label'],
             ],
         );
-        $this->assertSame('south', (new Dropdown())->parse($context));
+        $this->assertSame('aPlus', $this->strategy()->parse($context));
+    }
+
+    public function testUnmatchedLabelPassesThrough(): void
+    {
+        $context = $this->context(
+            feed: ['epc' => 'Onbekend'],
+            mapping: [
+                'node'    => 'epc',
+                'options' => ['match' => 'label'],
+            ],
+        );
+        $this->assertSame('Onbekend', $this->strategy()->parse($context));
+    }
+
+    public function testLabelMatchTranslatesEachArrayElement(): void
+    {
+        // Checkboxes / MultiSelect resolve to a list — each element is
+        // translated on its own; unmatched ones pass through.
+        $context = $this->context(
+            feed: ['tags' => ['Zeer energiezuinig (A+)', 'Onbekend']],
+            mapping: [
+                'node'    => 'tags',
+                'options' => ['match' => 'label'],
+            ],
+        );
+        $this->assertSame(['aPlus', 'Onbekend'], $this->strategy()->parse($context));
     }
 
     public function testReturnsNullWhenNodeMissingAndNoDefault(): void
@@ -72,7 +101,7 @@ class DropdownTest extends Unit
             feed: [],
             mapping: ['node' => 'region'],
         );
-        $this->assertNull((new Dropdown())->parse($context));
+        $this->assertNull($this->strategy()->parse($context));
     }
 
     public function testFallsBackToDefault(): void
@@ -81,7 +110,24 @@ class DropdownTest extends Unit
             feed: [],
             mapping: ['node' => 'region', 'default' => 'north'],
         );
-        $this->assertSame('north', (new Dropdown())->parse($context));
+        $this->assertSame('north', $this->strategy()->parse($context));
+    }
+
+    /**
+     * A Dropdown whose option set is stubbed — the real one reads the Craft
+     * field's configured options, which need a booted Craft.
+     */
+    private function strategy(): Dropdown
+    {
+        return new class() extends Dropdown {
+            protected function labelToValueMap(FieldContext $context): array
+            {
+                return [
+                    'zeer energiezuinig (a+)' => 'aPlus',
+                    'energiezuinig (a)'       => 'a',
+                ];
+            }
+        };
     }
 
     private function context(array $feed, array $mapping): FieldContext

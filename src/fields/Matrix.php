@@ -440,7 +440,7 @@ class Matrix extends Field
 
     /**
      * Coerce one block's raw child value through the child field's own strategy
-     * so per-type options (valueMap, truthy, match, format, …) apply. The
+     * so per-type options (match, truthy, format, …) apply. The
      * synthetic single-value item makes the child's own resolve() yield exactly
      * this block's value; a node-less (useDefault-only) child is item-
      * independent and reuses the parent item.

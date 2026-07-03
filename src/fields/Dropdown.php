@@ -12,13 +12,20 @@ use GlueAgency\Influx\sync\FieldContext;
  * Option-based fields: Dropdown, RadioButtons, Checkboxes, MultiSelect.
  * Registered against `BaseOptionsField` so all four share this strategy.
  *
- * Supports an optional remote → local value map:
+ * The one mapping option is `match` — which side of the Craft field's option
+ * rows the feed value corresponds to (the same "Match by" vocabulary the
+ * relational strategies use):
  *
- *   options.valueMap: { 'EN': 'english', 'NL': 'dutch' }
+ *   - `value` (default): the feed already sends stored option values —
+ *     pass through unchanged.
+ *   - `label`: the feed sends the human-readable labels ('A+', 'Te koop');
+ *     each is translated to its option's stored value via a trimmed,
+ *     case-insensitive lookup over the field's configured options.
  *
- * Anything not in the map passes through unchanged; the underlying Craft
- * field validation is responsible for rejecting values that aren't part of
- * the configured option set.
+ * Unmatched values pass through unchanged either way — validating that the
+ * result is part of the configured option set is Craft's job, not the
+ * strategy's. Multi-value fields (Checkboxes, MultiSelect) receive arrays;
+ * each element is translated individually.
  */
 class Dropdown extends Field
 {
@@ -29,21 +36,15 @@ class Dropdown extends Field
 
     public function defineExtrasSchema(CraftFieldInterface $field): array
     {
-        /** @var BaseOptionsField $field */
-        $options = [];
-
-        foreach ($field->options ?? [] as $opt) {
-            if (is_array($opt) && isset($opt['value'])) {
-                $options[(string) $opt['value']] = (string) ($opt['label'] ?? $opt['value']);
-            }
-        }
-
         return [
-            BuilderSchema::valueMapTable(
-                'valueMap',
-                Craft::t('influx', 'Value map'),
-                $options,
-                ['instructions' => Craft::t('influx', 'Remote → local value map. Leave empty rows to fall through.')],
+            BuilderSchema::select(
+                'match',
+                Craft::t('influx', 'Match by'),
+                [
+                    ['value' => 'value', 'label' => Craft::t('influx', 'Option value')],
+                    ['value' => 'label', 'label' => Craft::t('influx', 'Option label')],
+                ],
+                ['default' => 'value'],
             ),
         ];
     }
@@ -56,12 +57,58 @@ class Dropdown extends Field
             return null;
         }
 
-        $map = $context->mapping->option('valueMap');
-
-        if (is_array($map) && array_key_exists((string) $raw, $map)) {
-            return $map[(string) $raw];
+        if ((string) $context->mapping->option('match', 'value') !== 'label') {
+            return $raw;
         }
 
-        return $raw;
+        $labelToValue = $this->labelToValueMap($context);
+
+        if (is_array($raw)) {
+            return array_map(
+                fn(mixed $value): mixed => $this->translateLabel($value, $labelToValue),
+                $raw,
+            );
+        }
+
+        return $this->translateLabel($raw, $labelToValue);
+    }
+
+    /**
+     * One feed value → stored option value, via the prebuilt label lookup.
+     * Non-scalar and unmatched values pass through unchanged.
+     *
+     * @param array<string, mixed> $labelToValue
+     */
+    protected function translateLabel(mixed $value, array $labelToValue): mixed
+    {
+        if (! is_scalar($value)) {
+            return $value;
+        }
+
+        return $labelToValue[mb_strtolower(trim((string) $value))] ?? $value;
+    }
+
+    /**
+     * Lowercased/trimmed option label => stored option value for the Craft
+     * field's configured options. Extracted so the no-boot tests can drive
+     * parse() through an override without a real BaseOptionsField.
+     *
+     * @return array<string, mixed>
+     */
+    protected function labelToValueMap(FieldContext $context): array
+    {
+        $map = [];
+
+        /** @var BaseOptionsField|null $field */
+        $field = $context->craftField;
+
+        foreach ($field?->options ?? [] as $opt) {
+            if (is_array($opt) && isset($opt['value'])) {
+                $label = (string) ($opt['label'] ?? $opt['value']);
+                $map[mb_strtolower(trim($label))] = $opt['value'];
+            }
+        }
+
+        return $map;
     }
 }
