@@ -10,7 +10,6 @@
             <span class="influx-log-id light">#{{ item.id }}</span>
             <span v-if="item.elementHtml" class="influx-log-element" v-html="item.elementHtml" @click.stop></span>
             <span v-else class="influx-log-element light">—</span>
-            <span v-if="item.message" class="influx-log-message light">{{ item.message }}</span>
             <action-badge class="influx-log-tag" :action="item.action" />
             <span
                 v-if="hasFieldErrors"
@@ -21,7 +20,7 @@
         </template>
 
         <p v-if="loading" class="light influx-log-detail-msg"><span class="spinner"></span> {{ $t('Loading…') }}</p>
-        <debug-fields v-else-if="row" :row="row" :show-message="false" />
+        <debug-fields v-else-if="row" :row="row" />
         <p v-else-if="errorMsg" class="error influx-log-detail-msg">{{ errorMsg }}</p>
     </mapping-group-card>
 </template>
@@ -34,10 +33,12 @@ import { requestErrorMessage } from '../lib/requestError.js';
 
 /**
  * One run-log item, presented as a collapsed debug-style card: the header
- * always shows the element chip, the committed action tag and the item's
- * message; expanding it fetches the item's full debug row (the same JSON
- * DebugItem renders) and reveals the shared DebugFields body beneath. Element
- * chips are server-rendered Craft markup, injected verbatim.
+ * shows the element chip and the committed action tag; expanding it fetches
+ * the item's full debug row (the same JSON DebugItem renders) and reveals the
+ * shared DebugFields body beneath — including the item's message, which
+ * renders there as a full-width band under the headings rather than crowding
+ * the header. Element chips are server-rendered Craft markup, injected
+ * verbatim.
  */
 export default {
     name: 'LogItem',
@@ -111,18 +112,6 @@ export default {
 }
 
 .influx-log-element { font-size: 13px; }
-
-/* Message sits between the element and the right-pinned action tag, taking the
-   slack and truncating so a long reason never wraps the header. */
-.influx-log-message {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 12px;
-    font-weight: normal;
-}
 
 /* Pill chrome + palette live in ActionBadge — this just pins the tag to the
    header's right edge. */

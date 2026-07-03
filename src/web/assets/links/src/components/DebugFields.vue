@@ -1,18 +1,24 @@
 <template>
     <div class="influx-debug-fields-body">
-        <p v-if="showMessage && row.message" class="light influx-debug-note">{{ row.message }}</p>
-        <pre v-if="row.error" class="error influx-debug-note">{{ row.error }}</pre>
+        <!-- Headings always render — an item with no mapping rows (a swept
+             missing-element, a payload-less legacy row) still reads as the
+             same table, with the message band spanning its full width. -->
+        <div class="influx-mapping-headings influx-debug-fields">
+            <div>{{ $t('Field') }}</div>
+            <div>{{ $t('Source node') }}</div>
+            <div>{{ $t('Raw') }}</div>
+            <div>{{ $t('Parsed') }}</div>
+            <div>{{ $t('Current') }}</div>
+            <div>{{ $t('Changed?') }}</div>
+        </div>
+
+        <!-- Item-level message / error: full-width bands under the headings,
+             spanning every column (the per-field error bands further down keep
+             their column-2 alignment — they belong to a specific row). -->
+        <p v-if="row.message" class="influx-debug-note influx-debug-item-note">{{ row.message }}</p>
+        <pre v-if="row.error" class="influx-debug-note influx-debug-item-error">{{ row.error }}</pre>
 
         <template v-if="row.mappings && row.mappings.length">
-            <div class="influx-mapping-headings influx-debug-fields">
-                <div>{{ $t('Field') }}</div>
-                <div>{{ $t('Source node') }}</div>
-                <div>{{ $t('Raw') }}</div>
-                <div>{{ $t('Parsed') }}</div>
-                <div>{{ $t('Current') }}</div>
-                <div>{{ $t('Changed?') }}</div>
-            </div>
-
             <template v-for="m in row.mappings" :key="m.handle">
             <div
                 class="influx-mapping-row influx-debug-field-row"
@@ -66,7 +72,7 @@
             </template>
         </template>
 
-        <details class="influx-debug-raw">
+        <details v-if="row.raw" class="influx-debug-raw">
             <summary class="light">{{ $t('Raw item JSON') }}</summary>
             <pre>{{ rawJson }}</pre>
         </details>
@@ -87,9 +93,6 @@ export default {
 
     props: {
         row: { type: Object, required: true },
-        // The log puts the item message in its card header instead, so it
-        // suppresses the in-body note to avoid showing it twice.
-        showMessage: { type: Boolean, default: true },
     },
 
     computed: {
@@ -167,7 +170,27 @@ export default {
     word-break: break-word;
 }
 
-.influx-debug-note { margin: 0; padding: 8px 12px 0; }
+/* Item-level message: a neutral full-width band under the headings — the
+   grey sibling of the red error band below. */
+.influx-debug-item-note {
+    margin: 0;
+    padding: 7px 12px;
+    background: #f3f7fc;
+    box-shadow: inset 3px 0 0 #9aa5b1;
+    color: #596673;
+}
+
+/* Item-level error: same band, red — spans every column (unlike the
+   per-field .influx-debug-field-error, which aligns to its row's columns). */
+.influx-debug-item-error {
+    margin: 0;
+    padding: 7px 12px;
+    background: #fde2e2;
+    box-shadow: inset 3px 0 0 #d64242;
+    color: #8a1f1f;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
 
 .influx-debug-raw { padding: 8px 12px 10px; }
 .influx-debug-raw pre {

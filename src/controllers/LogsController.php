@@ -134,9 +134,18 @@ class LogsController extends AbstractController
         }
 
         if ($raw === null) {
+            // No payload to re-inspect (swept missing-elements rows have none
+            // by nature; older runs predate payload storage). Still return a
+            // real row so the drill-down renders the headings + the stored
+            // message as a normal band instead of a bare error state.
             return $this->asJson([
-                'row'     => null,
-                'message' => Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.'),
+                'row' => [
+                    'index'    => (int) $item->id,
+                    'action'   => (string) $item->action,
+                    'message'  => (string) ($item->message ?: Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')),
+                    'mappings' => [],
+                    'raw'      => null,
+                ],
             ]);
         }
 

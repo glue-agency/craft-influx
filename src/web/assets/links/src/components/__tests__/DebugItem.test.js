@@ -83,4 +83,13 @@ describe('DebugItem', () => {
         expect(notes.some((n) => n.text().includes('skipped because'))).toBe(true);
         expect(notes.some((n) => n.text().includes('boom'))).toBe(true);
     });
+
+    it('renders the headings + message band even without mapping rows (swept items)', () => {
+        const w = mountItem(baseRow({ mappings: [], message: 'Missing from feed.', raw: null }));
+
+        expect(w.find('.influx-mapping-headings').exists()).toBe(true);
+        expect(w.find('.influx-debug-item-note').text()).toBe('Missing from feed.');
+        // No payload → no raw-JSON disclosure.
+        expect(w.find('.influx-debug-raw').exists()).toBe(false);
+    });
 });
