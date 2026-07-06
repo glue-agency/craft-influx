@@ -134,8 +134,8 @@ export async function mappableFields(elementType, criteria) {
     return request(withQuery(url, params.toString()), { method: 'GET' });
 }
 
-export async function sample(payload) {
-    const url = resolve('sample', 'influx/link-builder/sample');
+export async function fetchSample(payload) {
+    const url = resolve('fetchSample', 'influx/link-builder/fetch-sample');
     return request(url, {
         method: 'POST',
         body: JSON.stringify(payload),

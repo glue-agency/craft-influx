@@ -5,7 +5,7 @@ vi.mock('../api.js', () => ({
     bootstrap: vi.fn(),
     save: vi.fn(),
     deleteLink: vi.fn(),
-    sample: vi.fn(),
+    fetchSample: vi.fn(),
     mappableFields: vi.fn(),
     renderElementSelect: vi.fn(),
     endpointTokenSuggestions: vi.fn(),
@@ -40,6 +40,11 @@ describe('store', () => {
         vi.useFakeTimers();
         vi.clearAllMocks();
         api.bootstrap.mockResolvedValue(bootstrapPayload());
+        // load() flips criteriaSignature, whose store watcher refetches the
+        // mappable fields + endpoint tokens; give both a well-formed default
+        // so the fire-and-forget calls resolve cleanly under test.
+        api.mappableFields.mockResolvedValue({ fields: [], groups: [], matchOptions: [] });
+        api.endpointTokenSuggestions.mockResolvedValue({ suggestions: [] });
         await store.load(1);
         vi.clearAllTimers();
     });
@@ -115,53 +120,53 @@ describe('store', () => {
     });
 
     it('stores the ApiError message as sampleError when the sample fetch fails', async () => {
-        api.sample.mockRejectedValue(apiError('Root node does not resolve to an array.'));
+        api.fetchSample.mockRejectedValue(apiError('Root node does not resolve to an array.'));
         await store.fetchSample();
         expect(store.ui.sampleError).toBe('Root node does not resolve to an array.');
         expect(store.ui.sampling).toBe(false);
     });
 
     it('stashes the report on a successful sample fetch', async () => {
-        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [{ value: 'id', label: 'id' }] } });
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [{ value: 'id', label: 'id' }] } });
         await store.fetchSample();
         expect(store.ui.sample.flatNodes).toHaveLength(1);
         expect(store.ui.sampleError).toBe(null);
     });
 
     it('auto-fetches the sample when the endpoint field settles (blur)', async () => {
-        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
 
         store.link.endpoint = 'https://example.test/auto';
         await nextTick();
-        expect(api.sample).not.toHaveBeenCalled(); // typing alone never fetches
+        expect(api.fetchSample).not.toHaveBeenCalled(); // typing alone never fetches
 
-        await store.evaluateSample();
-        expect(api.sample).toHaveBeenCalledWith(
+        await store.autoFetchSample();
+        expect(api.fetchSample).toHaveBeenCalledWith(
             expect.objectContaining({ endpoint: 'https://example.test/auto' }),
         );
 
         // Blur without changes is free — the key matches what was fetched.
-        await store.evaluateSample();
-        expect(api.sample).toHaveBeenCalledTimes(1);
+        await store.autoFetchSample();
+        expect(api.fetchSample).toHaveBeenCalledTimes(1);
     });
 
     it('re-fetches the sample when the root node changes', async () => {
-        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
 
         store.link.endpoint = 'https://example.test/root-change';
-        await store.evaluateSample();
+        await store.autoFetchSample();
 
         store.link.rootNode = 'data.items';
         await nextTick(); // root-node watcher evaluates immediately
 
-        expect(api.sample).toHaveBeenCalledTimes(2);
-        expect(api.sample).toHaveBeenLastCalledWith(
+        expect(api.fetchSample).toHaveBeenCalledTimes(2);
+        expect(api.fetchSample).toHaveBeenLastCalledWith(
             expect.objectContaining({ rootNode: 'data.items' }),
         );
     });
 
     it('samples against the first filled site endpoint in site-specific mode', async () => {
-        api.sample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
 
         store.link.endpoint = 'https://example.test/base';
         store.link.siteEndpoints = [
@@ -169,9 +174,9 @@ describe('store', () => {
             { site: 'nl', endpoint: 'https://example.test/nl' },
         ];
         store.setSiteEndpointsMode(true);
-        await store.evaluateSample();
+        await store.autoFetchSample();
 
-        expect(api.sample).toHaveBeenCalledWith(
+        expect(api.fetchSample).toHaveBeenCalledWith(
             expect.objectContaining({ endpoint: 'https://example.test/nl' }),
         );
     });

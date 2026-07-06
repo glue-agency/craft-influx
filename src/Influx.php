@@ -174,7 +174,7 @@ class Influx extends Plugin
                 // LinkBuilder SPA — JSON CP routes
                 $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';
                 $event->rules['influx/link-builder/save'] = 'influx/link-builder/save';
-                $event->rules['influx/link-builder/sample'] = 'influx/link-builder/sample';
+                $event->rules['influx/link-builder/fetch-sample'] = 'influx/link-builder/fetch-sample';
                 $event->rules['influx/link-builder/mappable-fields'] = 'influx/link-builder/mappable-fields';
                 $event->rules['influx/link-builder/endpoint-token-suggestions'] = 'influx/link-builder/endpoint-token-suggestions';
                 $event->rules['influx/link-builder/render-element-select'] = 'influx/link-builder/render-element-select';

@@ -78,14 +78,6 @@ export default {
 
         readOnly() { return !!this.ui.meta?.readOnly; },
 
-        // Stable identifier for the criteria signature. Watched below so
-        // a section or entry-type change refetches the mappable-fields
-        // tree without re-rendering the rest of the SPA.
-        criteriaSignature() {
-            const c = this.link.elementCriteria || {};
-            return `${this.link.elementType}|${c.section || ''}|${c.type || ''}`;
-        },
-
         nodeOptions() {
             // Merge saved-but-not-discovered mapping nodes so a row whose
             // node fell out of the sample still has a legible selected
@@ -103,15 +95,6 @@ export default {
             get() { return this.link.match?.attribute || ''; },
             set(v) {
                 this.link.match = v ? { attribute: v } : {};
-            },
-        },
-    },
-
-    watch: {
-        criteriaSignature: {
-            immediate: true,
-            handler() {
-                store.refreshMappableFields();
             },
         },
     },

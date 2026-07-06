@@ -233,7 +233,8 @@ export default {
 
         // The Resource Endpoint picker gets both link-scoped chip tokens
         // ({id}, {slug}, custom-field handles…) and the env / alias text
-        // snippets. One combined list keeps the picker UX consistent.
+        // snippets. One combined list keeps the picker UX consistent. The
+        // token list itself is refetched by the store's criteria watcher.
         combinedSuggestions() {
             return [...(this.ui.tokenSuggestions || []), ...this.envSuggestions];
         },
@@ -257,23 +258,6 @@ export default {
                     : { disabled: true, hint: this.$t('Needs site-specific endpoints — use plain “delete” instead.') },
             };
         },
-
-        // Stable signature of the (elementType, section, entryType) tuple.
-        // When it changes the field set changes, so the token suggestions
-        // need re-fetching too.
-        criteriaSignature() {
-            const c = this.link.elementCriteria || {};
-            return `${this.link.elementType}|${c.section || ''}|${c.type || ''}`;
-        },
-    },
-
-    watch: {
-        criteriaSignature: {
-            immediate: true,
-            handler() {
-                store.refreshEndpointTokenSuggestions();
-            },
-        },
     },
 
     methods: {
@@ -286,7 +270,7 @@ export default {
         // Auto-fetch the sample once the user is done editing the endpoint
         // — keyed in the store, so tabbing through without changes is free.
         onEndpointBlur() {
-            store.evaluateSample();
+            store.autoFetchSample();
         },
     },
 };

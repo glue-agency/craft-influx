@@ -54,7 +54,7 @@ class Link extends Model
      * Empty-shape contract: {@see getConfig()} strips empty values, so an empty
      * field is absent from Project Config and stored as NULL; the service reads
      * a missing JSON column back as `[]`;
-     * {@see \GlueAgency\Influx\web\LinkBuilderSerializer::toArray()} casts the
+     * {@see \GlueAgency\Influx\web\LinkBuilderSerializer::serialize()} casts the
      * array-y fields to `{}` for the SPA. Three representations, reconciled here.
      */
     public const CONFIG_FIELDS = [

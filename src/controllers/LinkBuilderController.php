@@ -74,7 +74,7 @@ class LinkBuilderController extends AbstractController
      *
      *   POST influx/link-builder/save
      *
-     * Body: JSON-serialised link state (see LinkBuilderSerializer::toArray()).
+     * Body: JSON-serialised link state (see LinkBuilderSerializer::serialize()).
      */
     public function actionSave(): Response
     {
@@ -122,17 +122,17 @@ class LinkBuilderController extends AbstractController
      * "Fetch sample" button. Operates on the in-flight link payload so
      * users can sample without saving.
      *
-     *   POST influx/link-builder/sample
+     *   POST influx/link-builder/fetch-sample
      *
      * Body: `{endpoint, rootNode?, paginatorNode?, auth?}`
      */
-    public function actionSample(): Response
+    public function actionFetchSample(): Response
     {
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
         $payload = $this->jsonBody();
-        $result = Influx::getInstance()->linkBuilder->sample($payload);
+        $result = Influx::getInstance()->linkBuilder->fetchSample($payload);
 
         if (! ($result['success'] ?? false)) {
             Craft::$app->getResponse()->setStatusCode(400);

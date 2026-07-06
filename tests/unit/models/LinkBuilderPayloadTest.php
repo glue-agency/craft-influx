@@ -26,8 +26,8 @@ class LinkBuilderPayloadTest extends Unit
 
         $this->assertEquals(
             $this->fixture(),
-            $this->normalize($this->serializer()->toArray($link)),
-            'LinkBuilderSerializer::toArray() drifted from the committed wire-contract fixture.',
+            $this->normalize($this->serializer()->serialize($link)),
+            'LinkBuilderSerializer::serialize() drifted from the committed wire-contract fixture.',
         );
     }
 
@@ -39,7 +39,7 @@ class LinkBuilderPayloadTest extends Unit
 
         $this->assertEquals(
             $this->fixture(),
-            $this->normalize($serializer->toArray($link)),
+            $this->normalize($serializer->serialize($link)),
             'Applying the fixture payload and re-serializing must be lossless.',
         );
     }

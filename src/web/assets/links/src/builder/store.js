@@ -91,7 +91,7 @@ async function load(id) {
         rememberSnapshot();
         // Existing links with a configured endpoint prime the sample
         // immediately — no manual Fetch click per editing session.
-        evaluateSample();
+        autoFetchSample();
     } catch (e) {
         root.loadError = errorText(e, 'Failed to load link.');
         console.error('[influx] bootstrap failed', e);
@@ -206,7 +206,7 @@ async function fetchSample() {
     root.sampling = true;
     root.sampleError = null;
     try {
-        const result = await api.sample({
+        const result = await api.fetchSample({
             endpoint:      sampleEndpoint() || null,
             rootNode:      root.link.rootNode,
             paginatorNode: root.link.paginatorNode,
@@ -274,12 +274,12 @@ let sampleAutoTimer = null;
  * Re-checks shortly after an in-flight fetch instead of dropping newer
  * config; save()'s canonical-link swap is a no-op thanks to the key.
  */
-function evaluateSample() {
+function autoFetchSample() {
     clearTimeout(sampleAutoTimer);
     const key = sampleKey();
     if (!key || key === fetchedSampleKey) return;
     if (root.sampling) {
-        sampleAutoTimer = setTimeout(evaluateSample, 400);
+        sampleAutoTimer = setTimeout(autoFetchSample, 400);
         return;
     }
     return fetchSample();
@@ -288,7 +288,32 @@ function evaluateSample() {
 // The report's node lists depend on the root node — re-evaluate when it
 // changes. A discrete select change, unlike endpoint typing, so no blur
 // handshake needed.
-watch(() => root.link?.rootNode, () => evaluateSample());
+watch(() => root.link?.rootNode, () => autoFetchSample());
+
+/**
+ * Element type + section + entry type together determine BOTH the mappable
+ * field set (Mapping tab) and the endpoint tokens (General tab's Resource
+ * Endpoint picker), so a change to any of them refetches both. Owned here —
+ * not per-tab — so the trigger can't drift between the two tabs that render
+ * the results (a fourth criteria key added in one watcher but forgotten in
+ * the other was the failure this consolidation removes).
+ *
+ * Null until the link loads; the guard keeps the module-eval fire a no-op,
+ * then load()'s assignment flips the signature and fetches once — the same
+ * one-shot the tabs' `immediate` watchers used to give.
+ */
+const criteriaSignature = computed(() => {
+    if (! root.link) return null;
+    const c = root.link.elementCriteria || {};
+
+    return `${root.link.elementType || ''}|${c.section || ''}|${c.type || ''}`;
+});
+
+watch(criteriaSignature, (signature) => {
+    if (signature === null) return;
+    refreshMappableFields();
+    refreshEndpointTokenSuggestions();
+});
 
 /**
  * Flip the General tab's "Site-specific endpoints" mode. Pure UI state —
@@ -299,7 +324,7 @@ watch(() => root.link?.rootNode, () => evaluateSample());
  */
 function setSiteEndpointsMode(on) {
     root.siteEndpointsMode = !!on;
-    evaluateSample();
+    autoFetchSample();
 }
 
 /**
@@ -344,7 +369,7 @@ export const store = {
     save,
     deleteLink,
     fetchSample,
-    evaluateSample,
+    autoFetchSample,
     setSiteEndpointsMode,
     refreshMappableFields,
     refreshEndpointTokenSuggestions,

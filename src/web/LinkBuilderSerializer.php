@@ -28,7 +28,7 @@ class LinkBuilderSerializer
      * Array-y attrs are cast to objects so empty ones JSON-encode as `{}` (the
      * store treats them as keyed maps, not lists).
      */
-    public function toArray(Link $link): array
+    public function serialize(Link $link): array
     {
         return [
             'id'              => $link->id,
@@ -55,7 +55,7 @@ class LinkBuilderSerializer
 
     /**
      * Apply a builder JSON payload onto a link. Mirrors the shape produced by
-     * {@see toArray()}. Unknown keys are silently dropped — Yii's
+     * {@see serialize()}. Unknown keys are silently dropped — Yii's
      * `setAttributes(..., $safeOnly = true)` would do this for us, but we want
      * to coerce a few fields (objects → arrays, trimming strings) before they
      * hit the model.

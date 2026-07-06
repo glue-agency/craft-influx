@@ -72,7 +72,7 @@ class LinkBuilderService extends Component
         }
 
         return [
-            'link'    => $this->serializer->toArray($link),
+            'link'    => $this->serializer->serialize($link),
             'options' => [
                 'elementTypes'      => $this->elementTypeOptions(),
                 'sections'          => $this->sectionOptions(),
@@ -128,7 +128,7 @@ class LinkBuilderService extends Component
             ];
         }
 
-        return ['success' => true, 'link' => $this->serializer->toArray($link)];
+        return ['success' => true, 'link' => $this->serializer->serialize($link)];
     }
 
     /**
@@ -221,7 +221,7 @@ class LinkBuilderService extends Component
      *
      * @return array{success: true, report: array}|array{success: false, message: string}
      */
-    public function sample(array $payload): array
+    public function fetchSample(array $payload): array
     {
         $endpoint = $this->emptyToNull($payload['endpoint'] ?? null);
 
