@@ -1,204 +1,45 @@
 <template>
-    <!-- Same group chrome as the main field list (MappingGroup): the shared
-         MappingGroupCard, with the subfields variant so SchemaForm's subgrid
-         rules keep matching. Sub-field mappings ARE mappings, so they get the
-         same furniture (chevron, mapped/missing pills, column headings). -->
-    <mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
-        <template #tags>
-            <span class="pill pill-mapped"
-                  :data-mapped="mappedCount"
-                  :title="$t('Sub-fields with an active source node')">
-                <span class="num">{{ mappedCount }}</span>&nbsp;{{ $t('mapped') }}
-            </span>
-
-            <span v-if="missingCount > 0"
-                  class="pill pill-missing"
-                  :data-missing="missingCount"
-                  :title="$t('Sub-fields whose saved source node is no longer in the fetched sample')">
-                <span class="num">{{ missingCount }}</span>&nbsp;{{ $t('missing') }}
-            </span>
-
-            <span class="pill pill-count" :title="$t('Total sub-fields in this group')">{{ subFieldList.length }}</span>
-        </template>
-
-        <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
-
-        <!-- Same column headings as the main mapping list — sub-field rows are
-             mappings too. Joined to the card's shared grid in SchemaForm.vue,
-             which subgrids down from the parent mapping rows' tracks so the
-             columns align with the row above. -->
-        <div class="influx-mapping-headings">
-            <div>{{ $t('Field') }}</div>
-            <div>{{ $t('Source node') }}</div>
-            <div>{{ $t('Default value') }}</div>
-        </div>
-
-        <div
-            class="sub-field-row"
-            v-for="sub in subFieldList"
-            :key="sub.handle"
-            :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
-        >
-            <label>
-                {{ sub.label }}
-                <span v-if="isMissing(sub.handle)"
-                      class="influx-missing-badge"
-                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
-                    {{ $t('missing mapping') }}
-                </span>
-                <code class="handle light">{{ sub.handle }}</code>
-            </label>
-            <searchable-select
-                :model-value="rowFor(sub.handle).node"
-                :options="sourceNodeOptions"
-                searchable
-                :placeholder="$t('— no mapping —')"
-                :search-placeholder="$t('Search nodes…')"
-                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
-                :disabled="readOnly"
-                @update:model-value="updateRow(sub.handle, 'node', $event)"
-            />
-            <!-- The default-value editor renders by the sub-field node's own
-                 type — the same primitives the rest of the schema uses. -->
-            <select-input
-                v-if="sub.type === 'select'"
-                :node="sub"
-                :model-value="rowFor(sub.handle).default"
-                searchable
-                :read-only="readOnly"
-                @update:model-value="updateRow(sub.handle, 'default', $event)"
-            />
-            <input
-                v-else
-                type="text"
-                :class="['text', sub.type === 'code' ? 'code' : null]"
-                :value="rowFor(sub.handle).default"
-                :placeholder="sub.placeholder || null"
-                :disabled="readOnly"
-                @input="updateRow(sub.handle, 'default', $event.target.value)"
-            >
-        </div>
-    </mapping-group-card>
+    <sub-field-rows
+        :node="node"
+        :rows="modelValue"
+        :node-options="nodeOptions"
+        :discovered-nodes="discoveredNodes"
+        :read-only="readOnly"
+        @update:rows="$emit('update:modelValue', $event)"
+    />
 </template>
 
 <script>
-import SearchableSelect from '../../SearchableSelect.vue';
-import SelectInput from './SelectInput.vue';
-import MappingGroupCard from '../../../components/MappingGroupCard.vue';
+import SubFieldRows from './SubFieldRows.vue';
 
 /**
  * Schema elementSubFields node: source-node + default rows for a related
  * element's native sub-fields (asset alt/title). Each sub-field IS a
  * primitive schema node — its handle/label name the row and its type
- * renders the default-value editor — while the table contributes the
- * source-node select and writes the mapping's recursive `nativeFields`
- * channel: `{handle: {node?, default?, useDefault?}}`, fully-empty rows
- * dropped.
+ * renders the default-value editor — while the shared SubFieldRows table
+ * contributes the card chrome, the source-node select and the row
+ * rewrites (see its docblock for the preserving rows contract).
  *
- * Each row carries its own missing-mapping state (saved node no longer in
- * the fetched sample) — independent of the parent mapping row's.
+ * The wire shape is the thinnest possible: `modelValue` IS the rows map —
+ * the mapping's recursive `nativeFields` channel, `{handle: {node?,
+ * default?, useDefault?}}`, fully-empty rows dropped — so edits pass
+ * straight through in both directions.
  */
 export default {
     name: 'ElementSubFields',
 
-    components: { SearchableSelect, SelectInput, MappingGroupCard },
+    components: { SubFieldRows },
 
     props: {
         node: { type: Object, required: true },
         modelValue: { type: Object, default: () => ({}) },
         nodeOptions: { type: Array, default: () => [] },
         // The sample's discovered flatNodes — the "is the node still live"
-        // signal. Null when no sample has been fetched (nothing is missing
-        // then). Distinct from nodeOptions, which re-adds saved-but-missing
-        // values for dropdown legibility.
+        // signal. Null when no sample has been fetched. See SubFieldRows.
         discoveredNodes: { type: Array, default: null },
         readOnly: { type: Boolean, default: false },
     },
 
     emits: ['update:modelValue'],
-
-    computed: {
-        /** @returns the sub-field nodes (BuilderSchema primitives). */
-        subFieldList() {
-            return this.node.subFields || [];
-        },
-
-        // Cards with saved rows start open; untouched ones start collapsed.
-        // Seeds the card's initial state only — toggling stays free.
-        hasSavedRows() {
-            return Object.keys(this.modelValue).length > 0;
-        },
-
-        /** Sub-fields with an active source node — the header's pill. */
-        mappedCount() {
-            return this.subFieldList.reduce((count, sub) => {
-                return count + (this.modelValue[sub.handle]?.node ? 1 : 0);
-            }, 0);
-        },
-
-        /** Saved sub-field nodes no longer present in the latest sample. */
-        missingCount() {
-            return this.subFieldList.reduce((count, sub) => {
-                return count + (this.isMissing(sub.handle) ? 1 : 0);
-            }, 0);
-        },
-
-        // Same grouped shape as MappingRow's source-node select: sentinels
-        // as plain rows up top, sample nodes inside a grey "Nodes" group.
-        sourceNodeOptions() {
-            const groups = [
-                {
-                    label: null,
-                    kind: null,
-                    options: [
-                        { value: '', label: this.$t('— no mapping —') },
-                        { value: '__default__', label: this.$t('— use default —') },
-                    ],
-                },
-            ];
-            if (this.nodeOptions.length) {
-                groups.push({ label: this.$t('Nodes'), kind: 'node', options: this.nodeOptions });
-            }
-            return groups;
-        },
-    },
-
-    methods: {
-        // `__default__` is the same UI-only sentinel MappingRow uses: it
-        // round-trips to the row's `useDefault` flag, never the wire node.
-        rowFor(handle) {
-            const saved = this.modelValue[handle] || {};
-            return {
-                node: saved.useDefault ? '__default__' : (saved.node || ''),
-                default: saved.default || '',
-            };
-        },
-
-        isMissing(handle) {
-            const saved = this.modelValue[handle]?.node;
-            if (!saved) return false;
-            if (!this.discoveredNodes) return false;
-            return !this.discoveredNodes.some(o => o.value === saved);
-        },
-
-        updateRow(handle, key, value) {
-            const row = { ...this.rowFor(handle), [key]: value };
-            const next = { ...this.modelValue };
-
-            const useDefault = row.node === '__default__';
-            const node = useDefault ? '' : row.node;
-
-            if (node === '' && row.default === '' && !useDefault) {
-                delete next[handle];
-            } else {
-                next[handle] = {};
-                if (node) next[handle].node = node;
-                if (row.default) next[handle].default = row.default;
-                if (useDefault) next[handle].useDefault = true;
-            }
-
-            this.$emit('update:modelValue', next);
-        },
-    },
 };
 </script>

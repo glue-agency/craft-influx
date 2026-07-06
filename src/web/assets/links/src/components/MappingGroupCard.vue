@@ -30,7 +30,7 @@
  * right side via the `tags` slot (pills, counts), or replace the whole header
  * via the `header` slot, and the body via the default slot.
  *
- * Used by the builder's MappingGroup + ElementSubFields (collapsible, pills)
+ * Used by the builder's MappingGroup + SubFieldRows (collapsible, pills)
  * and the debug/log DebugItem (static, custom header). Keeping the chrome here
  * — and emitting the same `influx-mapping-group*` class names — lets every
  * consumer share one implementation, and lets SchemaForm's sub-field subgrid
