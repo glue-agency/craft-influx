@@ -18,7 +18,11 @@ import { installT } from '../lib/installT.js';
 export function mountLinkBuilder(el) {
     const raw = el.getAttribute('data-id');
     const id = raw ? Number(raw) : null;
-    const app = createApp(LinkBuilder, { id });
+    // Present when duplicating: the SPA bootstraps a prefilled, unsaved copy
+    // of this source link instead of loading one to edit.
+    const rawDuplicate = el.getAttribute('data-duplicate-of');
+    const duplicateOf = rawDuplicate ? Number(rawDuplicate) : null;
+    const app = createApp(LinkBuilder, { id, duplicateOf });
 
     installT(app);
     app.mount(el);

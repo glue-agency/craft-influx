@@ -103,10 +103,12 @@ async function request(url, init) {
     return body;
 }
 
-export async function bootstrap(id) {
+export async function bootstrap(id, duplicateOf = null) {
     const url = resolve('bootstrap', 'influx/link-builder/bootstrap');
-    const qs = id ? `id=${encodeURIComponent(id)}` : '';
-    return request(withQuery(url, qs), { method: 'GET' });
+    const params = new URLSearchParams();
+    if (id) params.set('id', id);
+    if (duplicateOf) params.set('duplicateOf', duplicateOf);
+    return request(withQuery(url, params.toString()), { method: 'GET' });
 }
 
 export async function save(payload) {

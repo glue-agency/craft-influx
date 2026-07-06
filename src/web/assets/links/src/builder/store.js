@@ -72,12 +72,12 @@ function rememberSnapshot() {
 /**
  * Hydrate the SPA. Run once when the root component mounts.
  */
-async function load(id) {
+async function load(id, duplicateOf = null) {
     root.loading = true;
     root.loadError = null;
     root.errors = {};
     try {
-        const data = await api.bootstrap(id);
+        const data = await api.bootstrap(id, duplicateOf);
         api.configureCsrf({ name: data.meta.csrfTokenName, value: data.meta.csrfToken });
 
         root.link    = data.link;
@@ -89,6 +89,13 @@ async function load(id) {
         root.mappable = null;
         root.tokenSuggestions = null;
         rememberSnapshot();
+
+        // A duplicate is a prefilled but unsaved copy — seed it dirty so Save
+        // is enabled straight away (the '' snapshot never equals the link's
+        // JSON), letting the user save it as-is without touching a field.
+        if (duplicateOf) {
+            root.savedSnapshot = '';
+        }
         // Existing links with a configured endpoint prime the sample
         // immediately — no manual Fetch click per editing session.
         autoFetchSample();

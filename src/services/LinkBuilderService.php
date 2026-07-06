@@ -42,10 +42,11 @@ class LinkBuilderService extends Component
     }
 
     /**
-     * Initial payload the SPA needs to mount. Returns the link being edited
-     * (or a fresh draft when `$id` is null) plus a small bundle of
-     * always-needed options. Heavier per-tab data is fetched lazily via
-     * dedicated endpoints so this stays light.
+     * Initial payload the SPA needs to mount. Returns the link being edited,
+     * a fresh draft when `$id` is null, or (when `$duplicateOf` is set) an
+     * unsaved copy of that source link — plus a small bundle of always-needed
+     * options. Heavier per-tab data is fetched lazily via dedicated endpoints
+     * so this stays light.
      *
      * @return array{
      *   link: array,
@@ -53,18 +54,28 @@ class LinkBuilderService extends Component
      *   meta: array,
      * }
      */
-    public function bootstrap(?int $id, bool $readOnly): array
+    public function bootstrap(?int $id, ?int $duplicateOf, bool $readOnly): array
     {
         $plugin = Influx::getInstance();
-        $isNew = ($id === null);
 
-        if ($isNew) {
+        if ($duplicateOf !== null) {
+            // Duplicate: prefill from the source as an unsaved NEW link.
+            $source = $plugin->links->getLinkById($duplicateOf);
+
+            if (! $source) {
+                throw new NotFoundHttpException("Link {$duplicateOf} not found.");
+            }
+            $link = $plugin->links->buildDuplicate($source);
+            $isNew = true;
+        } elseif ($id === null) {
             $link = new Link([
                 'elementType' => Entry::class,
                 'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
             ]);
+            $isNew = true;
         } else {
             $link = $plugin->links->getLinkById($id);
+            $isNew = false;
 
             if (! $link) {
                 throw new NotFoundHttpException("Link {$id} not found.");

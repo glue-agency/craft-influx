@@ -12,7 +12,6 @@ use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use GlueAgency\Influx\web\LinkPresenter;
-use Throwable;
 use yii\base\Action;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -160,7 +159,6 @@ class LinksController extends AbstractController
         }
 
         $plugin = Influx::getInstance();
-        $isNew = ($id === null);
 
         if ($id !== null) {
             if ($link === null) {
@@ -177,23 +175,48 @@ class LinksController extends AbstractController
             $title = Craft::t('influx', 'New link');
         }
 
+        return $this->builderScreen($title, $link);
+    }
+
+    /**
+     * Open the builder prefilled from an existing link, ready to save as a NEW
+     * one — the source's config with a fresh identity (see
+     * {@see \GlueAgency\Influx\services\LinkBuilderService::bootstrap()}, which
+     * does the prefill from the `duplicateOf` query param the host template
+     * carries). Nothing is written until the user hits Save, so they can rename
+     * / adjust first. Reached from the overview's Duplicate action.
+     */
+    public function actionDuplicate(int $id): Response
+    {
+        // Renders a create form → gated as a mutating action (requireAccess
+        // keeps 'duplicate' out of $viewActions), so no read-only guard here.
+        if (! Influx::getInstance()->links->getLinkById($id)) {
+            throw new NotFoundHttpException("Link {$id} not found.");
+        }
+
+        // A blank host link keeps `data-id` off the mount point; the SPA
+        // bootstraps the prefilled copy from `data-duplicate-of` instead.
+        return $this->builderScreen(Craft::t('influx', 'New link'), new Link(), $id);
+    }
+
+    /**
+     * Render the LinkBuilder SPA host. The SPA owns the form and bootstraps its
+     * own state over JSON — this only ships the shell (asset bundle, translated
+     * strings, tabs) plus, via the host template, the link id to edit
+     * (`data-id`) or the source id to duplicate (`data-duplicate-of`); a new
+     * link carries neither.
+     *
+     * The empty additional-buttons HTML ensures cpScreen renders its
+     * `#action-buttons` header slot so the SPA can teleport its top-right
+     * buttons (Fetch sample, Save) into it.
+     */
+    protected function builderScreen(string $title, Link $link, ?int $duplicateOf = null): Response
+    {
+        $plugin = Influx::getInstance();
         $view = Craft::$app->getView();
         $view->registerAssetBundle(LinksAsset::class);
-
-        // Populate `Craft.translations.influx` for the SPA. Without this,
-        // every `this.$t('…')` in the Vue layer would fall through to the
-        // English source string — fine for default deployments, but blocks
-        // any locale-specific translations from being applied. The list
-        // mirrors what the templates wrap (see LinkBuilderService).
         $view->registerTranslations('influx', $plugin->linkBuilder->translatableStrings());
 
-        // The SPA owns the form. We only ship the host template + the
-        // link id (if any). Save is wired through the JSON endpoint inside
-        // the Vue layer — Craft's standard cpScreen form submit is bypassed.
-        //
-        // The empty additional-buttons HTML ensures cpScreen renders its
-        // `#action-buttons` header slot so the SPA can teleport its
-        // top-right buttons (Fetch sample, Save) into it.
         $response = $this->asCpScreen()
             ->title($title)
             ->addCrumb(Craft::t('influx', 'Influx'), 'influx')
@@ -209,7 +232,7 @@ class LinksController extends AbstractController
                 'authentication' => ['label' => Craft::t('influx', 'Authentication'), 'url' => '#authentication'],
                 'settings'       => ['label' => Craft::t('influx', 'Settings'),       'url' => '#settings'],
             ])
-            ->contentTemplate('influx/links/_builder', ['link' => $link]);
+            ->contentTemplate('influx/links/_builder', ['link' => $link, 'duplicateOf' => $duplicateOf]);
 
         Compat::additionalButtonsHtml($response, '<div data-influx-actions-slot></div>');
 
@@ -255,23 +278,5 @@ class LinksController extends AbstractController
         Influx::getInstance()->links->saveOrder((array) $uids);
 
         return $this->asSuccess(Craft::t('influx', 'Link order saved.'));
-    }
-
-    public function actionDuplicate(): Response
-    {
-        $this->requirePostRequest();
-
-        $request = Craft::$app->getRequest();
-        $sourceHandle = $request->getRequiredBodyParam('handle');
-        $newHandle = $request->getRequiredBodyParam('newHandle');
-        $newName = $request->getBodyParam('newName');
-
-        try {
-            $link = Influx::getInstance()->links->duplicateLink($sourceHandle, $newHandle, $newName);
-        } catch (Throwable $e) {
-            return $this->asFailure($e->getMessage());
-        }
-
-        return $this->redirect("influx/links/{$link->id}/edit");
     }
 }

@@ -5,5 +5,6 @@
    SPA can bootstrap against the right link.
    ===================================================================== #}
 <div data-influx-link-builder
-     {% if link.id ?? '' %}data-id="{{ link.id }}"{% endif %}>
+     {% if link.id ?? '' %}data-id="{{ link.id }}"{% endif %}
+     {% if duplicateOf ?? '' %}data-duplicate-of="{{ duplicateOf }}"{% endif %}>
 </div>

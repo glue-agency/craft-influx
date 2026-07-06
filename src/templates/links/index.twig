@@ -51,19 +51,6 @@
 
     {% if not readOnly %}
         {% js %}
-        document.querySelectorAll('.influx-duplicate-form').forEach(function (form) {
-            form.addEventListener('submit', function (e) {
-                const source = form.querySelector('input[name="handle"]').value;
-                const suggested = source + 'Copy';
-                const answer = window.prompt({{ "New handle for the duplicated link:"|t("influx")|json_encode|raw }}, suggested);
-                if (!answer) {
-                    e.preventDefault();
-                    return;
-                }
-                form.querySelector('input[name="newHandle"]').value = answer.trim();
-            });
-        });
-
         document.querySelectorAll('[data-influx-delete-form]').forEach(function (anchor) {
             anchor.addEventListener('click', function () {
                 if (window.confirm({{ "Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay."|t("influx")|json_encode|raw }})) {
@@ -246,13 +233,6 @@
                             {% endfor %}
 
                             {% if not readOnly %}
-                                <form id="influx-duplicate-{{ link.handle }}" method="post" accept-charset="UTF-8" class="influx-duplicate-form" hidden>
-                                    {{ csrfInput() }}
-                                    {{ actionInput("influx/links/duplicate") }}
-                                    {{ hiddenInput("handle", link.handle) }}
-                                    {{ hiddenInput("newHandle", "") }}
-                                </form>
-
                                 <form id="influx-delete-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
                                     {{ csrfInput() }}
                                     {{ actionInput("influx/links/delete") }}
@@ -323,13 +303,14 @@
                                 </a>
 
                                 {% if not readOnly %}
-                                    <button type="submit"
-                                            form="influx-duplicate-{{ link.handle }}"
-                                            class="btn"
-                                            data-icon="duplicate"
-                                            title="{{ 'Duplicate'|t('influx') }}">
+                                    {# Opens the builder prefilled with a copy — nothing is
+                                       saved until the user reviews and hits Save. #}
+                                    <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/duplicate') }}"
+                                       class="btn"
+                                       data-icon="duplicate"
+                                       title="{{ 'Duplicate'|t('influx') }}">
                                         {{ "Duplicate"|t("influx") }}
-                                    </button>
+                                    </a>
                                 {% endif %}
                             </div>
                         </td>

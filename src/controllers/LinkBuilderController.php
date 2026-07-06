@@ -53,7 +53,9 @@ class LinkBuilderController extends AbstractController
     }
 
     /**
-     * Hydrate the SPA with everything it needs to mount.
+     * Hydrate the SPA with everything it needs to mount: an existing link
+     * (`?id=42`), an unsaved copy of one (`?duplicateOf=42`), or a fresh draft
+     * (neither).
      *
      *   GET influx/link-builder/bootstrap?id=42
      */
@@ -61,11 +63,14 @@ class LinkBuilderController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        $id = Craft::$app->getRequest()->getQueryParam('id');
+        $request = Craft::$app->getRequest();
+        $id = $request->getQueryParam('id');
         $id = $id !== null && $id !== '' ? (int) $id : null;
+        $duplicateOf = $request->getQueryParam('duplicateOf');
+        $duplicateOf = $duplicateOf !== null && $duplicateOf !== '' ? (int) $duplicateOf : null;
 
         return $this->asJson(
-            Influx::getInstance()->linkBuilder->bootstrap($id, $this->readOnly()),
+            Influx::getInstance()->linkBuilder->bootstrap($id, $duplicateOf, $this->readOnly()),
         );
     }
 

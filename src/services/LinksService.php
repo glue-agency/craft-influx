@@ -14,7 +14,6 @@ use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\events\LinkEvent;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use yii\base\InvalidConfigException;
 
 /**
  * Reads and writes Influx links.
@@ -267,31 +266,42 @@ class LinksService extends Component
     }
 
     /**
-     * Duplicate a link under a new handle.
+     * An unsaved copy of a link, ready to prefill the builder as a NEW link:
+     * the source's config with a fresh identity (no id/uid/sortOrder, and no
+     * runtime last-run state), a unique suffixed handle, and a "(copy)" name.
+     * Nothing is persisted — the builder saves it through the normal path
+     * (which validates the handle), so the user can rename / adjust first.
      */
-    public function duplicateLink(string $sourceHandle, string $newHandle, ?string $newName = null): Link
+    public function buildDuplicate(Link $source): Link
     {
-        if (! ($source = $this->getLinkByHandle($sourceHandle))) {
-            throw new InvalidConfigException("Link '{$sourceHandle}' not found.");
-        }
-
-        if ($this->getLinkByHandle($newHandle)) {
-            throw new InvalidConfigException("A link with handle '{$newHandle}' already exists.");
-        }
-
         $copy = clone $source;
         $copy->id = null;
         $copy->uid = null;
-        $copy->sortOrder = null; // Fresh position — the duplicate lands at the end.
-        $copy->handle = $newHandle;
-        $copy->name = $newName ?? ($source->name . ' (copy)');
-
-        if (! $this->saveLink($copy)) {
-            throw new InvalidConfigException("Failed to duplicate '{$sourceHandle}': "
-                . json_encode($copy->getErrors()));
-        }
+        $copy->sortOrder = null;   // Fresh position — a saved duplicate lands at the end.
+        $copy->lastRunAt = null;   // Runtime state belongs to the original, not the copy.
+        $copy->lastLogId = null;
+        $copy->handle = $this->uniqueHandle($source->handle . 'Copy');
+        $copy->name = $source->name . ' (copy)';
 
         return $copy;
+    }
+
+    /**
+     * `$base`, or `$base` + an incrementing suffix, whichever is the first
+     * handle no existing link already uses — so a prefilled duplicate handle
+     * doesn't collide out of the gate (the user can still change it).
+     */
+    protected function uniqueHandle(string $base): string
+    {
+        $handle = $base;
+        $n = 1;
+
+        while ($this->getLinkByHandle($handle)) {
+            $n++;
+            $handle = $base . $n;
+        }
+
+        return $handle;
     }
 
     /**

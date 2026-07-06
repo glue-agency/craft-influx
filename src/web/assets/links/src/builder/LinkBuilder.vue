@@ -52,6 +52,8 @@ export default {
     props: {
         // Pulled from the host template's data-id attribute (null for a new link).
         id: { type: Number, default: null },
+        // Set when duplicating — the source link id to prefill an unsaved copy from.
+        duplicateOf: { type: Number, default: null },
     },
 
     data() {
@@ -94,7 +96,7 @@ export default {
     },
 
     created() {
-        store.load(this.id);
+        store.load(this.id, this.duplicateOf);
 
         // Replay URL hash → activate matching tab once the SPA has
         // mounted its content panes. Tabs.js init at document.ready ran

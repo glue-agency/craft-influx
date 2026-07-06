@@ -172,6 +172,7 @@ class Influx extends Plugin
                 $event->rules['influx'] = 'influx/links/index';
                 $event->rules['influx/links'] = 'influx/links/index';
                 $event->rules['influx/links/new'] = 'influx/links/edit';
+                $event->rules['influx/links/<id:\d+>/duplicate'] = 'influx/links/duplicate';
                 // Same editor in read-only environments — the builder loads
                 // the stored config with every field disabled; there's no
                 // separate detail view.
