@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Query;
 use craft\helpers\Db;
 use DateTime;
 use GlueAgency\Influx\db\Table;
@@ -225,6 +226,26 @@ class LogsService extends Component
     protected function bufferFor(LogRecord $log): LogItemBuffer
     {
         return $this->buffers[$log->id] ??= new LogItemBuffer();
+    }
+
+    /**
+     * How many logs have errors — the CP nav badge count. A log "has errors"
+     * when its run failed (`status = 'error'`) OR it recorded at least one
+     * error item (an item that threw while the run itself finished ok). Counts
+     * distinct logs, not error occurrences, so the badge reads as "N logs need
+     * a look". Zero while everything's clean; clears as error logs are deleted
+     * or age out of retention.
+     */
+    public function errorLogCount(): int
+    {
+        return (int) LogRecord::find()
+            ->where(['status' => 'error'])
+            ->orWhere(['id' => (new Query())
+                ->select(['logId'])
+                ->from(Table::LOG_ITEMS)
+                ->where(['action' => ItemAction::ERROR->value]),
+            ])
+            ->count();
     }
 
     /**

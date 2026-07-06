@@ -140,6 +140,15 @@ class Influx extends Plugin
             ];
         }
 
+        // Flag error logs on the nav, like Utilities flags available updates:
+        // a badge on the section and its Logs subitem when any log has errors.
+        $errorCount = Influx::getInstance()->logs->errorLogCount();
+
+        if ($errorCount > 0) {
+            $parent['badgeCount'] = $errorCount;
+            $parent['subnav']['logs']['badgeCount'] = $errorCount;
+        }
+
         return $parent;
     }
 
