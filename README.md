@@ -134,6 +134,7 @@ Code that exists to play nice with *other* plugins lives under `src/integrations
 
 - `integrations/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
 - `integrations/calendar` *(planned)* — an `EventTarget` for Solspace Calendar's Event element type, registered when the plugin is installed.
+- `integrations/commerce` *(planned)* — `ProductTarget` / `VariantTarget` for Craft Commerce's Product and Variant element types, registered when the plugin is installed.
 
 Anything in there treats the other plugin as optional: integrations read its tables or registered services defensively and never make Influx depend on it being installed.
 
@@ -149,9 +150,16 @@ Shipped since the alpha: queue-job-based runs (one job per site, one feed page p
 
 Still open:
 
+- [ ] **More element-type targets.** A link can only hydrate Entries today (`EntryTarget`). Add target adapters for the other element types:
+  - [ ] Assets (`craft\elements\Asset`)
+  - [ ] Categories (`craft\elements\Category`)
+  - [ ] Users (`craft\elements\User`)
+  - [ ] Events — Solspace Calendar (`integrations/calendar`, registered when the plugin is installed)
+  - [ ] Products — Craft Commerce (`integrations/commerce`)
+  - [ ] Variants — Craft Commerce (`integrations/commerce`)
 - [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks) and multiple block types in a single mapping row.
 - [ ] Webhook entry point for push-style links (today syncing is always pull, on a schedule or on demand).
-- [ ] Solspace Calendar target adapter (`integrations/calendar`) and a SuperTable mapping strategy.
+- [ ] A SuperTable mapping strategy (alongside the existing Matrix one).
 - [ ] Craft 4 manual verification pass for Matrix mapping (built and unit-tested against Craft 5; the Craft 4 serialized-value path is docs-verified only, not yet run against a live Craft 4 install).
 
 ## Acknowledgements
