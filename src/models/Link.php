@@ -138,8 +138,8 @@ class Link extends Model
      * Config alphabetizes associative-array keys on save
      * ({@see \craft\helpers\ProjectConfig::cleanupConfig()} ksorts), which
      * would discard the configured run order; ordered lists round-trip
-     * intact. Always assigned through {@see setSiteEndpoints()} so legacy map
-     * configs still hydrate.
+     * intact. Always assigned through {@see setSiteEndpoints()} so the model
+     * only ever holds the normalized shape.
      *
      * @var list<array{site: string, endpoint: string}>
      */
@@ -373,11 +373,10 @@ class Link extends Model
     }
 
     /**
-     * Accepts either the canonical ordered list or a legacy `{handle: url}`
-     * map (configs written before the list shape) and stores the list form.
-     * Reached via `__set` on every external assignment — hydration from the
-     * DB row, the builder payload, the Feed Me converter — so the model only
-     * ever holds the normalized shape.
+     * Normalizes the canonical ordered list before storing it. Reached via
+     * `__set` on every external assignment — hydration from the DB row, the
+     * builder payload, the Feed Me converter — so the model only ever holds
+     * the normalized shape.
      */
     public function setSiteEndpoints(mixed $value): void
     {
@@ -385,10 +384,9 @@ class Link extends Model
     }
 
     /**
-     * Coerce either stored shape into the canonical ordered list, dropping
-     * rows missing a site handle or endpoint:
-     *   - list:   [['site' => 'nl', 'endpoint' => '…'], …]
-     *   - legacy: ['nl' => '…', 'en' => '…']
+     * Normalize the canonical ordered list — `[['site' => 'nl', 'endpoint'
+     * => '…'], …]` — trimming values and dropping rows missing a site handle
+     * or endpoint.
      *
      * @return list<array{site: string, endpoint: string}>
      */
@@ -400,17 +398,13 @@ class Link extends Model
 
         $list = [];
 
-        foreach ($value as $key => $row) {
-            if (is_array($row)) {
-                $site = (string) ($row['site'] ?? (is_string($key) ? $key : ''));
-                $endpoint = (string) ($row['endpoint'] ?? '');
-            } else {
-                $site = (string) $key;
-                $endpoint = (string) $row;
+        foreach ($value as $row) {
+            if (! is_array($row)) {
+                continue;
             }
 
-            $site = trim($site);
-            $endpoint = trim($endpoint);
+            $site = trim((string) ($row['site'] ?? ''));
+            $endpoint = trim((string) ($row['endpoint'] ?? ''));
 
             if ($site === '' || $endpoint === '') {
                 continue;

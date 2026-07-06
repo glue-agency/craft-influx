@@ -49,10 +49,13 @@ class LinkTest extends Unit
         $this->assertNull($link->matchValue(new RemoteItem(['title' => 'x'])));
     }
 
-    public function testSiteHandlesReturnsKeysOfSiteEndpoints(): void
+    public function testSiteHandlesReturnsSitesOfSiteEndpoints(): void
     {
         $link = $this->link([
-            'siteEndpoints' => ['default' => 'https://e/en', 'nl' => 'https://e/nl'],
+            'siteEndpoints' => [
+                ['site' => 'default', 'endpoint' => 'https://e/en'],
+                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
+            ],
         ]);
         $this->assertSame(['default', 'nl'], $link->siteHandles());
     }
@@ -65,7 +68,10 @@ class LinkTest extends Unit
     public function testSyncSiteHandlesReturnsConfiguredSites(): void
     {
         $link = $this->link([
-            'siteEndpoints' => ['default' => 'https://e/en', 'nl' => 'https://e/nl'],
+            'siteEndpoints' => [
+                ['site' => 'default', 'endpoint' => 'https://e/en'],
+                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
+            ],
         ]);
         $this->assertSame(['default', 'nl'], $link->syncSiteHandles());
     }
@@ -101,22 +107,6 @@ class LinkTest extends Unit
         );
         $this->assertSame('https://e/en', $link->endpointForSite('en'));
         $this->assertNull($link->endpointForSite('de'));
-    }
-
-    public function testLegacySiteEndpointMapNormalizesToList(): void
-    {
-        // Configs written before the list shape stored a {handle: url} map;
-        // they must still hydrate so existing links keep working.
-        $link = $this->link(['siteEndpoints' => ['nl' => 'https://e/nl', 'en' => 'https://e/en']]);
-
-        $this->assertSame(
-            [
-                ['site' => 'nl', 'endpoint' => 'https://e/nl'],
-                ['site' => 'en', 'endpoint' => 'https://e/en'],
-            ],
-            $link->siteEndpoints,
-        );
-        $this->assertSame('https://e/nl', $link->endpointForSite('nl'));
     }
 
     public function testGetConfigStripsEmptyKeysSoYAMLStaysReadable(): void

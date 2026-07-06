@@ -136,13 +136,12 @@ export default {
 
     methods: {
         fromValue(value) {
-            // The wire shape is an ordered list of {site, endpoint}; tolerate a
-            // legacy {handle: url} map in case one is ever fed in programmatically.
-            const list = Array.isArray(value)
-                ? value.map((row) => ({ handle: row.site ?? '', url: row.endpoint ?? '' }))
-                : Object.entries(value || {}).map(([handle, url]) => ({ handle, url: url ?? '' }));
-
-            return list.map((row) => ({ _id: nextRowId++, ...row }));
+            // The wire shape is an ordered list of {site, endpoint}.
+            return (Array.isArray(value) ? value : []).map((row) => ({
+                _id: nextRowId++,
+                handle: row.site ?? '',
+                url: row.endpoint ?? '',
+            }));
         },
 
         toValue(rows) {

@@ -23,9 +23,8 @@ use GlueAgency\Influx\sync\FieldContext;
  * `group.section` / `group.type` are handles: section and entry-type ids
  * differ per environment (they're not part of Project Config), so the
  * stored config must carry the stable identifier and resolve it at sync
- * time. Legacy `group.sectionId` / `group.typeId` ids (the raw shape Feed
- * Me stored) are still honored for configs written before the handle
- * format existed — valid only in the environment they were written in.
+ * time. (The Feed Me converter rewrites Feed Me's raw ids to handles at
+ * conversion time, so ids never reach this config.)
  */
 class Entries extends Relation
 {
@@ -120,12 +119,10 @@ class Entries extends Relation
     }
 
     /**
-     * Resolve the create-target section/type ids for this environment.
-     * Handles (`group.section` / `group.type`) take precedence — they're
-     * the environment-stable form. Legacy ids (`group.sectionId` /
-     * `group.typeId`) are the fallback. A resolvable section without a
-     * resolvable type defaults to the section's first entry type, same as
-     * a new entry in the CP.
+     * Resolve the create-target section/type ids for this environment from
+     * the `group.section` / `group.type` handles — the environment-stable
+     * form. A resolvable section without a resolvable type defaults to the
+     * section's first entry type, same as a new entry in the CP.
      *
      * @return array{0: ?int, 1: ?int}
      */
@@ -139,26 +136,15 @@ class Entries extends Relation
             $section = Compat::getSectionByHandle($sectionHandle);
         }
 
-        if (! $section && ($sectionId = (int) $context->mapping->option('group.sectionId'))) {
-            $section = Compat::getSectionById($sectionId);
-        }
-
         if (! $section) {
             return [null, null];
         }
 
         $types = $section->getEntryTypes();
         $typeHandle = $context->mapping->option('group.type');
-        $legacyTypeId = (int) $context->mapping->option('group.typeId');
 
         foreach ($types as $type) {
             if (is_string($typeHandle) && $typeHandle !== '' && $type->handle === $typeHandle) {
-                return [(int) $section->id, (int) $type->id];
-            }
-        }
-
-        foreach ($types as $type) {
-            if ($legacyTypeId && (int) $type->id === $legacyTypeId) {
                 return [(int) $section->id, (int) $type->id];
             }
         }
