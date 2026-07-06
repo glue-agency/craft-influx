@@ -133,8 +133,8 @@ Hook into any stage:
 Code that exists to play nice with *other* plugins lives under `src/integrations/`, one sub-namespace per plugin:
 
 - `integrations/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
-- `integrations/calendar` *(planned)* — an `EventTarget` for Solspace Calendar's Event element type, registered when the plugin is installed.
-- `integrations/commerce` *(planned)* — `ProductTarget` / `VariantTarget` for Craft Commerce's Product and Variant element types, registered when the plugin is installed.
+
+Planned target adapters for [Solspace Calendar](https://github.com/solspace/craft-calendar) and [Craft Commerce](https://github.com/craftcms/commerce) elements (see the [Roadmap](#roadmap)) will register their targets when those plugins are installed, following the same optional-dependency rule.
 
 Anything in there treats the other plugin as optional: integrations read its tables or registered services defensively and never make Influx depend on it being installed.
 
@@ -154,9 +154,9 @@ Still open:
   - [ ] Assets (`craft\elements\Asset`)
   - [ ] Categories (`craft\elements\Category`)
   - [ ] Users (`craft\elements\User`)
-  - [ ] Events — Solspace Calendar (`integrations/calendar`, registered when the plugin is installed)
-  - [ ] Products — Craft Commerce (`integrations/commerce`)
-  - [ ] Variants — Craft Commerce (`integrations/commerce`)
+  - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
+  - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
+  - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
 - [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks) and multiple block types in a single mapping row.
 - [ ] Webhook entry point for push-style links (today syncing is always pull, on a schedule or on demand).
 - [ ] A SuperTable mapping strategy (alongside the existing Matrix one).
