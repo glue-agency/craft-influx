@@ -126,6 +126,7 @@ Hook into any stage:
 - `TargetsService::EVENT_REGISTER_TARGETS`
 - `FieldsService::EVENT_REGISTER_FIELDS`
 - `AuthService::EVENT_REGISTER_AUTH_TYPES` — add auth strategies alongside the built-in Basic / Bearer / Custom Header / Query String
+- `Date::EVENT_REGISTER_FORMAT_OPTIONS` — append feed-specific date formats to (or replace) the presets offered in the mapping UI's format picker
 
 ### Integrations
 

@@ -6,6 +6,7 @@ use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Date as CraftDateField;
 use craft\helpers\DateTimeHelper;
+use DateTime;
 use DateTimeInterface;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
@@ -84,7 +85,7 @@ class Date extends Field
             return null;
         }
 
-        $parsed = DateTimeHelper::toDateTime($raw);
+        $parsed = $this->parseValue($raw, $context->mapping->option('format'));
 
         if ($parsed === false) {
             $display = is_scalar($raw) ? (string) $raw : gettype($raw);
@@ -93,6 +94,25 @@ class Date extends Field
         }
 
         return $parsed;
+    }
+
+    /**
+     * An explicit `format` option wins over the auto-detector — feeds that
+     * ship ambiguous strings (e.g. `02/03/2024`) need to disambiguate
+     * manually. `timestamp` is a UI sentinel for Unix seconds (translated to
+     * the PHP `U` token here so the Vue side stays human-readable). Mirrors
+     * {@see \GlueAgency\Influx\targets\EntryTarget::parseDateValue()}, which
+     * applies the same mapping option to the native date attributes.
+     */
+    protected function parseValue(mixed $raw, mixed $format): DateTimeInterface|false
+    {
+        if (is_string($format) && $format !== '' && is_scalar($raw)) {
+            $phpFormat = $format === 'timestamp' ? 'U' : $format;
+
+            return DateTime::createFromFormat($phpFormat, (string) $raw);
+        }
+
+        return DateTimeHelper::toDateTime($raw);
     }
 
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
