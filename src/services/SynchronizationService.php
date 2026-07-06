@@ -770,7 +770,7 @@ class SynchronizationService extends Component
             $this->logSweepSkip(
                 $log,
                 'Missing-elements delete sweep skipped: global delete is not allowed with '
-                . 'site-specific endpoints — use “delete for the site”.',
+                . 'site-specific endpoints — use “delete for site”.',
             );
 
             return;

@@ -636,11 +636,11 @@ class LinkBuilderService extends Component
                 Craft::t('influx', 'When an element is missing from the feed, deletes it across all sites.'),
             ],
             Link::PROCESSING_DISABLE_FOR_SITE => [
-                Craft::t('influx', 'Disable for the site'),
+                Craft::t('influx', 'Disable for site'),
                 Craft::t('influx', 'When an element is missing from a site’s feed, disables just that site’s element.'),
             ],
             Link::PROCESSING_DELETE_FOR_SITE => [
-                Craft::t('influx', 'Delete for the site'),
+                Craft::t('influx', 'Delete for site'),
                 Craft::t('influx', 'When an element is missing from a site’s feed, deletes just that site’s element.'),
             ],
         ];
