@@ -419,7 +419,6 @@ class LinkBuilderService extends Component
             'Enable if the external service supports resource localisation.',
             'The link runs once per listed site and writes localized data to the same canonical element.',
             'Processing actions',
-            'The “site-specific row only” variants apply when this link uses site-specific endpoints; pick either the global or the per-site form — the save adjusts it to match your endpoints if they disagree.',
 
             // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',
@@ -600,36 +599,56 @@ class LinkBuilderService extends Component
     {
         $out = [];
 
-        foreach ($this->processingActionLabels() as $value => $label) {
-            $out[] = ['value' => $value, 'label' => $label];
+        foreach ($this->processingActions() as $value => [$label, $note]) {
+            $out[] = ['value' => $value, 'label' => $label, 'note' => $note];
         }
 
         return $out;
     }
 
     /**
-     * Translated label per processing value — the single source for both the
-     * builder's checkbox options and the migration notice. Order here is the
-     * order the checkboxes render: each global policy is followed by its
-     * per-site counterpart.
+     * Translated `[label, note]` per processing value — the single source for
+     * the builder's checkbox options (a terse label with the behaviour spelled
+     * out in a note beneath it) and the migration notice (which uses the label
+     * only). Order here is the render order: create/update, then the two
+     * global missing-element policies grouped together, then their per-site
+     * counterparts grouped together.
      *
-     * @return array<string, string>
+     * @return array<string, array{0: string, 1: string}>
      */
-    protected function processingActionLabels(): array
+    protected function processingActions(): array
     {
         return [
-            Link::PROCESSING_CREATE           => Craft::t('influx', 'Create new elements'),
-            Link::PROCESSING_UPDATE           => Craft::t('influx', 'Update existing elements'),
-            Link::PROCESSING_DISABLE          => Craft::t('influx', 'Disable elements missing from the feed'),
-            Link::PROCESSING_DISABLE_FOR_SITE => Craft::t('influx', 'Disable the site-specific row only'),
-            Link::PROCESSING_DELETE           => Craft::t('influx', 'Delete elements missing from the feed'),
-            Link::PROCESSING_DELETE_FOR_SITE  => Craft::t('influx', 'Delete the site-specific row only'),
+            Link::PROCESSING_CREATE => [
+                Craft::t('influx', 'Create'),
+                Craft::t('influx', 'Adds elements from the feed that don’t exist in Craft yet.'),
+            ],
+            Link::PROCESSING_UPDATE => [
+                Craft::t('influx', 'Update'),
+                Craft::t('influx', 'Writes feed changes onto elements that already exist.'),
+            ],
+            Link::PROCESSING_DISABLE => [
+                Craft::t('influx', 'Disable globally'),
+                Craft::t('influx', 'When an element is missing from the feed, disables it across all sites.'),
+            ],
+            Link::PROCESSING_DELETE => [
+                Craft::t('influx', 'Delete globally'),
+                Craft::t('influx', 'When an element is missing from the feed, deletes it entirely.'),
+            ],
+            Link::PROCESSING_DISABLE_FOR_SITE => [
+                Craft::t('influx', 'Disable for the site'),
+                Craft::t('influx', 'When an element is missing from a site’s feed, disables just that site’s row.'),
+            ],
+            Link::PROCESSING_DELETE_FOR_SITE => [
+                Craft::t('influx', 'Delete for the site'),
+                Craft::t('influx', 'When an element is missing from a site’s feed, deletes just that site’s row.'),
+            ],
         ];
     }
 
     protected function processingActionLabel(string $value): string
     {
-        return $this->processingActionLabels()[$value] ?? $value;
+        return $this->processingActions()[$value][0] ?? $value;
     }
 
     protected function authTypeOptions(): array

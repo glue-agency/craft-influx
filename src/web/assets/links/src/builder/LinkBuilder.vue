@@ -205,4 +205,11 @@ export default {
     line-height: 1;
     margin-left: 1px;
 }
+
+/* Behaviour note under a processing checkbox — indents to line up with the
+   checkbox label above it. */
+.influx-processing-note {
+    margin: 2px 0 8px 24px;
+    font-size: 12px;
+}
 </style>

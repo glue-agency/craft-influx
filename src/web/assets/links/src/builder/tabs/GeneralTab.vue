@@ -130,9 +130,6 @@
         <h2>{{ $t('Processing actions') }}</h2>
 
         <div class="field">
-            <div class="instructions">
-                <p>{{ $t('The “site-specific row only” variants apply when this link uses site-specific endpoints; pick either the global or the per-site form — the save adjusts it to match your endpoints if they disagree.') }}</p>
-            </div>
             <ul class="checkbox-group">
                 <li v-for="opt in options.processingActions" :key="opt.value">
                     <input type="checkbox"
@@ -143,6 +140,7 @@
                            :disabled="readOnly"
                            @change="toggleProcessing(opt.value, $event.target.checked)" />
                     <label :for="`builder-processing-${opt.value}`">{{ opt.label }}</label>
+                    <p v-if="opt.note" class="influx-processing-note light">{{ opt.note }}</p>
                 </li>
             </ul>
         </div>
