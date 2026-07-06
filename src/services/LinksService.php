@@ -125,6 +125,11 @@ class LinksService extends Component
         // config never carries handles the target can't map.
         $this->pruneUnknownMappings($link);
 
+        // Keep the missing-element policies in step with the endpoint shape
+        // (global delete/disable <-> the -for-site variants). Idempotent; the
+        // builder layer diffs the result to tell the user when it fired.
+        $link->migrateProcessingForEndpointShape();
+
         if ($runValidation && ! $link->validate()) {
             Craft::info(
                 'Link not saved due to validation errors: ' . json_encode($link->getErrors()),

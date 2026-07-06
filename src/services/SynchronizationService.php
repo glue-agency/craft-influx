@@ -41,10 +41,12 @@ use Throwable;
  *      scope's pages are exhausted, gated by a clean-pass guard (a pass with
  *      any item that failed without a resolvable element does NOT sweep, since
  *      the seen-set can't be trusted). Policy precedence:
- *      DELETE > DELETE_FOR_SITE > DISABLE. DELETE only ever resolves on a
- *      no-site-endpoints link (validation forbids DELETE + site endpoints), so
- *      it sweeps the single `[null]` scope unscoped; DISABLE / DELETE_FOR_SITE
- *      sweep scoped to the running site (see {@see sweepMissing()}).
+ *      DELETE > DELETE_FOR_SITE > DISABLE > DISABLE_FOR_SITE. The global
+ *      DELETE/DISABLE only ever resolve on a no-site-endpoints link
+ *      ({@see Link::migrateProcessingForEndpointShape()} swaps them for the
+ *      -for-site forms when site endpoints exist), so they sweep the single
+ *      `[null]` scope unscoped; the -for-site pair sweeps scoped to the
+ *      running site (see {@see sweepMissing()}).
  *   5. Post-run hooks (event, log finalisation) — once per site log.
  */
 class SynchronizationService extends Component
@@ -664,13 +666,13 @@ class SynchronizationService extends Component
      * and a global delete supersedes the rest (there's no point disabling
      * elements you're about to delete outright):
      *
-     *   DELETE  >  DELETE_FOR_SITE  >  DISABLE
+     *   DELETE > DELETE_FOR_SITE > DISABLE > DISABLE_FOR_SITE
      *
-     * Validation ({@see Link::validateProcessing()}) forbids DELETE alongside
-     * site endpoints and DELETE_FOR_SITE without them, so in practice DELETE
-     * only resolves on a no-site-endpoints link and DELETE_FOR_SITE only on a
+     * {@see Link::migrateProcessingForEndpointShape()} swaps global <-> -for-site
+     * on save to match the endpoint shape, so in practice DELETE/DISABLE only
+     * resolve on a no-site-endpoints link and the -for-site pair only on a
      * site-endpoints link — but the sweep keeps a defensive guard (D2) against
-     * a hand-edited config that pairs DELETE with site endpoints.
+     * a hand-edited config that pairs global DELETE with site endpoints.
      *
      * Pure: reads only {@see Link::$processing}, so it's unit-tested without a
      * Craft boot.
@@ -689,21 +691,27 @@ class SynchronizationService extends Component
             return ItemAction::DISABLED;
         }
 
+        if (in_array(Link::PROCESSING_DISABLE_FOR_SITE, $link->processing, true)) {
+            return ItemAction::DISABLED_FOR_SITE;
+        }
+
         return null;
     }
 
     /**
      * The single missing-elements sweep, run once per pass after that scope's
-     * pages are exhausted — step 4 of the run lifecycle. Handles all three
+     * pages are exhausted — step 4 of the run lifecycle. Handles all four
      * policies ({@see perSitePolicy()} resolves exactly one):
-     *   - DISABLED: site pass → {@see ElementTargetInterface::disableForSite()}
-     *     (leave the element live in its other sites); no-site-endpoints pass
-     *     (siteId null) → {@see ElementTargetInterface::disable()}.
+     *   - DISABLED: no-site-endpoints pass (siteId null) → {@see ElementTargetInterface::disable()}.
+     *     Stays adaptive — an un-migrated `disable` + site-endpoints config
+     *     disables only that site's row rather than reaching across sites.
+     *   - DISABLED_FOR_SITE: needs a site → {@see ElementTargetInterface::disableForSite()}
+     *     (leave the element live in its other sites); a siteless pass logs one SKIPPED row.
      *   - DELETED_FOR_SITE: needs a site — a siteless pass logs one SKIPPED row.
      *   - DELETED: the whole element is destroyed. Only ever resolves on a
-     *     no-site-endpoints link (validation forbids DELETE + site endpoints),
-     *     so the pass is the single `[null]` scope and the delete is unscoped
-     *     ({@see applyMissingAction()} routes DELETED → target->delete()).
+     *     no-site-endpoints link (save-time migration swaps DELETE → DELETE_FOR_SITE
+     *     when site endpoints exist), so the pass is the single `[null]` scope
+     *     and the delete is unscoped ({@see applyMissingAction()} routes DELETED → target->delete()).
      *
      * Safety first: a sweep acts on the COMPLEMENT of the seen-set, so it's
      * only safe when the seen-set is complete. If any item failed WITHOUT a
@@ -713,10 +721,12 @@ class SynchronizationService extends Component
      * one SKIPPED row (not ERROR — an error would flip the run's status
      * perception; SKIPPED tells the user why nothing was swept).
      *
-     * Defensive guard (D2): validation forbids DELETE alongside site endpoints,
-     * but a hand-edited config could still pair them. Rather than cross-site
-     * delete off one site's feed, a link with site endpoints resolving to
-     * DELETED skips the delete, warns, and logs one SKIPPED row.
+     * Defensive guard (D2): save-time migration swaps DELETE → DELETE_FOR_SITE
+     * when a link has site endpoints, but a hand-edited config could still pair
+     * global DELETE with them. Rather than cross-site delete off one site's
+     * feed, such a link skips the delete, warns, and logs one SKIPPED row.
+     * (Disable needs no equivalent hard guard — it's reversible, so DISABLED
+     * downgrades to a per-site disable instead of skipping.)
      *
      * @param list<int> $seenIds Element ids present in this scope's feed.
      * @param int $unattributedErrors Items that failed with no resolvable
@@ -766,11 +776,11 @@ class SynchronizationService extends Component
             return;
         }
 
-        // delete-for-site is meaningless without a site to scope to.
-        if ($policy === ItemAction::DELETED_FOR_SITE && $context->siteId === null) {
+        // The -for-site policies are meaningless without a site to scope to.
+        if (in_array($policy, [ItemAction::DELETED_FOR_SITE, ItemAction::DISABLED_FOR_SITE], true) && $context->siteId === null) {
             $this->logSweepSkip(
                 $log,
-                'Missing-elements sweep skipped: delete-for-site needs a site-scoped run.',
+                "Missing-elements sweep skipped: {$policy->value} needs a site-scoped run.",
             );
 
             return;
@@ -808,9 +818,10 @@ class SynchronizationService extends Component
             return;
         }
 
-        // DISABLED only touches still-enabled elements (skip the churn of
-        // re-disabling); the delete policies consider every status.
-        $query->status($policy === ItemAction::DISABLED ? 'enabled' : null);
+        // The disable policies only touch still-enabled elements (skip the
+        // churn of re-disabling); the delete policies consider every status.
+        $disablePolicy = in_array($policy, [ItemAction::DISABLED, ItemAction::DISABLED_FOR_SITE], true);
+        $query->status($disablePolicy ? 'enabled' : null);
 
         $matchAttr = $link->matchAttribute();
 
@@ -871,9 +882,15 @@ class SynchronizationService extends Component
         $target = $context->target;
 
         return match ($policy) {
-            ItemAction::DELETED          => $target->delete($element),
-            ItemAction::DELETED_FOR_SITE => $target->deleteForSite($element, (int) $context->siteId),
-            ItemAction::DISABLED         => $context->siteId !== null
+            ItemAction::DELETED           => $target->delete($element),
+            ItemAction::DELETED_FOR_SITE  => $target->deleteForSite($element, (int) $context->siteId),
+            ItemAction::DISABLED_FOR_SITE => $target->disableForSite($element, (int) $context->siteId),
+            // DISABLED stays adaptive: post-migration it only runs on a
+            // no-site pass (global disable), but an un-migrated `disable` +
+            // site-endpoints config still disables just that site's row here
+            // rather than reaching across sites — disable is reversible, so
+            // (unlike the DELETED D2 guard) the safe downgrade beats a skip.
+            ItemAction::DISABLED => $context->siteId !== null
                 ? $target->disableForSite($element, $context->siteId)
                 : $target->disable($element),
             default => false,

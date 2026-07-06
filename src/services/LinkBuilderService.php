@@ -120,6 +120,11 @@ class LinkBuilderService extends Component
 
         $this->serializer->apply($link, $payload);
 
+        // Heal a delete/disable policy that no longer fits the endpoint shape
+        // BEFORE saving, so we can tell the user what we changed. saveLink()
+        // re-runs the (idempotent) migration as its own invariant backstop.
+        $migrations = $link->migrateProcessingForEndpointShape();
+
         if (! $plugin->links->saveLink($link)) {
             return [
                 'success' => false,
@@ -128,7 +133,44 @@ class LinkBuilderService extends Component
             ];
         }
 
-        return ['success' => true, 'link' => $this->serializer->serialize($link)];
+        $result = ['success' => true, 'link' => $this->serializer->serialize($link)];
+
+        if ($migrations) {
+            $result['notice'] = $this->processingMigrationNotice($migrations);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Human-readable summary of a processing-policy migration
+     * ({@see Link::migrateProcessingForEndpointShape()}), shown to the user as
+     * a native CP notice after a save that swapped a global delete/disable for
+     * its -for-site counterpart (or back). The direction is uniform within one
+     * save — the endpoint shape is a single fact — so the reason clause is
+     * read off the first migration.
+     *
+     * @param list<array{from: string, to: string}> $migrations
+     */
+    protected function processingMigrationNotice(array $migrations): string
+    {
+        $changes = [];
+
+        foreach ($migrations as $migration) {
+            $changes[] = Craft::t('influx', '“{from}” → “{to}”', [
+                'from' => $this->processingActionLabel($migration['from']),
+                'to'   => $this->processingActionLabel($migration['to']),
+            ]);
+        }
+
+        $reason = str_ends_with($migrations[0]['to'], '-for-site')
+            ? Craft::t('influx', 'to match this link’s site-specific endpoints')
+            : Craft::t('influx', 'because this link no longer uses site-specific endpoints');
+
+        return Craft::t('influx', 'Adjusted the missing-element policy {reason}: {changes}.', [
+            'reason'  => $reason,
+            'changes' => implode(', ', $changes),
+        ]);
     }
 
     /**
@@ -377,8 +419,7 @@ class LinkBuilderService extends Component
             'Enable if the external service supports resource localisation.',
             'The link runs once per listed site and writes localized data to the same canonical element.',
             'Processing actions',
-            'Not available with site-specific endpoints — use “delete the site-specific row only”.',
-            'Needs site-specific endpoints — use plain “delete” instead.',
+            'The “site-specific row only” variants apply when this link uses site-specific endpoints; pick either the global or the per-site form — the save adjusts it to match your endpoints if they disagree.',
 
             // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',
@@ -557,13 +598,38 @@ class LinkBuilderService extends Component
 
     protected function processingActionOptions(): array
     {
+        $out = [];
+
+        foreach ($this->processingActionLabels() as $value => $label) {
+            $out[] = ['value' => $value, 'label' => $label];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Translated label per processing value — the single source for both the
+     * builder's checkbox options and the migration notice. Order here is the
+     * order the checkboxes render: each global policy is followed by its
+     * per-site counterpart.
+     *
+     * @return array<string, string>
+     */
+    protected function processingActionLabels(): array
+    {
         return [
-            ['value' => Link::PROCESSING_CREATE,           'label' => Craft::t('influx', 'Create new elements')],
-            ['value' => Link::PROCESSING_UPDATE,           'label' => Craft::t('influx', 'Update existing elements')],
-            ['value' => Link::PROCESSING_DISABLE,          'label' => Craft::t('influx', 'Disable elements missing from the feed')],
-            ['value' => Link::PROCESSING_DELETE,           'label' => Craft::t('influx', 'Delete elements missing from the feed')],
-            ['value' => Link::PROCESSING_DELETE_FOR_SITE,  'label' => Craft::t('influx', 'Delete the site-specific row only')],
+            Link::PROCESSING_CREATE           => Craft::t('influx', 'Create new elements'),
+            Link::PROCESSING_UPDATE           => Craft::t('influx', 'Update existing elements'),
+            Link::PROCESSING_DISABLE          => Craft::t('influx', 'Disable elements missing from the feed'),
+            Link::PROCESSING_DISABLE_FOR_SITE => Craft::t('influx', 'Disable the site-specific row only'),
+            Link::PROCESSING_DELETE           => Craft::t('influx', 'Delete elements missing from the feed'),
+            Link::PROCESSING_DELETE_FOR_SITE  => Craft::t('influx', 'Delete the site-specific row only'),
         ];
+    }
+
+    protected function processingActionLabel(string $value): string
+    {
+        return $this->processingActionLabels()[$value] ?? $value;
     }
 
     protected function authTypeOptions(): array

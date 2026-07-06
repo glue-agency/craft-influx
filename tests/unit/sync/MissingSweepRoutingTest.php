@@ -62,6 +62,31 @@ class MissingSweepRoutingTest extends Unit
         $this->assertSame([[ItemAction::DELETED_FOR_SITE, [9], 7]], $service->sweeps);
     }
 
+    public function testDisableForSiteSweepsPerSiteWhenScoped(): void
+    {
+        $link = $this->link(['update', 'disable-for-site']);
+        $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
+        $service = $this->service();
+        $context = $this->context($link, siteId: 7, siteHandle: 'fr');
+
+        $service->publicSweepMissing($context, [9], 0, $this->log());
+
+        $this->assertSame([[ItemAction::DISABLED_FOR_SITE, [9], 7]], $service->sweeps);
+    }
+
+    public function testDisableForSiteSkipsWhenNotScopedToASite(): void
+    {
+        // Like delete-for-site, the per-site disable needs a site scope; the
+        // [null] pass records a skip and sweeps nothing.
+        $service = $this->service();
+        $context = $this->context($this->link(['disable-for-site']), siteId: null, siteHandle: null);
+
+        $service->publicSweepMissing($context, [1], 0, $this->log());
+
+        $this->assertSame([], $service->sweeps);
+        $this->assertCount(1, $service->skips);
+    }
+
     public function testDeleteSweepsUnscopedOnNoSiteEndpointsLink(): void
     {
         // A no-site-endpoints link runs its single pass with siteId null; the

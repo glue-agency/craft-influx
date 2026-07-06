@@ -130,6 +130,9 @@
         <h2>{{ $t('Processing actions') }}</h2>
 
         <div class="field">
+            <div class="instructions">
+                <p>{{ $t('The “site-specific row only” variants apply when this link uses site-specific endpoints; pick either the global or the per-site form — the save adjusts it to match your endpoints if they disagree.') }}</p>
+            </div>
             <ul class="checkbox-group">
                 <li v-for="opt in options.processingActions" :key="opt.value">
                     <input type="checkbox"
@@ -137,12 +140,9 @@
                            :id="`builder-processing-${opt.value}`"
                            :value="opt.value"
                            :checked="link.processing.includes(opt.value)"
-                           :disabled="readOnly || processingGating[opt.value]?.disabled"
+                           :disabled="readOnly"
                            @change="toggleProcessing(opt.value, $event.target.checked)" />
                     <label :for="`builder-processing-${opt.value}`">{{ opt.label }}</label>
-                    <p v-if="processingGating[opt.value]?.hint" class="influx-processing-hint light">
-                        {{ processingGating[opt.value].hint }}
-                    </p>
                 </li>
             </ul>
         </div>
@@ -237,26 +237,6 @@ export default {
         // token list itself is refetched by the store's criteria watcher.
         combinedSuggestions() {
             return [...(this.ui.tokenSuggestions || []), ...this.envSuggestions];
-        },
-
-        // Per-processing-option gating keyed by option value. The two delete
-        // policies are mutually exclusive with respect to endpoint shape:
-        // global `delete` only applies without site endpoints, and
-        // `delete-for-site` only applies with them (mirrors the server-side
-        // Link::validateProcessing() backstop). An already-checked but
-        // now-invalid flag is left checked (D1) — the box just disables with a
-        // hint, and the save 400s if the user leaves it that way.
-        processingGating() {
-            const siteMode = this.siteEndpointsMode;
-
-            return {
-                delete: siteMode
-                    ? { disabled: true, hint: this.$t('Not available with site-specific endpoints — use “delete the site-specific row only”.') }
-                    : { disabled: false, hint: '' },
-                'delete-for-site': siteMode
-                    ? { disabled: false, hint: '' }
-                    : { disabled: true, hint: this.$t('Needs site-specific endpoints — use plain “delete” instead.') },
-            };
         },
     },
 

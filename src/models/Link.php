@@ -33,6 +33,7 @@ class Link extends Model
     public const PROCESSING_CREATE = 'create';
     public const PROCESSING_UPDATE = 'update';
     public const PROCESSING_DISABLE = 'disable';
+    public const PROCESSING_DISABLE_FOR_SITE = 'disable-for-site';
     public const PROCESSING_DELETE = 'delete';
     public const PROCESSING_DELETE_FOR_SITE = 'delete-for-site';
 
@@ -40,8 +41,21 @@ class Link extends Model
         self::PROCESSING_CREATE,
         self::PROCESSING_UPDATE,
         self::PROCESSING_DISABLE,
+        self::PROCESSING_DISABLE_FOR_SITE,
         self::PROCESSING_DELETE,
         self::PROCESSING_DELETE_FOR_SITE,
+    ];
+
+    /**
+     * The global missing-element policies and their per-site counterparts.
+     * Keyed global => for-site: with site-specific endpoints a run owns one
+     * site's rows, so a global disable/delete off that site's feed would reach
+     * across sites — {@see migrateProcessingForEndpointShape()} swaps each
+     * pair to match the link's endpoint shape on save.
+     */
+    public const PROCESSING_SITE_COUNTERPARTS = [
+        self::PROCESSING_DISABLE => self::PROCESSING_DISABLE_FOR_SITE,
+        self::PROCESSING_DELETE  => self::PROCESSING_DELETE_FOR_SITE,
     ];
 
     /**
@@ -235,41 +249,57 @@ class Link extends Model
             [['match'], 'validateMatch'],
             [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
-            [['processing'], 'validateProcessing'],
         ]);
     }
 
     /**
-     * Gate the two delete policies by endpoint shape. Global `delete` is a
-     * no-site-endpoints-only, single-pass policy; `delete-for-site` only makes
-     * sense when the link runs per site. The two are mutually exclusive with
-     * respect to the link's endpoint shape, so a payload that pairs the wrong
-     * delete policy with the wrong shape is rejected here (the reactive builder
-     * disables the offending checkbox, but this is the server-side backstop).
+     * Swap the missing-element policies to match the link's endpoint shape,
+     * returning the migrations performed as `[['from' => …, 'to' => …], …]`
+     * (empty when nothing changed). Idempotent, so calling it twice is safe.
+     *
+     * With site-specific endpoints a run owns one site's rows, so the global
+     * `disable`/`delete` policies (which touch the canonical element across
+     * every site) are swapped to their `-for-site` counterparts; without site
+     * endpoints the `-for-site` policies have no site to scope to and are
+     * swapped back to global. Rather than reject a mismatched combo on save,
+     * we heal it here and let the caller tell the user what changed.
+     *
+     * @return list<array{from: string, to: string}>
      */
-    public function validateProcessing(string $attribute): void
+    public function migrateProcessingForEndpointShape(): array
     {
-        $value = $this->$attribute;
-
-        if (! is_array($value)) {
-            return;
+        if (! is_array($this->processing)) {
+            return [];
         }
 
         $hasSiteEndpoints = ! empty($this->siteEndpoints);
+        $forSite = self::PROCESSING_SITE_COUNTERPARTS;
+        $toGlobal = array_flip($forSite);
 
-        if ($hasSiteEndpoints && in_array(self::PROCESSING_DELETE, $value, true)) {
-            $this->addError(
-                $attribute,
-                'Global delete isn’t allowed with site-specific endpoints — use “delete the site-specific row only”.',
-            );
+        $migrations = [];
+        $migrated = [];
+
+        foreach ($this->processing as $action) {
+            $to = $action;
+
+            if ($hasSiteEndpoints && isset($forSite[$action])) {
+                $to = $forSite[$action];
+            } elseif (! $hasSiteEndpoints && isset($toGlobal[$action])) {
+                $to = $toGlobal[$action];
+            }
+
+            if ($to !== $action) {
+                $migrations[] = ['from' => $action, 'to' => $to];
+            }
+
+            $migrated[] = $to;
         }
 
-        if (! $hasSiteEndpoints && in_array(self::PROCESSING_DELETE_FOR_SITE, $value, true)) {
-            $this->addError(
-                $attribute,
-                '“Delete the site-specific row only” needs site-specific endpoints — use plain delete instead.',
-            );
-        }
+        // A migration can collide the global and -for-site forms onto the same
+        // value (a config carrying both) — dedupe while keeping first-seen order.
+        $this->processing = array_values(array_unique($migrated));
+
+        return $migrations;
     }
 
     public function validateMatch(string $attribute): void

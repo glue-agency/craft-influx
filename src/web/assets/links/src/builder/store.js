@@ -143,6 +143,12 @@ async function save(options = {}) {
 
         notifyNotice(t('Link saved.'));
 
+        // The server may have healed the delete/disable policy to match the
+        // endpoint shape — surface what it changed.
+        if (result.notice) {
+            notifyNotice(result.notice);
+        }
+
         if (wasNew && savedId) {
             // The `new` URL is gone — full reload lands the SPA on the
             // persistent edit URL so subsequent saves update in place.
@@ -152,7 +158,10 @@ async function save(options = {}) {
             return { success: true, redirected: true };
         }
 
-        if (!continueEditing) {
+        // A migration adjusted the stored policy — keep the user on the page
+        // so the swapped checkboxes (and the notice) are visible instead of
+        // navigating away from them.
+        if (!continueEditing && !result.notice) {
             window.location.href = Craft.getCpUrl('influx/links');
             return { success: true, redirected: true };
         }

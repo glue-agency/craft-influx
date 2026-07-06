@@ -16,7 +16,7 @@ use GlueAgency\Influx\services\SynchronizationService;
  * Precedence — the more destructive wins, and a global delete supersedes the
  * rest (no point disabling elements you're about to delete):
  *
- *   DELETE  >  DELETE_FOR_SITE  >  DISABLE
+ *   DELETE > DELETE_FOR_SITE > DISABLE > DISABLE_FOR_SITE
  *
  * null when no missing-elements flag is set.
  *
@@ -37,6 +37,18 @@ class MissingPolicyTest extends Unit
     public function testDisableOnly(): void
     {
         $this->assertResolves(['create', 'update', 'disable'], ItemAction::DISABLED);
+    }
+
+    public function testDisableForSiteOnly(): void
+    {
+        $this->assertResolves(['update', 'disable-for-site'], ItemAction::DISABLED_FOR_SITE);
+    }
+
+    public function testDisableBeatsDisableForSite(): void
+    {
+        // They never coexist after save-time migration, but precedence is
+        // deterministic: global disable is listed first.
+        $this->assertResolves(['disable', 'disable-for-site'], ItemAction::DISABLED);
     }
 
     public function testDeleteForSiteOnly(): void

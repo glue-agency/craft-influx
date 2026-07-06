@@ -15,6 +15,7 @@ enum ItemAction: string
     case SKIPPED = 'skipped';
     case ERROR = 'error';
     case DISABLED = 'disabled';
+    case DISABLED_FOR_SITE = 'disabled-for-site';
     case DELETED = 'deleted';
     case DELETED_FOR_SITE = 'deleted-for-site';
 
@@ -29,7 +30,7 @@ enum ItemAction: string
             self::UPDATED   => 'itemsUpdated',
             self::UNCHANGED => 'itemsUnchanged',
             self::SKIPPED   => 'itemsSkipped',
-            self::DISABLED  => 'itemsDisabled',
+            self::DISABLED, self::DISABLED_FOR_SITE => 'itemsDisabled',
             self::DELETED, self::DELETED_FOR_SITE => 'itemsDeleted',
             self::ERROR => null,
         };
@@ -45,14 +46,15 @@ enum ItemAction: string
     public function dryRunLabel(): string
     {
         return match ($this) {
-            self::CREATED          => 'would-create',
-            self::UPDATED          => 'would-update',
-            self::UNCHANGED        => 'unchanged',
-            self::SKIPPED          => 'would-skip',
-            self::ERROR            => 'error',
-            self::DISABLED         => 'would-disable',
-            self::DELETED          => 'would-delete',
-            self::DELETED_FOR_SITE => 'would-delete-for-site',
+            self::CREATED           => 'would-create',
+            self::UPDATED           => 'would-update',
+            self::UNCHANGED         => 'unchanged',
+            self::SKIPPED           => 'would-skip',
+            self::ERROR             => 'error',
+            self::DISABLED          => 'would-disable',
+            self::DISABLED_FOR_SITE => 'would-disable-for-site',
+            self::DELETED           => 'would-delete',
+            self::DELETED_FOR_SITE  => 'would-delete-for-site',
         };
     }
 }

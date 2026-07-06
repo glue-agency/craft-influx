@@ -205,12 +205,4 @@ export default {
     line-height: 1;
     margin-left: 1px;
 }
-
-/* Hint under a disabled processing checkbox — explains why the box is
-   greyed out (delete policies gated by endpoint shape). Indents to align
-   with the checkbox label. */
-.influx-processing-hint {
-    margin: 2px 0 0 24px;
-    font-size: 12px;
-}
 </style>
