@@ -8,6 +8,7 @@ use craft\helpers\UrlHelper;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
 use GlueAgency\Influx\web\LinkPresenter;
