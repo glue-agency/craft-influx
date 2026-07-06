@@ -77,11 +77,16 @@ class LogsService extends Component
         $log->offsetHandle = $offsetHandle;
         $log->elementId = $elementId;
         $log->status = 'running';
-        $log->startedAt = Db::prepareDateForDb(new DateTime());
+        $startedAt = new DateTime();
+        $log->startedAt = Db::prepareDateForDb($startedAt);
 
         if ($this->loggingEnabled()) {
             $log->save(false);
         }
+
+        // Stamp the run onto the link itself — a timestamp that outlives the
+        // log, plus a pointer to it (null when logging is off).
+        Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
 
         return $log;
     }
@@ -223,31 +228,6 @@ class LogsService extends Component
     }
 
     /**
-     * Most recent log per link handle, keyed by handle — powers the "last
-     * run" column on the links index. One newest-first query, keeping the
-     * first (newest) row seen for each handle. A multi-site link now produces
-     * one log per site per run, so this returns the newest SITE log for the
-     * link (the most recently finished site's outcome), not a run-spanning log.
-     *
-     * @return array<string, LogRecord>
-     */
-    public function lastRunPerLink(): array
-    {
-        $out = [];
-        $logs = LogRecord::find()
-            ->orderBy(['startedAt' => SORT_DESC])
-            ->all();
-
-        foreach ($logs as $log) {
-            if (! isset($out[$log->linkHandle])) {
-                $out[$log->linkHandle] = $log;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
      * One page of logs, newest first, plus the total for the pager.
      *
      * @return array{logs: LogRecord[], total: int}
@@ -322,11 +302,15 @@ class LogsService extends Component
     public function delete(LogRecord $log): void
     {
         $log->delete();
+        Influx::getInstance()->links->forgetDeletedLogs();
     }
 
     public function clear(): int
     {
-        return LogRecord::deleteAll();
+        $deleted = LogRecord::deleteAll();
+        Influx::getInstance()->links->forgetDeletedLogs();
+
+        return $deleted;
     }
 
     /**
@@ -341,9 +325,15 @@ class LogsService extends Component
         }
         $cutoff = (new DateTime())->modify("-{$days} days");
 
-        return LogRecord::deleteAll([
+        $deleted = LogRecord::deleteAll([
             '<', 'startedAt', Db::prepareDateForDb($cutoff),
         ]);
+
+        if ($deleted > 0) {
+            Influx::getInstance()->links->forgetDeletedLogs();
+        }
+
+        return $deleted;
     }
 
     protected function loggingEnabled(): bool

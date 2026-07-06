@@ -33,9 +33,14 @@ class Install extends Migration
             'offset'          => $this->text()->null(),
             'backup'          => $this->boolean()->notNull()->defaultValue(false),
             'sortOrder'       => $this->integer(),
-            'dateCreated'     => $this->dateTime()->notNull(),
-            'dateUpdated'     => $this->dateTime()->notNull(),
-            'uid'             => $this->uid(),
+            // Runtime last-run tracking — NOT Project Config. lastRunAt
+            // survives log deletion; lastLogId is a soft pointer to the run's
+            // log for quick access, nulled when that log is deleted.
+            'lastRunAt'   => $this->dateTime()->null(),
+            'lastLogId'   => $this->integer()->null(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid'         => $this->uid(),
         ]);
 
         $this->createIndex(null, Table::LINKS, ['handle'], true);

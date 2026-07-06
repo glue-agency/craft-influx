@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\models;
 
 use craft\base\Model;
 use craft\helpers\StringHelper;
+use DateTime;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -232,6 +233,24 @@ class Link extends Model
      * falls back to name order so those still sort deterministically.
      */
     public ?int $sortOrder = null;
+
+    /**
+     * When this link last started a sync run — runtime state, NOT a config
+     * field (absent from {@see CONFIG_FIELDS}, so it never reaches Project
+     * Config). Survives log deletion, so the overview can show "last run" even
+     * after the run's log is gone. Set by
+     * {@see \GlueAgency\Influx\services\LinksService::recordRun()}.
+     */
+    public ?DateTime $lastRunAt = null;
+
+    /**
+     * Soft pointer to the log of the last run, for quick access from the
+     * overview. Nulled when that log is deleted
+     * ({@see \GlueAgency\Influx\services\LinksService::forgetDeletedLogs()}), so
+     * a non-null value means the log still exists. Null when the last run
+     * wasn't logged (logging disabled). Runtime state, not config.
+     */
+    public ?int $lastLogId = null;
 
     /** Memoized typed view over $mappings — see {@see getMappingCollection()}. */
     protected ?MappingCollection $mappingCollection = null;

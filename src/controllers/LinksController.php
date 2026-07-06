@@ -40,9 +40,20 @@ class LinksController extends AbstractController
 
     public function actionIndex(): Response
     {
+        $links = Influx::getInstance()->links->getAllLinks();
+
+        // The last-run log per link, for the status dot + quick link. Each
+        // link's `lastLogId` is nulled when its log is deleted, so a set id
+        // still resolves to a real log — batch-load them in one query, keyed
+        // by id. The persistent "when" is `link.lastRunAt` (survives deletion).
+        $logIds = array_values(array_filter(array_map(static fn($link) => $link->lastLogId, $links)));
+        $lastLogs = $logIds
+            ? LogRecord::find()->where(['id' => $logIds])->indexBy('id')->all()
+            : [];
+
         return $this->renderTemplate('influx/links/index', [
-            'links'     => Influx::getInstance()->links->getAllLinks(),
-            'lastRuns'  => Influx::getInstance()->logs->lastRunPerLink(),
+            'links'     => $links,
+            'lastLogs'  => $lastLogs,
             'presenter' => new LinkPresenter(),
             'readOnly'  => $this->readOnly(),
         ]);

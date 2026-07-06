@@ -169,7 +169,6 @@
             </thead>
             <tbody{% if not readOnly %} data-influx-links-sortable{% endif %}>
                 {% for link in links %}
-                    {% set lastRun = lastRuns[link.handle] ?? null %}
                     <tr data-id="{{ link.id }}" data-uid="{{ link.uid }}">
                         {% if not readOnly %}
                             <td class="thin action">
@@ -205,12 +204,17 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if lastRun %}
-                                <span class="status {{ lastRun.status == "ok" ? "live" : (lastRun.status == "error" ? "expired" : "pending") }}"
-                                      title="{{ lastRun.status|t('influx') }}"></span>
-                                <a href="{{ cpUrl('influx/logs/' ~ lastRun.id) }}">
-                                    {{ craft.app.formattingLocale.getFormatter().asDatetime(lastRun.startedAt) }}
-                                </a>
+                            {% if link.lastRunAt %}
+                                {% set lastLog = link.lastLogId ? (lastLogs[link.lastLogId] ?? null) : null %}
+                                {% set when = craft.app.formattingLocale.getFormatter().asDatetime(link.lastRunAt) %}
+                                {% if lastLog %}
+                                    <span class="status {{ lastLog.status == "ok" ? "live" : (lastLog.status == "error" ? "expired" : "pending") }}"
+                                          title="{{ lastLog.status|t('influx') }}"></span>
+                                    <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                                {% else %}
+                                    {# The run's log has been deleted — the timestamp persists on the link. #}
+                                    {{ when }}
+                                {% endif %}
                             {% else %}
                                 <span class="light">{{ "never"|t("influx") }}</span>
                             {% endif %}

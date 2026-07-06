@@ -7,6 +7,7 @@ use craft\base\Component;
 use craft\base\ElementInterface;
 use craft\db\Query;
 use craft\events\ConfigEvent;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use DateTime;
 use GlueAgency\Influx\db\Table;
@@ -381,6 +382,56 @@ class LinksService extends Component
         $this->links = null;
     }
 
+    // -- runtime last-run tracking -------------------------------------------
+
+    /**
+     * Stamp a link's last run onto its own row — runtime state that outlives
+     * the run's log. A direct column write (NOT Project Config, so it never
+     * touches YAML or `dateUpdated`); `lastLogId` is null when the run wasn't
+     * logged (logging disabled). Called by {@see LogsService::start()}.
+     */
+    public function recordRun(Link $link, ?int $logId, DateTime $when): void
+    {
+        if (! $link->id) {
+            return;
+        }
+
+        Craft::$app->getDb()->createCommand()
+            ->update(Table::LINKS, [
+                'lastRunAt' => Db::prepareDateForDb($when),
+                'lastLogId' => $logId,
+            ], ['id' => $link->id])
+            ->execute();
+
+        // Keep an already-loaded model + the cache coherent for this request.
+        $link->lastRunAt = $when;
+        $link->lastLogId = $logId;
+        $this->links = null;
+    }
+
+    /**
+     * Null the `lastLogId` soft pointer on any link whose last-run log no
+     * longer exists, leaving `lastRunAt` intact. One reconcile query serves a
+     * single delete, a full clear, and retention GC alike — so a set
+     * `lastLogId` always still resolves to a real log. Called by
+     * {@see LogsService} after any log deletion.
+     */
+    public function forgetDeletedLogs(): void
+    {
+        Craft::$app->getDb()->createCommand()
+            ->update(
+                Table::LINKS,
+                ['lastLogId' => null],
+                ['and',
+                    ['not', ['lastLogId' => null]],
+                    ['not in', 'lastLogId', (new Query())->select(['id'])->from(Table::LOGS)],
+                ],
+            )
+            ->execute();
+
+        $this->links = null;
+    }
+
     // -- helpers -------------------------------------------------------------
 
     /**
@@ -454,6 +505,10 @@ class LinksService extends Component
         $row['backup'] = ! empty($row['backup']);
         $row['id'] = (int) $row['id'];
         $row['sortOrder'] = isset($row['sortOrder']) ? (int) $row['sortOrder'] : null;
+
+        // Runtime last-run columns → typed model props.
+        $row['lastRunAt'] = ! empty($row['lastRunAt']) ? (DateTimeHelper::toDateTime($row['lastRunAt']) ?: null) : null;
+        $row['lastLogId'] = isset($row['lastLogId']) && $row['lastLogId'] !== null ? (int) $row['lastLogId'] : null;
 
         // Drop columns Link doesn't know about; the Model base would warn.
         unset($row['dateCreated'], $row['dateUpdated']);

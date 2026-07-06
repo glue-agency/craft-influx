@@ -147,6 +147,20 @@ class LinkTest extends Unit
         $this->assertArrayNotHasKey('sortOrder', $this->link()->getConfig());
     }
 
+    public function testGetConfigOmitsRuntimeLastRunState(): void
+    {
+        // lastRunAt / lastLogId are local runtime state, never config — they
+        // must not round-trip to Project Config even when set.
+        $link = $this->link();
+        $link->lastRunAt = new \DateTime();
+        $link->lastLogId = 42;
+
+        $config = $link->getConfig();
+
+        $this->assertArrayNotHasKey('lastRunAt', $config);
+        $this->assertArrayNotHasKey('lastLogId', $config);
+    }
+
     public function testProcessingDefaultsToCreateAndUpdate(): void
     {
         $this->assertSame(['create', 'update'], $this->link()->processing);
