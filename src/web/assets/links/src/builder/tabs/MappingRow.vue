@@ -88,37 +88,57 @@
             </template>
         </div>
 
-        <mapping-extras
-            v-if="hasExtras"
-            class="influx-mapping-extras-slot"
-            :field="field"
-            :saved="extrasSaved"
-            :expanded="extrasExpanded"
-            :read-only="readOnly"
-            @update:options="onOptionsUpdate"
-            @update:nativeFields="onNativeFieldsUpdate"
-            @update:blocks="onBlocksUpdate"
-        />
+        <!-- Per-field options block: a generic SchemaForm rendering whatever
+             node schema the PHP strategy declared via
+             Field::defineExtrasSchema(). No field-kind branches live here —
+             adding a mapping kind is a single-PHP-file change. The
+             `data-expanded` attribute mirrors the toggle state for the row's
+             `:has()` tint selector in links.css. -->
+        <div v-if="hasExtras"
+             class="influx-mapping-extras influx-mapping-extras-slot"
+             :data-expanded="extrasExpanded ? 'true' : 'false'"
+        >
+            <div v-show="extrasExpanded" class="extras-body">
+                <schema-form
+                    :schema="extrasSchema"
+                    :options="extrasOptions"
+                    :native-fields="extrasNativeFields"
+                    :blocks="extrasBlocks"
+                    :node-options="extrasNodeOptions"
+                    :discovered-nodes="discoveredNodes"
+                    :read-only="readOnly"
+                    @update:options="onOptionsUpdate"
+                    @update:native-fields="onNativeFieldsUpdate"
+                    @update:blocks="onBlocksUpdate"
+                />
+            </div>
+        </div>
     </div>
 </template>
 
 <script>
-import MappingExtras from '../../components/MappingExtras.vue';
 import ElementPicker from '../ElementPicker.vue';
 import SearchableSelect from '../SearchableSelect.vue';
+import SchemaForm from '../schema/SchemaForm.vue';
 import { store } from '../store.js';
-import { setMappingSlot } from '../lib/mappings.js';
+import { mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab. Renders the field name, source-node select,
- * default-value editor, and optionally the MappingExtras subform for
- * complex field types. Writes straight back into `link.mappings[handle]`
- * on the reactive store; the parent watches the store via the dirty flag.
+ * default-value editor, and optionally an extras subform for complex field
+ * types — a SchemaForm driven by the strategy's declared schema. Writes
+ * straight back into `link.mappings[handle]` on the reactive store; the
+ * parent watches the store via the dirty flag.
+ *
+ * The row owns the extras' local `extrasOptions` / `extrasNativeFields` /
+ * `extrasBlocks` models (seeded from the saved mapping) and writes them
+ * pruned via writeMapping(), which is the shape that lands in Project
+ * Config.
  */
 export default {
     name: 'MappingRow',
 
-    components: { MappingExtras, ElementPicker, SearchableSelect },
+    components: { ElementPicker, SearchableSelect, SchemaForm },
 
     props: {
         field: { type: Object, required: true },
@@ -128,10 +148,19 @@ export default {
     },
 
     data() {
+        const saved = store.link.mappings?.[this.field.handle] || {};
+
         return {
-            // Rows with a saved mapping start with their extras open —
-            // same seed the extras component used when it owned the toggle.
-            extrasExpanded: Object.keys(store.link.mappings?.[this.field.handle] || {}).length > 0,
+            // Rows with a saved mapping start with their extras open.
+            extrasExpanded: Object.keys(saved).length > 0,
+            // Local extras models, seeded once from the saved mapping —
+            // SchemaForm edits land here first, then flow to the store
+            // pruned via writeMapping(). `extrasNativeFields` /
+            // `extrasBlocks` re-hydrate saved sub-field mappings (asset
+            // alt/title, Matrix per-block-type children) on edit.
+            extrasOptions: { ...(saved.options || {}) },
+            extrasNativeFields: { ...(saved.nativeFields || {}) },
+            extrasBlocks: { ...(saved.blocks || {}) },
         };
     },
 
@@ -151,10 +180,15 @@ export default {
             return this.link.mappings?.[this.field.handle] || {};
         },
 
+        // The node schema the PHP strategy declared for this field type.
+        extrasSchema() {
+            return this.field.fieldMeta?.schema || [];
+        },
+
         // An extras block exists exactly when the strategy declared a
         // schema — no separate flag to keep in sync.
         hasExtras() {
-            return (this.field.fieldMeta?.schema || []).length > 0;
+            return this.extrasSchema.length > 0;
         },
 
         // The strategy declared its value derives entirely from sub-mappings
@@ -180,17 +214,30 @@ export default {
             return Object.keys(this.mapping).length > 0;
         },
 
-        // Saved shape MappingExtras consumes for its initial UI state —
-        // we never re-pass a different identity after mount, so the
-        // emits-only flow stays clean. `nativeFields` / `blocks` ride along
-        // so saved sub-field mappings (asset alt/title, Matrix per-block-type
-        // children) re-hydrate on edit.
-        extrasSaved() {
-            return {
-                options: this.mapping.options || {},
-                nativeFields: this.mapping.nativeFields || {},
-                blocks: this.mapping.blocks || {},
-            };
+        /**
+         * Source-node candidates for the extras' sub-field dropdowns: the
+         * latest Fetch-sample nodes straight off the store, merged with
+         * saved sub-field paths — the flat `extrasNativeFields` rows plus
+         * every block type's nested `extrasBlocks.*.fields` rows — so the
+         * dropdowns render before a sample exists. Distinct from the
+         * `nodeOptions` prop, which feeds the row's own source-node select.
+         */
+        extrasNodeOptions() {
+            const blockRows = Object.values(this.extrasBlocks)
+                .flatMap((entry) => Object.values(entry?.fields || {}));
+            const saved = [...Object.values(this.extrasNativeFields), ...blockRows]
+                .map((row) => row?.node)
+                .filter(Boolean);
+            return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
+        },
+
+        /**
+         * The raw discovered nodes — sub-field rows compare their saved
+         * node against these for their own missing-mapping state. Null
+         * (no sample yet) means "can't know", so nothing reads as missing.
+         */
+        discoveredNodes() {
+            return store.ui.sample?.flatNodes ?? null;
         },
 
         // The saved source node is no longer in the fetched sample. Compares
@@ -270,15 +317,21 @@ export default {
             this.writeMapping('default', elementId == null ? null : String(elementId));
         },
 
+        // SchemaForm emits land here directly: keep the local model in
+        // sync, then write the store — pruned for `options`, so Project
+        // Config YAML doesn't fill up with noise keys.
         onOptionsUpdate(options) {
-            this.writeMapping('options', options);
+            this.extrasOptions = options;
+            this.writeMapping('options', pruneEmpty(options));
         },
 
         onNativeFieldsUpdate(nativeFields) {
+            this.extrasNativeFields = nativeFields;
             this.writeMapping('nativeFields', nativeFields);
         },
 
         onBlocksUpdate(blocks) {
+            this.extrasBlocks = blocks;
             this.writeMapping('blocks', blocks);
         },
 
@@ -293,3 +346,20 @@ export default {
     },
 };
 </script>
+
+<style scoped>
+/* Extras span the row's full width (`grid-column: 1 / -1`, via the
+   `.influx-mapping-extras-slot` rule in links.css). The grid that aligns
+   extras rows with the row's Field / Source-node / Default-value columns
+   lives in SchemaForm.vue. The block starts flush under the row controls —
+   collapsed it renders nothing at all. The expanded tint comes from the
+   row's `:has()` selector in links.css, keyed off `data-expanded`. */
+
+.influx-mapping-extras {
+    margin-top: 0;
+    background: transparent;
+    border-top: 0;
+}
+
+.extras-body { padding: 0 0 4px; }
+</style>

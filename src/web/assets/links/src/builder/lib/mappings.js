@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the link's `mappings` payload — extracted from
- * MappingRow / MappingExtras so the pruning rules that keep Project Config
- * clean exist once and are unit-testable without mounting components.
+ * MappingRow so the pruning rules that keep Project Config clean exist
+ * once and are unit-testable without mounting components.
  */
 
 /**
