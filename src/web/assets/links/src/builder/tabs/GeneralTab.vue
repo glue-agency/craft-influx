@@ -238,6 +238,34 @@ export default {
         },
     },
 
+    mounted() {
+        // While the link is unsaved (new or a duplicate), derive the handle
+        // from the name using Craft's own HandleGenerator — the same widget
+        // its section / entry-type editors use. It writes the handle field and
+        // dispatches native `input` events, so v-model picks the value up, and
+        // it stops itself the moment the user hand-edits the handle (and honours
+        // the site's handle casing). An existing link keeps its saved handle,
+        // and the post-save reload lands in edit mode, so the sync only ever
+        // runs during the initial unsaved session.
+        const Craft = window.Craft;
+
+        if (this.ui.meta?.isNew && Craft?.HandleGenerator) {
+            const name = this.$el.querySelector('#builder-name');
+            const handle = this.$el.querySelector('#builder-handle');
+
+            if (name && handle) {
+                this._handleGenerator = new Craft.HandleGenerator(name, handle);
+            }
+        }
+    },
+
+    beforeUnmount() {
+        if (this._handleGenerator) {
+            this._handleGenerator.destroy();
+            this._handleGenerator = null;
+        }
+    },
+
     methods: {
         toggleProcessing(value, on) {
             const set = new Set(this.link.processing);
