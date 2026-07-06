@@ -12,8 +12,8 @@ use GlueAgency\Influx\sync\SyncContext;
 /**
  * Adapter that lets the sync engine talk to any element type. One
  * implementation per element type (Entry, Calendar Event, Commerce Product,
- * ...). Built-ins are registered by Influx; third-party targets register via
- * TargetsService::register().
+ * ...). Built-ins are registered by Influx; third-party targets register by
+ * listening to TargetsService::EVENT_REGISTER_TARGETS.
  *
  * Each target owns three concerns:
  *   1. Decide whether it can handle a given link (typically by FQCN match).

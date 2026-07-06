@@ -34,7 +34,7 @@ class FieldMapping
      */
     public bool $useDefault = false;
 
-    /** Per-field-type options (`match`, `valueMap`, `truthy`, ...). */
+    /** Per-field-type options (`match`, `format`, `create`, ...). */
     public array $options = [];
 
     /** Recursive sub-mappings for a related element's custom fields. */
@@ -51,9 +51,6 @@ class FieldMapping
      */
     protected array $blocks = [];
 
-    /** The exact config array this mapping was built from. */
-    protected array $config = [];
-
     protected function __construct(
         string $handle,
         ?string $node,
@@ -63,7 +60,6 @@ class FieldMapping
         array $fields,
         array $nativeFields,
         array $blocks,
-        array $config,
     ) {
         $this->handle = $handle;
         $this->node = $node;
@@ -73,7 +69,6 @@ class FieldMapping
         $this->fields = $fields;
         $this->nativeFields = $nativeFields;
         $this->blocks = $blocks;
-        $this->config = $config;
     }
 
     public static function fromConfig(string $handle, array $config): self
@@ -89,7 +84,6 @@ class FieldMapping
             fields: is_array($config['fields'] ?? null) ? $config['fields'] : [],
             nativeFields: is_array($config['nativeFields'] ?? null) ? $config['nativeFields'] : [],
             blocks: is_array($config['blocks'] ?? null) ? $config['blocks'] : [],
-            config: $config,
         );
     }
 
@@ -138,7 +132,7 @@ class FieldMapping
     }
 
     /**
-     * Per-field-type option, supporting dot paths (`group.sectionId`).
+     * Per-field-type option, supporting dot paths (`group.section`).
      * Returns `$default` when the option is absent or null.
      */
     public function option(string $key, mixed $default = null): mixed
@@ -197,15 +191,6 @@ class FieldMapping
     }
 
     /**
-     * Whether this mapping carries any per-block-type sub-mapping trees (the
-     * Matrix `blocks` channel).
-     */
-    public function hasBlockMappings(): bool
-    {
-        return ! empty($this->blocks);
-    }
-
-    /**
      * The per-block-type sub-mapping trees, keyed by block-type handle. Each
      * entry is built via {@see fromConfig()} so the per-type tree reuses
      * {@see subMappings()} / {@see nativeSubMappings()} verbatim — a block
@@ -226,15 +211,5 @@ class FieldMapping
         }
 
         return $built;
-    }
-
-    /**
-     * The exact config array this mapping was built from — lossless, so
-     * consumers that still need the raw shape (Project Config, the builder
-     * payload) keep round-tripping byte-identically.
-     */
-    public function toConfig(): array
-    {
-        return $this->config;
     }
 }

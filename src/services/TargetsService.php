@@ -49,20 +49,6 @@ class TargetsService extends Component
         ];
     }
 
-    /**
-     * Direct registration. Forces the registration event to fire first
-     * (seeding built-ins) so callers can rely on overriding built-ins by
-     * simply re-registering them — the explicit call always wins over the
-     * defaults regardless of timing.
-     *
-     * @param class-string<ElementTargetInterface> $class
-     */
-    public function register(string $class): void
-    {
-        $this->ensureLoaded();
-        $this->registerOne($class);
-    }
-
     protected function registerOne(string $class): void
     {
         if (! is_subclass_of($class, ElementTargetInterface::class)) {

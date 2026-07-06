@@ -44,11 +44,6 @@ class MappingCollection implements IteratorAggregate, Countable
         return $this->mappings[$handle] ?? null;
     }
 
-    public function has(string $handle): bool
-    {
-        return isset($this->mappings[$handle]);
-    }
-
     /** @return Traversable<string, FieldMapping> */
     public function getIterator(): Traversable
     {
@@ -58,14 +53,5 @@ class MappingCollection implements IteratorAggregate, Countable
     public function count(): int
     {
         return count($this->mappings);
-    }
-
-    /** Rebuild the raw config shape, losslessly. */
-    public function toConfig(): array
-    {
-        return array_map(
-            static fn(FieldMapping $mapping): array => $mapping->toConfig(),
-            $this->mappings,
-        );
     }
 }
