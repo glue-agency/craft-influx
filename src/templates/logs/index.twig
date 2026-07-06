@@ -74,8 +74,6 @@
                         <td>
                             {% if log.finishedAt %}
                                 {{ ((log.finishedAt|date_modify('+0 seconds')).timestamp - (log.startedAt|date_modify('+0 seconds')).timestamp) }}s
-                            {% else %}
-                                <span class="light">—</span>
                             {% endif %}
                         </td>
                         {# Craft's native table-row delete: the bare ✕ icon in its own

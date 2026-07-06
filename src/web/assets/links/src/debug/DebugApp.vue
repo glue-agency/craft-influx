@@ -18,7 +18,7 @@
             <div class="influx-feed-bar">
                 <div class="influx-feed-endpoint">
                     <span class="influx-feed-eyebrow">{{ $t('Endpoint') }}</span>
-                    <code class="influx-feed-url">{{ (meta && meta.url) || '—' }}</code>
+                    <code class="influx-feed-url">{{ meta && meta.url }}</code>
                 </div>
             </div>
 

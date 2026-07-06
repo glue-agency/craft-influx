@@ -60,7 +60,7 @@
                 <stat-cell v-if="log.siteHandle" class="influx-log-cell" :label="$t('Site')" :value="log.siteHandle" />
                 <stat-cell v-if="log.offsetHandle" class="influx-log-cell" :label="$t('Offset')" :value="log.offsetHandle" />
                 <stat-cell class="influx-log-cell" :label="$t('Started')" :value="log.startedAt" />
-                <stat-cell class="influx-log-cell" :label="$t('Finished')" :value="log.finishedAt || '—'" />
+                <stat-cell class="influx-log-cell" :label="$t('Finished')" :value="log.finishedAt" />
             </stats-grid>
 
             <stats-grid divided align-top class="influx-log-grid">

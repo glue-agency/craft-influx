@@ -9,7 +9,6 @@
             <span class="chevron" aria-hidden="true">▼</span>
             <span class="influx-log-id light">#{{ item.id }}</span>
             <span v-if="item.elementHtml" class="influx-log-element" v-html="item.elementHtml" @click.stop></span>
-            <span v-else class="influx-log-element light">—</span>
             <action-badge class="influx-log-tag" :action="item.action" />
             <span
                 v-if="hasFieldErrors"

@@ -31,7 +31,6 @@
 
                 <div>
                     <code v-if="m.node">{{ m.node }}</code>
-                    <span v-else class="light">—</span>
                     <template v-if="!isNullish(m.default) && m.default !== ''">
                         <br><span class="light">{{ $t('default') }}:</span> <code>{{ m.default }}</code>
                     </template>
@@ -39,20 +38,15 @@
 
                 <div>
                     <code v-if="!isNullish(m.rawValue)" class="influx-debug-value">{{ m.rawValue }}</code>
-                    <span v-else class="light">—</span>
                 </div>
 
                 <div>
                     <span v-if="m.native" class="light">{{ $t('n/a') }}</span>
-                    <template v-else>
-                        <code v-if="!isNullish(m.parsedValue)" class="influx-debug-value">{{ m.parsedValue }}</code>
-                        <span v-else class="light">—</span>
-                    </template>
+                    <code v-else-if="!isNullish(m.parsedValue)" class="influx-debug-value">{{ m.parsedValue }}</code>
                 </div>
 
                 <div>
                     <code v-if="!isNullish(m.currentValue)" class="influx-debug-value">{{ m.currentValue }}</code>
-                    <span v-else class="light">—</span>
                 </div>
 
                 <div>
@@ -107,7 +101,7 @@ export default {
 
     methods: {
         // Values arrive already stringified + truncated by describeValue();
-        // only a genuine null/undefined renders as an em dash.
+        // a genuine null/undefined renders as a blank cell.
         isNullish(v) {
             return v === null || v === undefined;
         },
