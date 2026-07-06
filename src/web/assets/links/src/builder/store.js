@@ -112,6 +112,9 @@ async function load(id) {
 async function save(options = {}) {
     const { continueEditing = false } = options;
     if (root.saving || !root.link) return { success: false };
+    // Read-only environment: the save UI is hidden, but Cmd+S still routes
+    // here — drop it client-side (the controller 403s as the backstop).
+    if (root.meta?.readOnly) return { success: false };
     root.errors = {};
 
     // Site-specific mode without a single usable site endpoint can't be

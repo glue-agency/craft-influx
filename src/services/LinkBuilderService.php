@@ -284,6 +284,11 @@ class LinkBuilderService extends Component
 
         $hostId = 'influx-el-' . StringHelper::randomString(8);
 
+        // Read-only environments render the control disabled — the chips
+        // stay visible for inspection but the choose/remove affordances are
+        // dead, matching the rest of the read-only builder.
+        $readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+
         $renderArgs = [
             'id'             => $hostId,
             'name'           => null,
@@ -295,6 +300,7 @@ class LinkBuilderService extends Component
             'sortable'       => false,
             'showActionMenu' => false,
             'registerJs'     => false,
+            'disabled'       => $readOnly,
         ];
 
         $html = Craft::$app->getView()->renderTemplate(
@@ -317,6 +323,7 @@ class LinkBuilderService extends Component
             'viewMode'         => 'list',
             'defaultPlacement' => 'end',
             'modalSettings'    => (object) [],
+            'disabled'         => $readOnly,
         ];
 
         return ['html' => $html, 'jsSettings' => $jsSettings];

@@ -33,7 +33,7 @@ class LinksController extends AbstractController
      */
     protected function requireAccess(Action $action): void
     {
-        $viewActions = ['index', 'view', 'edit', 'debug', 'debug-stream'];
+        $viewActions = ['index', 'edit', 'debug', 'debug-inspect'];
 
         $this->requireAdmin(! in_array($action->id, $viewActions, true));
     }
@@ -45,26 +45,6 @@ class LinksController extends AbstractController
             'lastRuns'  => Influx::getInstance()->logs->lastRunPerLink(),
             'presenter' => new LinkPresenter(),
             'readOnly'  => $this->readOnly(),
-        ]);
-    }
-
-    public function actionView(int $id): Response
-    {
-        if (! $this->readOnly()) {
-            return $this->redirect("influx/links/{$id}/edit");
-        }
-
-        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
-            throw new NotFoundHttpException("Link {$id} not found.");
-        }
-
-        $recentLogs = Influx::getInstance()->logs->recentForLink($link->handle, 20);
-
-        return $this->renderTemplate('influx/links/view', [
-            'link'       => $link,
-            'presenter'  => new LinkPresenter(),
-            'recentLogs' => $recentLogs,
-            'readOnly'   => $this->readOnly(),
         ]);
     }
 

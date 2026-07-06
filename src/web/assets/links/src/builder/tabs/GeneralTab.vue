@@ -3,14 +3,14 @@
         <div class="field" :class="{ 'has-errors': errors.name?.length }">
             <div class="heading"><label for="builder-name">{{ $t('Name') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="instructions"><p>{{ $t('What this link will be called in the control panel.') }}</p></div>
-            <div class="input ltr"><input id="builder-name" type="text" class="text fullwidth" v-model="link.name" /></div>
+            <div class="input ltr"><input id="builder-name" type="text" class="text fullwidth" v-model="link.name" :disabled="readOnly" /></div>
             <field-errors :messages="errors.name" />
         </div>
 
         <div class="field" :class="{ 'has-errors': errors.handle?.length }">
             <div class="heading"><label for="builder-handle">{{ $t('Handle') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="instructions"><p>{{ $t('Identifier used in console commands and event keys.') }}</p></div>
-            <div class="input ltr"><input id="builder-handle" type="text" class="text fullwidth code" v-model="link.handle" /></div>
+            <div class="input ltr"><input id="builder-handle" type="text" class="text fullwidth code" v-model="link.handle" :disabled="readOnly" /></div>
             <field-errors :messages="errors.handle" />
         </div>
 
@@ -21,7 +21,7 @@
             <div class="heading"><label for="builder-elementType">{{ $t('Element type') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="input ltr">
                 <div class="select">
-                    <select id="builder-elementType" v-model="link.elementType">
+                    <select id="builder-elementType" v-model="link.elementType" :disabled="readOnly">
                         <option v-for="o in options.elementTypes" :key="o.value" :value="o.value">{{ o.label }}</option>
                     </select>
                 </div>
@@ -33,7 +33,7 @@
             <div class="heading"><label for="builder-section">{{ $t('Section') }}</label></div>
             <div class="input ltr">
                 <div class="select">
-                    <select id="builder-section" v-model="section">
+                    <select id="builder-section" v-model="section" :disabled="readOnly">
                         <option v-for="o in options.sections" :key="o.value" :value="o.value">{{ o.label }}</option>
                     </select>
                 </div>
@@ -44,7 +44,7 @@
             <div class="heading"><label for="builder-entryType">{{ $t('Entry type') }}</label></div>
             <div class="input ltr">
                 <div class="select">
-                    <select id="builder-entryType" v-model="entryType">
+                    <select id="builder-entryType" v-model="entryType" :disabled="readOnly">
                         <option value="">{{ $t('— select —') }}</option>
                         <option v-for="o in entryTypeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
                     </select>
@@ -65,6 +65,7 @@
                 <tokenized-input
                     v-model="link.endpoint"
                     :token-groups="envSuggestions"
+                    :disabled="readOnly"
                     placeholder="https://api.example.com/posts.json"
                     @blur="onEndpointBlur"
                 />
@@ -76,7 +77,7 @@
             <div class="heading"><label class="lightswitch-label">{{ $t('Site-specific endpoints') }}</label></div>
             <div class="instructions"><p>{{ $t('Enable if the external service supports resource localisation.') }}</p></div>
             <div class="input">
-                <light-switch v-model="siteEndpointsMode" />
+                <light-switch v-model="siteEndpointsMode" :disabled="readOnly" />
             </div>
         </div>
 
@@ -84,7 +85,7 @@
             <div class="instructions">
                 <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
             </div>
-            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" />
+            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" :disabled="readOnly" />
             <field-errors :messages="errors.siteEndpoints" />
         </div>
 
@@ -92,7 +93,7 @@
             <div class="heading"><label class="lightswitch-label">{{ $t('Sliding-window presets') }}</label></div>
             <div class="instructions"><p>{{ $t('Enable if the external service supports synchronisation by offset.') }}</p></div>
             <div class="input">
-                <light-switch v-model="supportsOffset" />
+                <light-switch v-model="supportsOffset" :disabled="readOnly" />
             </div>
         </div>
 
@@ -100,13 +101,13 @@
             <div class="instructions">
                 <p v-html="$t('Each preset becomes a button on the link page and a <code>--offset=KEY</code> option on the console command.')"></p>
             </div>
-            <offset-presets-table v-model="link.offset" />
+            <offset-presets-table v-model="link.offset" :disabled="readOnly" />
         </div>
 
         <div class="field">
             <div class="heading"><label class="lightswitch-label">{{ $t('Resource Endpoint supported') }}</label></div>
             <div class="input">
-                <light-switch v-model="supportsItemEndpoint" />
+                <light-switch v-model="supportsItemEndpoint" :disabled="readOnly" />
             </div>
         </div>
 
@@ -119,6 +120,7 @@
                 <tokenized-input
                     v-model="link.itemEndpoint"
                     :token-groups="combinedSuggestions"
+                    :disabled="readOnly"
                     placeholder="https://api.example.com/users/…"
                 />
             </div>
@@ -135,7 +137,7 @@
                            :id="`builder-processing-${opt.value}`"
                            :value="opt.value"
                            :checked="link.processing.includes(opt.value)"
-                           :disabled="processingGating[opt.value]?.disabled"
+                           :disabled="readOnly || processingGating[opt.value]?.disabled"
                            @change="toggleProcessing(opt.value, $event.target.checked)" />
                     <label :for="`builder-processing-${opt.value}`">{{ opt.label }}</label>
                     <p v-if="processingGating[opt.value]?.hint" class="influx-processing-hint light">
@@ -180,6 +182,11 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        // allowAdminChanges is off: every control renders disabled so the
+        // stored config stays inspectable but untouchable. The server-side
+        // backstop is LinkBuilderController::actionSave()'s assertWriteable().
+        readOnly() { return !!this.ui.meta?.readOnly; },
 
         // Store-owned so save() can require at least one site endpoint
         // while the switch is on, and sampling can prefer site URLs.

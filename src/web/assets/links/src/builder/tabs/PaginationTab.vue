@@ -9,6 +9,7 @@
                 <searchable-select
                     :model-value="link.rootNode ?? ''"
                     :options="rootNodeOptions"
+                    :disabled="readOnly"
                     searchable
                     :placeholder="$t('— response root —')"
                     :search-placeholder="$t('Search nodes…')"
@@ -30,6 +31,7 @@
                 <searchable-select
                     :model-value="link.paginatorNode ?? ''"
                     :options="paginatorNodeOptions"
+                    :disabled="readOnly"
                     searchable
                     :placeholder="$t('— no paginator —')"
                     :search-placeholder="$t('Search nodes…')"
@@ -48,6 +50,7 @@
                 <searchable-select
                     :model-value="link.totalCountNode ?? ''"
                     :options="totalCountNodeOptions"
+                    :disabled="readOnly"
                     searchable
                     :placeholder="$t('— none —')"
                     :search-placeholder="$t('Search nodes…')"
@@ -66,6 +69,7 @@
                 <searchable-select
                     :model-value="link.pageCountNode ?? ''"
                     :options="pageCountNodeOptions"
+                    :disabled="readOnly"
                     searchable
                     :placeholder="$t('— none —')"
                     :search-placeholder="$t('Search nodes…')"
@@ -98,6 +102,8 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        readOnly() { return !!this.ui.meta?.readOnly; },
 
         // Same grouped shape as the mapping rows' source-node select: the
         // "no selection" sentinel as a plain row up top, the sample-

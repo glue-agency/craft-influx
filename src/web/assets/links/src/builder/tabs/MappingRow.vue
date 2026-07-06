@@ -48,6 +48,7 @@
                 v-if="!subfieldsOnly"
                 :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
                 :options="sourceNodeOptions"
+                :disabled="readOnly"
                 searchable
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
@@ -66,6 +67,7 @@
                 <searchable-select
                     :model-value="mapping.default ?? ''"
                     :options="defaultSelectOptions"
+                    :disabled="readOnly"
                     :search-placeholder="$t('Search options…')"
                     @update:model-value="onDefaultSelect"
                 />
@@ -81,6 +83,7 @@
                 <input type="text"
                        class="text fullwidth"
                        :value="mapping.default ?? ''"
+                       :disabled="readOnly"
                        @input="onDefaultChange" />
             </template>
         </div>
@@ -91,7 +94,7 @@
             :field="field"
             :saved="extrasSaved"
             :expanded="extrasExpanded"
-            :read-only="false"
+            :read-only="readOnly"
             @update:options="onOptionsUpdate"
             @update:nativeFields="onNativeFieldsUpdate"
             @update:blocks="onBlocksUpdate"
@@ -136,6 +139,10 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        // Expand/collapse stays live in read-only mode — inspecting the
+        // saved mapping is the point; only the editors inside disable.
+        readOnly() { return !!store.ui.meta?.readOnly; },
 
         // The mapping row in the reactive store. Reading via a computed
         // lets the row react when other code (e.g. extras emits) writes

@@ -7,7 +7,7 @@
             </div>
             <div class="input ltr">
                 <div class="select">
-                    <select id="builder-auth-type" v-model="type">
+                    <select id="builder-auth-type" v-model="type" :disabled="readOnly">
                         <option v-for="opt in options.authTypes" :key="opt.value || '_'" :value="opt.value">{{ opt.label }}</option>
                     </select>
                 </div>
@@ -20,6 +20,7 @@
             :schema="activeStrategy.schema"
             :options="link.auth || {}"
             :token-groups="envSuggestions"
+            :read-only="readOnly"
             @update:options="writeAuth"
         />
 
@@ -82,6 +83,8 @@ export default {
                 this.link.auth = { type: v };
             },
         },
+
+        readOnly() { return !!this.ui.meta?.readOnly; },
 
         activeStrategy() {
             const defs = this.options.authStrategies || [];

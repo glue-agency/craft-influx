@@ -263,21 +263,6 @@ class LogsService extends Component
     }
 
     /**
-     * Recent runs for one link handle, newest first — powers the read-only
-     * link view's run history.
-     *
-     * @return LogRecord[]
-     */
-    public function recentForLink(string $linkHandle, int $limit): array
-    {
-        return LogRecord::find()
-            ->where(['linkHandle' => $linkHandle])
-            ->orderBy(['startedAt' => SORT_DESC])
-            ->limit($limit)
-            ->all();
-    }
-
-    /**
      * One page of a log's items, newest first, optionally restricted to a set
      * of action values (empty = all). Powers the paginated log-detail view so
      * the page never ships the whole run, and the live poll only ever fetches

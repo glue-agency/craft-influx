@@ -23,6 +23,7 @@
                 >
                     <td class="thin action">
                         <a
+                            v-if="!disabled"
                             class="move icon"
                             :title="$t('Reorder')"
                             draggable="true"
@@ -32,7 +33,7 @@
                     </td>
                     <td class="select-cell">
                         <div class="select small">
-                            <select v-model="row.handle" @change="onChange">
+                            <select v-model="row.handle" :disabled="disabled" @change="onChange">
                                 <option value="">{{ $t('— select a site —') }}</option>
                                 <option
                                     v-for="o in sites"
@@ -47,12 +48,14 @@
                         <tokenized-input
                             :model-value="row.url"
                             :token-groups="tokenGroups"
+                            :disabled="disabled"
                             placeholder="https://…"
                             @update:model-value="onUrlInput(row, $event)"
                         />
                     </td>
                     <td class="thin action">
                         <button
+                            v-if="!disabled"
                             type="button"
                             class="delete icon"
                             :title="$t('Delete row {idx}', { idx: idx + 1 })"
@@ -64,6 +67,7 @@
         </table>
 
         <button
+            v-if="!disabled"
             type="button"
             class="btn dashed add icon"
             :disabled="allSitesTaken"
@@ -101,6 +105,7 @@ export default {
         modelValue:  { type: Array, default: () => [] },
         sites:       { type: Array, default: () => [] },
         tokenGroups: { type: Array, default: () => [] },
+        disabled:    { type: Boolean, default: false },
     },
 
     emits: ['update:modelValue'],

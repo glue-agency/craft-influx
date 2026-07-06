@@ -31,6 +31,7 @@
                     <searchable-select
                         v-model="matchAttribute"
                         :options="ui.mappable.matchOptions"
+                        :disabled="readOnly"
                         searchable
                         :placeholder="$t('Select an attribute…')"
                         :search-placeholder="$t('Search attributes…')"
@@ -74,6 +75,8 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        readOnly() { return !!this.ui.meta?.readOnly; },
 
         // Stable identifier for the criteria signature. Watched below so
         // a section or entry-type change refetches the mappable-fields

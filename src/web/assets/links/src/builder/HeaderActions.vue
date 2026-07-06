@@ -29,8 +29,10 @@
                  jQuery plugin every other CP screen uses. We init it
                  manually in mounted() because Garnish only auto-binds at
                  document.ready and our buttons mount after the SPA's
-                 async bootstrap. -->
-            <div class="btngroup submit first" ref="saveRoot">
+                 async bootstrap. Hidden entirely in a read-only
+                 environment — matching Craft's own read-only settings
+                 screens, which show no save action at all. -->
+            <div v-if="!readOnly" class="btngroup submit first" ref="saveRoot">
                 <a
                     href="#"
                     class="btn submit"
@@ -112,8 +114,12 @@ export default {
     },
 
     computed: {
+        readOnly() {
+            return !!this.ui.meta?.readOnly;
+        },
+
         canSave() {
-            return !!this.ui.link && store.isDirty.value && !this.ui.saving;
+            return !!this.ui.link && !this.readOnly && store.isDirty.value && !this.ui.saving;
         },
 
         // Delete needs a persisted link (a uid) and a writable environment —

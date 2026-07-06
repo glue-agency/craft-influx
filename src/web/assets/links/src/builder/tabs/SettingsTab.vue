@@ -4,7 +4,7 @@
             <div class="heading"><label class="lightswitch-label">{{ $t('Take a DB backup before every run') }}</label></div>
             <div class="instructions"><p>{{ $t('Off by default. Mainly useful for destructive processing actions.') }}</p></div>
             <div class="input">
-                <light-switch v-model="link.backup" />
+                <light-switch v-model="link.backup" :disabled="readOnly" />
             </div>
         </div>
     </div>
@@ -23,6 +23,8 @@ export default {
         // Through the stable getter — load()/save() replace the underlying
         // object, so a data() capture would go stale.
         link() { return store.link; },
+
+        readOnly() { return !!store.ui.meta?.readOnly; },
     },
 };
 </script>

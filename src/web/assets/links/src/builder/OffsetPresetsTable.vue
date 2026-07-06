@@ -21,19 +21,20 @@
             <tbody>
                 <tr v-for="(row, idx) in rows" :key="idx">
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.handle" :placeholder="$t('e.g. last24h')" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.handle" :disabled="disabled" :placeholder="$t('e.g. last24h')" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.since" placeholder="-1 day" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.since" :disabled="disabled" placeholder="-1 day" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.queryParam" placeholder="updated_since" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.queryParam" :disabled="disabled" placeholder="updated_since" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.format" placeholder="ATOM" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.format" :disabled="disabled" placeholder="ATOM" @input="onChange"></textarea>
                     </td>
                     <td class="thin action">
                         <button
+                            v-if="!disabled"
                             type="button"
                             class="delete icon"
                             :title="$t('Delete row {idx}', { idx: idx + 1 })"
@@ -44,7 +45,7 @@
             </tbody>
         </table>
 
-        <button type="button" class="btn dashed add icon" @click="addRow">{{ $t('Add a preset') }}</button>
+        <button v-if="!disabled" type="button" class="btn dashed add icon" @click="addRow">{{ $t('Add a preset') }}</button>
     </div>
 </template>
 
@@ -61,6 +62,7 @@ export default {
 
     props: {
         modelValue: { type: Object, default: () => ({}) },
+        disabled:   { type: Boolean, default: false },
     },
 
     emits: ['update:modelValue'],

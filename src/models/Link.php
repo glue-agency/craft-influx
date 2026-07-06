@@ -21,7 +21,7 @@ use GlueAgency\Influx\sync\RemoteItem;
  *    and from the LinkBuilder SPA's JSON wire shape (was `toBuilderArray()` /
  *    `applyBuilderPayload()`).
  *  - {@see \GlueAgency\Influx\web\LinkPresenter} resolves the human-readable
- *    labels the overview / view templates render (was `elementTypeLabel()`,
+ *    labels the overview template renders (was `elementTypeLabel()`,
  *    `targetCriteriaLabel()`, `siteLabels()`).
  *  - {@see \GlueAgency\Influx\services\AuthService::applyToRequest()} applies
  *    this link's auth to an outbound request.
