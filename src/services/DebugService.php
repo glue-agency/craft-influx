@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\services;
 
+use Craft;
 use craft\base\Component;
 use Generator;
 use GlueAgency\Influx\enums\ItemAction;
@@ -149,8 +150,11 @@ class DebugService extends Component
      * Public entry point: run the per-item inspection against an already-fetched
      * remote item. Used by the log detail drill-down to reuse the debug
      * machinery against a historical row's stored payload.
+     *
+     * $pinnedElementId, when given, resolves straight to that element instead
+     * of re-deriving one from the match value — see {@see debugItem()}.
      */
-    public function inspectItem(Link $link, array $item, ?string $siteHandle = null): array
+    public function inspectItem(Link $link, array $item, ?string $siteHandle = null, ?int $pinnedElementId = null): array
     {
         $target = Influx::getInstance()->targets->forLink($link);
 
@@ -169,7 +173,7 @@ class DebugService extends Component
             ];
         }
 
-        return $this->debugItem($link, $target, $item, $siteHandle);
+        return $this->debugItem($link, $target, $item, $siteHandle, $pinnedElementId);
     }
 
     /**
@@ -177,12 +181,24 @@ class DebugService extends Component
      * `dryRun: true` — resolve and populate run for real (in memory),
      * commit is never called. This method only presents the result; the
      * logic is the exact code the sync run executes.
+     *
+     * $pinnedElementId short-circuits the match-value lookup and resolves
+     * straight to that element (any site). Without it, `resolve()` re-derives
+     * the element from the match value scoped to `$siteHandle` — for the log
+     * drill-down that's a problem specifically for element-triggered runs:
+     * the log only carries the run's site (null there, since one run can span
+     * several sites), so an unscoped match-value lookup is ambiguous whenever
+     * more than one element shares that match value across sites (e.g. a
+     * non-propagated section where each site has its own row with the same
+     * import id). The log item DOES know which element the run actually
+     * touched, so the drill-down pins to it directly instead of re-guessing.
      */
     protected function debugItem(
         Link $link,
         ElementTargetInterface $target,
         array $item,
         ?string $siteHandle,
+        ?int $pinnedElementId = null,
     ): array {
         $context = SyncContext::forSite($link, $target, $siteHandle, dryRun: true);
         $remoteItem = new RemoteItem($item);
@@ -202,7 +218,9 @@ class DebugService extends Component
         ];
 
         try {
-            $resolution = $this->itemProcessor->resolve($context, $remoteItem);
+            $resolution = $pinnedElementId !== null
+                ? $this->resolvePinned($link, $target, $remoteItem, $pinnedElementId)
+                : $this->itemProcessor->resolve($context, $remoteItem);
         } catch (Throwable $e) {
             $row['error'] = 'findByMatchValue: ' . $e->getMessage();
 
@@ -260,5 +278,19 @@ class DebugService extends Component
         }
 
         return $row;
+    }
+
+    /**
+     * Resolve straight to a known element instead of re-deriving one from
+     * the match value — see {@see debugItem()} for why. Looks the element up
+     * across any site (`siteId: '*'`) since the log item doesn't record which
+     * site row the original run touched, only which element.
+     */
+    protected function resolvePinned(Link $link, ElementTargetInterface $target, RemoteItem $item, int $elementId): ItemResolution
+    {
+        $matchValue = $link->matchValue($item);
+        $element = Craft::$app->getElements()->getElementById($elementId, $target::elementType(), '*');
+
+        return new ItemResolution($matchValue, $element, SyncDecision::decide($link, $matchValue, $element));
     }
 }

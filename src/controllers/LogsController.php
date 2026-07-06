@@ -176,7 +176,11 @@ class LogsController extends AbstractController
      * Drill-down for one stored log item. Re-runs the debug-view inspection
      * against the raw remote payload captured when the item was synced, so
      * the user can see per-field source/parsed/current values and which
-     * mappings would (re-)apply if synced again.
+     * mappings would (re-)apply if synced again. Pins to the item's own
+     * `elementId` rather than re-deriving the element from the match value —
+     * `$log->siteHandle` is null for element-triggered runs, so an unscoped
+     * match-value lookup would be ambiguous whenever the same match value
+     * exists on more than one element across sites.
      */
     public function actionItem(int $id): Response
     {
@@ -226,7 +230,7 @@ class LogsController extends AbstractController
             ]);
         }
 
-        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle);
+        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null);
         $row['index'] = (int) $item->id;
         $row['action'] = (string) $item->action;
 
