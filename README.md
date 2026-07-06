@@ -158,9 +158,6 @@ Still open:
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
 - [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks) and multiple block types in a single mapping row.
-- [ ] Webhook entry point for push-style links (today syncing is always pull, on a schedule or on demand).
-- [ ] A SuperTable mapping strategy (alongside the existing Matrix one).
-- [ ] Craft 4 manual verification pass for Matrix mapping (built and unit-tested against Craft 5; the Craft 4 serialized-value path is docs-verified only, not yet run against a live Craft 4 install).
 
 ## Acknowledgements
 
