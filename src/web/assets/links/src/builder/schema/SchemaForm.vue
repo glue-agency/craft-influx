@@ -69,16 +69,6 @@
                 <!-- Instructions render as HTML in both layouts: they're
                      server-authored BuilderSchema strings (may contain
                      <code>), never user input. -->
-                <div v-else-if="node.type === 'valueMapTable'" class="value-map-node">
-                    <p v-if="node.instructions" class="light hint" v-html="node.instructions" />
-                    <value-map-table
-                        :node="node"
-                        :model-value="valueFor(node) || {}"
-                        :read-only="readOnly"
-                        @update:model-value="setOption(node, $event)"
-                    />
-                </div>
-
                 <div v-else class="option">
                     <label>{{ node.label }}</label>
                     <select-input
@@ -146,7 +136,6 @@
 import SelectInput from './inputs/SelectInput.vue';
 import ElementSubFields from './inputs/ElementSubFields.vue';
 import MatrixFields from './inputs/MatrixFields.vue';
-import ValueMapTable from './inputs/ValueMapTable.vue';
 import TokenizedInput from '../TokenizedInput.vue';
 
 /**
@@ -162,7 +151,7 @@ import TokenizedInput from '../TokenizedInput.vue';
 export default {
     name: 'SchemaForm',
 
-    components: { SelectInput, ElementSubFields, MatrixFields, ValueMapTable, TokenizedInput },
+    components: { SelectInput, ElementSubFields, MatrixFields, TokenizedInput },
 
     props: {
         schema: { type: Array, required: true },
@@ -280,8 +269,7 @@ export default {
     min-width: 0;
 }
 
-.influx-schema-form .sub-field-row,
-.influx-schema-form .value-map-row {
+.influx-schema-form .sub-field-row {
     display: grid;
     grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.4fr) minmax(140px, 1fr);
     gap: 12px;
@@ -443,37 +431,5 @@ export default {
     margin: 0;
 }
 
-.influx-schema-form .value-map-row {
-    grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) auto;
-}
-
-.influx-schema-form .value-map-target {
-    display: grid;
-    grid-template-columns: 16px 1fr;
-    align-items: center;
-    gap: 6px;
-}
-
-.influx-schema-form .value-map-row .arrow { color: #888; text-align: center; }
-
-.influx-schema-form .row-actions { padding: 6px 0 4px; }
-
 .influx-schema-form .hint { padding: 0; font-size: 12px; margin: 2px 0 6px; }
-
-.influx-schema-form .remove-row {
-    justify-self: end;
-    background: none;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
-    color: #888;
-}
-
-.influx-schema-form .remove-row:hover {
-    background: #f3f5f7;
-    color: #cf1124;
-    border-color: #cf1124;
-}
 </style>

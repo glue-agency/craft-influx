@@ -30,8 +30,6 @@ namespace GlueAgency\Influx\helpers;
  *                 (optional; never written until the user touches the control)
  *   options:      for select — flat [{value,label}] or grouped
  *                 [{label, options: [{value,label}]}]
- *   localOptions: for valueMapTable — value → label map of the Craft field's
- *                 own options
  *   subFields:    for elementSubFields / matrixFields — one primitive node
  *                 per row
  *   blockType:    for matrixFields — the block-type handle whose custom
@@ -55,7 +53,6 @@ class BuilderSchema
     public const TYPE_TOKEN_INPUT = 'tokenInput';
     public const TYPE_SELECT = 'select';
     public const TYPE_LIGHTSWITCH = 'lightswitch';
-    public const TYPE_VALUE_MAP_TABLE = 'valueMapTable';
     public const TYPE_ELEMENT_SUB_FIELDS = 'elementSubFields';
     public const TYPE_MATRIX_FIELDS = 'matrixFields';
     public const TYPE_NOTE = 'note';
@@ -108,17 +105,6 @@ class BuilderSchema
     public static function lightswitch(string $handle, string $label, array $config = []): array
     {
         return self::node(self::TYPE_LIGHTSWITCH, $handle, $label, $config);
-    }
-
-    /**
-     * Remote value → local option rewrite table.
-     *
-     * @param array<string, string> $localOptions value → label of the Craft field's options
-     * @param array{instructions?: string, showIf?: array} $config
-     */
-    public static function valueMapTable(string $handle, string $label, array $localOptions, array $config = []): array
-    {
-        return self::node(self::TYPE_VALUE_MAP_TABLE, $handle, $label, ['localOptions' => $localOptions] + $config);
     }
 
     /**
