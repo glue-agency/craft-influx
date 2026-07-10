@@ -11,7 +11,6 @@ use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\helpers\Html;
-use craft\helpers\UrlHelper;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\web\UrlManager;
@@ -266,6 +265,14 @@ class Influx extends Plugin
     /**
      * Add a "Sync from remote" button to the edit page of any entry that has
      * been linked via the link's match attribute.
+     *
+     * Additional buttons render INSIDE the edit page's #main-form, so this
+     * must not output a <form> of its own: forms can't nest, the browser
+     * would close #main-form early and every field input (plus Craft's hidden
+     * action/redirect inputs) would fall outside it — silently breaking entry
+     * saving and drafts. Instead the button uses Craft's `formsubmit` pattern;
+     * `form: false` makes the CP JS post the action through a detached
+     * temporary form (CSRF included) rather than hijacking the closest form.
      */
     protected function registerEntrySyncButton(): void
     {
@@ -281,22 +288,22 @@ class Influx extends Plugin
 
             $cooldownRemaining = $this->cooldown->remaining($link, $element);
             $disabled = $cooldownRemaining > 0;
+            $redirect = $element->getCpEditUrl();
 
-            $event->html .= Html::beginForm(
-                UrlHelper::actionUrl('influx/synchronization/element'),
-                'post',
-                ['class' => 'inline-block'],
-            );
-            $event->html .= Html::hiddenInput('elementId', (string) $element->id);
-            $event->html .= Html::submitButton(Craft::t('influx', 'Sync from remote'), [
-                'class'    => array_filter(['btn', $disabled ? 'disabled' : null]),
+            $event->html .= Html::button(Craft::t('influx', 'Sync from remote'), [
+                'class'    => array_filter(['btn', 'formsubmit', $disabled ? 'disabled' : null]),
                 'disabled' => $disabled,
-                'data'     => ['icon' => 'refresh'],
-                'title'    => $disabled
+                'data'     => array_filter([
+                    'icon'     => 'refresh',
+                    'action'   => 'influx/synchronization/element',
+                    'params'   => ['elementId' => $element->id],
+                    'form'     => 'false',
+                    'redirect' => $redirect ? Craft::$app->getSecurity()->hashData($redirect) : null,
+                ]),
+                'title' => $disabled
                     ? Craft::t('influx', 'Available again in {n}s', ['n' => $cooldownRemaining])
                     : '',
             ]);
-            $event->html .= Html::endForm();
         });
     }
 }

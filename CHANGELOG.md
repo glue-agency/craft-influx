@@ -7,6 +7,9 @@
 - User links can assign group membership via a `groups` mapping field: pick the groups plus `update` (also apply to existing users) and `remove` (make the selection authoritative) toggles. Membership is reconciled through the Users service after each item commits.
 - Element targets now declare `supportsMultiSite()` and `criteriaKeys()`, and gain an `afterCommit()` hook for state that lives outside the element save. Non-multi-site targets (Users) run once globally; the builder hides the site-specific endpoint and section/type controls that don't apply, and `Link` rejects site endpoints configured against them.
 
+### Fixed
+- The "Sync from remote" button no longer breaks entry saving: it rendered its own `<form>` inside the entry edit page's main form, and the resulting invalid nesting made the browser close the main form early — losing the `action` input and every field value on save, and disabling autosave drafts. The button now posts to the controller action via Craft's `formsubmit` pattern (a detached temporary form) instead.
+
 ## 1.0.0-alpha.1 - 2026-07-03
 
 ### Added
