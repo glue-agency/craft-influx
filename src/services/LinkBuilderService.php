@@ -562,6 +562,11 @@ class LinkBuilderService extends Component
             $out[] = [
                 'value' => $target::elementType(),
                 'label' => $target::friendlyName(),
+                // Capability flags the General tab reacts to: which criteria
+                // dropdowns to render (section/type for entries, none for
+                // users) and whether the site-specific endpoint controls apply.
+                'criteria'  => $target::criteriaKeys(),
+                'multiSite' => $target::supportsMultiSite(),
             ];
         }
 
@@ -675,8 +680,8 @@ class LinkBuilderService extends Component
 
     /**
      * Per-strategy form schemas consumed by the SPA's Authentication tab.
-     * Strategies declare {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes
-     * natively via {@see \GlueAgency\Influx\auth\AuthStrategyInterface::editSchema()}
+     * Strategies declare {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes
+     * natively via {@see \GlueAgency\Influx\auth\AuthStrategyInterface::schema()}
      * — the same vocabulary the mapping extras use — so this is pure
      * aggregation. Strategies with no extra fields (empty schema) are
      * skipped; the SPA falls back to "no schema" messaging if a stored
@@ -689,7 +694,7 @@ class LinkBuilderService extends Component
         $out = [];
 
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
-            $schema = $class::editSchema();
+            $schema = $class::schema();
 
             if (empty($schema)) {
                 continue;

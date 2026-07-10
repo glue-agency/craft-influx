@@ -1,5 +1,12 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Added
+- `UserTarget`: links can now hydrate `craft\elements\User` (username, email, full/first/last name, enabled, and custom user fields), matchable by id / username / email / a custom field.
+- User links can assign group membership via a `groups` mapping field: pick the groups plus `update` (also apply to existing users) and `remove` (make the selection authoritative) toggles. Membership is reconciled through the Users service after each item commits.
+- Element targets now declare `supportsMultiSite()` and `criteriaKeys()`, and gain an `afterCommit()` hook for state that lives outside the element save. Non-multi-site targets (Users) run once globally; the builder hides the site-specific endpoint and section/type controls that don't apply, and `Link` rejects site endpoints configured against them.
+
 ## 1.0.0-alpha.1 - 2026-07-03
 
 ### Added

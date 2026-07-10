@@ -90,7 +90,7 @@
 
         <!-- Per-field options block: a generic SchemaForm rendering whatever
              node schema the PHP strategy declared via
-             Field::defineExtrasSchema(). No field-kind branches live here —
+             Field::schema(). No field-kind branches live here —
              adding a mapping kind is a single-PHP-file change. The
              `data-expanded` attribute mirrors the toggle state for the row's
              `:has()` tint selector in links.css. -->

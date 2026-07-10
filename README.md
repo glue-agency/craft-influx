@@ -62,7 +62,7 @@ Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical 
 
 ### Targets
 
-A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`). Third-party plugins register their own:
+A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`). Third-party plugins register their own:
 
 ```php
 use GlueAgency\Influx\services\TargetsService;
@@ -70,11 +70,16 @@ use GlueAgency\Influx\services\TargetsService;
 Event::on(
     TargetsService::class,
     TargetsService::EVENT_REGISTER_TARGETS,
-    fn($event) => $event->types[] = MyCalendarTarget::class,
+    fn($event) => $event->targets[] = MyCalendarTarget::class,
 );
 ```
 
 A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable/delete/delete-for-site.
+
+Two static capabilities let a target describe its element type to the builder and the sync engine:
+
+- **`supportsMultiSite()`** — whether links can carry site-specific endpoints and be swept per-site. Localizable types (Entry) return `true`; global, non-localizable ones (User) return `false`, so their links always run once against a single endpoint and the CP hides the site-specific controls. `Link` rejects site endpoints configured against a non-multi-site target as a server-side backstop.
+- **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on, rendered as extra dropdowns on the builder's General tab (Entry uses `['section', 'type']`; User has none).
 
 ### Mappings
 
@@ -150,10 +155,9 @@ Shipped since the alpha: queue-job-based runs (one job per site, one feed page p
 
 Still open:
 
-- [ ] **More element-type targets.** A link can only hydrate Entries today (`EntryTarget`). Add target adapters for the other element types:
+- [ ] **More element-type targets.** Links can hydrate Entries (`EntryTarget`) and Users (`UserTarget`) today. Add target adapters for the other element types:
   - [ ] Assets (`craft\elements\Asset`)
   - [ ] Categories (`craft\elements\Category`)
-  - [ ] Users (`craft\elements\User`)
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)

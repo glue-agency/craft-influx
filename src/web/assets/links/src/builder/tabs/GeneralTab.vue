@@ -21,7 +21,7 @@
             <div class="heading"><label for="builder-elementType">{{ $t('Element type') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="input ltr">
                 <div class="select">
-                    <select id="builder-elementType" v-model="link.elementType" :disabled="readOnly">
+                    <select id="builder-elementType" v-model="link.elementType" :disabled="readOnly" @change="onElementTypeChange">
                         <option v-for="o in options.elementTypes" :key="o.value" :value="o.value">{{ o.label }}</option>
                     </select>
                 </div>
@@ -29,7 +29,7 @@
             <field-errors :messages="errors.elementType" />
         </div>
 
-        <div class="field">
+        <div class="field" v-if="usesCriteria('section')">
             <div class="heading"><label for="builder-section">{{ $t('Section') }}</label></div>
             <div class="input ltr">
                 <div class="select">
@@ -40,7 +40,7 @@
             </div>
         </div>
 
-        <div class="field">
+        <div class="field" v-if="usesCriteria('type')">
             <div class="heading"><label for="builder-entryType">{{ $t('Entry type') }}</label></div>
             <div class="input ltr">
                 <div class="select">
@@ -73,7 +73,7 @@
             <field-errors :messages="errors.endpoint" />
         </div>
 
-        <div class="field">
+        <div class="field" v-if="supportsMultiSite">
             <div class="heading"><label class="lightswitch-label">{{ $t('Site-specific endpoints') }}</label></div>
             <div class="instructions"><p>{{ $t('Enable if the external service supports resource localisation.') }}</p></div>
             <div class="input">
@@ -81,7 +81,7 @@
             </div>
         </div>
 
-        <div class="field" v-if="siteEndpointsMode" :class="{ 'has-errors': errors.siteEndpoints?.length }">
+        <div class="field" v-if="supportsMultiSite && siteEndpointsMode" :class="{ 'has-errors': errors.siteEndpoints?.length }">
             <div class="instructions">
                 <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
             </div>
@@ -193,6 +193,21 @@ export default {
             set(v) { store.setSiteEndpointsMode(v); },
         },
 
+        // The option bundle for the selected element type — carries the
+        // capability flags (criteria keys, multi-site support) the target
+        // reported. Undefined before an element type is chosen.
+        currentElementType() {
+            return (this.options.elementTypes || [])
+                .find((o) => o.value === this.link.elementType);
+        },
+
+        // Non-localizable element types (Users) can't run per-site, so the
+        // site-specific endpoint controls are hidden for them. Defaults to
+        // true until an element type is resolved.
+        supportsMultiSite() {
+            return this.currentElementType ? this.currentElementType.multiSite !== false : true;
+        },
+
         section: {
             get() { return this.link.elementCriteria.section || ''; },
             set(v) {
@@ -267,6 +282,25 @@ export default {
     },
 
     methods: {
+        // Whether the selected element type scopes on the given criteria key
+        // (e.g. entries use 'section' / 'type'; users use none) — drives which
+        // criteria dropdowns render.
+        usesCriteria(key) {
+            return (this.currentElementType?.criteria || []).includes(key);
+        },
+
+        // Switching element type invalidates the previous type's criteria and,
+        // for a non-localizable type, the site-specific endpoint mode — reset
+        // both so the link can't carry state the new type (and the server)
+        // rejects.
+        onElementTypeChange() {
+            this.link.elementCriteria = {};
+
+            if (!this.supportsMultiSite) {
+                store.setSiteEndpointsMode(false);
+            }
+        },
+
         toggleProcessing(value, on) {
             const set = new Set(this.link.processing);
             on ? set.add(value) : set.delete(value);

@@ -9,6 +9,7 @@ use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\targets\EntryTarget;
+use GlueAgency\Influx\targets\UserTarget;
 
 /**
  * Registry of element-target adapters. Built-ins are seeded into the
@@ -46,6 +47,7 @@ class TargetsService extends Component
     {
         return [
             EntryTarget::class,
+            UserTarget::class,
         ];
     }
 

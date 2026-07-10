@@ -8,8 +8,8 @@ use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Matrix as CraftMatrixField;
 use GlueAgency\Influx\exceptions\MappingValueException;
-use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
@@ -81,19 +81,17 @@ class Matrix extends Field
         return CraftMatrixField::class;
     }
 
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
         $blockTypes = Compat::matrixBlockTypes($field);
 
         if (! $blockTypes) {
-            return [
-                BuilderSchema::note(
-                    Craft::t('influx', 'This Matrix field has no block types to map yet.'),
-                ),
-            ];
+            return SchemaBuilder::make()
+                ->note(['text' => Craft::t('influx', 'This Matrix field has no block types to map yet.')])
+                ->toArray();
         }
 
-        $schema = [];
+        $builder = SchemaBuilder::make();
 
         // One always-visible card per block type (Feed Me-style): the card
         // is labeled with the type's name, carries the type's custom fields
@@ -103,24 +101,24 @@ class Matrix extends Field
         // visible. Row labels carry the field NAME only; the SPA renders the
         // handle separately, styled like every other sub-field row.
         foreach ($blockTypes as $blockType) {
-            $subFields = [];
+            $subFields = SchemaBuilder::make();
             $layout = $blockType['layout'];
 
             foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
-                $subFields[] = BuilderSchema::text(
-                    $customField->handle,
-                    $customField->name,
-                );
+                $subFields->text([
+                    'handle' => $customField->handle,
+                    'label'  => $customField->name,
+                ]);
             }
 
-            $schema[] = BuilderSchema::matrixFields(
-                $blockType['name'],
-                $subFields,
-                ['blockType' => $blockType['handle']],
-            );
+            $builder->matrixFields([
+                'label'     => $blockType['name'],
+                'subFields' => $subFields->toArray(),
+                'blockType' => $blockType['handle'],
+            ]);
         }
 
-        return $schema;
+        return $builder->toArray();
     }
 
     /**

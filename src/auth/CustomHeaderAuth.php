@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 
 class CustomHeaderAuth extends AbstractAuthStrategy
 {
@@ -19,16 +19,20 @@ class CustomHeaderAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Custom header');
     }
 
-    public static function editSchema(): array
+    public static function schema(): array
     {
-        return [
-            BuilderSchema::code('header', Craft::t('influx', 'Header name'), [
+        return SchemaBuilder::make()
+            ->code([
+                'handle'       => 'header',
+                'label'        => Craft::t('influx', 'Header name'),
                 'instructions' => Craft::t('influx', 'e.g. <code>X-API-Key</code>.'),
-            ]),
-            BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
+            ])
+            ->tokenInput([
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Used as the header value.'),
-            ]),
-        ];
+            ])
+            ->toArray();
     }
 
     protected function defineRules(): array

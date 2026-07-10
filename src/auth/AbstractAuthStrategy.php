@@ -35,9 +35,9 @@ abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterfa
      * Default empty schema so subclasses that haven't been updated for the
      * SPA's Authentication tab still satisfy the interface contract: no
      * fields → no schema → the tab renders nothing for the strategy. The
-     * three built-ins override this with real BuilderSchema node lists.
+     * three built-ins override this with real SchemaBuilder node lists.
      */
-    public static function editSchema(): array
+    public static function schema(): array
     {
         return [];
     }

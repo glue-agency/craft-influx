@@ -10,7 +10,7 @@ use DateTime;
 use DateTimeInterface;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use yii\base\Event;
 
@@ -61,14 +61,11 @@ class Date extends Field
         return $event->options;
     }
 
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
-        return [
-            BuilderSchema::select('format', Craft::t('influx', 'Date format'), self::formatOptions(), [
-                'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
-                'default'      => '',
-            ]),
-        ];
+        return SchemaBuilder::make()
+            ->dateFormat(['options' => self::formatOptions()])
+            ->toArray();
     }
 
     /**

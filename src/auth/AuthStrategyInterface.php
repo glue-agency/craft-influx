@@ -29,7 +29,7 @@ interface AuthStrategyInterface
     /**
      * Form schema rendered by the LinkBuilder SPA's Authentication tab when
      * this strategy is selected: a list of
-     * {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes — the same vocabulary
+     * {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes — the same vocabulary
      * the mapping extras use, rendered by the same generic SchemaForm.
      * Each node's `handle` keys into the link's `auth` slice. Return an
      * empty array when the strategy needs no extra fields (e.g. a
@@ -40,7 +40,7 @@ interface AuthStrategyInterface
      *
      * @return list<array>
      */
-    public static function editSchema(): array;
+    public static function schema(): array;
 
     /**
      * Mutate the outgoing request's headers + query string to attach

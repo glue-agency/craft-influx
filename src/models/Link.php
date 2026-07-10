@@ -265,6 +265,7 @@ class Link extends Model
             [['handle'], 'match', 'pattern' => '/^[a-zA-Z][a-zA-Z0-9_\-]*$/', 'message' => 'Handle must start with a letter and contain only letters, numbers, underscores, and dashes.'],
             [['endpoint', 'itemEndpoint'], 'string'],
             [['endpoint'], 'required', 'when' => fn(self $m) => empty($m->siteEndpoints), 'message' => 'Either an endpoint or at least one site endpoint is required.'],
+            [['siteEndpoints'], 'validateSiteEndpoints'],
             [['match'], 'validateMatch'],
             [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
@@ -319,6 +320,26 @@ class Link extends Model
         $this->processing = array_values(array_unique($migrated));
 
         return $migrations;
+    }
+
+    /**
+     * Reject site-specific endpoints on an element type whose target doesn't
+     * support multi-site (Users are global, non-localizable). The builder hides
+     * the site-specific controls for such types, so this only bites config
+     * edited by hand or carried over from a different element type — the
+     * server-side backstop for {@see \GlueAgency\Influx\targets\ElementTargetInterface::supportsMultiSite()}.
+     */
+    public function validateSiteEndpoints(string $attribute): void
+    {
+        if (empty($this->siteEndpoints)) {
+            return;
+        }
+
+        $target = $this->targetsService()?->forLink($this);
+
+        if ($target && ! $target::supportsMultiSite()) {
+            $this->addError($attribute, $target::friendlyName() . ' links can’t use site-specific endpoints.');
+        }
     }
 
     public function validateMatch(string $attribute): void
@@ -411,6 +432,16 @@ class Link extends Model
     protected function authService(): ?\GlueAgency\Influx\services\AuthService
     {
         return Influx::getInstance()?->auth;
+    }
+
+    /**
+     * Resolve the targets service via the plugin singleton, returning null when
+     * the plugin isn't bootstrapped (e.g. standalone unit tests) — the caller
+     * then skips the target-dependent validation.
+     */
+    protected function targetsService(): ?\GlueAgency\Influx\services\TargetsService
+    {
+        return Influx::getInstance()?->targets;
     }
 
     /**

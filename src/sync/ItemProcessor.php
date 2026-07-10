@@ -127,31 +127,38 @@ class ItemProcessor
     }
 
     /**
-     * Phase 3 — persist the populated element. Pass-through for dry-runs,
-     * skips, and unchanged results; on save failure the action becomes
-     * {@see ItemAction::ERROR} with the element's validation errors as the
-     * message.
+     * Phase 3 — persist the populated element. Pass-through for dry-runs and
+     * skips; on save failure the action becomes {@see ItemAction::ERROR} with
+     * the element's validation errors as the message.
+     *
+     * The element is saved only when a field actually changed — unchanged
+     * existing elements skip the save. Either way, a committed create/update
+     * item then runs the target's {@see ElementTargetInterface::afterCommit()}
+     * hook, so a target can reconcile state that lives outside the element save
+     * (e.g. user-group membership) even for an otherwise-unchanged element.
      */
     public function commit(SyncContext $context, ItemSyncResult $draft): ItemSyncResult
     {
-        if ($context->dryRun || ! $draft->changed || $draft->element === null) {
+        if ($context->dryRun || $draft->element === null || $draft->decision->isSkip()) {
             return $draft;
         }
 
-        if (Craft::$app->getElements()->saveElement($draft->element, false)) {
-            return $draft;
+        if ($draft->changed && ! Craft::$app->getElements()->saveElement($draft->element, false)) {
+            return new ItemSyncResult(
+                decision: $draft->decision,
+                action: ItemAction::ERROR,
+                matchValue: $draft->matchValue,
+                element: $draft->element,
+                isNew: $draft->isNew,
+                changed: $draft->changed,
+                mappingResults: $draft->mappingResults,
+                message: json_encode($draft->element->getErrors()) ?: null,
+            );
         }
 
-        return new ItemSyncResult(
-            decision: $draft->decision,
-            action: ItemAction::ERROR,
-            matchValue: $draft->matchValue,
-            element: $draft->element,
-            isNew: $draft->isNew,
-            changed: $draft->changed,
-            mappingResults: $draft->mappingResults,
-            message: json_encode($draft->element->getErrors()) ?: null,
-        );
+        $context->target->afterCommit($context, $draft->element, $draft->isNew);
+
+        return $draft;
     }
 
     protected function skipMessage(Link $link, SyncDecision $decision): ?string

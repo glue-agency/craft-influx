@@ -140,7 +140,7 @@ import TokenizedInput from '../TokenizedInput.vue';
 
 /**
  * Generic renderer for the declarative form-node schema PHP strategies
- * declare via Field::defineExtrasSchema() (see helpers/BuilderSchema.php).
+ * declare via Field::schema() (see helpers/SchemaBuilder.php).
  * Dispatches purely on node *type* — it knows nothing about field kinds,
  * which is exactly what keeps "add a mapping kind" a single-PHP-file change.
  *

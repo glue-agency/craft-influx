@@ -36,6 +36,27 @@ interface ElementTargetInterface
     public static function friendlyName(): string;
 
     /**
+     * Whether links to this element type can run per-site — i.e. carry
+     * site-specific endpoints and be swept per-site. Localizable element types
+     * (Entry) return true; global, non-localizable ones (User) return false,
+     * so their links always run once against a single endpoint and the CP
+     * hides the site-specific controls. {@see AbstractElementTarget} defaults
+     * to true; a non-multi-site target overrides it, and {@see Link} rejects
+     * site endpoints configured against such a target as a server-side backstop.
+     */
+    public static function supportsMultiSite(): bool;
+
+    /**
+     * The `elementCriteria` keys this element type scopes on — the query
+     * refinements the CP offers as extra dropdowns on the General tab (Entry
+     * uses `['section', 'type']`; User has none). Drives which of the builder's
+     * criteria fields render for the selected type; the base returns `[]`.
+     *
+     * @return list<string>
+     */
+    public static function criteriaKeys(): array;
+
+    /**
      * Is this target the right one for the given link?
      */
     public function handles(Link $link): bool;
@@ -128,6 +149,17 @@ interface ElementTargetInterface
      * @return list<array{value: string, label: string}>
      */
     public function matchableNativeAttributes(Link $link): array;
+
+    /**
+     * Post-commit side effects for a create/update item, run by the sync engine
+     * once the element has committed. Fires for every non-skipped, non-dry-run
+     * create/update item — the element was saved when a field changed, and
+     * unchanged existing elements are passed through — so a target can enforce
+     * state that lives OUTSIDE the element save (e.g. user-group membership,
+     * which a save doesn't persist). $isNew distinguishes a freshly-created
+     * element from an updated one. No-op by default.
+     */
+    public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void;
 
     public function disable(ElementInterface $element): bool;
 

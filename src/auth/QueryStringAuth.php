@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 
 class QueryStringAuth extends AbstractAuthStrategy
 {
@@ -19,16 +19,20 @@ class QueryStringAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Query string parameter');
     }
 
-    public static function editSchema(): array
+    public static function schema(): array
     {
-        return [
-            BuilderSchema::code('param', Craft::t('influx', 'Parameter name'), [
+        return SchemaBuilder::make()
+            ->code([
+                'handle'       => 'param',
+                'label'        => Craft::t('influx', 'Parameter name'),
                 'instructions' => Craft::t('influx', 'e.g. <code>api_key</code>.'),
-            ]),
-            BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
+            ])
+            ->tokenInput([
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Appended to every request as the parameter value.'),
-            ]),
-        ];
+            ])
+            ->toArray();
     }
 
     protected function defineRules(): array

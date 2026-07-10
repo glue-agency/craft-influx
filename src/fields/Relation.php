@@ -9,7 +9,7 @@ use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
 use craft\helpers\Db;
 use craft\models\FieldLayout;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -118,29 +118,19 @@ abstract class Relation extends RelationalField
         return [];
     }
 
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
         /** @var BaseRelationField $field */
-        $schema = [
-            BuilderSchema::select(
-                'match',
-                Craft::t('influx', 'Match by'),
-                $this->matchOptions($field),
-                ['default' => 'id'],
-            ),
-            BuilderSchema::lightswitch(
-                'create',
-                Craft::t('influx', 'Create when not found'),
-            ),
-        ];
-
         $nativeSubFields = $this->nativeSubFields($field);
 
-        if ($nativeSubFields) {
-            $schema[] = BuilderSchema::elementSubFields(Craft::t('influx', 'Sub-fields'), $nativeSubFields);
-        }
-
-        return $schema;
+        return SchemaBuilder::make()
+            ->matchBy(['options' => $this->matchOptions($field)])
+            ->createWhenMissing()
+            ->when($nativeSubFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
+                'label'     => Craft::t('influx', 'Sub-fields'),
+                'subFields' => $nativeSubFields,
+            ]))
+            ->toArray();
     }
 
     /**
@@ -159,7 +149,8 @@ abstract class Relation extends RelationalField
      */
     protected function nativeSubFields(BaseRelationField $field): array
     {
-        $subFields = [];
+        $builder = SchemaBuilder::make();
+        $seen = [];
 
         foreach ($this->sourceFieldLayouts($field) as $layout) {
             if (! $layout instanceof FieldLayout) {
@@ -169,16 +160,18 @@ abstract class Relation extends RelationalField
             // Keyed by handle so a relation spanning several source layouts
             // (multiple entry types / category groups) contributes each native
             // field at most once — the first layout that includes it wins.
-            if (! isset($subFields['title']) && $layout->isFieldIncluded('title')) {
-                $subFields['title'] = BuilderSchema::text('title', $layout->getField('title')->label() ?: Craft::t('app', 'Title'));
+            if (! isset($seen['title']) && $layout->isFieldIncluded('title')) {
+                $seen['title'] = true;
+                $builder->text(['handle' => 'title', 'label' => $layout->getField('title')->label() ?: Craft::t('app', 'Title')]);
             }
 
-            if (! isset($subFields['slug']) && $layout->isFieldIncluded('slug')) {
-                $subFields['slug'] = BuilderSchema::text('slug', Craft::t('app', 'Slug'));
+            if (! isset($seen['slug']) && $layout->isFieldIncluded('slug')) {
+                $seen['slug'] = true;
+                $builder->text(['handle' => 'slug', 'label' => Craft::t('app', 'Slug')]);
             }
         }
 
-        return array_values($subFields);
+        return $builder->toArray();
     }
 
     public function parse(FieldContext $context): mixed

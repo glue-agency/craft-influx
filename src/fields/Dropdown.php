@@ -5,7 +5,7 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\BaseOptionsField;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -34,19 +34,17 @@ class Dropdown extends Field
         return BaseOptionsField::class;
     }
 
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
-        return [
-            BuilderSchema::select(
-                'match',
-                Craft::t('influx', 'Match by'),
-                [
+        return SchemaBuilder::make()
+            ->matchBy([
+                'options' => [
                     ['value' => 'label', 'label' => Craft::t('influx', 'Label')],
                     ['value' => 'value', 'label' => Craft::t('influx', 'Value')],
                 ],
-                ['default' => 'value'],
-            ),
-        ];
+                'default' => 'value',
+            ])
+            ->toArray();
     }
 
     public function parse(FieldContext $context): mixed

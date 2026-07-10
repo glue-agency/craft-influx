@@ -15,10 +15,9 @@ use craft\helpers\StringHelper;
 use DateTime;
 use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
-use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
-use GlueAgency\Influx\helpers\BuilderSchema;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -39,6 +38,17 @@ class EntryTarget extends AbstractElementTarget
     public static function elementType(): string
     {
         return Entry::class;
+    }
+
+    /**
+     * Entries are scoped by section and entry type — the two dropdowns the
+     * builder's General tab renders for this element type.
+     *
+     * @return list<string>
+     */
+    public static function criteriaKeys(): array
+    {
+        return ['section', 'type'];
     }
 
     public function claimsElement(Link $link, ElementInterface $element): bool
@@ -459,69 +469,22 @@ class EntryTarget extends AbstractElementTarget
      */
     protected function nativeFieldDefinitions(): array
     {
-        $native = Craft::t('influx', 'Native');
-
-        return [
-            ['handle' => 'title', 'name' => Craft::t('app', 'Title'), 'native' => true, 'group' => $native, 'defaultType' => 'text'],
-            ['handle' => 'slug',  'name' => Craft::t('app', 'Slug'),  'native' => true, 'group' => $native, 'defaultType' => 'text'],
-            [
-                'handle'      => 'enabled',
-                'name'        => Craft::t('app', 'Enabled'),
-                'native'      => true,
-                'group'       => $native,
-                'defaultType' => 'select',
-                'options'     => [
+        return SchemaBuilder::make()
+            ->group(Craft::t('influx', 'Native'), [
+                ['handle' => 'title', 'name' => Craft::t('app', 'Title')],
+                ['handle' => 'slug', 'name' => Craft::t('app', 'Slug')],
+                ['handle' => 'enabled', 'name' => Craft::t('app', 'Enabled'), 'type' => 'select', 'options' => [
                     'true'  => Craft::t('app', 'Enabled'),
                     'false' => Craft::t('app', 'Disabled'),
-                ],
-            ],
-            [
-                'handle'    => 'postDate', 'name' => Craft::t('app', 'Post Date'),
-                'native'    => true, 'group' => $native, 'defaultType' => 'text',
-                'fieldMeta' => $this->dateFieldMeta(),
-            ],
-            [
-                'handle'    => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'),
-                'native'    => true, 'group' => $native, 'defaultType' => 'text',
-                'fieldMeta' => $this->dateFieldMeta(),
-            ],
-            [
-                'handle'      => 'author',
-                'name'        => Craft::t('app', 'Author'),
-                'native'      => true,
-                'group'       => $native,
-                'defaultType' => 'element',
-                'elementType' => User::class,
-                'fieldMeta'   => [
-                    'schema' => [
-                        BuilderSchema::select('match', Craft::t('influx', 'Match by'), $this->authorMatchOptions(), [
-                            'default' => 'id',
-                        ]),
-                    ],
-                    'labels' => Field::commonExtrasLabels(),
-                ],
-            ],
-        ];
-    }
-
-    /**
-     * Shared meta for postDate/expiryDate so the date extras block reads its
-     * preset format list from {@see \GlueAgency\Influx\fields\Date}, same as the
-     * custom Date field strategy.
-     *
-     * @return array<string, mixed>
-     */
-    protected function dateFieldMeta(): array
-    {
-        return [
-            'schema' => [
-                BuilderSchema::select('format', Craft::t('influx', 'Date format'), Date::formatOptions(), [
-                    'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
-                    'default'      => '',
-                ]),
-            ],
-            'labels' => Field::commonExtrasLabels(),
-        ];
+                ]],
+                ['handle'    => 'postDate', 'name' => Craft::t('app', 'Post Date'),
+                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]), ],
+                ['handle'    => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'),
+                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]), ],
+                ['handle'    => 'author', 'name' => Craft::t('app', 'Author'), 'type' => 'element', 'elementType' => User::class,
+                    'extras' => fn(SchemaBuilder $builder) => $builder->matchBy(['options' => $this->authorMatchOptions()]), ],
+            ])
+            ->toArray();
     }
 
     /**

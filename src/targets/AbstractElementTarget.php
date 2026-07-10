@@ -37,6 +37,27 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Default: element types are localizable, so their links can run per-site.
+     * Non-localizable targets (see {@see \GlueAgency\Influx\targets\UserTarget})
+     * override this to false.
+     */
+    public static function supportsMultiSite(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Default: no scoping criteria. Targets whose element type is scoped by
+     * extra query refinements (see {@see EntryTarget}) override this.
+     *
+     * @return list<string>
+     */
+    public static function criteriaKeys(): array
+    {
+        return [];
+    }
+
+    /**
      * Default native-attribute apply: resolve the remote value (`node` then
      * `default`) and assign it via setAttribute, falling back to setFieldValue
      * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
@@ -148,6 +169,14 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         } else {
             $element->setFieldValue($attr, $matchValue);
         }
+    }
+
+    /**
+     * Default: no post-commit side effects. Targets override when they manage
+     * state outside the element save (see {@see \GlueAgency\Influx\targets\UserTarget}).
+     */
+    public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void
+    {
     }
 
     public function disable(ElementInterface $element): bool

@@ -7,7 +7,7 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 use craft\fields\Assets as CraftAssetsField;
 use craft\models\Volume;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\FieldContext;
 use Throwable;
@@ -36,7 +36,7 @@ class Assets extends RelationalField
         return CraftAssetsField::class;
     }
 
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
@@ -44,13 +44,15 @@ class Assets extends RelationalField
         // The mode / conflict option sets are fixed: each value maps to a
         // branch in parse() / the upload helper, so they're intentionally
         // closed (no event registry — an unknown value would be inert).
-        return [
+        return SchemaBuilder::make()
             // Grouped options so this renders via the shared SearchableSelect,
             // matching the relation / author "Match by" controls. id + url are
             // the asset's native identifiers; the handle stays `mode` so saved
             // configs keep round-tripping.
-            BuilderSchema::select('mode', Craft::t('influx', 'Match by'),
-                [
+            ->select([
+                'handle'  => 'mode',
+                'label'   => Craft::t('influx', 'Match by'),
+                'options' => [
                     [
                         'label'   => Craft::t('influx', 'Asset'),
                         'kind'    => 'element',
@@ -60,28 +62,31 @@ class Assets extends RelationalField
                         ],
                     ],
                 ],
-                [
-                    'default' => 'id',
-                ]
-            ),
-            BuilderSchema::lightswitch('upload', Craft::t('influx', 'Download & upload missing files'), [
+                'default' => 'id',
+            ])
+            ->lightswitch([
+                'handle' => 'upload',
+                'label'  => Craft::t('influx', 'Download & upload missing files'),
                 'showIf' => $url,
-            ]),
-            BuilderSchema::select('conflict', Craft::t('influx', 'On conflict'), [
-                ['value' => 'index',   'label' => Craft::t('influx', 'Use existing')],
-                ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
-            ], [
+            ])
+            ->select([
+                'handle'  => 'conflict',
+                'label'   => Craft::t('influx', 'On conflict'),
+                'options' => [
+                    ['value' => 'index',   'label' => Craft::t('influx', 'Use existing')],
+                    ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
+                ],
                 'default' => 'index',
                 'showIf'  => $uploading,
-            ]),
-            BuilderSchema::elementSubFields(
-                Craft::t('influx', 'Sub-fields'),
-                [
-                    BuilderSchema::text('alt', Craft::t('influx', 'Alt text')),
-                    BuilderSchema::text('title', Craft::t('influx', 'Title')),
-                ],
-            ),
-        ];
+            ])
+            ->elementSubFields([
+                'label'     => Craft::t('influx', 'Sub-fields'),
+                'subFields' => SchemaBuilder::make()
+                    ->text(['handle' => 'alt', 'label' => Craft::t('influx', 'Alt text')])
+                    ->text(['handle' => 'title', 'label' => Craft::t('influx', 'Title')])
+                    ->toArray(),
+            ])
+            ->toArray();
     }
 
     public function parse(FieldContext $context): mixed

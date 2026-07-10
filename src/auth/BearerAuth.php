@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 
 class BearerAuth extends AbstractAuthStrategy
 {
@@ -17,13 +17,15 @@ class BearerAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Bearer token');
     }
 
-    public static function editSchema(): array
+    public static function schema(): array
     {
-        return [
-            BuilderSchema::tokenInput('token', Craft::t('influx', 'Token'), [
+        return SchemaBuilder::make()
+            ->tokenInput([
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'),
-            ]),
-        ];
+            ])
+            ->toArray();
     }
 
     protected function defineRules(): array

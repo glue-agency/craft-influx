@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use GlueAgency\Influx\helpers\BuilderSchema;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 
 /**
  * HTTP Basic authentication (RFC 7617). The inherited {@see $token} property
@@ -29,14 +29,16 @@ class BasicAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Basic auth');
     }
 
-    public static function editSchema(): array
+    public static function schema(): array
     {
-        return [
-            BuilderSchema::text('username', Craft::t('influx', 'Username')),
-            BuilderSchema::tokenInput('token', Craft::t('influx', 'Password'), [
+        return SchemaBuilder::make()
+            ->text(['handle' => 'username', 'label' => Craft::t('influx', 'Username')])
+            ->tokenInput([
+                'handle'       => 'token',
+                'label'        => Craft::t('influx', 'Password'),
                 'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Basic &lt;base64(username:password)&gt;</code>.'),
-            ]),
-        ];
+            ])
+            ->toArray();
     }
 
     protected function defineRules(): array

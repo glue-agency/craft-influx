@@ -63,7 +63,7 @@ abstract class Field
     /**
      * Optional extra UI metadata, merged into the payload by
      * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}. The mapping
-     * extras UI is declared via {@see defineExtrasSchema()} — the primary
+     * extras UI is declared via {@see schema()} — the primary
      * contract, with labels co-located on each node — so most strategies
      * never need this. Override only to ship structured meta a schema node
      * can't express; `schema` and `labels` are reserved keys set by metaFor.
@@ -75,14 +75,14 @@ abstract class Field
 
     /**
      * Declarative form schema for this field type's mapping-extras block —
-     * a list of {@see \GlueAgency\Influx\helpers\BuilderSchema} nodes the SPA
+     * a list of {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes the SPA
      * renders generically. Declaring the UI next to the parse logic is what
      * keeps the Vue side free of per-field-type branches: adding a kind is
      * a single-PHP-file change.
      *
      * Default: no extras.
      */
-    public function defineExtrasSchema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): array
     {
         return [];
     }
@@ -102,6 +102,28 @@ abstract class Field
             'configure'   => Craft::t('influx', 'Configure'),
             'hideOptions' => Craft::t('influx', 'Hide options'),
         ];
+    }
+
+    /**
+     * Wrap a builder-schema node list in the `fieldMeta` envelope the SPA's
+     * SchemaForm consumes: the {@see schema()} nodes plus the shared show/hide
+     * toggle {@see commonExtrasLabels()}, with any extra meta merged in. THE
+     * one place the `{schema, labels}` shape is defined — every mappable field
+     * routes its schema through here, whether it's a custom field (via
+     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}) or a native
+     * attribute declared by an {@see \GlueAgency\Influx\targets\ElementTargetInterface}.
+     * `schema` / `labels` are reserved and win over `$extra`.
+     *
+     * @param list<array> $schema SchemaBuilder nodes.
+     * @param array<string, mixed> $extra Extra meta keys (e.g. `subfieldsOnly`).
+     * @return array<string, mixed>
+     */
+    public static function meta(array $schema, array $extra = []): array
+    {
+        return [
+            'schema' => $schema,
+            'labels' => static::commonExtrasLabels(),
+        ] + $extra;
     }
 
     /**
