@@ -1,5 +1,5 @@
 {% extends "_layouts/cp" %}
-{% set title = "Debug"|t("influx") ~ ": " ~ link.name %}
+{% set title = "Debug"|t("influx") %}
 {% set selectedSubnavItem = "links" %}
 
 {% set crumbs = [
@@ -25,6 +25,7 @@
         limit: limit,
         sites: sites,
         offsetHandles: offsetHandles,
-        processing: processing,
+        links: links,
+        linkHandle: linkHandle,
     }|json_encode }}"></div>
 {% endblock %}

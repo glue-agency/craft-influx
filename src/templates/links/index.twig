@@ -1,30 +1,22 @@
 {% extends "_layouts/cp" %}
+
+{% import "_includes/forms" as forms %}
+{% import "influx/_overview" as ui %}
+
 {% set title = "Links"|t("influx") %}
 {% set selectedSubnavItem = "links" %}
 
-{% import "_includes/forms" as forms %}
-
-{% css %}
-/* The Sync-options menu otherwise inherits Craft's classic menu hover — a
-   medium-grey fill (--gray-500) with white text — which reads heavy next to the
-   rest of the UI. Override it (with enough specificity to beat Craft's own
-   rule) with the lighter hover the plugin's other menus use. */
-.menu.influx-sync-menu:not(.menu--disclosure) ul li .menu-option:not(.sel,.disabled):hover {
-    background-color: var(--gray-100);
-    color: var(--text-color);
-}
-
-/* Drag-to-sort handles on the links table. */
-.influx-links-table .move.icon {
-    cursor: grab;
-}
-.influx-links-table tr.influx-dragging {
-    opacity: 0.4;
-}
-{% endcss %}
+{# Canonical order for the processing pills (write actions first, then the
+   reconciliation actions), so they always read the same regardless of the
+   order they were configured in. #}
+{% set processingOrder = ["create", "update", "disable", "disable-for-site", "delete", "delete-for-site"] %}
 
 {% block actionButton %}
-    {% if not readOnly %}
+    {% if readOnly %}
+        <span class="light" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span data-icon="lock" aria-hidden="true"></span>{{ "Read-only"|t("influx") }}
+        </span>
+    {% else %}
         <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
             {{ "New link"|t("influx") }}
         </a>
@@ -32,6 +24,21 @@
 {% endblock %}
 
 {% block content %}
+    {% css %}
+    /* Drag-to-sort handles on the links table. */
+    .influx-links-table .move.icon { cursor: grab; }
+    .influx-links-table tr.influx-dragging { opacity: 0.4; }
+
+    /* The Sync-options menu otherwise inherits Craft's classic menu hover — a
+       medium-grey fill (--gray-500) with white text — which reads heavy next
+       to the rest of the UI. Override it (with enough specificity to beat
+       Craft's own rule) with the lighter hover the plugin's other menus use. */
+    .menu.influx-sync-menu:not(.menu--disclosure) ul li .menu-option:not(.sel, .disabled):hover {
+        background-color: var(--gray-100);
+        color: var(--text-color);
+    }
+    {% endcss %}
+
     {# Craft only applies a :hover background to anchor menu options; our sync
        presets are <button class="menu-option"> elements, which rely on a JS-
        added `.hover` class that doesn't fire here — so they sit dead on hover.
@@ -132,6 +139,12 @@
         {% endjs %}
     {% endif %}
 
+    {% if readOnly %}
+        <blockquote class="note">
+            {{ "Administrative changes are disallowed in this environment. Link configuration is shown read-only — syncs can still be triggered."|t("influx") }}
+        </blockquote>
+    {% endif %}
+
     {% if links is empty %}
         <div class="zilch">
             <p>{{ "No links yet."|t("influx") }}</p>
@@ -144,14 +157,11 @@
             <thead>
                 <tr>
                     {% if not readOnly %}<th class="thin"></th>{% endif %}
-                    <th>{{ "Name"|t("influx") }}</th>
-                    <th>{{ "Handle"|t("influx") }}</th>
-                    <th>{{ "Target"|t("influx") }}</th>
+                    <th>{{ "Link"|t("influx") }}</th>
                     <th>{{ "Sites"|t("influx") }}</th>
                     <th>{{ "Processing"|t("influx") }}</th>
                     <th>{{ "Last run"|t("influx") }}</th>
-                    <th colspan="2">{{ "Actions"|t('influx') }}</th>
-                    {% if not readOnly %}<th class="thin"></th>{% endif %}
+                    <th class="thin">{{ "Actions"|t("influx") }}</th>
                 </tr>
             </thead>
             <tbody{% if not readOnly %} data-influx-links-sortable{% endif %}>
@@ -162,63 +172,99 @@
                                 <a class="move icon" title="{{ 'Reorder'|t('influx') }}" role="button"></a>
                             </td>
                         {% endif %}
+
+                        {# Identity: name on top, handle + target folded into one
+                           muted meta line (was three separate columns). #}
                         <td>
-                            <a href="{{ cpUrl('influx/links/' ~ link.id) }}">
-                                <strong>{{ link.name }}</strong>
-                            </a>
+                            <a href="{{ cpUrl('influx/links/' ~ link.id) }}"><strong>{{ link.name }}</strong></a>
+                            <div class="influx-cell-meta">
+                                <code>{{ link.handle }}</code>
+                                <span aria-hidden="true">&middot;</span>
+                                <span class="influx-cell-truncate">
+                                    {{- presenter.elementTypeLabel(link) -}}
+                                    {%- set criteria = presenter.targetCriteriaLabel(link) -%}
+                                    {%- if criteria %} / {{ criteria }}{% endif -%}
+                                </span>
+                            </div>
                         </td>
-                        <td><code>{{ link.handle }}</code></td>
+
+                        {# Sites — one compact pill per configured site handle, or
+                           a single "primary" pill when the link runs primary-only. #}
                         <td>
-                            {{ presenter.elementTypeLabel(link) }}
-                            {% set targetCriteria = presenter.targetCriteriaLabel(link) %}
-                            {% if targetCriteria %}
-                                <span class="light">/ {{ targetCriteria }}</span>
-                            {% endif %}
+                            <div class="influx-pill-group">
+                                {% set siteHandles = link.siteHandles() %}
+                                {% if siteHandles is empty %}
+                                    {{ ui.pill("primary"|t("influx"), "blue") }}
+                                {% else %}
+                                    {% for site in siteHandles %}
+                                        {{ ui.pill(site, "gray") }}
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
                         </td>
+
+                        {# Processing — the configured actions as one wrapping row
+                           of pills, in canonical order, coloured by the palette. #}
                         <td>
-                            {% set siteLabels = presenter.siteLabels(link) %}
-                            {% if siteLabels is empty %}
-                                <span class="light">{{ "primary"|t("influx") }}</span>
-                            {% else %}
-                                {{ siteLabels|join(", ") }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if link.processing is empty %}
+                            {% set present = processingOrder|filter(v => v in link.processing) %}
+                            {% if present is empty %}
                                 <span class="light">—</span>
                             {% else %}
-                                {{ link.processing|join(", ") }}
+                                <div class="influx-pill-group">
+                                    {% for verb in present %}{{ ui.processingPill(verb) }}{% endfor %}
+                                </div>
                             {% endif %}
                         </td>
+
+                        {# Last run — status dot + human time linking to the log,
+                           and a compact result-summary sub-line below. #}
                         <td>
                             {% if link.lastRunAt %}
                                 {% set lastLog = link.lastLogId ? (lastLogs[link.lastLogId] ?? null) : null %}
                                 {% set when = craft.app.formattingLocale.getFormatter().asDatetime(link.lastRunAt) %}
                                 {% if lastLog %}
-                                    <span class="status {{ lastLog.status == "ok" ? "live" : (lastLog.status == "error" ? "expired" : "pending") }}"
-                                          title="{{ lastLog.status|t('influx') }}"></span>
+                                    <span class="status {{ logPresenter.statusColor(lastLog.status) }}" title="{{ lastLog.status|t('influx') }}"></span>
                                     <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                                    {% if lastLog.status == "error" %}
+                                        <div class="influx-cell-sub">
+                                            {{- "failed"|t("influx") -}}
+                                            {%- if lastLog.error %} — {{ lastLog.error|split("\n")|first }}{% endif -%}
+                                        </div>
+                                    {% else %}
+                                        {% set parts = [] %}
+                                        {% for segment in logPresenter.resultSegments(lastLog) %}
+                                            {% set parts = parts|merge([segment.count ~ " " ~ ui.resultNoun(segment.kind)]) %}
+                                        {% endfor %}
+                                        {% set duration = logPresenter.durationLabel(lastLog) %}
+                                        {% if duration %}{% set parts = parts|merge([duration]) %}{% endif %}
+                                        {% if parts is not empty %}
+                                            <div class="influx-cell-sub">{{ parts|join(" · ") }}</div>
+                                        {% endif %}
+                                    {% endif %}
                                 {% else %}
-                                    {# The run's log has been deleted — the timestamp persists on the link. #}
+                                    {# The run's log has been deleted — only the timestamp persists on the link. #}
+                                    <span class="status" title="{{ 'Log removed'|t('influx') }}"></span>
                                     {{ when }}
                                 {% endif %}
                             {% else %}
-                                <span class="light">{{ "never"|t("influx") }}</span>
+                                <span class="status"></span>
+                                <span class="light">{{ "never ran"|t("influx") }}</span>
                             {% endif %}
                         </td>
+
+                        {# Actions — one primary Sync (with the site/offset preset
+                           menu) plus a three-dots overflow menu for everything
+                           else. `.thin` collapses the column so it sits flush right. #}
                         <td class="thin">
-                            {# A link with 2+ site-specific endpoints can be synced per site;
-                               otherwise "all sites" is the only scope. Offset presets stay
-                               available within whichever scope. #}
                             {% set siteHandles = link.siteHandles() %}
                             {% set multiSite = siteHandles|length > 1 %}
                             {% set siteScopes = multiSite ? [null]|merge(siteHandles) : [null] %}
                             {% set presetHandles = link.offset|keys %}
 
-                            {# Forms hoisted out of the btngroup so the buttons can sit as direct
-                               children — Craft's .btngroup radius rules target .btn:first-child /
-                               :last-child, which would never match when the buttons are wrapped.
-                               One form per (site scope × offset preset) the buttons below submit. #}
+                            {# One hidden form per (site scope × offset preset) the
+                               buttons below submit. Hoisted out of the btngroup so
+                               Craft's .btngroup radius rules (which target
+                               .btn:first-child / :last-child) still match. #}
                             {% for site in siteScopes %}
                                 {% for presetHandle in [null]|merge(presetHandles) %}
                                     <form id="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle ?? "default" }}"
@@ -241,92 +287,93 @@
                                 </form>
                             {% endif %}
 
-                            <div class="btngroup">
-                                <button type="submit"
-                                        form="influx-sync-{{ link.handle }}--all--default"
-                                        class="btn"
-                                        data-icon="refresh"
-                                        title="{{ 'Sync'|t('influx') }}">
-                                    {{ "Sync"|t("influx") }}
-                                </button>
+                            <div class="flex flex-nowrap influx-row-actions">
+                                <div class="btngroup">
+                                    <button type="submit"
+                                            form="influx-sync-{{ link.handle }}--all--default"
+                                            class="btn"
+                                            data-icon="refresh"
+                                            title="{{ 'Sync'|t('influx') }}">
+                                        {{ "Sync"|t("influx") }}
+                                    </button>
 
-                                {% if presetHandles is not empty or multiSite %}
-                                    <button type="button" class="btn menubtn" title="{{ 'Sync options'|t('influx') }}"></button>
-                                    <div class="menu influx-sync-menu" data-align="right">
-                                        {% if multiSite %}
-                                            {% for site in siteScopes %}
-                                                {% if not loop.first %}<hr>{% endif %}
-                                                <h6>{{ site is null ? "All sites"|t("influx") : "Site {site}"|t("influx", { site: site }) }}</h6>
+                                    {% if presetHandles is not empty or multiSite %}
+                                        <button type="button" class="btn menubtn" title="{{ 'Sync options'|t('influx') }}"></button>
+                                        <div class="menu influx-sync-menu" data-align="right">
+                                            {% if multiSite %}
+                                                {% for site in siteScopes %}
+                                                    {% if not loop.first %}<hr>{% endif %}
+                                                    <h6>{{ site is null ? "All sites"|t("influx") : "Site {site}"|t("influx", { site: site }) }}</h6>
+                                                    <ul>
+                                                        <li>
+                                                            <button type="submit"
+                                                                    form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--default"
+                                                                    class="menu-option">
+                                                                {{ "all"|t("influx") }}
+                                                            </button>
+                                                        </li>
+                                                        {% for presetHandle in presetHandles %}
+                                                            <li>
+                                                                <button type="submit"
+                                                                        form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle }}"
+                                                                        class="menu-option">
+                                                                    {{ presetHandle }}
+                                                                </button>
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                {% endfor %}
+                                            {% else %}
                                                 <ul>
-                                                    <li>
-                                                        <button type="submit"
-                                                                form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--default"
-                                                                class="menu-option">
-                                                            {{ "all"|t("influx") }}
-                                                        </button>
-                                                    </li>
                                                     {% for presetHandle in presetHandles %}
                                                         <li>
                                                             <button type="submit"
-                                                                    form="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle }}"
+                                                                    form="influx-sync-{{ link.handle }}--all--{{ presetHandle }}"
                                                                     class="menu-option">
                                                                 {{ presetHandle }}
                                                             </button>
                                                         </li>
                                                     {% endfor %}
                                                 </ul>
-                                            {% endfor %}
-                                        {% else %}
-                                            <ul>
-                                                {% for presetHandle in presetHandles %}
-                                                    <li>
-                                                        <button type="submit"
-                                                                form="influx-sync-{{ link.handle }}--all--{{ presetHandle }}"
-                                                                class="menu-option">
-                                                            {{ presetHandle }}
-                                                        </button>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
-                                        {% endif %}
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </td>
-                        <td class="thin">
-                            <div class="btngroup">
-                                <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/debug') }}"
-                                   class="btn"
-                                   data-icon="search"
-                                   title="{{ 'Debug'|t('influx') }}">
-                                    {{ "Debug"|t("influx") }}
-                                </a>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                </div>
 
-                                {% if not readOnly %}
-                                    {# Opens the builder prefilled with a copy — nothing is
-                                       saved until the user reviews and hits Save. #}
-                                    <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/duplicate') }}"
-                                       class="btn"
-                                       data-icon="duplicate"
-                                       title="{{ 'Duplicate'|t('influx') }}">
-                                        {{ "Duplicate"|t("influx") }}
-                                    </a>
-                                {% endif %}
+                                {# Overflow: Debug + Duplicate + Delete, folded into one
+                                   three-dots menu the way Craft's element rows do
+                                   (`action-btn` renders the ellipsis, no caret). #}
+                                <button type="button" class="btn menubtn action-btn" title="{{ 'Actions'|t('influx') }}" aria-label="{{ 'Debug, duplicate or delete'|t('influx') }}"></button>
+                                <div class="menu" data-align="right">
+                                    <ul>
+                                        <li>
+                                            <a href="{{ cpUrl('influx/debug', { link: link.handle }) }}" data-icon="search">
+                                                {{ "Debug"|t("influx") }}
+                                            </a>
+                                        </li>
+                                        {% if not readOnly %}
+                                            <li>
+                                                <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/duplicate') }}" data-icon="duplicate">
+                                                    {{ "Duplicate"|t("influx") }}
+                                                </a>
+                                            </li>
+                                        {% endif %}
+                                    </ul>
+                                    {% if not readOnly %}
+                                        <hr>
+                                        <ul>
+                                            <li>
+                                                <a class="error" data-icon="trash"
+                                                   role="button"
+                                                   data-influx-delete-form="influx-delete-{{ link.handle }}">
+                                                    {{ "Delete link"|t("influx") }}
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    {% endif %}
+                                </div>
                             </div>
                         </td>
-                        {% if not readOnly %}
-                            {# Craft's native table-row delete: the bare ✕ icon in its
-                               own trailing thin cell (same markup the QueueManager and
-                               deprecation-log tables use). Click → confirm → submits
-                               the hidden delete form above. #}
-                            <td class="thin action">
-                                <a class="delete icon"
-                                   title="{{ 'Delete'|t('influx') }}"
-                                   aria-label="{{ 'Delete'|t('influx') }}"
-                                   role="button"
-                                   data-influx-delete-form="influx-delete-{{ link.handle }}"></a>
-                            </td>
-                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>

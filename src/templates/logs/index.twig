@@ -1,6 +1,15 @@
 {% extends "_layouts/cp" %}
+
+{% import "influx/_overview" as ui %}
+
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
+
+{# Status filter labels, in the display order the controller hands us. #}
+{% set statusLabels = { running: "Running"|t("influx"), ok: "OK"|t("influx"), error: "Failed"|t("influx") } %}
+
+{# Active filters, carried through the pager links so paging keeps the view. #}
+{% set filterParams = { link: selectedLink, status: selectedStatus }|filter(v => v is not null and v != "") %}
 
 {% block actionButton %}
     <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
@@ -11,8 +20,6 @@
 {% endblock %}
 
 {% block content %}
-    {% set statusDots = { ok: 'live', error: 'expired' } %}
-
     {% js %}
     document.querySelectorAll('[data-influx-delete-form]').forEach(function (anchor) {
         anchor.addEventListener('click', function () {
@@ -21,64 +28,119 @@
             }
         });
     });
+
+    // Filter selects submit their GET form on change; dropping the page param
+    // (it isn't in the form) resets to page 1 for the new filter.
+    document.querySelectorAll('[data-influx-filter]').forEach(function (select) {
+        select.addEventListener('change', function () {
+            this.form.submit();
+        });
+    });
     {% endjs %}
+
+    {# Filter by link and/or status without leaving the page. #}
+    <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap" style="margin-bottom: 14px;">
+        <div class="select">
+            <select name="link" data-influx-filter aria-label="{{ 'Filter by link'|t('influx') }}">
+                <option value="">{{ "All links"|t("influx") }}</option>
+                {% for handle, name in linkNames %}
+                    <option value="{{ handle }}"{{ handle == selectedLink ? " selected" }}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="select">
+            <select name="status" data-influx-filter aria-label="{{ 'Filter by status'|t('influx') }}">
+                <option value="">{{ "All statuses"|t("influx") }}</option>
+                {% for status in statuses %}
+                    <option value="{{ status }}"{{ status == selectedStatus ? " selected" }}>{{ statusLabels[status] ?? status }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
 
     {% if logs is empty %}
         <div class="zilch">
             <p>{{ "No runs yet."|t("influx") }}</p>
+            {% if selectedLink or selectedStatus %}
+                <p class="light"><a href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a></p>
+            {% endif %}
         </div>
     {% else %}
         <table class="data fullwidth">
             <thead>
                 <tr>
-                    <th>{{ "Started"|t("influx") }}</th>
+                    <th>{{ "Run"|t("influx") }}</th>
                     <th>{{ "Link"|t("influx") }}</th>
                     <th>{{ "Trigger"|t("influx") }}</th>
-                    <th>{{ "Status"|t("influx") }}</th>
-                    <th>{{ "Seen"|t("influx") }}</th>
-                    <th>{{ "Created"|t("influx") }}</th>
-                    <th>{{ "Updated"|t("influx") }}</th>
-                    <th>{{ "Unchanged"|t("influx") }}</th>
-                    <th>{{ "Skipped"|t("influx") }}</th>
-                    <th>{{ "Duration"|t("influx") }}</th>
+                    <th>{{ "Site"|t("influx") }}</th>
+                    <th>{{ "Result"|t("influx") }}</th>
                     <th class="thin"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
                     <tr>
+                        {# Run — status dot + when linking to the detail, duration
+                           and seen count on the sub-line. #}
                         <td>
-                            <a href="{{ cpUrl("influx/logs/" ~ log.id) }}">
-                                {{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt, 'short') }}
+                            <span class="status {{ presenter.statusColor(log.status) }}" title="{{ log.status|t('influx') }}"></span>
+                            <a href="{{ cpUrl('influx/logs/' ~ log.id) }}">
+                                {{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt, "short") }}
                             </a>
+                            {% if log.status in ["running", "pending"] %}
+                                <div class="influx-cell-sub">{{ "running"|t("influx") }}</div>
+                            {% else %}
+                                {% set parts = [] %}
+                                {% set duration = presenter.durationLabel(log) %}
+                                {% if duration %}{% set parts = parts|merge([duration]) %}{% endif %}
+                                {% if log.itemsSeen %}{% set parts = parts|merge([log.itemsSeen ~ " " ~ ui.resultNoun("seen")]) %}{% endif %}
+                                {% if parts is not empty %}
+                                    <div class="influx-cell-sub">{{ parts|join(" · ") }}</div>
+                                {% endif %}
+                            {% endif %}
                         </td>
+
+                        {# Link — name links to its edit screen; a deleted link
+                           degrades to its stored handle. #}
                         <td>
                             {% set linkId = linkIds[log.linkHandle] ?? null %}
                             {% set linkName = linkNames[log.linkHandle] ?? log.linkHandle %}
                             {% if linkId %}
-                                <a href="{{ cpUrl("influx/links/" ~ linkId) }}">{{ linkName }}</a>
+                                <a href="{{ cpUrl('influx/links/' ~ linkId) }}">{{ linkName }}</a>
                             {% else %}
                                 {{ linkName }}
                             {% endif %}
                         </td>
-                        <td>{{ log.trigger }}</td>
+
+                        {# Trigger #}
+                        <td>{{ ui.pill(log.trigger, "gray") }}</td>
+
+                        {# Site the run was scoped to — a single-site run shows
+                           its handle; a run with no site scope shows "primary",
+                           the same as the Links overview. #}
                         <td>
-                            <span class="status {{ statusDots[log.status] ?? 'pending' }}"></span>
-                            {{ log.status }}
-                        </td>
-                        <td>{{ log.itemsSeen }}</td>
-                        <td>{{ log.itemsCreated }}</td>
-                        <td>{{ log.itemsUpdated }}</td>
-                        <td>{{ log.itemsUnchanged }}</td>
-                        <td>{{ log.itemsSkipped }}</td>
-                        <td>
-                            {% if log.finishedAt %}
-                                {{ ((log.finishedAt|date_modify('+0 seconds')).timestamp - (log.startedAt|date_modify('+0 seconds')).timestamp) }}s
+                            {% if log.siteHandle %}
+                                {{ ui.pill(log.siteHandle, "gray") }}
+                            {% else %}
+                                {{ ui.pill("primary"|t("influx"), "blue") }}
                             {% endif %}
                         </td>
-                        {# Craft's native table-row delete: the bare ✕ icon in its own
-                           trailing thin cell, same as the links overview. Click →
-                           confirm → submits the row's hidden delete form. #}
+
+                        {# Result — the six numeric columns as the shared pill
+                           vocabulary. #}
+                        <td>
+                            {% set segments = presenter.resultSegments(log) %}
+                            {% if segments is empty %}
+                                <span class="light">{{ "no changes"|t("influx") }}</span>
+                            {% else %}
+                                <div class="influx-pill-group">
+                                    {% for segment in segments %}{{ ui.resultPill(segment) }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </td>
+
+                        {# Delete — Craft's native row-delete icon; click → confirm
+                           → submits the row's hidden form. #}
                         <td class="thin action">
                             <form id="influx-delete-log-{{ log.id }}" method="post" accept-charset="UTF-8" hidden>
                                 {{ csrfInput() }}
@@ -98,16 +160,22 @@
         </table>
 
         {% set totalPages = (total / perPage)|round(0, "ceil") %}
-        {% if totalPages > 1 %}
-            <nav class="pagination" style="margin-top: 14px;">
-                {% if page > 1 %}
-                    <a class="btn" href="{{ cpUrl('influx/logs', { page: page - 1 }) }}">← {{ "Previous"|t("influx") }}</a>
-                {% endif %}
-                <span class="light">{{ "Page"|t("influx") }} {{ page }} / {{ totalPages }}</span>
-                {% if page < totalPages %}
-                    <a class="btn" href="{{ cpUrl('influx/logs', { page: page + 1 }) }}">{{ "Next"|t("influx") }} →</a>
-                {% endif %}
-            </nav>
-        {% endif %}
+        <div class="influx-table-foot">
+            <span class="light">
+                {{ total }} {{ (total == 1 ? "run" : "runs")|t("influx") }}
+                {%- if retentionDays > 0 %} &middot; {{ "kept {n} days"|t("influx", { n: retentionDays }) }}{% endif -%}
+            </span>
+            {% if totalPages > 1 %}
+                <nav class="pagination flex flex-nowrap">
+                    {% if page > 1 %}
+                        <a class="btn" href="{{ cpUrl('influx/logs', filterParams|merge({ page: page - 1 })) }}">&larr; {{ "Previous"|t("influx") }}</a>
+                    {% endif %}
+                    <span class="light">{{ "Page {page} of {total}"|t("influx", { page: page, total: totalPages }) }}</span>
+                    {% if page < totalPages %}
+                        <a class="btn" href="{{ cpUrl('influx/logs', filterParams|merge({ page: page + 1 })) }}">{{ "Next"|t("influx") }} &rarr;</a>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        </div>
     {% endif %}
 {% endblock %}

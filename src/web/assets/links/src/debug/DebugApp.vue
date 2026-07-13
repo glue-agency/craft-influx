@@ -11,135 +11,118 @@
             </button>
         </teleport>
 
-        <!-- Feed report — one panel: a header (live status dot + endpoint), the
-             site/window/limit controls, and the run's resolved facts, all sharing
-             a single quarter-width column grid so the rows line up. -->
-        <div class="influx-feed">
-            <div class="influx-feed-bar">
-                <div class="influx-feed-endpoint">
-                    <span class="influx-feed-eyebrow">{{ $t('Endpoint') }}</span>
-                    <code class="influx-feed-url">{{ meta && meta.url }}</code>
+        <!-- Controls. A form so Enter in any field re-inspects (and the unit
+             test can drive a submit); the visible trigger is the header button
+             above. The link field navigates rather than re-inspecting. -->
+        <form class="toolbar flex flex-nowrap influx-debug-toolbar" @submit.prevent="inspect">
+            <div v-if="links.length" class="influx-debug-field">
+                <label>{{ $t('Link') }}</label>
+                <div class="select">
+                    <select :value="linkHandle" @change="goToLink">
+                        <option v-for="l in links" :key="l.handle" :value="l.handle">{{ l.name }}</option>
+                    </select>
                 </div>
             </div>
 
-            <!-- Controls row. A form so Enter in any field re-inspects (and the
-                 unit test can drive a submit); the visible trigger is the
-                 page-header button above. -->
-            <stats-grid tag="form" class="influx-feed-controls" @submit.prevent="inspect">
-                <stat-cell class="influx-feed-cell" :label="$t('Site')">
-                    <span v-if="!sites.length" class="influx-feed-static">{{ $t('Default endpoint') }}</span>
-                    <div v-else class="select">
-                        <select v-model="site">
-                            <option v-for="s in sites" :key="s.handle" :value="s.handle">{{ s.name }}</option>
-                        </select>
-                    </div>
-                </stat-cell>
+            <div class="influx-debug-field">
+                <label>{{ $t('Site') }}</label>
+                <span v-if="!sites.length" class="influx-debug-static">{{ $t('Default endpoint') }}</span>
+                <div v-else class="select">
+                    <select v-model="site">
+                        <option v-for="s in sites" :key="s.handle" :value="s.handle">{{ s.name }}</option>
+                    </select>
+                </div>
+            </div>
 
-                <stat-cell class="influx-feed-cell" :label="$t('Sliding window')">
-                    <span v-if="!offsetHandles.length" class="influx-feed-static">{{ $t('No presets') }}</span>
-                    <div v-else class="select">
-                        <select v-model="offset">
-                            <option value="">{{ $t('all') }}</option>
-                            <option v-for="h in offsetHandles" :key="h" :value="h">{{ h }}</option>
-                        </select>
-                    </div>
-                </stat-cell>
+            <div v-if="offsetHandles.length" class="influx-debug-field">
+                <label>{{ $t('Sliding window') }}</label>
+                <div class="select">
+                    <select v-model="offset">
+                        <option value="">{{ $t('Whole feed') }}</option>
+                        <option v-for="h in offsetHandles" :key="h" :value="h">{{ h }}</option>
+                    </select>
+                </div>
+            </div>
 
-                <stat-cell class="influx-feed-cell" :label="$t('Limit')">
-                    <input v-model.number="limit" type="number" min="1" max="500" class="text influx-feed-limit">
-                </stat-cell>
-            </stats-grid>
+            <div class="influx-debug-field">
+                <label>{{ $t('Limit') }}</label>
+                <div class="influx-debug-limit-row">
+                    <input v-model.number="limit" type="number" min="1" max="500" class="text influx-debug-limit">
+                    <span v-if="totalAvailable != null" class="influx-debug-of">{{ $t('of {n}', { n: totalAvailable }) }}</span>
+                </div>
+            </div>
 
-            <p v-if="!meta" class="influx-feed-loading"><span class="spinner"></span> {{ $t('Fetching feed…') }}</p>
+            <div class="flex-grow"></div>
+        </form>
 
-            <error-panel v-else-if="meta.error" class="influx-feed-error" :error="meta.error" />
+        <error-panel v-if="meta && meta.error" class="influx-feed-error influx-debug-error" :error="meta.error" />
 
-            <stats-grid v-else align-top class="influx-feed-stats">
-                <!-- Pinned to the first column: what this feed is configured to
-                     do when a real run commits. -->
-                <stat-cell v-if="processingTags.length" class="influx-feed-cell influx-feed-cell--first" :label="$t('Actions')">
-                    <span class="influx-feed-tags">
-                        <action-badge v-for="t in processingTags" :key="t.label" class="influx-feed-tag" :color="t.color">{{ t.label }}</action-badge>
+        <!-- Split inspector: browse the fetched items left, drill into the
+             selected one right. -->
+        <div v-else class="influx-split">
+            <div class="influx-split-list">
+                <div class="influx-split-list-head">
+                    <span class="influx-split-list-title">
+                        {{ $t('Items') }}
+                        <span class="light">{{ $t('{n} fetched', { n: items.length }) }}</span>
                     </span>
-                </stat-cell>
+                    <code v-if="meta && meta.url" class="influx-split-endpoint" :title="meta.url">{{ meta.url }}</code>
+                </div>
 
-                <stat-cell v-if="meta.paginatorNode" class="influx-feed-cell" :label="$t('Paginator')">
-                    <code class="influx-feed-token">{{ meta.paginatorNode }}</code>
-                    <span v-if="meta.paginatorValue" class="influx-feed-rel" :title="meta.paginatorValue">
-                        <span class="influx-feed-arrow" aria-hidden="true">→</span><code class="influx-feed-token">{{ meta.paginatorValue }}</code>
-                    </span>
-                    <span v-else class="influx-feed-rel light">{{ $t('no next page') }}</span>
-                </stat-cell>
+                <div class="influx-split-list-scroll">
+                    <p v-if="loading" class="influx-split-loading"><span class="spinner"></span> {{ $t('Fetching feed…') }}</p>
 
-                <stat-cell v-if="meta.matchAttribute" class="influx-feed-cell" :label="$t('Match')">
-                    <code class="influx-feed-token">{{ meta.matchAttribute }}</code>
-                    <span v-if="meta.matchNode" class="influx-feed-rel">
-                        <span class="influx-feed-arrow" aria-hidden="true">↤</span><code class="influx-feed-token">{{ meta.matchNode }}</code>
-                    </span>
-                </stat-cell>
+                    <template v-else>
+                        <button
+                            v-for="(item, i) in items"
+                            :key="`${inspectRun}:${i}`"
+                            type="button"
+                            class="influx-split-item"
+                            :class="{ 'is-selected': i === selectedIndex }"
+                            @click="selectedIndex = i"
+                        >
+                            <span class="influx-split-item-top">
+                                <span class="influx-split-item-title">{{ itemTitle(item) }}</span>
+                                <action-badge :action="item.action" class="influx-split-item-badge" />
+                            </span>
+                            <span class="influx-split-item-sub">{{ changesSummary(item) }}</span>
+                        </button>
 
-                <stat-cell v-if="meta.offsetLabel" class="influx-feed-cell" :label="$t('Sliding window')">
-                    <code class="influx-feed-token">{{ meta.offset }}</code>
-                    <span class="influx-feed-rel"><span class="influx-feed-arrow" aria-hidden="true">→</span>{{ meta.offsetLabel }}</span>
-                </stat-cell>
+                        <p v-if="!items.length" class="influx-split-empty light">{{ $t('No items on this page.') }}</p>
+                    </template>
+                </div>
+            </div>
 
-                <!-- Resolved total/page counts — confirms the count nodes
-                     actually resolve, so progress % can be trusted. -->
-                <stat-cell v-if="meta.totalCount != null || meta.pageCount != null" class="influx-feed-cell" :label="$t('Feed reports')">
-                    <span class="influx-feed-stat-v">
-                        <template v-if="meta.totalCount != null">{{ meta.totalCount }} {{ $t('items') }}</template>
-                        <template v-if="meta.totalCount != null && meta.pageCount != null"> · </template>
-                        <template v-if="meta.pageCount != null">{{ meta.pageCount }} {{ $t('pages') }}</template>
-                    </span>
-                </stat-cell>
-
-                <!-- Pinned to the last column (under the empty controls cell)
-                     regardless of how many other facts are present. -->
-                <stat-cell class="influx-feed-cell influx-feed-cell--last" :label="$t('Items on page')">
-                    <span class="influx-feed-stat-v">{{ meta.itemsOnPage }}</span>
-                    <span v-if="meta.itemsOnPage > meta.limit" class="influx-feed-rel">{{ $t('showing first {n}', { n: meta.limit }) }}</span>
-                </stat-cell>
-            </stats-grid>
+            <div class="influx-split-detail">
+                <debug-item-detail
+                    v-if="selectedItem"
+                    :key="`${inspectRun}:${selectedIndex}`"
+                    :row="selectedItem"
+                    :match-attribute="meta && meta.matchAttribute || ''"
+                />
+                <p v-else-if="!loading" class="influx-split-placeholder light">{{ $t('Select an item to inspect it.') }}</p>
+            </div>
         </div>
-
-        <h2 class="influx-debug-h2">{{ $t('Items') }}</h2>
-
-        <debug-item v-for="(row, i) in items" :key="`${inspectRun}:${i}`" :row="row" />
-
-        <div v-if="statusLabel" class="light influx-debug-status">{{ statusLabel }}</div>
     </div>
 </template>
 
 <script>
-import DebugItem from '../components/DebugItem.vue';
+import DebugItemDetail from '../components/DebugItemDetail.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
-import StatsGrid from '../components/StatsGrid.vue';
-import StatCell from '../components/StatCell.vue';
-import { actionColor } from '../lib/actionColors.js';
 import { requestErrorMessage } from '../lib/requestError.js';
 
-// Configured processing actions → the dry-run tag they'd produce. Mirrors
-// ItemAction::dryRunLabel() on the PHP side; the order is ALL_PROCESSING so
-// the tags always read create → update → disable → delete.
-const PROCESSING_LABELS = {
-    'create':          'would-create',
-    'update':          'would-update',
-    'disable':         'would-disable',
-    'delete':          'would-delete',
-    'delete-for-site': 'would-delete-for-site',
-};
-
 /**
- * The debug inspector page. Owns the site/offset/limit form and renders the
- * feed panel + a list of DebugItem cards from a single JSON fetch (the
- * inspector only ever reads the first page, so there's nothing to stream).
- * Inspecting again re-fetches in place — no full page reload.
+ * The debug inspector page — a split master/detail view. The toolbar owns the
+ * link/site/window/limit controls; a single JSON fetch (the inspector only
+ * ever reads the first page) fills the left item list, and the selected item's
+ * drill-down renders on the right via DebugItemDetail. Inspecting again
+ * re-fetches in place; changing the link navigates to that link's page.
  */
 export default {
     name: 'DebugApp',
 
-    components: { DebugItem, ActionBadge, ErrorPanel, StatsGrid, StatCell },
+    components: { DebugItemDetail, ActionBadge, ErrorPanel },
 
     props: {
         config: { type: Object, required: true },
@@ -152,9 +135,11 @@ export default {
             limit: this.config.limit || 10,
             sites: this.config.sites || [],
             offsetHandles: this.config.offsetHandles || [],
-            processing: this.config.processing || [],
+            links: this.config.links || [],
+            linkHandle: this.config.linkHandle || null,
             meta: null,
             items: [],
+            selectedIndex: 0,
             loading: false,
             // Craft renders an empty action-buttons slot (see debug.twig) that
             // we Teleport the Inspect button into. Resolved in mounted(); until
@@ -162,28 +147,25 @@ export default {
             actionTarget: '#influx-debug-actions',
             hasActionTarget: false,
             // Monotonic per-inspect counter: guards against superseded
-            // responses (rapid re-clicks) AND keys the item rows so every
-            // inspect remounts them — expanded cards / open <details> from a
-            // previous payload must not bleed into positionally-matching rows.
+            // responses (rapid re-clicks) AND keys the list rows + detail so a
+            // fresh inspect remounts them rather than patching stale state in.
             inspectRun: 0,
         };
     },
 
     computed: {
-        // The link's configured processing actions as dry-run tags — what
-        // this feed is allowed to do when a real run commits.
-        processingTags() {
-            return Object.keys(PROCESSING_LABELS)
-                .filter((action) => this.processing.includes(action))
-                .map((action) => {
-                    const label = PROCESSING_LABELS[action];
-
-                    return { label, color: actionColor(label) };
-                });
+        selectedItem() {
+            return this.items[this.selectedIndex] || null;
         },
 
-        statusLabel() {
-            return this.loading ? this.$t('Loading…') : '';
+        // The feed's reported total (or items-on-page) for the "of N" hint next
+        // to the limit — null when the feed reports neither.
+        totalAvailable() {
+            if (!this.meta) {
+                return null;
+            }
+
+            return this.meta.totalCount != null ? this.meta.totalCount : (this.meta.itemsOnPage ?? null);
         },
     },
 
@@ -193,9 +175,43 @@ export default {
     },
 
     methods: {
+        // Left-list label: the resolved element's title, else the match value,
+        // else a placeholder (a would-skip item with no match value).
+        itemTitle(item) {
+            return (item.element && item.element.title) || item.matchValue || this.$t('(no match value)');
+        },
+
+        // One-line summary of what a real run would do to this item.
+        changesSummary(item) {
+            if (item.action === 'would-create') {
+                return this.$t('New element');
+            }
+
+            if (item.action === 'would-skip') {
+                return item.message || this.$t('Skipped');
+            }
+
+            const changed = (item.mappings || []).filter((m) => m.changed).length;
+
+            if (changed === 0) {
+                return this.$t('No changes');
+            }
+
+            return changed === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changed });
+        },
+
+        goToLink(e) {
+            const link = this.links.find((l) => l.handle === e.target.value);
+
+            if (link) {
+                window.location.href = link.url;
+            }
+        },
+
         inspect() {
             this.meta = null;
             this.items = [];
+            this.selectedIndex = 0;
             this.loading = true;
 
             // Ignore a response that a newer inspect has superseded (rapid
@@ -214,6 +230,7 @@ export default {
                 const data = response.data || {};
                 this.meta = data.meta || null;
                 this.items = data.items || [];
+                this.selectedIndex = 0;
             }).catch((err) => {
                 if (token !== this.inspectRun) return;
                 // Surface as a feed-level error so the panel shows it.
@@ -228,132 +245,181 @@ export default {
 </script>
 
 <style scoped>
-.influx-debug-h2 { margin-top: 28px; }
-.influx-debug-status { margin-top: 14px; }
+/* ---- Toolbar ------------------------------------------------------------ */
+.influx-debug-toolbar {
+    align-items: flex-end;
+    margin-bottom: 14px;
+}
 
-/* ---- Feed panel --------------------------------------------------------- */
-.influx-feed {
+.influx-debug-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Give the selects a consistent minimum so they don't collapse to odd widths
+   when their options are short (the narrow Limit field sizes to its input). */
+.influx-debug-field .select { min-width: 160px; }
+.influx-debug-field .select select { width: 100%; }
+
+.influx-debug-field label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--medium-text-color);
+}
+
+.influx-debug-static {
+    height: var(--input-height, 34px);
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--light-text-color);
+}
+
+.influx-debug-limit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.influx-debug-limit { width: 72px; }
+
+.influx-debug-of {
+    font-size: 13px;
+    color: var(--light-text-color);
+}
+
+/* ---- Split card --------------------------------------------------------- */
+.influx-split {
+    display: flex;
+    align-items: stretch;
+    /* Constrain the card to the viewport (minus the CP header / title /
+       toolbar chrome) so each pane scrolls internally instead of growing the
+       page. Falls back to a sensible minimum on short viewports. */
+    max-height: calc(100vh - 240px);
+    min-height: 320px;
     overflow: hidden;
     background: var(--white);
     border: 1px solid var(--hairline-color);
     border-radius: var(--large-border-radius);
 }
 
-/* Header bar: the resolved endpoint. */
-.influx-feed-bar {
+.influx-split-list {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 13px 18px;
+    flex: 0 0 360px;
+    flex-direction: column;
+    min-height: 0;
+    border-inline-end: 1px solid var(--hairline-color);
+}
+
+.influx-split-list-head {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    box-sizing: border-box;
+    min-height: 62px;
+    padding: 10px 14px;
     background: var(--gray-050);
     border-bottom: 1px solid var(--hairline-color);
 }
 
-.influx-feed-endpoint {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
+/* Only the item list scrolls; the header above stays put. */
+.influx-split-list-scroll {
     flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
 }
 
-.influx-feed-url {
-    padding: 0;
-    background: none;
-    font-size: 13px;
-    color: var(--text-color);
-    word-break: break-all;
-}
-
-/* The quarter-width grid itself (and the controls' bottom / facts' top cell
-   alignment) lives in StatsGrid; the cells in StatCell. Both rows share the
-   same four columns, so Site/Window/Limit line up over the facts below. */
-.influx-feed-controls { border-bottom: 1px solid var(--hairline-color); }
-
-/* Configured actions pin left, items-on-page pins right, so they bookend the
-   facts row whatever else is present; the remaining facts flow between. */
-.influx-feed-cell--first { grid-column: 1; }
-.influx-feed-cell--last { grid-column: 4; }
-
-.influx-feed-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
-/* Eyebrow for the endpoint header only — the row cells get theirs from
-   StatCell now; the tag pills' chrome + palette live in ActionBadge. */
-.influx-feed-eyebrow {
-    font-size: 10px;
+.influx-split-list-title {
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--medium-text-color);
 }
 
-.influx-feed-static {
-    padding: 6px 0;
-    font-size: 13px;
-    color: var(--light-text-color);
+.influx-split-list-title .light {
+    margin-inline-start: 6px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
-/* Controls fill their quarter rather than sizing to content. */
-.influx-feed-controls .select,
-.influx-feed-controls .select select,
-.influx-feed-limit { width: 100%; }
-
-/* Slot-composed cells (Feed reports, Items on page) style their own value
-   span; plain cells get this from StatCell's value. */
-.influx-feed-stat-v {
-    font-size: 13px;
-    color: var(--text-color);
-}
-
-/* Identifiers (node paths, handles) read as code but without the heavy chip
-   chrome — plain monospace that sits inline with the surrounding text. */
-.influx-feed-token {
+.influx-split-endpoint {
+    overflow: hidden;
     padding: 0;
     background: none;
-    font-size: 12px;
-    color: var(--text-color);
-}
-
-/* The resolved/secondary side of a fact (the live next-page URL, the source
-   node a match maps from, the window label) on its own muted line — truncated
-   with a hover title so a long URL never wraps mid-token. */
-.influx-feed-rel {
-    display: block;
-    overflow: hidden;
-    max-width: 100%;
-    font-size: 12px;
-    color: var(--medium-text-color);
-    white-space: nowrap;
+    font-size: 11px;
+    color: var(--light-text-color);
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.influx-feed-rel .influx-feed-token { color: var(--medium-text-color); }
+.influx-split-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--hairline-color);
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+}
 
-.influx-feed-arrow {
-    margin-right: 5px;
+.influx-split-item:hover { background: var(--gray-050); }
+
+.influx-split-item.is-selected {
+    background: hsl(208, 100%, 96%);
+    box-shadow: inset 3px 0 0 hsl(208, 100%, 42%);
+}
+
+.influx-split-item-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.influx-split-item-title {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.influx-split-item-badge { margin-left: auto; flex: none; }
+
+.influx-split-item-sub {
+    font-size: 11px;
     color: var(--light-text-color);
 }
 
-.influx-feed-loading {
-    margin: 0;
-    padding: 16px 18px;
-    color: var(--light-text-color);
+.influx-split-detail {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
-/* The <pre> treatment lives in ErrorPanel; the text colour is inherited. */
-.influx-feed-error {
+.influx-split-loading,
+.influx-split-empty { padding: 16px 14px; }
+
+.influx-split-loading { color: var(--light-text-color); }
+
+.influx-split-placeholder { padding: 18px; }
+
+.influx-debug-error {
     padding: 14px 18px;
     color: var(--error-color);
-}
-
-/* The 2-column collapse itself lives in StatsGrid — only the bookend pins
-   release here. */
-@media (max-width: 740px) {
-    .influx-feed-cell--first,
-    .influx-feed-cell--last { grid-column: auto; }
 }
 </style>

@@ -1,10 +1,9 @@
 <template>
     <div class="influx-log-app">
-        <!-- Pause/resume the live log refresh from Craft's page-header action
-             slot (rendered server-side in logs/view.twig). This only stops the
-             inbound updates — the sync worker keeps processing in the
-             background. Only present while the run is live and hasn't finished;
-             falls back to rendering in place when the target is absent (tests). -->
+        <!-- Pause/resume the live refresh from Craft's page-header action slot
+             (rendered server-side in logs/view.twig). Only stops the inbound
+             updates — the sync worker keeps running in the background. Present
+             only while the run is live and hasn't settled. -->
         <teleport v-if="isLive && !streamDone" :to="actionTarget" :disabled="!hasActionTarget">
             <button
                 type="button"
@@ -16,27 +15,23 @@
             </button>
         </teleport>
 
-        <!-- One report panel: header (link + status), the error band (when the
-             run failed), run info, then the per-action counters — all in the
-             debug feed's quarter-width grid. -->
-        <div class="influx-log-panel">
-            <div class="influx-log-panel-bar">
-                <stat-cell class="influx-log-cell" :label="$t('Link')">
+        <!-- Run summary: identity + endpoint, the error band, and the counters
+             (which double as the item-list filter). -->
+        <div class="influx-log-summary">
+            <div class="influx-log-summary-bar">
+                <div class="influx-log-ident">
                     <a v-if="linkUrl" :href="linkUrl" class="influx-log-link">{{ linkName }}</a>
                     <span v-else class="influx-log-link">{{ linkName }}</span>
-                </stat-cell>
-                <action-badge class="influx-log-status" :color="statusClass">{{ log.status }}</action-badge>
+                    <a v-if="endpointUrl" :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
+                </div>
+                <div class="influx-log-meta">
+                    <span>{{ metaLine }}</span>
+                    <span v-if="metaFinished">{{ metaFinished }}</span>
+                </div>
             </div>
 
-            <!-- The endpoint(s) this run fetched from. A site-scoped run (or a
-                 link with no per-site endpoints) shows the one URL; an all-sites
-                 run on a link with per-site endpoints lists one line per site. -->
-            <div v-if="endpointUrl" class="influx-log-endpoint">
-                <span class="influx-log-eyebrow">{{ $t('Endpoint') }}</span>
-                <a :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
-            </div>
-
-            <div v-else-if="endpoints.length" class="influx-log-endpoint">
+            <!-- All-sites run over per-site endpoints: one line each. -->
+            <div v-if="!endpointUrl && endpoints.length" class="influx-log-endpoint">
                 <span class="influx-log-eyebrow">{{ $t('Endpoints') }}</span>
                 <code
                     v-for="endpoint in endpoints"
@@ -45,9 +40,7 @@
                 >{{ endpoint.site }}: {{ endpoint.url }}</code>
             </div>
 
-            <!-- Single-resource run: the element the run was triggered for —
-                 a server-rendered Craft chip (same markup as the item rows'
-                 element column), or a "(gone)" note once it's been deleted. -->
+            <!-- Single-resource run: the element it was triggered for. -->
             <div v-if="resourceHtml" class="influx-log-endpoint influx-log-resource">
                 <span class="influx-log-eyebrow">{{ $t('Resource') }}</span>
                 <span v-html="resourceHtml"></span>
@@ -55,95 +48,121 @@
 
             <error-panel v-if="log.error" class="influx-log-error" :error="log.error" />
 
-            <stats-grid align-top class="influx-log-grid">
-                <stat-cell class="influx-log-cell" :label="$t('Trigger')" :value="log.trigger" />
-                <stat-cell v-if="log.siteHandle" class="influx-log-cell" :label="$t('Site')" :value="log.siteHandle" />
-                <stat-cell v-if="log.offsetHandle" class="influx-log-cell" :label="$t('Offset')" :value="log.offsetHandle" />
-                <stat-cell class="influx-log-cell" :label="$t('Started')" :value="log.startedAt" />
-                <stat-cell class="influx-log-cell" :label="$t('Finished')" :value="log.finishedAt" />
-            </stats-grid>
-
-            <stats-grid divided align-top class="influx-log-grid">
-                <stat-cell class="influx-log-cell" :label="$t('Seen')" :value="log.itemsSeen" />
-                <stat-cell class="influx-log-cell" :label="$t('Created')" :value="log.itemsCreated" />
-                <stat-cell class="influx-log-cell" :label="$t('Updated')" :value="log.itemsUpdated" />
-                <stat-cell class="influx-log-cell" :label="$t('Skipped')" :value="log.itemsSkipped" />
-                <stat-cell class="influx-log-cell" :label="$t('Unchanged')" :value="log.itemsUnchanged" />
-                <stat-cell class="influx-log-cell" :label="$t('Deleted')" :value="log.itemsDeleted" />
-                <stat-cell class="influx-log-cell" :label="$t('Disabled')" :value="log.itemsDisabled" />
-            </stats-grid>
-        </div>
-
-        <h2 class="influx-log-h2">
-            {{ $t('Items') }}
-            <span v-if="streamLabel" class="light">— {{ streamLabel }}</span>
-        </h2>
-
-        <!-- Craft element-index-style toolbar: status menu + search, both
-             filtering server-side. -->
-        <div class="influx-log-toolbar">
-            <log-filter-menu
-                :filter-defs="filterDefs"
-                :model-value="activeAction"
-                @update:model-value="setAction"
-            />
-            <div class="texticon search icon influx-log-search">
-                <input
-                    type="text"
-                    class="text fullwidth"
-                    :placeholder="$t('Search match value or message')"
-                    v-model="search"
+            <div class="influx-log-counters">
+                <button
+                    v-for="c in counters"
+                    :key="c.label"
+                    type="button"
+                    class="influx-counter"
+                    :class="{ 'is-active': c.action === activeAction }"
+                    :title="c.action ? $t('Show only {label} items', { label: c.label }) : $t('Show all items')"
+                    @click="setAction(c.action)"
                 >
+                    <span class="influx-counter-value" :class="c.tone">{{ c.value }}</span>
+                    <span class="influx-counter-label">{{ c.label }}</span>
+                </button>
             </div>
         </div>
 
-        <div class="influx-log-items">
-            <log-item
-                v-for="item in items"
-                :key="item.id"
-                :item="item"
-                :item-url-template="config.itemUrlTemplate"
-            />
+        <!-- Split inspector, same pattern as the Debug view. -->
+        <div class="influx-split">
+            <div class="influx-split-list">
+                <div class="influx-split-list-head">
+                    <span class="influx-split-list-title">
+                        {{ $t('Items') }}
+                        <span class="light">{{ $t('{n} processed', { n: itemTotal }) }}</span>
+                    </span>
+                    <span class="influx-split-list-hint">
+                        {{ activeAction ? $t('showing {label}', { label: activeLabel }) : $t('filter with the counters above') }}
+                    </span>
+                </div>
+
+                <div class="influx-split-list-scroll">
+                    <p v-if="loadingItems && !items.length" class="influx-split-loading"><span class="spinner"></span> {{ $t('Loading…') }}</p>
+
+                    <template v-else>
+                        <button
+                            v-for="item in items"
+                            :key="item.id"
+                            type="button"
+                            class="influx-split-item"
+                            :class="{ 'is-selected': item.id === selectedId }"
+                            @click="select(item.id)"
+                        >
+                            <span class="influx-split-item-top">
+                                <span class="influx-split-item-title">{{ item.title }}</span>
+                                <span
+                                    v-if="item.errorCount"
+                                    class="influx-log-haserror"
+                                    data-icon="alert"
+                                    :title="$t('Saved despite {n} field error(s)', { n: item.errorCount })"
+                                >{{ item.errorCount }}</span>
+                                <action-badge :action="item.action" class="influx-split-item-badge" />
+                            </span>
+                            <span v-if="item.message" class="influx-split-item-sub">{{ item.message }}</span>
+                        </button>
+
+                        <p v-if="!items.length" class="influx-split-empty light">{{ emptyLabel }}</p>
+                    </template>
+                </div>
+
+                <nav v-if="totalPages > 1" class="influx-split-pager">
+                    <button type="button" class="btn" :disabled="currentPage <= 1 || loadingItems" @click="fetchPage(currentPage - 1)">&larr;</button>
+                    <span class="light">{{ $t('Page {n} of {total}', { n: currentPage, total: totalPages }) }}</span>
+                    <button type="button" class="btn" :disabled="currentPage >= totalPages || loadingItems" @click="fetchPage(currentPage + 1)">&rarr;</button>
+                </nav>
+            </div>
+
+            <div class="influx-split-detail">
+                <p v-if="loadingRow" class="influx-split-loading"><span class="spinner"></span> {{ $t('Loading…') }}</p>
+                <p v-else-if="selectedError" class="error influx-split-placeholder">{{ selectedError }}</p>
+                <debug-item-detail
+                    v-else-if="selectedRow"
+                    :key="selectedId"
+                    :row="selectedRow"
+                    :match-attribute="selectedRow.matchAttribute || ''"
+                />
+                <p v-else class="influx-split-placeholder light">{{ $t('Select an item to inspect it.') }}</p>
+            </div>
         </div>
-
-        <nav v-if="totalPages > 1" class="influx-log-pager">
-            <button type="button" class="btn" :disabled="currentPage <= 1 || loadingItems" @click="fetchPage(currentPage - 1)">← {{ $t('Previous') }}</button>
-            <span class="light">{{ $t('Page {n} of {total}', { n: currentPage, total: totalPages }) }}</span>
-            <button type="button" class="btn" :disabled="currentPage >= totalPages || loadingItems" @click="fetchPage(currentPage + 1)">{{ $t('Next') }} →</button>
-        </nav>
-
-        <p v-if="!itemTotal && !isLive" class="light">{{ $t('No data to process') }}</p>
     </div>
 </template>
 
 <script>
-import LogItem from './LogItem.vue';
-import LogFilterMenu from './LogFilterMenu.vue';
+import DebugItemDetail from '../components/DebugItemDetail.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
-import StatsGrid from '../components/StatsGrid.vue';
-import StatCell from '../components/StatCell.vue';
+import { requestErrorMessage } from '../lib/requestError.js';
 
-const FILTER_DEFS = [
-    { action: 'created',   color: 'live' },
-    { action: 'updated',   color: 'live' },
-    { action: 'unchanged', color: 'pending' },
-    { action: 'skipped',   color: 'pending' },
-    { action: 'deleted',   color: 'expired' },
-    { action: 'disabled',  color: 'expired' },
-    { action: 'error',     color: 'expired' },
+// The counters shown above the item list, in order. Each doubles as a filter:
+// clicking one restricts the list to that action; "seen" clears the filter.
+// `good`/`bad` tint the value when non-zero (green wrote / red destructive).
+const COUNTER_DEFS = [
+    { key: 'itemsSeen',      action: null },
+    { key: 'itemsCreated',   action: 'created',   good: true },
+    { key: 'itemsUpdated',   action: 'updated',   good: true },
+    { key: 'itemsUnchanged', action: 'unchanged' },
+    { key: 'itemsSkipped',   action: 'skipped' },
+    { key: 'itemsDeleted',   action: 'deleted',   bad: true },
+    { key: 'itemsDisabled',  action: 'disabled',  bad: true },
 ];
 
+const COUNTER_LABELS = {
+    itemsSeen: 'seen', itemsCreated: 'created', itemsUpdated: 'updated',
+    itemsUnchanged: 'unchanged', itemsSkipped: 'skipped', itemsDeleted: 'deleted', itemsDisabled: 'disabled',
+};
+
 /**
- * The run-log viewer: the summary + counters panels, the action filter menu,
- * the paginated list of LogItem cards (each with an inspect drill-down), and —
- * for a still-running log — interval polling that appends new rows and
- * refreshes counters (with a pause control).
+ * The run-log viewer — a split master/detail. The summary card's counters
+ * filter the paginated item list on the left; selecting an item lazily fetches
+ * its drill-down (the same row DebugItemDetail renders on the right). A live
+ * run polls on an interval (Craft's queue-runner pattern) to append rows and
+ * refresh counters, with a pause control in the page header.
  */
 export default {
     name: 'LogApp',
 
-    components: { LogItem, LogFilterMenu, ActionBadge, ErrorPanel, StatsGrid, StatCell },
+    components: { DebugItemDetail, ActionBadge, ErrorPanel },
 
     props: {
         config: { type: Object, required: true },
@@ -152,28 +171,23 @@ export default {
     data() {
         return {
             log: { ...this.config.log },
-            // The current page only — newest-first, server-filtered. The rest
-            // is paged in from actionItems(); the bootstrap ships page 1.
             items: [...(this.config.items || [])],
             itemTotal: this.config.itemTotal || 0,
             perPage: this.config.perPage || 25,
             loadingItems: false,
             isLive: !!this.config.isLive,
-            filterDefs: FILTER_DEFS,
-            // Single-select action filter (null = All) + free-text search, both
-            // applied server-side via actionItems.
+            // Single-select action filter (null = all), applied server-side.
             activeAction: null,
-            search: '',
             currentPage: 1,
+            // The selected item + a per-id cache of its fetched drill-down
+            // ({ row } or { error }), so re-selecting never refetches.
+            selectedId: null,
+            rowCache: {},
+            loadingRow: false,
             streamLabel: this.config.isLive ? this.$t('connecting…') : '',
             poller: null,
-            // User-paused the live updates (stops the poll timer; resume
-            // restarts it from the last item). Distinct from streamDone, which
-            // is the run actually finishing.
             paused: false,
             streamDone: false,
-            // Craft renders an empty action-buttons slot (see logs/view.twig)
-            // that we Teleport the pause/resume button into.
             actionTarget: '#influx-log-actions',
             hasActionTarget: false,
         };
@@ -184,8 +198,6 @@ export default {
             return this.config.linkId ? window.Craft.getCpUrl('influx/links/' + this.config.linkId) : null;
         },
 
-        // Friendly name for the header link; falls back to the handle (logs
-        // only store the handle, so the name rides along in the config).
         linkName() {
             return this.config.linkName || this.log.linkHandle;
         },
@@ -194,44 +206,95 @@ export default {
             return this.config.endpointUrl || null;
         },
 
-        // Per-site endpoints for an all-sites run on a link with site endpoints
-        // (empty when a single endpointUrl is shown instead — the two are
-        // mutually exclusive server-side).
         endpoints() {
             return this.config.endpoints || [];
         },
 
-        // Server-rendered chip for the element a single-resource run was
-        // triggered for (null for whole-feed runs).
         resourceHtml() {
             return this.config.resourceHtml || null;
-        },
-
-        statusClass() {
-            if (this.log.status === 'ok') return 'live';
-            if (this.log.status === 'error') return 'expired';
-
-            return 'pending';
         },
 
         totalPages() {
             return Math.max(1, Math.ceil(this.itemTotal / this.perPage));
         },
-    },
 
-    watch: {
-        // Debounce the search box, then re-query from page 1.
-        search() {
-            clearTimeout(this._searchTimer);
-            this._searchTimer = setTimeout(() => this.fetchPage(1), 300);
+        // The filterable action values (the counters minus "seen"), used to
+        // validate a status read back from the URL.
+        validActions() {
+            return COUNTER_DEFS.map((d) => d.action).filter(Boolean);
+        },
+
+        counters() {
+            return COUNTER_DEFS.map((d) => {
+                const value = this.log[d.key] || 0;
+                let tone = '';
+
+                if (value === 0) tone = 'is-muted';
+                else if (d.good) tone = 'is-good';
+                else if (d.bad) tone = 'is-bad';
+
+                return { label: this.$t(COUNTER_LABELS[d.key]), value, action: d.action, tone };
+            });
+        },
+
+        activeLabel() {
+            return this.activeAction ? this.$t(this.activeAction) : '';
+        },
+
+        selectedRow() {
+            const entry = this.rowCache[this.selectedId];
+
+            return entry ? entry.row || null : null;
+        },
+
+        selectedError() {
+            const entry = this.rowCache[this.selectedId];
+
+            return entry ? entry.error || '' : '';
+        },
+
+        // A run-info line for the summary bar: trigger, site/offset, started.
+        metaLine() {
+            const parts = [this.log.trigger];
+
+            if (this.log.siteHandle) parts.push(this.$t('site {s}', { s: this.log.siteHandle }));
+            if (this.log.offsetHandle) parts.push(this.$t('window {w}', { w: this.log.offsetHandle }));
+            if (this.log.startedAt) parts.push(this.$t('started {d}', { d: this.log.startedAt }));
+
+            return parts.join(' · ');
+        },
+
+        metaFinished() {
+            if (this.log.duration) return this.$t('ran for {d}', { d: this.log.duration });
+            if (this.isLive && !this.streamDone) return this.streamLabel || this.$t('running…');
+
+            return '';
+        },
+
+        emptyLabel() {
+            if (this.activeAction) return this.$t('No {label} items', { label: this.activeLabel });
+            if (!this.itemTotal && !this.isLive) return this.$t('No data to process');
+
+            return this.$t('No items');
         },
     },
 
     mounted() {
         this.hasActionTarget = !!document.querySelector(this.actionTarget);
 
+        // A ?status=<action> in the URL pre-applies that counter's filter
+        // (bookmarkable / survives reload).
+        this.activeAction = this.statusFromUrl();
+
         if (this.isLive) {
             this.startPolling();
+        } else if (this.activeAction) {
+            // The bootstrap page is unfiltered, so fetch the filtered set.
+            this.fetchPage(1);
+        } else {
+            // A finished run ships its first page in the bootstrap — no list
+            // fetch needed; just open the first item's drill-down.
+            this.autoSelect();
         }
     },
 
@@ -241,8 +304,73 @@ export default {
 
     methods: {
         setAction(action) {
+            if (action === this.activeAction) {
+                return;
+            }
+
             this.activeAction = action;
+            this.writeStatusToUrl();
             this.fetchPage(1);
+        },
+
+        // Read a valid status filter from the current URL (?status=…), or null.
+        statusFromUrl() {
+            const status = new URLSearchParams(window.location.search).get('status');
+
+            return this.validActions.includes(status) ? status : null;
+        },
+
+        // Reflect the active filter in the URL without reloading, so it's
+        // bookmarkable and survives a refresh. "seen"/all drops the param.
+        writeStatusToUrl() {
+            const url = new URL(window.location.href);
+
+            if (this.activeAction) {
+                url.searchParams.set('status', this.activeAction);
+            } else {
+                url.searchParams.delete('status');
+            }
+
+            window.history.replaceState({}, '', url.toString());
+        },
+
+        // Open an item's drill-down in the detail pane, fetching (and caching)
+        // it the first time — a run can have many items, so detail is lazy.
+        select(id) {
+            this.selectedId = id;
+
+            if (this.rowCache[id] || this.loadingRow) {
+                return;
+            }
+
+            this.loadingRow = true;
+            const url = this.config.itemUrlTemplate.replace('__ID__', encodeURIComponent(id));
+
+            window.Craft.sendActionRequest('GET', url).then((response) => {
+                const data = response.data || {};
+                this.rowCache = {
+                    ...this.rowCache,
+                    [id]: data.row ? { row: data.row } : { error: data.message || this.$t('No content returned.') },
+                };
+            }).catch((err) => {
+                this.rowCache = { ...this.rowCache, [id]: { error: requestErrorMessage(err, this.$t('Request failed.')) } };
+            }).finally(() => {
+                this.loadingRow = false;
+            });
+        },
+
+        // Select the first item when the current selection is gone (or none) —
+        // keeps the detail pane populated after a page/filter change or a poll.
+        autoSelect() {
+            if (this.items.some((i) => i.id === this.selectedId)) {
+                return;
+            }
+
+            if (this.items.length) {
+                this.select(this.items[0].id);
+            } else {
+                this.selectedId = null;
+            }
         },
 
         pauseStream() {
@@ -256,10 +384,6 @@ export default {
             this.startPolling();
         },
 
-        // Poll the run on an interval while it's live — Craft's queue-runner
-        // pattern — rather than holding an SSE connection (and the session
-        // lock) open. Each tick just re-fetches the page in view, so new items
-        // appear on page 1 and the counters refresh.
         startPolling() {
             this.streamLabel = this.$t('live updates');
             this.fetchPage(this.currentPage);
@@ -274,8 +398,8 @@ export default {
         },
 
         // Fetch one page of items (server-filtered + paginated) and refresh the
-        // counters. The pager, the status filter, the search box, and the live
-        // poll all route through here.
+        // counters. The pager, the counter filter, and the live poll all route
+        // through here.
         fetchPage(page) {
             this.currentPage = Math.max(1, page);
 
@@ -288,10 +412,6 @@ export default {
                 params.set('status', this.activeAction);
             }
 
-            if (this.search.trim() !== '') {
-                params.set('search', this.search.trim());
-            }
-
             const base = this.config.itemsUrl;
             const url = base + (base.includes('?') ? '&' : '?') + params.toString();
 
@@ -302,9 +422,8 @@ export default {
                 this.items = data.items || [];
                 this.itemTotal = data.total || 0;
                 this.applyCounters(data);
+                this.autoSelect();
             }).catch(() => {
-                // A failed request reads as paused so the button offers a retry
-                // rather than a dead "Pause".
                 this.streamLabel = this.$t('connection lost');
                 this.paused = true;
                 this.stopPolling();
@@ -320,6 +439,7 @@ export default {
             });
             if (c.status) this.log.status = c.status;
             if (c.finishedAt) this.log.finishedAt = c.finishedAt;
+            if (c.duration) this.log.duration = c.duration;
             if (c.error) this.log.error = c.error;
 
             if (data.done) {
@@ -333,9 +453,8 @@ export default {
 </script>
 
 <style scoped>
-/* Run summary + counters panels — the same quarter-width grid the debug feed
-   panel uses (DebugApp), so the two screens read consistently. */
-.influx-log-panel {
+/* ---- Run summary -------------------------------------------------------- */
+.influx-log-summary {
     overflow: hidden;
     margin-bottom: 14px;
     background: var(--white);
@@ -343,19 +462,49 @@ export default {
     border-radius: var(--large-border-radius);
 }
 
-.influx-log-panel-bar {
+.influx-log-summary-bar {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 13px 18px;
+    padding: 12px 18px;
     background: var(--gray-050);
     border-bottom: 1px solid var(--hairline-color);
 }
 
-.influx-log-panel-bar .influx-log-cell { flex: 1 1 auto; }
+.influx-log-ident {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
 
-/* The endpoint this run fetched from — a full-width sub-row under the link bar
-   (URLs are long, so it wraps), hairline-separated from the run-info grid. */
+.influx-log-link {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.influx-log-endpoint-url {
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--medium-text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: break-all;
+}
+
+.influx-log-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: none;
+    text-align: end;
+    font-size: 12px;
+    color: var(--medium-text-color);
+}
+
+/* Endpoint / resource sub-rows (multi-site or single-resource runs). */
 .influx-log-endpoint {
     display: flex;
     flex-direction: column;
@@ -363,24 +512,10 @@ export default {
     padding: 11px 18px;
     border-bottom: 1px solid var(--hairline-color);
 }
-.influx-log-endpoint-url {
-    font-size: 12px;
-    word-break: break-all;
-}
-/* Per-site lines stack, one endpoint each (all-sites run over site endpoints). */
-.influx-log-endpoint-line {
-    display: block;
-    background: none;
-}
 
-/* Status pill chrome + palette live in ActionBadge; this pill just pins
-   itself in the flex bar and keeps its slightly wider padding (the compound
-   selector outweighs the badge's own padding regardless of CSS order). */
-.influx-log-status { flex: none; }
-.influx-action-badge.influx-log-status { padding: 2px 10px; }
+.influx-log-endpoint .influx-log-endpoint-url { white-space: normal; }
+.influx-log-endpoint-line { display: block; padding: 0; background: none; }
 
-/* Eyebrow for the endpoint sub-row only — the panel cells get theirs from
-   StatCell now. */
 .influx-log-eyebrow {
     font-size: 10px;
     font-weight: 600;
@@ -389,9 +524,6 @@ export default {
     color: var(--medium-text-color);
 }
 
-/* Full-width error band between the header and the run info — red-ish field
-   with the error text, same palette as the error pills. The <pre> treatment
-   lives in ErrorPanel; the text colour is inherited from the band. */
 .influx-log-error {
     padding: 12px 18px;
     background: #fdecec;
@@ -399,21 +531,191 @@ export default {
     color: #8a1f1f;
 }
 
-.influx-log-h2 { margin-top: 24px; }
-
-.influx-log-pager {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 14px;
+/* ---- Counters (also the item filter) ------------------------------------ */
+.influx-log-counters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
-/* Status menu + search, laid out like Craft's element-index toolbar. */
-.influx-log-toolbar {
+.influx-counter {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 9px 18px;
+    border: 0;
+    border-inline-end: 1px solid var(--hairline-color);
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+}
+
+.influx-counter:hover { background: var(--gray-050); }
+
+.influx-counter.is-active {
+    background: hsl(208, 100%, 96%);
+    box-shadow: inset 0 -2px 0 hsl(208, 100%, 42%);
+}
+
+.influx-counter-value {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-color);
+}
+
+.influx-counter-value.is-muted { color: var(--light-text-color); }
+.influx-counter-value.is-good { color: #087443; }
+.influx-counter-value.is-bad { color: #8a1f1f; }
+
+.influx-counter-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--medium-text-color);
+}
+
+/* ---- Split card (mirrors the Debug inspector's shell) ------------------- */
+.influx-split {
+    display: flex;
+    align-items: stretch;
+    /* The summary card sits above, so this offset is larger than the Debug
+       view's. Constrains the panes to the viewport instead of the page. */
+    max-height: calc(100vh - 360px);
+    min-height: 300px;
+    overflow: hidden;
+    background: var(--white);
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--large-border-radius);
+}
+
+.influx-split-list {
+    display: flex;
+    flex: 0 0 380px;
+    flex-direction: column;
+    min-height: 0;
+    border-inline-end: 1px solid var(--hairline-color);
+}
+
+.influx-split-list-head {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    box-sizing: border-box;
+    min-height: 62px;
+    padding: 10px 14px;
+    background: var(--gray-050);
+    border-bottom: 1px solid var(--hairline-color);
+}
+
+.influx-split-list-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--medium-text-color);
+}
+
+.influx-split-list-title .light {
+    margin-inline-start: 6px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.influx-split-list-hint {
+    font-size: 11px;
+    color: var(--light-text-color);
+}
+
+.influx-split-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.influx-split-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--hairline-color);
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+}
+
+.influx-split-item:hover { background: var(--gray-050); }
+
+.influx-split-item.is-selected {
+    background: hsl(208, 100%, 96%);
+    box-shadow: inset 3px 0 0 hsl(208, 100%, 42%);
+}
+
+.influx-split-item-top {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 0 0 14px;
+    min-width: 0;
 }
-.influx-log-search { flex: 1 1 auto; }
+
+.influx-split-item-title {
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.influx-split-item-badge { flex: none; }
+.influx-split-item-sub { font-size: 11px; color: var(--light-text-color); }
+
+/* "Saved despite a field error" count beside the action badge. */
+.influx-log-haserror {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    border-radius: 9px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #fde2e2;
+    color: #8a1f1f;
+    border: 1px solid #e7a3a3;
+}
+
+.influx-split-detail {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.influx-split-loading,
+.influx-split-empty { padding: 16px 14px; }
+
+.influx-split-loading { color: var(--light-text-color); }
+.influx-split-placeholder { padding: 18px; }
+
+.influx-split-pager {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--hairline-color);
+    background: var(--gray-050);
+    font-size: 12px;
+}
 </style>

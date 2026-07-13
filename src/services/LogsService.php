@@ -86,8 +86,12 @@ class LogsService extends Component
         }
 
         // Stamp the run onto the link itself — a timestamp that outlives the
-        // log, plus a pointer to it (null when logging is off).
-        Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
+        // log, plus a pointer to it (null when logging is off). Element-
+        // triggered syncs are one-off single-resource resyncs, not feed runs,
+        // so they don't count as the link's "last run" on the overview.
+        if ($trigger !== SyncTrigger::ELEMENT) {
+            Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
+        }
 
         return $log;
     }
@@ -249,13 +253,24 @@ class LogsService extends Component
     }
 
     /**
-     * One page of logs, newest first, plus the total for the pager.
+     * One page of logs, newest first, plus the total for the pager. Optionally
+     * restricted to one link (by handle) and/or one run status — the two
+     * filters the Logs overview toolbar exposes. A null filter is ignored, so
+     * `paginate($page, $perPage)` still returns everything.
      *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage): array
+    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
+
+        if ($linkHandle !== null && $linkHandle !== '') {
+            $query->andWhere(['linkHandle' => $linkHandle]);
+        }
+
+        if ($status !== null && $status !== '') {
+            $query->andWhere(['status' => $status]);
+        }
 
         $total = (int) $query->count();
         $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();

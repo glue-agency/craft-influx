@@ -179,3 +179,89 @@
     color: #8a6d00;
     border-color: #f0c674;
 }
+
+/* =========================================================================
+   Overview tables — the Links and Logs indexes.
+
+   These lean on Craft's `table.data.fullwidth`; only the folded-cell content
+   and the shared pill vocabulary need styling. The pill palette matches the
+   Vue `ActionBadge` (green/red) and the token chips (blue/gray), so a colour
+   means the same thing wherever it appears in the plugin.
+   ========================================================================= */
+
+/* Folded identity cell: the muted handle · target line under the link name. */
+.influx-cell-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--medium-text-color);
+}
+
+.influx-cell-meta code {
+    font-size: 11px;
+    color: var(--light-text-color);
+}
+
+.influx-cell-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Sub-detail line under a run's status/time (result summary, duration, seen),
+   indented to sit under the label rather than the status dot. */
+.influx-cell-sub {
+    margin-top: 2px;
+    padding-inline-start: 22px;
+    font-size: 11px;
+    color: var(--light-text-color);
+}
+
+/* Actions cell: the Sync btngroup + the three-dots overflow, kept together. */
+.influx-row-actions {
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+/* Row below the Logs table: run count on the left, pager on the right. */
+.influx-table-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+    font-size: 12px;
+}
+
+.influx-table-foot .pagination {
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+}
+
+/* Pill group: one wrapping row of pills (sites, processing, run result). */
+.influx-pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Pills — the shared verb/result vocabulary. */
+.influx-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.influx-pill--green { background: #d6f1de; color: #064f1f; border-color: #7fcb95; }
+.influx-pill--red   { background: #fde2e2; color: #8a1f1f; border-color: #e7a3a3; }
+.influx-pill--blue  { background: #e1eefc; color: #1c4f8a; border-color: #b9d3f0; }
+.influx-pill--gray  { background: rgba(0, 0, 0, .06); color: #4a4f57; border-color: rgba(0, 0, 0, .08); }

@@ -1,0 +1,55 @@
+{# =========================================================================
+   Shared render helpers for the Links + Logs overviews.
+
+   The pill vocabulary is the one visual language the two indexes share:
+   colour carries meaning (green = wrote / enabled, red = destructive /
+   failed, blue = informative, gray = neutral / no change). Colours resolve
+   to the `.influx-pill--*` classes in `links.css`; the labels are translated
+   here so the presenter layer stays free of Craft's i18n.
+   ========================================================================= #}
+
+{% macro pill(label, color) %}
+    <span class="influx-pill influx-pill--{{ color }}">{{ label }}</span>
+{% endmacro %}
+
+{# A configured processing action on the Links overview. The raw verb handle is
+   the label (lowercase, e.g. `delete-for-site` verbatim); verb → colour is the
+   configuration palette (create reads as informative here, not as a write):
+   create = blue, update = green, disable = gray, delete = red. #}
+{% macro processingPill(verb) %}
+    {% import _self as ui %}
+    {% set colors = {
+        'create':           'blue',
+        'update':           'green',
+        'disable':          'gray',
+        'disable-for-site': 'gray',
+        'delete':           'red',
+        'delete-for-site':  'red',
+    } %}
+    {{ ui.pill(verb, colors[verb] ?? 'gray') }}
+{% endmacro %}
+
+{# The translated noun for a result kind ("created", "seen", …). Shared by the
+   Logs "Result" pills and the Links "Last run" text line so the wording never
+   drifts between the two. Whitespace-trimmed so it composes into a sentence. #}
+{% macro resultNoun(kind) -%}
+    {%- set nouns = {
+        'created':   'created'|t('influx'),
+        'updated':   'updated'|t('influx'),
+        'unchanged': 'unchanged'|t('influx'),
+        'skipped':   'skipped'|t('influx'),
+        'disabled':  'disabled'|t('influx'),
+        'deleted':   'deleted'|t('influx'),
+        'seen':      'seen'|t('influx'),
+    } -%}
+    {{- nouns[kind] ?? kind -}}
+{%- endmacro %}
+
+{# A result segment from a run — `{ count, kind, color }` as shaped by
+   LogPresenter. The kind picks the noun ("3 created"); the colour rides
+   along from the presenter (result palette: created/updated = green,
+   unchanged/skipped/disabled = gray, deleted = red, seen = blue). #}
+{% macro resultPill(segment) %}
+    {% import _self as ui %}
+    {{ ui.pill(segment.count ~ ' ' ~ ui.resultNoun(segment.kind), segment.color) }}
+{% endmacro %}

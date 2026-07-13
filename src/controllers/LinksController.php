@@ -11,7 +11,9 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\web\assets\links\StylesAsset;
 use GlueAgency\Influx\web\LinkPresenter;
+use GlueAgency\Influx\web\LogPresenter;
 use yii\base\Action;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -40,6 +42,10 @@ class LinksController extends AbstractController
 
     public function actionIndex(): Response
     {
+        // The overview list reuses the plugin's server-rendered CP chrome (the
+        // list-card + pill classes live in links.css, the CSS-only slice).
+        Craft::$app->getView()->registerAssetBundle(StylesAsset::class);
+
         $links = Influx::getInstance()->links->getAllLinks();
 
         // The last-run log per link, for the status dot + quick link. Each
@@ -52,10 +58,11 @@ class LinksController extends AbstractController
             : [];
 
         return $this->renderTemplate('influx/links/index', [
-            'links'     => $links,
-            'lastLogs'  => $lastLogs,
-            'presenter' => new LinkPresenter(),
-            'readOnly'  => $this->readOnly(),
+            'links'        => $links,
+            'lastLogs'     => $lastLogs,
+            'presenter'    => new LinkPresenter(),
+            'logPresenter' => new LogPresenter(),
+            'readOnly'     => $this->readOnly(),
         ]);
     }
 
@@ -64,10 +71,16 @@ class LinksController extends AbstractController
      * results container the SPA fills from {@see actionDebugInspect}. Writes
      * nothing.
      */
-    public function actionDebug(int $id): Response
+    public function actionDebug(): Response
     {
-        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
-            throw new NotFoundHttpException("Link {$id} not found.");
+        // Standalone inspector: the link is chosen by handle (?link=<handle>),
+        // falling back to the first link so a bare influx/debug still opens.
+        $allLinks = Influx::getInstance()->links->getAllLinks();
+        $handle = $this->stringQueryParam('link');
+        $link = ($handle !== null ? ($allLinks[$handle] ?? null) : null) ?: (reset($allLinks) ?: null);
+
+        if (! $link) {
+            throw new NotFoundHttpException('No links available to debug.');
         }
 
         // The debug inspector is a Vue app (DebugApp) — ship the full bundle.
@@ -94,6 +107,14 @@ class LinksController extends AbstractController
             ? $requestedOffset
             : null;
 
+        // Every link, for the toolbar's link switcher — changing it navigates
+        // to that link's inspector (?link=<handle>).
+        $linkOptions = array_values(array_map(static fn(Link $l): array => [
+            'handle' => $l->handle,
+            'name'   => $l->name,
+            'url'    => UrlHelper::cpUrl('influx/debug', ['link' => $l->handle]),
+        ], $allLinks));
+
         return $this->renderTemplate('influx/links/debug', [
             'link'           => $link,
             'limit'          => $limit,
@@ -101,8 +122,9 @@ class LinksController extends AbstractController
             'selectedSite'   => $selectedSite,
             'offsetHandles'  => $offsetHandles,
             'selectedOffset' => $selectedOffset,
-            'processing'     => array_values($link->processing ?? []),
-            'inspectUrl'     => UrlHelper::cpUrl("influx/links/{$link->id}/debug/inspect"),
+            'links'          => $linkOptions,
+            'linkHandle'     => $link->handle,
+            'inspectUrl'     => UrlHelper::cpUrl('influx/debug/inspect', ['link' => $link->handle]),
         ]);
     }
 
@@ -112,12 +134,14 @@ class LinksController extends AbstractController
      * processed item in a single response. Strictly read-only — the inspector
      * only ever reads the first page, so there's nothing to stream.
      */
-    public function actionDebugInspect(int $id): Response
+    public function actionDebugInspect(): Response
     {
         $this->requireAcceptsJson();
 
-        if (! ($link = Influx::getInstance()->links->getLinkById($id))) {
-            throw new NotFoundHttpException("Link {$id} not found.");
+        $handle = $this->stringQueryParam('link');
+
+        if ($handle === null || ! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
+            throw new NotFoundHttpException('Link not found.');
         }
 
         $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);

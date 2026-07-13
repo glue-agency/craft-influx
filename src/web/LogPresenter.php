@@ -4,34 +4,27 @@ namespace GlueAgency\Influx\web;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\helpers\DateTimeHelper;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 
 /**
- * Shapes log records into the JSON the Vue log viewer (LogApp / LogItem)
- * renders. Shared by {@see \GlueAgency\Influx\controllers\LogsController}'s
+ * Shapes log records into the JSON the Vue log viewer (LogApp) renders.
+ * Shared by {@see \GlueAgency\Influx\controllers\LogsController}'s
  * initial page payload and its live SSE frames, so the header, counters, and
  * row shapes can't drift between the first paint and live updates — dates are
  * formatted the same in both, which a previous inline-in-controller version
  * got wrong (formatted on load, raw over the stream).
+ *
+ * It also backs the server-rendered overviews: {@see resultSegments()},
+ * {@see durationLabel()}, and {@see statusColor()} turn a run into the pill
+ * vocabulary the Logs index shows as a "Result" column and the Links index
+ * folds into its "Last run" cell. Their composition cores
+ * ({@see composeResultSegments()}, {@see formatDuration()}) take primitives
+ * so they stay unit-testable without a booted Craft.
  */
 class LogPresenter
 {
-    /**
-     * Renders element chips — the single seam both the debug and log rows draw
-     * their element markup from, so a chip looks the same in either viewer.
-     */
-    protected ItemRowPresenter $itemRows;
-
-    /**
-     * @param ItemRowPresenter|null $itemRows chip renderer; defaults to a fresh
-     *                                        instance (only overridden in tests)
-     */
-    public function __construct(?ItemRowPresenter $itemRows = null)
-    {
-        $this->itemRows = $itemRows ?? new ItemRowPresenter();
-    }
-
     /**
      * The full log header for the initial render: identity + formatted dates +
      * the counter block.
@@ -57,6 +50,7 @@ class LogPresenter
         return [
             'status'         => (string) $log->status,
             'finishedAt'     => $this->datetime($log->finishedAt),
+            'duration'       => $this->durationLabel($log),
             'error'          => $log->error,
             'itemsSeen'      => (int) $log->itemsSeen,
             'itemsCreated'   => (int) $log->itemsCreated,
@@ -103,16 +97,24 @@ class LogPresenter
      */
     public function presentItem(LogItemRecord $item, ?array $elementMap = null): array
     {
-        $elementHtml = null;
+        // The split viewer's item list shows a plain title, not a rendered
+        // chip — the element chip is fetched with the drill-down, so there's no
+        // need to render one per row (a real cost across a page, and on every
+        // poll tick of a live run). The element's UI label, else the match
+        // value, else the row id.
+        $title = null;
 
         if ($item->elementId) {
             $element = $elementMap !== null
                 ? ($elementMap[$item->elementId] ?? null)
                 : Craft::$app->getElements()->getElementById($item->elementId);
-            $elementHtml = $element
-                ? $this->itemRows->elementChip($element)
-                : '<span class="light">#' . $item->elementId . ' (gone)</span>';
+            $title = $element
+                ? (string) ($element->getUiLabel() ?: '#' . $element->id)
+                : '#' . $item->elementId . ' ' . Craft::t('influx', '(gone)');
         }
+
+        $matchValue = (string) ($item->matchValue ?? '');
+        $title = $title ?? ($matchValue !== '' ? $matchValue : '#' . $item->id);
 
         // How many fields errored — lets the viewer flag an item that still
         // committed (created/updated) despite a field failure, which the
@@ -120,12 +122,12 @@ class LogPresenter
         $errorCount = count($this->fieldErrors($item->fieldErrors));
 
         return [
-            'id'          => (int) $item->id,
-            'action'      => (string) $item->action,
-            'matchValue'  => (string) ($item->matchValue ?? ''),
-            'message'     => (string) ($item->message ?? ''),
-            'elementHtml' => $elementHtml,
-            'errorCount'  => $errorCount,
+            'id'         => (int) $item->id,
+            'action'     => (string) $item->action,
+            'matchValue' => $matchValue,
+            'message'    => (string) ($item->message ?? ''),
+            'title'      => $title,
+            'errorCount' => $errorCount,
         ];
     }
 
@@ -177,6 +179,121 @@ class LogPresenter
         unset($mapping);
 
         return $mappings;
+    }
+
+    // Overview presentation
+    // =========================================================================
+
+    /**
+     * The run's outcome as an ordered list of pill segments — one per action
+     * that actually happened — for the Logs overview's "Result" column and the
+     * Links overview's "Last run" detail line.
+     *
+     * @return list<array{count: int, kind: string, color: string}>
+     */
+    public function resultSegments(LogRecord $log): array
+    {
+        return self::composeResultSegments([
+            'seen'      => (int) $log->itemsSeen,
+            'created'   => (int) $log->itemsCreated,
+            'updated'   => (int) $log->itemsUpdated,
+            'unchanged' => (int) $log->itemsUnchanged,
+            'skipped'   => (int) $log->itemsSkipped,
+            'disabled'  => (int) $log->itemsDisabled,
+            'deleted'   => (int) $log->itemsDeleted,
+        ], (string) $log->status);
+    }
+
+    /**
+     * Composition core for {@see resultSegments()} — kept on primitives so it's
+     * unit-testable without a booted Craft or a real record.
+     *
+     * A still-running (or pending) run leads with an informative "N seen"
+     * progress pill; a settled run drops it (the seen total moves to the sub
+     * line). Only actions with a non-zero count appear, in a fixed order, each
+     * carrying the result palette's colour (green = wrote, gray = neutral,
+     * red = destructive).
+     *
+     * @param array{seen?: int, created?: int, updated?: int, unchanged?: int, skipped?: int, disabled?: int, deleted?: int} $counters
+     * @return list<array{count: int, kind: string, color: string}>
+     */
+    public static function composeResultSegments(array $counters, string $status): array
+    {
+        $segments = [];
+
+        if (in_array($status, ['running', 'pending'], true)) {
+            $segments[] = ['count' => (int) ($counters['seen'] ?? 0), 'kind' => 'seen', 'color' => 'blue'];
+        }
+
+        // Fixed display order → result-palette colour. `seen` is handled above
+        // (progress only, while a run is live); the rest surface once they've
+        // happened.
+        $palette = [
+            'created'   => 'green',
+            'updated'   => 'green',
+            'unchanged' => 'gray',
+            'skipped'   => 'gray',
+            'disabled'  => 'gray',
+            'deleted'   => 'red',
+        ];
+
+        foreach ($palette as $kind => $color) {
+            $count = (int) ($counters[$kind] ?? 0);
+
+            if ($count > 0) {
+                $segments[] = ['count' => $count, 'kind' => $kind, 'color' => $color];
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * How long the run took, e.g. "41s", or null while it's still running (no
+     * finish time yet).
+     */
+    public function durationLabel(LogRecord $log): ?string
+    {
+        if (! $log->finishedAt) {
+            return null;
+        }
+
+        $start = DateTimeHelper::toDateTime($log->startedAt);
+        $end = DateTimeHelper::toDateTime($log->finishedAt);
+
+        if (! $start || ! $end) {
+            return null;
+        }
+
+        return self::formatDuration($end->getTimestamp() - $start->getTimestamp());
+    }
+
+    /**
+     * Format a duration in seconds the way the overviews show it — raw seconds
+     * with an `s` suffix (matching the run log's own display). Null for a
+     * missing or negative span.
+     */
+    public static function formatDuration(?int $seconds): ?string
+    {
+        if ($seconds === null || $seconds < 0) {
+            return null;
+        }
+
+        return $seconds . 's';
+    }
+
+    /**
+     * Craft status-dot class for a run status: `live` (ok), `expired` (error),
+     * or `pending` (running / anything else). The one place the run
+     * status → dot colour mapping lives, shared by both overviews.
+     */
+    public static function statusColor(string $status): string
+    {
+        return match ($status) {
+            'ok'    => 'live',
+            'error' => 'expired',
+            default => 'pending',
+        };
     }
 
     /**

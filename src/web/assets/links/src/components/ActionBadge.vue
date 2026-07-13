@@ -6,12 +6,11 @@
 import { actionColor } from '../lib/actionColors.js';
 
 /**
- * The status-coloured pill every screen renders for a sync action or run
- * status: DebugItem's action tag, LogItem's committed-action tag, DebugApp's
- * configured-processing tags and LogApp's run-status pill. Owns the pill
- * chrome and the live/pending/expired palette once — consumers keep their
- * legacy class (influx-debug-tag, influx-log-tag, …) as a fallthrough class
- * for positioning tweaks and existing selectors.
+ * The status-coloured pill for a sync action or run status — the split
+ * inspectors' item + detail badges (DebugApp's list, DebugItemDetail's header,
+ * LogApp's items) and LogApp's run-status pill. Owns the pill chrome and the
+ * live/pending/expired palette once; consumers pass a fallthrough class for
+ * positioning tweaks.
  */
 export default {
     name: 'ActionBadge',

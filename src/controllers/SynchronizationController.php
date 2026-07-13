@@ -79,7 +79,12 @@ class SynchronizationController extends AbstractController
         $this->requirePostRequest();
 
         $elementId = (int) Craft::$app->getRequest()->getRequiredBodyParam('elementId');
-        $element = Craft::$app->getElements()->getElementById($elementId);
+
+        // Load the element in the site the editor triggered the sync from, so a
+        // per-site-endpoints link syncs only that site (see elementSyncSites).
+        $siteHandle = Craft::$app->getRequest()->getBodyParam('site');
+        $siteId = $siteHandle ? Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id : null;
+        $element = Craft::$app->getElements()->getElementById($elementId, null, $siteId);
 
         if (! $element) {
             throw new NotFoundHttpException("Element #{$elementId} not found.");

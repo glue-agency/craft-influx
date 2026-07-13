@@ -62,7 +62,11 @@ Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical 
 
 ### Targets
 
-A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`). Third-party plugins register their own:
+A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`).
+
+> **Note:** `UserTarget` is under active development — treat it as experimental. Its mapping options (group membership, user-specific attributes) and behaviour may still change before release.
+
+Third-party plugins register their own:
 
 ```php
 use GlueAgency\Influx\services\TargetsService;
@@ -155,7 +159,7 @@ Shipped since the alpha: queue-job-based runs (one job per site, one feed page p
 
 Still open:
 
-- [ ] **More element-type targets.** Links can hydrate Entries (`EntryTarget`) and Users (`UserTarget`) today. Add target adapters for the other element types:
+- [ ] **More element-type targets.** Links can hydrate Entries (`EntryTarget`) today, with `UserTarget` (Users) under active development. Add target adapters for the other element types:
   - [ ] Assets (`craft\elements\Asset`)
   - [ ] Categories (`craft\elements\Category`)
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)

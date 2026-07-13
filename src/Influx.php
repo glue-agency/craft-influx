@@ -177,8 +177,11 @@ class Influx extends Plugin
                 // separate detail view.
                 $event->rules['influx/links/<id:\d+>'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/edit'] = 'influx/links/edit';
-                $event->rules['influx/links/<id:\d+>/debug'] = 'influx/links/debug';
-                $event->rules['influx/links/<id:\d+>/debug/inspect'] = 'influx/links/debug-inspect';
+
+                // Debug is a standalone inspector scoped by link handle
+                // (?link=<handle>), with a link switcher — not a per-link page.
+                $event->rules['influx/debug'] = 'influx/links/debug';
+                $event->rules['influx/debug/inspect'] = 'influx/links/debug-inspect';
 
                 // LinkBuilder SPA — JSON CP routes
                 $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';
@@ -290,19 +293,42 @@ class Influx extends Plugin
             $disabled = $cooldownRemaining > 0;
             $redirect = $element->getCpEditUrl();
 
+            // Only a per-site-endpoints link scopes to one site; a link with a
+            // single base endpoint always syncs the primary site, so don't pin
+            // the button to the editor's current site there (it would just make
+            // the sync build its item endpoint from a non-primary localization).
+            $params = ['elementId' => $element->id];
+
+            if ($link->siteHandles() !== []) {
+                $params['site'] = $element->site->handle;
+            }
+
             $event->html .= Html::button(Craft::t('influx', 'Sync from remote'), [
                 'class'    => array_filter(['btn', 'formsubmit', $disabled ? 'disabled' : null]),
                 'disabled' => $disabled,
-                'data'     => array_filter([
-                    'icon'     => 'refresh',
+                // The plugin's own accent — a blue→teal gradient, white text, no
+                // icon — so it reads as an Influx action distinct from Craft's
+                // teal "submit" buttons (see Entry.dc.html). `order: -1` pulls it
+                // to the far left of #action-buttons: Craft prepends its own
+                // buttons (e.g. "Create a draft") before firing the event that
+                // appends ours, so DOM order alone leaves it mid-row.
+                'style' => 'order: -1; background: linear-gradient(100deg, var(--blue-600) 45%, var(--teal-600) 115%); color: var(--white);',
+                'data'  => array_filter([
                     'action'   => 'influx/synchronization/element',
-                    'params'   => ['elementId' => $element->id],
+                    'params'   => $params,
                     'form'     => 'false',
                     'redirect' => $redirect ? Craft::$app->getSecurity()->hashData($redirect) : null,
                 ]),
                 'title' => $disabled
                     ? Craft::t('influx', 'Available again in {n}s', ['n' => $cooldownRemaining])
                     : '',
+            ]);
+
+            // Sits right after the button (same `order: -1`), separating it
+            // from Craft's native button group to its right.
+            $event->html .= Html::tag('div', '', [
+                'class' => 'influx-sync-divider',
+                'style' => 'order: -1; align-self: stretch; width: 1px; margin-block: 5px; background: var(--gray-200);',
             ]);
         });
     }

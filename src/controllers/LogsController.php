@@ -9,6 +9,7 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\web\assets\links\LinksAsset;
+use GlueAgency\Influx\web\assets\links\StylesAsset;
 use GlueAgency\Influx\web\ItemRowPresenter;
 use GlueAgency\Influx\web\LogPresenter;
 use yii\web\NotFoundHttpException;
@@ -18,14 +19,22 @@ class LogsController extends AbstractController
 {
     public const ITEMS_PER_PAGE = 25;
 
+    /**
+     * Statuses the overview's status filter offers, in display order. A
+     * requested status outside this set is ignored (treated as "all").
+     */
+    protected const FILTER_STATUSES = ['running', 'ok', 'error'];
+
     public function actionIndex(): Response
     {
+        // The overview reuses the plugin's server-rendered pill classes, which
+        // live in links.css (the CSS-only slice).
+        Craft::$app->getView()->registerAssetBundle(StylesAsset::class);
+
         $page = $this->intQueryParam('page', 1, 1);
         $perPage = 50;
 
         $plugin = Influx::getInstance();
-
-        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage);
 
         // handle => id / handle => name, so each row can link to its link's
         // edit screen by id and show its friendly name (logs only store the
@@ -34,13 +43,34 @@ class LogsController extends AbstractController
         $linkIds = array_map(static fn($link)   => $link->id, $links);
         $linkNames = array_map(static fn($link) => $link->name, $links);
 
+        // Toolbar filters. Both are validated against what actually exists so a
+        // stale/hand-edited query string just falls back to "all".
+        $selectedLink = $this->stringQueryParam('link');
+
+        if ($selectedLink !== null && ! isset($linkNames[$selectedLink])) {
+            $selectedLink = null;
+        }
+
+        $selectedStatus = $this->stringQueryParam('status');
+
+        if ($selectedStatus !== null && ! in_array($selectedStatus, self::FILTER_STATUSES, true)) {
+            $selectedStatus = null;
+        }
+
+        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $selectedLink, $selectedStatus);
+
         return $this->renderTemplate('influx/logs/index', [
-            'logs'      => $logs,
-            'page'      => $page,
-            'perPage'   => $perPage,
-            'total'     => $total,
-            'linkIds'   => $linkIds,
-            'linkNames' => $linkNames,
+            'logs'           => $logs,
+            'page'           => $page,
+            'perPage'        => $perPage,
+            'total'          => $total,
+            'linkIds'        => $linkIds,
+            'linkNames'      => $linkNames,
+            'presenter'      => new LogPresenter(),
+            'selectedLink'   => $selectedLink,
+            'selectedStatus' => $selectedStatus,
+            'statuses'       => self::FILTER_STATUSES,
+            'retentionDays'  => $plugin->getSettings()->logRetentionDays,
         ]);
     }
 
