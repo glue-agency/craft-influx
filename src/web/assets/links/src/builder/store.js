@@ -42,6 +42,9 @@ const initial = () => ({
     saving: false,
     savedSnapshot: null,   // JSON of the link as last loaded/saved
     errors: {},            // attribute → message[]
+    warning: null,         // soft post-save warning banner (e.g. overlapping
+                           // resource mapping); persists until the next save
+
     // UI mode: the link is endpoint-per-site instead of one base endpoint.
     // Derived from the saved data on load, then owned by the General tab's
     // lightswitch. Not persisted itself — a link "is" site-specific when
@@ -76,6 +79,7 @@ async function load(id, duplicateOf = null) {
     root.loading = true;
     root.loadError = null;
     root.errors = {};
+    root.warning = null;
     try {
         const data = await api.bootstrap(id, duplicateOf);
         api.configureCsrf({ name: data.meta.csrfTokenName, value: data.meta.csrfToken });
@@ -123,6 +127,7 @@ async function save(options = {}) {
     // here — drop it client-side (the controller 403s as the backstop).
     if (root.meta?.readOnly) return { success: false };
     root.errors = {};
+    root.warning = null;
 
     // Site-specific mode without a single usable site endpoint can't be
     // caught server-side (the lightswitch itself isn't persisted, and a
@@ -156,6 +161,14 @@ async function save(options = {}) {
             notifyNotice(result.notice);
         }
 
+        // Soft overlap warning: another link also defines a resource mapping
+        // for these elements. Stash it for the persistent header banner and
+        // toast it once — the banner stays until the next save.
+        if (result.warning) {
+            root.warning = result.warning;
+            notifyNotice(result.warning);
+        }
+
         if (wasNew && savedId) {
             // The `new` URL is gone — full reload lands the SPA on the
             // persistent edit URL so subsequent saves update in place.
@@ -165,10 +178,10 @@ async function save(options = {}) {
             return { success: true, redirected: true };
         }
 
-        // A migration adjusted the stored policy — keep the user on the page
-        // so the swapped checkboxes (and the notice) are visible instead of
-        // navigating away from them.
-        if (!continueEditing && !result.notice) {
+        // A migration or overlap warning wants the user's attention — keep
+        // them on the page so the swapped checkboxes / notice / warning banner
+        // are visible instead of navigating away from them.
+        if (!continueEditing && !result.notice && !result.warning) {
             window.location.href = Craft.getCpUrl('influx/links');
             return { success: true, redirected: true };
         }

@@ -605,6 +605,7 @@ class SynchronizationService extends Component
             $result->message,
             $item->raw(),
             $result->mappingErrors(),
+            $result->changedFieldHandles(),
         );
 
         $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);

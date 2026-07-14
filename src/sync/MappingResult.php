@@ -36,7 +36,26 @@ class MappingResult
     /** Whether this mapping wrote a differing value (null = not evaluated). */
     public ?bool $changed = null;
 
-    public ?string $note = null;
+    /**
+     * The feed didn't address this mapping — no node value and no default — so
+     * the field/attribute was deliberately left untouched. Surfaced as a pill
+     * in the inspector.
+     */
+    public bool $unaddressed = false;
+
+    /**
+     * The applied value came from the mapping's configured default rather than
+     * the feed ({@see \GlueAgency\Influx\models\FieldMapping::usesDefault()}).
+     * Mutually exclusive with {@see $unaddressed}. Surfaced as a pill.
+     */
+    public bool $usedDefault = false;
+
+    /**
+     * The target owns this attribute and reconciles it itself (e.g. a User
+     * link's `groups`), so the sync doesn't write it during the element save.
+     * Surfaced as a pill; the row carries the feed value for reference only.
+     */
+    public bool $managedByTarget = false;
 
     public ?string $error = null;
 
@@ -49,7 +68,9 @@ class MappingResult
         mixed $parsedValue = null,
         mixed $currentValue = null,
         ?bool $changed = null,
-        ?string $note = null,
+        bool $unaddressed = false,
+        bool $usedDefault = false,
+        bool $managedByTarget = false,
         ?string $error = null,
     ) {
         $this->handle = $handle;
@@ -60,7 +81,9 @@ class MappingResult
         $this->parsedValue = $parsedValue;
         $this->currentValue = $currentValue;
         $this->changed = $changed;
-        $this->note = $note;
+        $this->unaddressed = $unaddressed;
+        $this->usedDefault = $usedDefault;
+        $this->managedByTarget = $managedByTarget;
         $this->error = $error;
     }
 }

@@ -13,6 +13,7 @@ use GlueAgency\Influx\db\Table;
  * @property string $action
  * @property ?string $message
  * @property ?string $fieldErrors
+ * @property ?string $changedFields
  * @property ?string $payload
  * @property string $dateCreated
  * @property string $dateUpdated

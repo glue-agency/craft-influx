@@ -74,17 +74,18 @@ class Install extends Migration
         $this->createIndex(null, Table::LOGS, ['startedAt']);
 
         $this->createTable(Table::LOG_ITEMS, [
-            'id'          => $this->primaryKey(),
-            'logId'       => $this->integer()->notNull(),
-            'elementId'   => $this->integer()->null(),
-            'matchValue'  => $this->string(255)->null(),
-            'action'      => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
-            'message'     => $this->text()->null(),
-            'fieldErrors' => $this->text()->null(),        // {handle: message} for fields whose strategy threw
-            'payload'     => $this->longText()->null(),    // raw remote item JSON (optional)
-            'dateCreated' => $this->dateTime()->notNull(),
-            'dateUpdated' => $this->dateTime()->notNull(),
-            'uid'         => $this->uid(),
+            'id'            => $this->primaryKey(),
+            'logId'         => $this->integer()->notNull(),
+            'elementId'     => $this->integer()->null(),
+            'matchValue'    => $this->string(255)->null(),
+            'action'        => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
+            'message'       => $this->text()->null(),
+            'fieldErrors'   => $this->text()->null(),        // {handle: message} for fields whose strategy threw
+            'changedFields' => $this->text()->null(),        // JSON list of mapping handles that changed in this run
+            'payload'       => $this->longText()->null(),    // raw remote item JSON (optional)
+            'dateCreated'   => $this->dateTime()->notNull(),
+            'dateUpdated'   => $this->dateTime()->notNull(),
+            'uid'           => $this->uid(),
         ]);
 
         // Composite: covers logId-only lookups via its leftmost prefix, and the

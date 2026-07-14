@@ -64,13 +64,15 @@ class UserTarget extends AbstractElementTarget
         return false;
     }
 
+    /**
+     * Users have no sub-partition to scope on, so structural targeting is just
+     * "an in-handle User" — exactly {@see AbstractElementTarget::targetsElement()},
+     * which this target inherits unchanged. {@see claimsElement()} layers the
+     * match-value check on top.
+     */
     public function claimsElement(Link $link, ElementInterface $element): bool
     {
-        if (! ($element instanceof User)) {
-            return false;
-        }
-
-        if (! $this->handles($link)) {
+        if (! $this->targetsElement($link, $element)) {
             return false;
         }
 

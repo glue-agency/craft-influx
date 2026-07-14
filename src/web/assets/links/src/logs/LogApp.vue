@@ -22,7 +22,7 @@
                 <div class="influx-log-ident">
                     <a v-if="linkUrl" :href="linkUrl" class="influx-log-link">{{ linkName }}</a>
                     <span v-else class="influx-log-link">{{ linkName }}</span>
-                    <a v-if="endpointUrl" :href="endpointUrl" target="_blank" rel="noopener" class="influx-log-endpoint-url">{{ endpointUrl }}</a>
+                    <span v-if="endpointUrl" class="influx-log-endpoint-url">{{ endpointUrl }}</span>
                 </div>
                 <div class="influx-log-meta">
                     <span>{{ metaLine }}</span>
@@ -121,6 +121,7 @@
                     :key="selectedId"
                     :row="selectedRow"
                     :match-attribute="selectedRow.matchAttribute || ''"
+                    context="log"
                 />
                 <p v-else class="influx-split-placeholder light">{{ $t('Select an item to inspect it.') }}</p>
             </div>
@@ -611,6 +612,9 @@ export default {
 }
 
 .influx-split-list-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;

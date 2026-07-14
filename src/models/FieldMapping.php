@@ -173,6 +173,34 @@ class FieldMapping
         return $this->rawValue($item) !== null || $this->useDefault;
     }
 
+    /**
+     * Whether the value this mapping applies for the given item comes from its
+     * configured default rather than the feed — either the explicit "— use
+     * default —" ({@see $useDefault}, no node) or a mapped node whose value is
+     * missing/empty in this item, so {@see resolve()} falls back to the
+     * default. Gated on {@see addressedBy()} so it's mutually exclusive with the
+     * "left untouched" state, and false for an empty-string default (which
+     * resolves to null — no value written).
+     */
+    public function usesDefault(RemoteItem $item): bool
+    {
+        if (! $this->addressedBy($item)) {
+            return false;
+        }
+
+        if ($this->default === null || $this->default === '') {
+            return false;
+        }
+
+        if ($this->node === null) {
+            return true;
+        }
+
+        $raw = $this->rawValue($item);
+
+        return $raw === null || $raw === '';
+    }
+
     public function hasSubMappings(): bool
     {
         return ! empty($this->fields) || ! empty($this->nativeFields);

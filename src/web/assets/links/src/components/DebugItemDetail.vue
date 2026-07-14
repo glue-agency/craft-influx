@@ -8,10 +8,6 @@
                 class="influx-detail-chip"
                 v-html="row.element.chipHtml"
             ></span>
-            <span v-else-if="row.action === 'would-create'" class="influx-debug-ghost-chip">
-                <span class="influx-debug-ghost-chip-glyph" aria-hidden="true">+</span>
-                {{ $t('New element') }}
-            </span>
             <span v-else class="influx-detail-title">{{ title }}</span>
 
             <action-badge :action="row.action" class="influx-detail-badge" />
@@ -34,17 +30,21 @@
             </div>
         </div>
 
-        <!-- Parsed: incoming vs current, one row per mapped field. -->
+        <!-- Parsed: incoming vs current (or, in the log context, vs parsed),
+             one row per mapped field. -->
         <div v-if="view === 'parsed'" class="influx-detail-body">
             <p v-if="row.message" class="influx-debug-item-note">{{ row.message }}</p>
             <pre v-if="row.error" class="influx-debug-item-error">{{ row.error }}</pre>
 
             <template v-if="row.mappings && row.mappings.length">
+                <!-- Three columns; the "did it change" signal is the row's
+                     green tint (data-changed), not a column. Per-row status is
+                     carried by the pills beside the field label, each opening a
+                     popover with the full "why" on click. -->
                 <div class="influx-detail-headings">
                     <div>{{ $t('Field') }}</div>
                     <div>{{ $t('Incoming') }}</div>
-                    <div>{{ $t('Current') }}</div>
-                    <div>{{ $t('Changed?') }}</div>
+                    <div>{{ context === 'log' ? $t('Parsed') : $t('Current') }}</div>
                 </div>
 
                 <template v-for="m in row.mappings" :key="m.handle">
@@ -52,25 +52,54 @@
                         <div class="influx-detail-field">
                             <span class="influx-detail-field-name">
                                 {{ m.label }}
-                                <span v-if="isMatch(m)" class="influx-detail-matchtag">{{ $t('Match by') }}</span>
+                                <button
+                                    v-if="isMatch(m)"
+                                    type="button"
+                                    class="influx-detail-pill influx-detail-pill--match"
+                                    @click.stop="toggleInfo($event, m.handle + ':match', $t('the unique identifier used by this Element Link'))"
+                                >{{ $t('match by') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                <button
+                                    v-if="m.unaddressed"
+                                    type="button"
+                                    class="influx-detail-pill influx-detail-pill--untouched"
+                                    @click.stop="toggleInfo($event, m.handle + ':untouched', $t('the mapped node does not exist for this Element Link'))"
+                                >{{ $t('missing node') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                <button
+                                    v-if="m.usedDefault"
+                                    type="button"
+                                    class="influx-detail-pill influx-detail-pill--default"
+                                    @click.stop="toggleInfo($event, m.handle + ':default', $t('the mapped node pushed a default value for this Element Link'))"
+                                >{{ $t('use default') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                <button
+                                    v-if="m.managedByTarget"
+                                    type="button"
+                                    class="influx-detail-pill influx-detail-pill--managed"
+                                    @click.stop="toggleInfo($event, m.handle + ':managed', $t('This value isn\'t written during the element save — Influx reconciles it separately after each item is imported.'))"
+                                >{{ $t('not managed by element') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
                             </span>
+                            <!-- The feed node this mapping reads from. A
+                                 node-less mapping (an explicit default) shows no
+                                 line here — its "use default" pill says it. -->
                             <code v-if="m.node" class="influx-detail-node">{{ m.node }}</code>
-                            <code v-else-if="m.native" class="influx-detail-node">{{ $t('native') }}</code>
                         </div>
 
                         <div class="influx-detail-val">
-                            <code v-if="!isNullish(incoming(m))">{{ incoming(m) }}</code>
+                            <code v-if="!isNullish(incomingCell(m))">{{ incomingCell(m) }}</code>
                         </div>
 
-                        <div class="influx-detail-val influx-detail-val--current">
-                            <code v-if="!isNullish(m.currentValue)">{{ m.currentValue }}</code>
-                        </div>
-
-                        <div class="influx-detail-changed">
-                            <span v-if="m.changed === null || m.changed === undefined" class="light">?</span>
-                            <template v-else-if="m.changed"><span class="status live"></span> {{ $t('yes') }}</template>
-                            <template v-else><span class="status"></span> {{ $t('no') }}</template>
-                            <div v-if="m.note" class="light influx-detail-note">{{ m.note }}</div>
+                        <div class="influx-detail-val" :class="{ 'influx-detail-val--current': context !== 'log' }">
+                            <!-- Log context: a parsed value with a rich display
+                                 comes down as server-rendered markup — element
+                                 chips for relations, a lightswitch for booleans
+                                 (server-generated, same trust level as the
+                                 header chip). Everything else falls back to the
+                                 plain text. -->
+                            <div
+                                v-if="context === 'log' && !isNullish(m.parsedHtml)"
+                                class="influx-detail-rich"
+                                v-html="m.parsedHtml"
+                            ></div>
+                            <code v-else-if="!isNullish(middleCell(m))">{{ middleCell(m) }}</code>
                         </div>
                     </div>
 
@@ -85,6 +114,18 @@
 
         <!-- Raw: the item's payload exactly as it came off the feed. -->
         <pre v-else class="influx-detail-raw">{{ rawJson }}</pre>
+
+        <!-- The "why" popover for a status pill. Teleported to <body> so the
+             table's own overflow can't clip it; positioned at the clicked pill
+             (viewport coords, hence position: fixed). -->
+        <teleport to="body">
+            <div
+                v-if="info"
+                class="influx-detail-info"
+                :style="{ top: info.top + 'px', left: info.left + 'px' }"
+                @click.stop
+            >{{ info.text }}</div>
+        </teleport>
     </div>
 </template>
 
@@ -93,13 +134,26 @@ import ActionBadge from './ActionBadge.vue';
 
 /**
  * The right pane of the split debug inspector: the drill-down for one selected
- * item. Header (element chip / would-create ghost chip + action tag + Parsed /
- * Raw JSON switch) over either the incoming-vs-current field table or the raw
- * payload. Renders the same `row` shape DebugService::debugItem() produces, so
- * it stays reusable for the (upcoming) split log-detail view.
+ * item. Header (element chip or match-value title + action tag + Parsed /
+ * Raw JSON switch) over either the field-comparison table or the raw payload.
+ * Renders the same `row` shape DebugService::debugItem() produces, so it's
+ * shared by both split inspectors — the live debug dry-run (DebugApp) and the
+ * run-log drill-down (LogApp).
  *
- * Deliberately separate from the still-stacked DebugFields/DebugItem, which the
- * log viewer (LogApp) keeps using until its own redesign.
+ * A `context` prop tailors the middle value column: 'debug' (the default) shows
+ * the element's live Current value; 'log' replaces it with the feed's Parsed
+ * value next to the raw Incoming value, since a historical run has no
+ * meaningful "current" state to compare against. In the log context a mapping
+ * may also carry `parsedHtml` — a server-rendered rich variant of the parsed
+ * value (Craft element chips for relations, a display-only lightswitch for
+ * booleans) shown in that column in place of the plain text, which stays as
+ * the fallback when the key is absent/null. The debug context ignores the key
+ * entirely, so its live streaming table is unaffected.
+ *
+ * There is no "Changed?" column: a row that would change is marked by its green
+ * tint (data-changed). Per-row status — match key, missing node, used default,
+ * managed by the target — shows as pills beside the field label, each opening a
+ * short popover explaining the "why" on click.
  */
 export default {
     name: 'DebugItemDetail',
@@ -111,21 +165,33 @@ export default {
         // The link's match attribute handle, so the field it reads from gets a
         // "Match by" tag.
         matchAttribute: { type: String, default: '' },
+        // Where this drill-down is rendered: 'debug' (the live dry-run, where
+        // the middle column is the element's Current value) or 'log' (a
+        // historical run, where it's the feed's Parsed value instead — rendered
+        // rich via a mapping's `parsedHtml` when present).
+        context: { type: String, default: 'debug' },
     },
 
     data() {
         return {
             view: 'parsed',
+            // The open status-pill popover: { key, text, top, left } (viewport
+            // coords), or null when none is open. Only one is open at a time.
+            info: null,
         };
     },
 
+    beforeUnmount() {
+        this.closeInfo();
+    },
+
     computed: {
-        // Header label when there's no element chip and it isn't a would-create
-        // ghost (e.g. a would-skip item): the match value, else a placeholder.
+        // Header label when there's no element chip (a would-create or
+        // would-skip item): the match value, else blank.
         title() {
             return (this.row.element && this.row.element.title)
                 || this.row.matchValue
-                || this.$t('(no match value)');
+                || '';
         },
 
         rawJson() {
@@ -144,6 +210,19 @@ export default {
             return this.isNullish(m.parsedValue) ? m.rawValue : m.parsedValue;
         },
 
+        // The Incoming column: the parsed (raw-fallback) value in the debug
+        // inspector, but the untouched raw value straight off the feed in the
+        // log context, where the parsed value gets its own column.
+        incomingCell(m) {
+            return this.context === 'log' ? m.rawValue : this.incoming(m);
+        },
+
+        // The middle column: the element's live Current value in the debug
+        // inspector, the feed's Parsed (raw-fallback) value in the log context.
+        middleCell(m) {
+            return this.context === 'log' ? this.incoming(m) : m.currentValue;
+        },
+
         isMatch(m) {
             return this.matchAttribute !== '' && m.handle === this.matchAttribute;
         },
@@ -152,6 +231,42 @@ export default {
         // a genuine null/undefined renders as a blank cell.
         isNullish(v) {
             return v === null || v === undefined;
+        },
+
+        // Open (or, on the same pill, close) the "why" popover for a status
+        // pill, anchored just under the clicked pill. One open at a time; a
+        // click anywhere else, Escape, or a scroll dismisses it (listeners are
+        // added only while open, and torn down in closeInfo / beforeUnmount).
+        toggleInfo(event, key, text) {
+            if (this.info && this.info.key === key) {
+                this.closeInfo();
+
+                return;
+            }
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            this.info = { key, text, top: rect.bottom + 6, left: rect.left };
+
+            document.addEventListener('click', this.closeInfo);
+            document.addEventListener('keydown', this.onInfoKeydown);
+            window.addEventListener('scroll', this.closeInfo, true);
+        },
+
+        closeInfo() {
+            if (! this.info) {
+                return;
+            }
+
+            this.info = null;
+            document.removeEventListener('click', this.closeInfo);
+            document.removeEventListener('keydown', this.onInfoKeydown);
+            window.removeEventListener('scroll', this.closeInfo, true);
+        },
+
+        onInfoKeydown(event) {
+            if (event.key === 'Escape') {
+                this.closeInfo();
+            }
         },
     },
 };
@@ -191,17 +306,25 @@ export default {
 .influx-detail-badge { flex: none; }
 .influx-detail-toggle { margin-left: auto; flex: none; }
 
-/* Field-comparison grid — four columns shared by the headings, rows and the
+/* Field-comparison grid — three columns shared by the headings, rows and the
    per-field error band so everything lines up. */
 .influx-detail-headings,
 .influx-detail-row,
 .influx-detail-field-error {
     display: grid;
-    grid-template-columns: minmax(130px, .8fr) minmax(160px, 1.2fr) minmax(160px, 1.2fr) 90px;
+    grid-template-columns: minmax(130px, .8fr) minmax(160px, 1.2fr) minmax(160px, 1.2fr);
     gap: 12px;
 }
 
 .influx-detail-headings {
+    /* Pinned to the top of the scrolling body (.influx-detail-body is the
+       scroll container in both hosts), so the column labels stay visible
+       while the field rows scroll underneath. The solid background is what
+       hides the rows passing behind; the z-index keeps injected content
+       (element chips, lightswitches) from painting over it. */
+    position: sticky;
+    top: 0;
+    z-index: 2;
     padding: 8px 18px;
     background: #f3f7fc;
     border-bottom: 1px solid rgba(0, 0, 0, .06);
@@ -234,15 +357,65 @@ export default {
     font-weight: 600;
 }
 
-.influx-detail-matchtag {
+/* Status pills beside the field label. They're buttons (clicking opens the
+   "why" popover), so reset the native chrome and share one shape; each variant
+   only differs in palette. The trailing info glyph marks them as "click for
+   more". */
+.influx-detail-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     padding: 0 7px;
     border-radius: 9px;
-    background: #e1eefc;
-    border: 1px solid #b9d3f0;
-    color: #1c4f8a;
+    border: 1px solid transparent;
+    font-family: inherit;
     font-size: 10px;
     font-weight: 600;
     line-height: 16px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* Craft's own info glyph (data-icon="info"), inheriting the pill's colour and
+   dimmed until hover — the same affordance Craft uses for instructions. */
+.influx-detail-pill-info {
+    font-size: 12px;
+    opacity: .6;
+}
+
+.influx-detail-pill:hover .influx-detail-pill-info {
+    opacity: 1;
+}
+
+/* Match key — informational blue. */
+.influx-detail-pill--match {
+    background: #e1eefc;
+    border-color: #b9d3f0;
+    color: #1c4f8a;
+}
+
+/* "Left untouched" — warm amber, matching the mapper's missing-node badge
+   (.influx-missing-badge) so the same "no source node" signal reads
+   consistently across the builder and the inspector. */
+.influx-detail-pill--untouched {
+    background: #fdecc8;
+    border-color: #f0c674;
+    color: #8a6d00;
+}
+
+/* Used the configured default — neutral grey, an informational fallback. */
+.influx-detail-pill--default {
+    background: #eceef1;
+    border-color: #d5d9df;
+    color: #6b7280;
+}
+
+/* Reconciled by the target, not written on the element save — muted violet,
+   distinct from the grey default pill. */
+.influx-detail-pill--managed {
+    background: #ece9f5;
+    border-color: #d3cbe8;
+    color: #5b4a8a;
 }
 
 .influx-detail-node {
@@ -266,8 +439,32 @@ export default {
 
 .influx-detail-val--current code { color: var(--fg-subtle); }
 
-.influx-detail-changed { font-size: 13px; }
-.influx-detail-note { margin-top: 2px; }
+/* Log context: rich parsed values render as server-side markup — element chips
+   for relations, a lightswitch for booleans. The pieces sit inline and wrap
+   onto further rows, with a small gap between them (the markup itself is
+   Craft-styled, injected via v-html). */
+.influx-detail-rich {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+/* The status-pill "why" popover, teleported to <body> (so the table overflow
+   can't clip it) and fixed at the clicked pill. Self-contained dark card, so it
+   reads as an overlay without needing light/dark theming. */
+.influx-detail-info {
+    position: fixed;
+    z-index: 100;
+    max-width: 260px;
+    padding: 8px 10px;
+    background: #29333d;
+    color: #fff;
+    border-radius: 5px;
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .22);
+}
 
 .influx-detail-field-error {
     margin: 0;
@@ -317,32 +514,4 @@ export default {
     background: #f8fafc;
 }
 
-/* "Ghost chip" for would-create, matching DebugItem's (scoped styles don't
-   cross components, so it's redefined here). */
-.influx-debug-ghost-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px dashed #7fcb95;
-    border-radius: 9px;
-    padding: 1px 9px 1px 7px;
-    font-size: 12px;
-    line-height: 18px;
-    color: #064f1f;
-    background: rgba(214, 241, 222, .35);
-}
-
-.influx-debug-ghost-chip-glyph {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: #45a35e;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1;
-}
 </style>

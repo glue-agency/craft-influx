@@ -176,9 +176,9 @@ export default {
 
     methods: {
         // Left-list label: the resolved element's title, else the match value,
-        // else a placeholder (a would-skip item with no match value).
+        // else blank (a would-skip item with no match value).
         itemTitle(item) {
-            return (item.element && item.element.title) || item.matchValue || this.$t('(no match value)');
+            return (item.element && item.element.title) || item.matchValue || '';
         },
 
         // One-line summary of what a real run would do to this item.

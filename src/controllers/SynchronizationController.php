@@ -91,10 +91,32 @@ class SynchronizationController extends AbstractController
         }
 
         $plugin = Influx::getInstance();
-        $link = $plugin->links->findLinkForElement($element);
 
-        if (! $link) {
-            throw new BadRequestHttpException("No link claims element #{$elementId}.");
+        // An explicit link handle (the button/menu always sends one) pins the
+        // sync to THAT link. We still require it to structurally target the
+        // element — otherwise a caller could sync any link against an unrelated
+        // element. Without a handle, fall back to the first link that targets
+        // the element (preserves the pre-explicit-link single-link behaviour).
+        $linkHandle = Craft::$app->getRequest()->getBodyParam('link');
+
+        if ($linkHandle !== null && $linkHandle !== '') {
+            $link = $plugin->links->getLinkByHandle($linkHandle);
+
+            if (! $link) {
+                throw new BadRequestHttpException("Link '{$linkHandle}' not found.");
+            }
+
+            $target = $plugin->targets->forLink($link);
+
+            if (! $target || ! $target->targetsElement($link, $element)) {
+                throw new BadRequestHttpException("Link '{$linkHandle}' doesn’t target element #{$elementId}.");
+            }
+        } else {
+            $link = $plugin->links->findLinkForElement($element);
+
+            if (! $link) {
+                throw new BadRequestHttpException("No link targets element #{$elementId}.");
+            }
         }
 
         $remaining = $plugin->cooldown->remaining($link, $element);

@@ -100,6 +100,37 @@ describe('store', () => {
         expect(store.isDirty.value).toBe(false);
     });
 
+    it('surfaces an overlap warning and keeps the user on the page', async () => {
+        store.link.name = 'Changed';
+        api.save.mockResolvedValue({
+            success: true,
+            link: { ...bootstrapPayload().link, name: 'Changed' },
+            warning: 'Products also define a resource mapping for this element.',
+        });
+
+        // Plain save would normally redirect to the index; the warning keeps
+        // the user here so the banner is visible (no window.location touched).
+        const result = await store.save({ continueEditing: false });
+
+        expect(result.success).toBe(true);
+        expect(result.redirected).toBeUndefined();
+        expect(store.ui.warning).toBe('Products also define a resource mapping for this element.');
+    });
+
+    it('clears a prior warning on the next clean save', async () => {
+        api.save.mockResolvedValue({
+            success: true,
+            link: { ...bootstrapPayload().link },
+            warning: 'Products also define a resource mapping for this element.',
+        });
+        await store.save({ continueEditing: true });
+        expect(store.ui.warning).not.toBe(null);
+
+        api.save.mockResolvedValue({ success: true, link: { ...bootstrapPayload().link } });
+        await store.save({ continueEditing: true });
+        expect(store.ui.warning).toBe(null);
+    });
+
     it('deletes by the bootstrapped uid and reports success', async () => {
         api.deleteLink.mockResolvedValue({ success: true, message: 'Link deleted.' });
 

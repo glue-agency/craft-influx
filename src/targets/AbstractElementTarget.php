@@ -21,6 +21,18 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Default structural targeting: the link points at this target's element
+     * type and the element is an instance of it. This is the whole rule for
+     * element types with no sub-partition (see {@see \GlueAgency\Influx\targets\UserTarget},
+     * which inherits it unchanged); targets that scope further — e.g.
+     * {@see EntryTarget} on section/type — override this to add those checks.
+     */
+    public function targetsElement(Link $link, ElementInterface $element): bool
+    {
+        return $this->handles($link) && is_a($element, static::elementType());
+    }
+
+    /**
      * Default: delegate to the element class's own `displayName()`. Subclasses
      * override only when they need a label distinct from Craft's own.
      */

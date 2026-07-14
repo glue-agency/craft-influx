@@ -1,0 +1,76 @@
+{# ===========================================================================
+   Entry-edit "Sync from remote" affordance.
+
+   Rendered into the entry editor's #action-buttons row by
+   Influx::registerEntrySyncButton(). `candidates` is a non-empty list of
+   {name, enabled, reason, params}; `hashedRedirect` is the security-hashed
+   cpEditUrl each formsubmit returns to.
+
+   Layout notes:
+   - Every top-level node carries `order: -1` so it's pulled to the far left of
+     #action-buttons (Craft prepends its own buttons before firing the event
+     that appends ours, so DOM order alone would leave these mid-row).
+   - The accent (blue→teal gradient) marks these as Influx actions, distinct
+     from Craft's teal submit buttons; the disabled state greys it out.
+   - A disabled state pairs the button/item with a Craft `.info` icon whose HUD
+     shows `reason`. `.menubtn`/`.info` auto-init on the full-CP edit page, so
+     server-rendered markup needs no extra JS.
+=========================================================================== #}
+
+{% set accentStyle = 'background: linear-gradient(100deg, var(--blue-600) 45%, var(--teal-600) 115%); color: var(--white);' %}
+{% set mutedStyle = 'background: var(--gray-200); color: var(--gray-400);' %}
+{% set action = 'influx/synchronization/element' %}
+
+{% if candidates|length == 1 %}
+    {% set candidate = candidates|first %}
+    {% set label = 'Sync from {link}'|t('influx', { link: candidate.name }) %}
+
+    {% if candidate.enabled %}
+        <button type="button"
+                class="btn formsubmit"
+                style="order: -1; {{ accentStyle }}"
+                data-action="{{ action }}"
+                data-params="{{ candidate.params|json_encode }}"
+                data-form="false"
+                data-redirect="{{ hashedRedirect }}">
+            {{ label }}
+        </button>
+    {% else %}
+        <button type="button" class="btn disabled" disabled style="order: -1; {{ mutedStyle }}">
+            {{ label }}
+        </button>
+        <span class="info" style="order: -1; align-self: center;">{{ candidate.reason }}</span>
+    {% endif %}
+{% else %}
+    {# Multiple links target this element — a plain menu button (no split):
+       "Sync from" opens the list on click. Uses the plugin's standard Garnish
+       menubtn + .menu pattern (same as the links overview), which auto-inits on
+       the CP edit page and right-aligns the menu under the button. Each link
+       keeps its own disabled state + reason. #}
+    <button type="button" class="btn menubtn" style="order: -1; {{ accentStyle }}">
+        {{ 'Sync from'|t('influx') }}
+    </button>
+    <div class="menu" data-align="right">
+        <ul>
+            {% for candidate in candidates %}
+                <li>
+                    {% if candidate.enabled %}
+                        <button type="button"
+                                class="menu-option formsubmit"
+                                data-action="{{ action }}"
+                                data-params="{{ candidate.params|json_encode }}"
+                                data-form="false"
+                                data-redirect="{{ hashedRedirect }}">
+                            {{ candidate.name }}
+                        </button>
+                    {% else %}
+                        <span class="menu-option disabled">
+                            {{ candidate.name }}
+                            <span class="info">{{ candidate.reason }}</span>
+                        </span>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}

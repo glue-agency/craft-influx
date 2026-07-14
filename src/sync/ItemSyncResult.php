@@ -70,4 +70,36 @@ class ItemSyncResult
 
         return $errors;
     }
+
+    /**
+     * The handles of the mappings that actually changed this run — the
+     * run-time record the log drill-down persists, since its dry-run
+     * re-inspection reads present-tense (an item that updated successfully
+     * shows "no change" on every row once its element already carries the new
+     * values). A field that threw never counts as changed ({@see
+     * MappingResult::$changed} stays null/false), mirroring the aggregate
+     * {@see ItemProcessor::populate()} folds.
+     *
+     * Null when there are no mapping results at all — a sweep row, or an item
+     * that errored before populate() ran. That "unknown" is deliberately
+     * distinct from an empty list's "compared, nothing changed".
+     *
+     * @return list<string>|null
+     */
+    public function changedFieldHandles(): ?array
+    {
+        if ($this->mappingResults === []) {
+            return null;
+        }
+
+        $handles = [];
+
+        foreach ($this->mappingResults as $result) {
+            if ($result->changed === true) {
+                $handles[] = $result->handle;
+            }
+        }
+
+        return $handles;
+    }
 }

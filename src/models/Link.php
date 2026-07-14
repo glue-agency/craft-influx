@@ -3,8 +3,10 @@
 namespace GlueAgency\Influx\models;
 
 use craft\base\Model;
+use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use DateTime;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\RemoteItem;
 
@@ -563,5 +565,99 @@ class Link extends Model
     public function matchAttribute(): ?string
     {
         return $this->match['attribute'] ?? null;
+    }
+
+    /**
+     * The link's STRUCTURAL claim scope — a canonical, comparable description
+     * of which elements this link manages, used to warn about two links owning
+     * the same elements ({@see overlaps()}).
+     *
+     * Shape: `['type' => <elementType FQCN>, 'cells' => <string[]>]`. The
+     * `type` key ensures links to different element types never overlap; the
+     * `cells` set is what two same-type links intersect on:
+     *
+     *  - Entries partition into `"{section} {entryType}"` cells. The link's
+     *    `elementCriteria` expand against project config: both criteria set →
+     *    one cell; section-only → every entry type in that section; type-only →
+     *    every section using that type (Craft 5 shares entry types across
+     *    sections); neither → every (section, entryType) cell.
+     *  - Other element types (e.g. User) have no sub-partition, so they get a
+     *    single sentinel cell — two links of the type always overlap, which is
+     *    the intended "one resource mapping per user feed" warning.
+     *
+     * @return array{type: string, cells: list<string>}
+     */
+    public function claimScope(): array
+    {
+        $type = ltrim($this->elementType, '\\');
+
+        if ($type !== ltrim(Entry::class, '\\')) {
+            return ['type' => $type, 'cells' => ['*']];
+        }
+
+        $section = $this->elementCriteria['section'] ?? null;
+        $section = ($section === '' ? null : $section);
+        $entryType = $this->elementCriteria['type'] ?? null;
+        $entryType = ($entryType === '' ? null : $entryType);
+
+        $cells = [];
+
+        foreach ($this->sectionEntryTypeMap() as $sectionHandle => $typeHandles) {
+            if ($section !== null && $sectionHandle !== $section) {
+                continue;
+            }
+
+            foreach ($typeHandles as $typeHandle) {
+                if ($entryType !== null && $typeHandle !== $entryType) {
+                    continue;
+                }
+
+                $cells[] = $sectionHandle . ' ' . $typeHandle;
+            }
+        }
+
+        return ['type' => $type, 'cells' => array_values(array_unique($cells))];
+    }
+
+    /**
+     * Whether this link and another manage an overlapping set of elements:
+     * same element type and intersecting {@see claimScope()} cells.
+     */
+    public function overlaps(self $other): bool
+    {
+        $mine = $this->claimScope();
+        $theirs = $other->claimScope();
+
+        if ($mine['type'] !== $theirs['type']) {
+            return false;
+        }
+
+        return array_intersect($mine['cells'], $theirs['cells']) !== [];
+    }
+
+    /**
+     * Project-config view used by {@see claimScope()} to expand an entry
+     * link's criteria: section handle => list of entry-type handles in that
+     * section. Isolated as a seam so the scope-expansion logic can be unit
+     * tested without a booted Craft. Craft 4/5 differ only in the service
+     * that lists sections — routed through {@see Compat}.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function sectionEntryTypeMap(): array
+    {
+        $map = [];
+
+        foreach (Compat::getAllSections() as $section) {
+            $handles = [];
+
+            foreach ($section->getEntryTypes() as $entryType) {
+                $handles[] = $entryType->handle;
+            }
+
+            $map[$section->handle] = $handles;
+        }
+
+        return $map;
     }
 }

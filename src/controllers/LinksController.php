@@ -260,6 +260,9 @@ class LinksController extends AbstractController
 
         Compat::additionalButtonsHtml($response, '<div data-influx-actions-slot></div>');
 
+        // A link's config is Project-Config-backed, so a read-only environment
+        // can't save it — surface Craft's standard settings notice, the same one
+        // its own Settings screens show.
         if ($this->readOnly()) {
             Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
         }

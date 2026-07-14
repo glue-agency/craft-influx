@@ -150,7 +150,54 @@ class LinkBuilderService extends Component
             $result['notice'] = $this->processingMigrationNotice($migrations);
         }
 
+        $warning = $this->overlapWarning($link);
+
+        if ($warning) {
+            $result['warning'] = $warning;
+        }
+
         return $result;
+    }
+
+    /**
+     * Soft warning when the just-saved link's resource mapping overlaps another
+     * link's. Two links that both define an `itemEndpoint` for the same
+     * structural scope ({@see Link::overlaps()}) would each offer a "Sync from
+     * remote" action for the same elements — usually a config mistake worth
+     * flagging. Only meaningful once the saved link itself has a resource
+     * mapping; returns null (no warning) otherwise. Saving still succeeds — the
+     * builder surfaces this alongside the success, it doesn't block it.
+     */
+    protected function overlapWarning(Link $link): ?string
+    {
+        if (! $link->itemEndpoint) {
+            return null;
+        }
+
+        $others = [];
+
+        foreach (Influx::getInstance()->links->getAllLinks() as $other) {
+            // Skip the saved link itself (getAllLinks() now includes it).
+            if ($other->uid === $link->uid) {
+                continue;
+            }
+
+            if (! $other->itemEndpoint) {
+                continue;
+            }
+
+            if ($link->overlaps($other)) {
+                $others[] = $other->name;
+            }
+        }
+
+        if ($others === []) {
+            return null;
+        }
+
+        return Craft::t('influx', '{links} also define a resource mapping for this element.', [
+            'links' => implode(', ', $others),
+        ]);
     }
 
     /**

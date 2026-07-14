@@ -62,9 +62,24 @@ interface ElementTargetInterface
     public function handles(Link $link): bool;
 
     /**
-     * Does this link claim this element? Used by the "Sync from remote"
-     * button to decide whether to show, and by the per-element sync action
-     * to look up the right link for an element.
+     * Does this link STRUCTURALLY target this element — is the element the
+     * right type and inside the link's configured scope (section/type for
+     * entries, nothing extra for users)? Deliberately independent of whether
+     * the element currently carries a match value: the "Sync from remote"
+     * button surfaces for every structurally-targeted element (showing a
+     * disabled state when it has no match value), and the per-element sync
+     * action uses it to authorize an explicit link against an element.
+     *
+     * The structural half of {@see claimsElement()}.
+     */
+    public function targetsElement(Link $link, ElementInterface $element): bool;
+
+    /**
+     * Does this link claim this element for the sync engine — i.e. does it
+     * {@see targetsElement()} AND does the element actually carry a non-empty
+     * value for the link's match attribute? A claimed element is one a feed
+     * item could be paired with; used to resolve THE link for an element in
+     * flows that need a ready-to-sync target.
      */
     public function claimsElement(Link $link, ElementInterface $element): bool;
 

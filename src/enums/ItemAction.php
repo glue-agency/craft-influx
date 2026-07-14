@@ -37,6 +37,35 @@ enum ItemAction: string
     }
 
     /**
+     * The action values a filter on this action should match: every case that
+     * shares its counter ({@see counterAttribute()}). The UI's filters are the
+     * counters, and a counter groups an action with its per-site sibling
+     * (`deleted` + `deleted-for-site`, `disabled` + `disabled-for-site`), so the
+     * filtered list must group them the same way or it undercounts. Actions
+     * with no shared counter (or none — errors) match only themselves.
+     *
+     * @return string[]
+     */
+    public function filterGroup(): array
+    {
+        $counter = $this->counterAttribute();
+
+        if ($counter === null) {
+            return [$this->value];
+        }
+
+        $group = [];
+
+        foreach (self::cases() as $case) {
+            if ($case->counterAttribute() === $counter) {
+                $group[] = $case->value;
+            }
+        }
+
+        return $group;
+    }
+
+    /**
      * The label the dry-run debug view shows for this action. Errors stay
      * 'error' — a dry run can't soften those, and UNCHANGED keeps its plain
      * 'unchanged' label: there's no hypothetical write to prefix with 'would-'

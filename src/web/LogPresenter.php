@@ -86,8 +86,8 @@ class LogPresenter
 
     /**
      * One log-item row. The element chip is rendered server-side (Craft markup)
-     * as a ready-to-inject HTML string; a removed element degrades to a
-     * "(gone)" note.
+     * as a ready-to-inject HTML string; a removed element degrades to its
+     * `#id` reference.
      *
      * When `$elementMap` is supplied (batch path), the element is read from it —
      * an absent id is a since-deleted element and degrades the same way. When
@@ -110,7 +110,7 @@ class LogPresenter
                 : Craft::$app->getElements()->getElementById($item->elementId);
             $title = $element
                 ? (string) ($element->getUiLabel() ?: '#' . $element->id)
-                : '#' . $item->elementId . ' ' . Craft::t('influx', '(gone)');
+                : '#' . $item->elementId;
         }
 
         $matchValue = (string) ($item->matchValue ?? '');
@@ -174,6 +174,51 @@ class LogPresenter
 
             if ($handle !== null && isset($fieldErrors[$handle])) {
                 $mapping['error'] = $fieldErrors[$handle];
+            }
+        }
+        unset($mapping);
+
+        return $mappings;
+    }
+
+    /**
+     * Overlay the run-time "which fields changed" flags onto presented mapping
+     * rows, matched on the row's `handle`. The stored flags are AUTHORITATIVE
+     * over the drill-down's re-inspection: that re-inspection is a dry run
+     * against the element's LIVE state, so a field that changed at sync time
+     * reads "no change" once the saved element already carries the new value —
+     * every row of a successfully-updated item would otherwise show "no". The
+     * flags captured when the item was synced (the record's `changedFields`
+     * column) are the honest record.
+     *
+     * `$changedFieldsJson` is that raw column value, three-state:
+     *   - a JSON array (incl. `[]`) — each row's `changed` becomes whether its
+     *     handle is in the list; an empty list makes every row false (the item
+     *     was compared and nothing changed);
+     *   - null / malformed — the run stored nothing (items that never went
+     *     through populate: sweep rows, or errors before an element), so every
+     *     row's `changed` is set to null and the viewer renders its "?" state
+     *     rather than a misleading live recalculation.
+     *
+     * Takes the raw JSON string rather than the record so it stays unit-testable
+     * without a booted Craft, mirroring {@see fieldErrors()}.
+     *
+     * @param list<array> $mappings presented mapping rows (see {@see ItemRowPresenter::presentMappingResults()})
+     * @return list<array>
+     */
+    public function overlayChangedFlags(array $mappings, ?string $changedFieldsJson): array
+    {
+        $decoded = ($changedFieldsJson !== null && $changedFieldsJson !== '')
+            ? json_decode($changedFieldsJson, true)
+            : null;
+        $changed = is_array($decoded) ? $decoded : null;
+
+        foreach ($mappings as &$mapping) {
+            if ($changed === null) {
+                $mapping['changed'] = null;
+            } else {
+                $handle = $mapping['handle'] ?? null;
+                $mapping['changed'] = $handle !== null && in_array($handle, $changed, true);
             }
         }
         unset($mapping);

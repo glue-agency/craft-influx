@@ -92,23 +92,42 @@ class LinksService extends Component
     }
 
     /**
-     * Find the first link whose target element type and criteria claim this
-     * element. Used by the per-entry "Sync from remote" button and the
-     * per-element sync endpoint.
+     * Every link whose target STRUCTURALLY targets this element — the element
+     * is the right type and inside the link's section/type scope — regardless
+     * of whether it currently carries a match value. Returned in
+     * {@see getAllLinks()} order (sortOrder ASC, name ASC).
+     *
+     * Structural (not {@see ElementTargetInterface::claimsElement()}) because
+     * the callers — the per-entry "Sync from remote" button/menu and the
+     * per-element sync endpoint — want to surface / authorize a link even for
+     * an element with no match value yet (the button just renders disabled).
+     *
+     * @return Link[]
      */
-    public function findLinkForElement(ElementInterface $element): ?Link
+    public function findLinksForElement(ElementInterface $element): array
     {
         $targets = Influx::getInstance()->targets;
+        $links = [];
 
         foreach ($this->getAllLinks() as $link) {
             $target = $targets->forLink($link);
 
-            if ($target && $target->claimsElement($link, $element)) {
-                return $link;
+            if ($target && $target->targetsElement($link, $element)) {
+                $links[] = $link;
             }
         }
 
-        return null;
+        return $links;
+    }
+
+    /**
+     * The first link that structurally targets this element, or null. A thin
+     * convenience over {@see findLinksForElement()} for callers that only need
+     * one (e.g. the sync endpoint's no-explicit-link fallback).
+     */
+    public function findLinkForElement(ElementInterface $element): ?Link
+    {
+        return $this->findLinksForElement($element)[0] ?? null;
     }
 
     /**

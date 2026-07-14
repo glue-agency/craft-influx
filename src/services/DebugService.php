@@ -153,9 +153,19 @@ class DebugService extends Component
      *
      * $pinnedElementId, when given, resolves straight to that element instead
      * of re-deriving one from the match value — see {@see debugItem()}.
+     *
+     * $withParsedHtml is threaded down to the presenter so the log drill-down
+     * can render rich parsed values server-side (element chips for relations,
+     * a lightswitch for booleans); it defaults to false, leaving the streaming
+     * debug path untouched.
      */
-    public function inspectItem(Link $link, array $item, ?string $siteHandle = null, ?int $pinnedElementId = null): array
-    {
+    public function inspectItem(
+        Link $link,
+        array $item,
+        ?string $siteHandle = null,
+        ?int $pinnedElementId = null,
+        bool $withParsedHtml = false,
+    ): array {
         $target = Influx::getInstance()->targets->forLink($link);
 
         if (! $target) {
@@ -173,7 +183,7 @@ class DebugService extends Component
             ];
         }
 
-        return $this->debugItem($link, $target, $item, $siteHandle, $pinnedElementId);
+        return $this->debugItem($link, $target, $item, $siteHandle, $pinnedElementId, $withParsedHtml);
     }
 
     /**
@@ -192,6 +202,10 @@ class DebugService extends Component
      * non-propagated section where each site has its own row with the same
      * import id). The log item DOES know which element the run actually
      * touched, so the drill-down pins to it directly instead of re-guessing.
+     *
+     * $withParsedHtml is passed straight through to the presenter's mapping
+     * rendering (both call sites below) so a rich parsed value can render
+     * server-side (chips, lightswitch); false on the streaming debug path.
      */
     protected function debugItem(
         Link $link,
@@ -199,6 +213,7 @@ class DebugService extends Component
         array $item,
         ?string $siteHandle,
         ?int $pinnedElementId = null,
+        bool $withParsedHtml = false,
     ): array {
         $context = SyncContext::forSite($link, $target, $siteHandle, dryRun: true);
         $remoteItem = new RemoteItem($item);
@@ -262,7 +277,7 @@ class DebugService extends Component
                         $remoteItem,
                         new ItemResolution($resolution->matchValue, $resolution->element, SyncDecision::UPDATE),
                     );
-                    $row['mappings'] = $this->rows->presentMappingResults($preview->mappingResults, $resolution->element, $this->rows->fieldLabels($link, $target));
+                    $row['mappings'] = $this->rows->presentMappingResults($preview->mappingResults, $resolution->element, $this->rows->fieldLabels($link, $target), $withParsedHtml);
                 } catch (Throwable $e) {
                     $row['error'] = $e->getMessage();
                 }
@@ -274,7 +289,7 @@ class DebugService extends Component
         $row['action'] = $result->action->dryRunLabel();
 
         if ($result->element !== null) {
-            $row['mappings'] = $this->rows->presentMappingResults($result->mappingResults, $result->element, $this->rows->fieldLabels($link, $target));
+            $row['mappings'] = $this->rows->presentMappingResults($result->mappingResults, $result->element, $this->rows->fieldLabels($link, $target), $withParsedHtml);
         }
 
         return $row;

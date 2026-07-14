@@ -43,7 +43,7 @@ class LogsService extends Component
      * with the batchInsert() call in {@see flush()}. `id` and the audit
      * columns are added by Craft; these are the ones recordItem() supplies.
      */
-    protected const ITEM_COLUMNS = ['logId', 'elementId', 'matchValue', 'action', 'message', 'fieldErrors', 'payload'];
+    protected const ITEM_COLUMNS = ['logId', 'elementId', 'matchValue', 'action', 'message', 'fieldErrors', 'changedFields', 'payload'];
 
     /**
      * Force a flush once a buffer reaches this many rows, so a single huge
@@ -100,6 +100,12 @@ class LogsService extends Component
      * @param array<string, string> $fieldErrors {handle: message} for fields
      * whose strategy threw — stored so the drill-down can show each on its own
      * field row even when re-inspection can't reproduce it.
+     * @param list<string>|null $changedFields The mapping handles that actually
+     * changed this run (see {@see \GlueAgency\Influx\sync\ItemSyncResult::changedFieldHandles()}),
+     * so the drill-down can report what really happened instead of re-deriving
+     * it from a present-tense dry-run. Three states, preserved into storage:
+     * null = the item never went through populate (unknown); `[]` = compared,
+     * nothing changed; a list = the handles that changed.
      */
     public function recordItem(
         LogRecord $log,
@@ -109,6 +115,7 @@ class LogsService extends Component
         ?string $message = null,
         ?array $payload = null,
         array $fieldErrors = [],
+        ?array $changedFields = null,
     ): void {
         if (! $log->id) {
             return;
@@ -118,6 +125,8 @@ class LogsService extends Component
 
         // Row values in ITEM_COLUMNS order — the batch insert in flush() relies
         // on this alignment. json_encode logic matches the pre-buffer path.
+        // changedFields, unlike fieldErrors, keeps an empty array as `[]` (not
+        // null): "nothing changed" is information, distinct from "unknown".
         $row = [
             $log->id,
             $elementId,
@@ -125,6 +134,7 @@ class LogsService extends Component
             $action->value,
             $message,
             $fieldErrors !== [] ? json_encode($fieldErrors) : null,
+            $changedFields !== null ? json_encode($changedFields) : null,
             $payload !== null ? json_encode($payload) : null,
         ];
 

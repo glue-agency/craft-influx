@@ -10,12 +10,12 @@ use craft\events\DefineHtmlEvent;
 use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
-use craft\helpers\Html;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\web\UrlManager;
 use craft\web\View;
 use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
+use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\Settings;
 use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\AuthService;
@@ -54,7 +54,7 @@ use yii\base\Event;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.0.1';
+    public string $schemaVersion = '1.0.0';
 
     public bool $hasCpSettings = false;
 
@@ -266,16 +266,25 @@ class Influx extends Plugin
     }
 
     /**
-     * Add a "Sync from remote" button to the edit page of any entry that has
-     * been linked via the link's match attribute.
+     * Add a "Sync from remote" affordance to the edit page of any entry the
+     * plugin targets, offering every link that both structurally targets the
+     * entry AND has a resource (item) endpoint. One targeting link renders a
+     * single button; several render a menu, one item per link.
+     *
+     * A link is offered even when the entry can't currently be synced (no
+     * match value, or an active cool-down): those render as a DISABLED button
+     * / menu item with a Craft `.info` icon explaining why, so the action is
+     * discoverable rather than silently absent.
      *
      * Additional buttons render INSIDE the edit page's #main-form, so this
      * must not output a <form> of its own: forms can't nest, the browser
      * would close #main-form early and every field input (plus Craft's hidden
      * action/redirect inputs) would fall outside it — silently breaking entry
-     * saving and drafts. Instead the button uses Craft's `formsubmit` pattern;
+     * saving and drafts. Instead each button uses Craft's `formsubmit` pattern;
      * `form: false` makes the CP JS post the action through a detached
      * temporary form (CSRF included) rather than hijacking the closest form.
+     * Markup is built by a CP template (influx/_sync-button) rather than
+     * concatenated here, so the branching and styling live in one readable place.
      */
     protected function registerEntrySyncButton(): void
     {
@@ -283,53 +292,74 @@ class Influx extends Plugin
             /** @var Entry $element */
             $element = $event->sender;
 
-            $link = $this->links->findLinkForElement($element);
+            $candidates = [];
 
-            if (! $link || ! $link->itemEndpoint) {
+            foreach ($this->links->findLinksForElement($element) as $link) {
+                // A resource mapping is required to sync a single element — a
+                // link without one can only run the full-list sweep.
+                if (! $link->itemEndpoint) {
+                    continue;
+                }
+
+                $candidates[] = $this->syncButtonCandidate($link, $element);
+            }
+
+            if ($candidates === []) {
                 return;
             }
 
-            $cooldownRemaining = $this->cooldown->remaining($link, $element);
-            $disabled = $cooldownRemaining > 0;
             $redirect = $element->getCpEditUrl();
 
-            // Only a per-site-endpoints link scopes to one site; a link with a
-            // single base endpoint always syncs the primary site, so don't pin
-            // the button to the editor's current site there (it would just make
-            // the sync build its item endpoint from a non-primary localization).
-            $params = ['elementId' => $element->id];
-
-            if ($link->siteHandles() !== []) {
-                $params['site'] = $element->site->handle;
-            }
-
-            $event->html .= Html::button(Craft::t('influx', 'Sync from remote'), [
-                'class'    => array_filter(['btn', 'formsubmit', $disabled ? 'disabled' : null]),
-                'disabled' => $disabled,
-                // The plugin's own accent — a blue→teal gradient, white text, no
-                // icon — so it reads as an Influx action distinct from Craft's
-                // teal "submit" buttons (see Entry.dc.html). `order: -1` pulls it
-                // to the far left of #action-buttons: Craft prepends its own
-                // buttons (e.g. "Create a draft") before firing the event that
-                // appends ours, so DOM order alone leaves it mid-row.
-                'style' => 'order: -1; background: linear-gradient(100deg, var(--blue-600) 45%, var(--teal-600) 115%); color: var(--white);',
-                'data'  => array_filter([
-                    'action'   => 'influx/synchronization/element',
-                    'params'   => $params,
-                    'form'     => 'false',
-                    'redirect' => $redirect ? Craft::$app->getSecurity()->hashData($redirect) : null,
-                ]),
-                'title' => $disabled
-                    ? Craft::t('influx', 'Available again in {n}s', ['n' => $cooldownRemaining])
-                    : '',
-            ]);
-
-            // Sits right after the button (same `order: -1`), separating it
-            // from Craft's native button group to its right.
-            $event->html .= Html::tag('div', '', [
-                'class' => 'influx-sync-divider',
-                'style' => 'order: -1; align-self: stretch; width: 1px; margin-block: 5px; background: var(--gray-200);',
-            ]);
+            $event->html .= Craft::$app->getView()->renderTemplate('influx/_sync-button', [
+                'candidates'     => $candidates,
+                'hashedRedirect' => $redirect ? Craft::$app->getSecurity()->hashData($redirect) : null,
+            ], View::TEMPLATE_MODE_CP);
         });
+    }
+
+    /**
+     * Build one candidate descriptor for the sync button/menu: the link's
+     * display name, whether it's currently syncable, the reason it isn't (for
+     * the disabled state's info HUD), and the `data-params` the formsubmit
+     * posts — carrying the explicit link handle so the action syncs THIS link
+     * ({@see \GlueAgency\Influx\controllers\SynchronizationController::actionElement()}).
+     *
+     * @return array{name: string, enabled: bool, reason: ?string, params: array<string, mixed>}
+     */
+    protected function syncButtonCandidate(Link $link, Entry $element): array
+    {
+        $enabled = true;
+        $reason = null;
+
+        $matchAttr = $link->matchAttribute();
+
+        if (! $matchAttr || $element->{$matchAttr} === null || $element->{$matchAttr} === '') {
+            $enabled = false;
+            $reason = Craft::t('influx', 'This entry has no value for the match field, so it can’t be synced from remote.');
+        } else {
+            $remaining = $this->cooldown->remaining($link, $element);
+
+            if ($remaining > 0) {
+                $enabled = false;
+                $reason = Craft::t('influx', 'Recently synced');
+            }
+        }
+
+        // Only a per-site-endpoints link scopes to one site; a link with a
+        // single base endpoint always syncs the primary site, so don't pin the
+        // action to the editor's current site there (it would just make the
+        // sync build its item endpoint from a non-primary localization).
+        $params = ['elementId' => $element->id, 'link' => $link->handle];
+
+        if ($link->siteHandles() !== []) {
+            $params['site'] = $element->site->handle;
+        }
+
+        return [
+            'name'    => $link->name,
+            'enabled' => $enabled,
+            'reason'  => $reason,
+            'params'  => $params,
+        ];
     }
 }

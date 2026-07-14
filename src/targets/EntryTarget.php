@@ -51,7 +51,14 @@ class EntryTarget extends AbstractElementTarget
         return ['section', 'type'];
     }
 
-    public function claimsElement(Link $link, ElementInterface $element): bool
+    /**
+     * Structural targeting for entries: the element is an Entry the link
+     * handles, inside the link's configured section and entry-type scope (each
+     * criterion only bites when set). Purely about "is this entry in scope" —
+     * it does NOT look at the match value, so an in-scope entry with no match
+     * value still targets (that gap is what {@see claimsElement()} adds).
+     */
+    public function targetsElement(Link $link, ElementInterface $element): bool
     {
         if (! ($element instanceof Entry)) {
             return false;
@@ -70,6 +77,15 @@ class EntryTarget extends AbstractElementTarget
         $typeHandle = $link->elementCriteria['type'] ?? null;
 
         if ($typeHandle && $element->getType()?->handle !== $typeHandle) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function claimsElement(Link $link, ElementInterface $element): bool
+    {
+        if (! $this->targetsElement($link, $element)) {
             return false;
         }
 

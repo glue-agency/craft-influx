@@ -266,6 +266,18 @@ class Compat
     }
 
     /**
+     * Craft 5 renamed CpScreenResponseBehavior::additionalButtons() to
+     * additionalButtonsHtml(). hasMethod() (not method_exists()) because the
+     * behavior's methods route through Yii's magic __call().
+     */
+    public static function additionalButtonsHtml(Response $response, ?string $html): Response
+    {
+        return $response->hasMethod('additionalButtonsHtml')
+            ? $response->additionalButtonsHtml($html)
+            : $response->additionalButtons($html);
+    }
+
+    /**
      * Cp::readOnlyNoticeHtml() is @since 5.6. The fallback replicates its
      * markup minus the icon (Cp::iconSvg() is 5.x-only).
      */
@@ -280,18 +292,6 @@ class Compat
             Html::tag('p', Craft::t('app', 'Changes to these settings aren’t permitted in this environment.')),
             ['class' => 'content-notice'],
         );
-    }
-
-    /**
-     * Craft 5 renamed CpScreenResponseBehavior::additionalButtons() to
-     * additionalButtonsHtml(). hasMethod() (not method_exists()) because the
-     * behavior's methods route through Yii's magic __call().
-     */
-    public static function additionalButtonsHtml(Response $response, ?string $html): Response
-    {
-        return $response->hasMethod('additionalButtonsHtml')
-            ? $response->additionalButtonsHtml($html)
-            : $response->additionalButtons($html);
     }
 
     /**

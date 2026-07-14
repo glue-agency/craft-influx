@@ -78,7 +78,7 @@ class MappingApplier
                     default: $mapping->default,
                     native: true,
                     rawValue: $mapping->rawValue($item),
-                    note: 'Managed by target.',
+                    managedByTarget: true,
                 );
 
                 continue;
@@ -193,7 +193,7 @@ class MappingApplier
                 rawValue: $rawValue,
                 currentValue: $currentValue,
                 changed: false,
-                note: 'Feed has no value for this attribute — left untouched.',
+                unaddressed: true,
             );
         }
 
@@ -219,6 +219,7 @@ class MappingApplier
             rawValue: $rawValue,
             currentValue: $currentValue,
             changed: $changed,
+            usedDefault: $mapping->usesDefault($item),
         );
     }
 
@@ -310,7 +311,7 @@ class MappingApplier
                 rawValue: $rawValue,
                 currentValue: $currentValue,
                 changed: false,
-                note: 'Feed has no value for this field — left untouched.',
+                unaddressed: true,
             );
         }
 
@@ -333,6 +334,7 @@ class MappingApplier
             parsedValue: $value,
             currentValue: $currentValue,
             changed: $rowChanged,
+            usedDefault: $context->mapping->usesDefault($context->item),
         );
     }
 

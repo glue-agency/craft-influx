@@ -72,4 +72,49 @@ class FieldMappingTest extends Unit
         $mapping = FieldMapping::fromConfig('summary', ['default' => 'x']);
         $this->assertFalse($mapping->addressedBy(new RemoteItem([])));
     }
+
+    public function testUsesDefaultWithExplicitUseDefault(): void
+    {
+        // No node, explicit "— use default —" with a non-empty default.
+        $mapping = FieldMapping::fromConfig('summary', ['default' => 'x', 'useDefault' => true]);
+        $this->assertTrue($mapping->usesDefault(new RemoteItem([])));
+    }
+
+    public function testUsesDefaultWhenMappedNodeIsEmpty(): void
+    {
+        // Node mapped, present but empty ('' is addressed) — resolve() falls
+        // back to the default, so the applied value is the default.
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body', 'default' => 'x']);
+        $this->assertTrue($mapping->usesDefault(new RemoteItem(['body' => ''])));
+    }
+
+    public function testDoesNotUseDefaultWhenFeedProvidesValue(): void
+    {
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body', 'default' => 'x']);
+        $this->assertFalse($mapping->usesDefault(new RemoteItem(['body' => 'hello'])));
+    }
+
+    public function testDoesNotUseDefaultWhenNodeAbsent(): void
+    {
+        // An absent node is unaddressed ("left untouched") — the applier gates
+        // it out before the default can apply, so it's the missing-node state,
+        // not use-default. True mutual exclusivity with that pill.
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body', 'default' => 'x']);
+        $this->assertFalse($mapping->usesDefault(new RemoteItem(['other' => 'y'])));
+        $this->assertFalse($mapping->addressedBy(new RemoteItem(['other' => 'y'])));
+    }
+
+    public function testDoesNotUseDefaultWithoutADefault(): void
+    {
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body']);
+        $this->assertFalse($mapping->usesDefault(new RemoteItem(['body' => ''])));
+    }
+
+    public function testEmptyStringDefaultDoesNotCountAsUsed(): void
+    {
+        // An empty-string default resolves to null (leave untouched), so it is
+        // never reported as "used".
+        $mapping = FieldMapping::fromConfig('summary', ['default' => '', 'useDefault' => true]);
+        $this->assertFalse($mapping->usesDefault(new RemoteItem([])));
+    }
 }

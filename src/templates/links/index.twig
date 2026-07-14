@@ -12,11 +12,7 @@
 {% set processingOrder = ["create", "update", "disable", "disable-for-site", "delete", "delete-for-site"] %}
 
 {% block actionButton %}
-    {% if readOnly %}
-        <span class="light" style="display: inline-flex; align-items: center; gap: 6px;">
-            <span data-icon="lock" aria-hidden="true"></span>{{ "Read-only"|t("influx") }}
-        </span>
-    {% else %}
+    {% if not readOnly %}
         <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
             {{ "New link"|t("influx") }}
         </a>
@@ -139,18 +135,9 @@
         {% endjs %}
     {% endif %}
 
-    {% if readOnly %}
-        <blockquote class="note">
-            {{ "Administrative changes are disallowed in this environment. Link configuration is shown read-only — syncs can still be triggered."|t("influx") }}
-        </blockquote>
-    {% endif %}
-
     {% if links is empty %}
         <div class="zilch">
             <p>{{ "No links yet."|t("influx") }}</p>
-            {% if readOnly %}
-                <p class="light">{{ "Administrative changes are disallowed in this environment."|t("influx") }}</p>
-            {% endif %}
         </div>
     {% else %}
         <table class="data fullwidth influx-links-table">

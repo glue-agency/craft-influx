@@ -10,6 +10,12 @@
         <template v-else-if="ui.link">
             <header-actions />
 
+            <!-- Soft post-save warning (e.g. another link defines a resource
+                 mapping for the same elements). Stays until the next save. -->
+            <div v-if="ui.warning" class="influx-link-builder-warning">
+                <p>{{ ui.warning }}</p>
+            </div>
+
             <!-- Content panes. The tab nav is rendered by Craft's cpScreen
                  into the page header (see LinksController::actionEdit), and
                  Craft.Tabs.js toggles the `.hidden` class on these
@@ -196,6 +202,18 @@ export default {
     margin-bottom: 18px;
 }
 .influx-link-builder-errors code { color: inherit; }
+
+/* Soft post-save warning banner — amber, distinct from the red load-error
+   block above. Persists until the next save re-evaluates it. */
+.influx-link-builder-warning {
+    background: #fdf3e2;
+    border: 1px solid #f0d9a8;
+    color: #8a5a00;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 18px;
+}
+.influx-link-builder-warning p { margin: 0; }
 
 /* Required-field marker. Our own superscript asterisk rather than Craft's
    `.required` class, which renders an icon-font asterisk vertically centered

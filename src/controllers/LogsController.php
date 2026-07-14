@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\helpers\UrlHelper;
+use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -128,8 +129,8 @@ class LogsController extends AbstractController
 
     /**
      * The "Resource" row for a single-element run: the element chip for the
-     * resource the run was triggered for, or a "(gone)" note when it has since
-     * been deleted. Null for whole-feed runs, which have no single resource.
+     * resource the run was triggered for, or its `#id` when it has since been
+     * deleted. Null for whole-feed runs, which have no single resource.
      */
     protected function resolveResourceDisplay(LogRecord $log, ?Link $link): ?string
     {
@@ -140,7 +141,7 @@ class LogsController extends AbstractController
         $element = Craft::$app->getElements()->getElementById((int) $log->elementId, $link?->elementType);
 
         if (! $element) {
-            return '<span class="light">#' . (int) $log->elementId . ' (gone)</span>';
+            return '<span class="light">#' . (int) $log->elementId . '</span>';
         }
 
         return (new ItemRowPresenter())->elementChip($element);
@@ -260,7 +261,7 @@ class LogsController extends AbstractController
             ]);
         }
 
-        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null);
+        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null, withParsedHtml: true);
         $row['index'] = (int) $item->id;
         $row['action'] = (string) $item->action;
 
@@ -273,6 +274,13 @@ class LogsController extends AbstractController
         // can't reproduce a non-deterministic failure like an asset upload).
         $presenter = new LogPresenter();
         $row['mappings'] = $presenter->overlayFieldErrors($row['mappings'] ?? [], $presenter->fieldErrors($item->fieldErrors));
+
+        // Overlay the run-time "changed" flags, likewise authoritative: the
+        // inspection above is a dry run against the element's LIVE state, so a
+        // successfully-updated item reads "no change" on every row. A null
+        // column (rows without populate) resets the rows to the viewer's "?"
+        // state instead of a misleading live value.
+        $row['mappings'] = $presenter->overlayChangedFlags($row['mappings'], $item->changedFields);
 
         return $this->asJson(['row' => $row]);
     }
@@ -298,8 +306,12 @@ class LogsController extends AbstractController
         // Single-select action filter (empty = all), plus a free-text search.
         // The param is `status`, not `action`: Craft reserves `action` for
         // controller-action routing, so `?action=…` would 404 the request.
+        // A known action expands to its filter group so a per-site variant is
+        // served alongside its base (deleted + deleted-for-site, etc.), matching
+        // the grouped counter the filter is clicked from.
         $action = $this->stringQueryParam('status');
-        $actions = $action !== null ? [$action] : [];
+        $case = $action !== null ? ItemAction::tryFrom($action) : null;
+        $actions = $case !== null ? $case->filterGroup() : ($action !== null ? [$action] : []);
         $search = $this->stringQueryParam('search');
 
         $plugin = Influx::getInstance();
