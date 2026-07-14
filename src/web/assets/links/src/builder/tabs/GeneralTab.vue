@@ -166,13 +166,6 @@ export default {
             // write straight back into the store via this reference.
             options: store.ui.options,
             ui: store.ui,
-            // Local UI flags mirroring the Twig form's lightswitches —
-            // flipped off doesn't clear the underlying value, just hides
-            // the editor so the user can iterate without losing config.
-            // (The site-endpoints flag lives in the store instead: save()
-            // validates against it and sampling keys off it.)
-            supportsItemEndpoint:  !!store.link.itemEndpoint,
-            supportsOffset:        Object.keys(store.link.offset || {}).length > 0,
         };
     },
 
@@ -191,6 +184,19 @@ export default {
         siteEndpointsMode: {
             get() { return this.ui.siteEndpointsMode; },
             set(v) { store.setSiteEndpointsMode(v); },
+        },
+
+        // Also store-owned so a flip rides dirty-tracking and save() strips
+        // the gated field from the outbound payload. The value stays in state
+        // either way — flipping off just hides the editor.
+        supportsItemEndpoint: {
+            get() { return this.ui.supportsItemEndpoint; },
+            set(v) { store.setSupportsItemEndpoint(v); },
+        },
+
+        supportsOffset: {
+            get() { return this.ui.supportsOffset; },
+            set(v) { store.setSupportsOffset(v); },
         },
 
         // The option bundle for the selected element type — carries the

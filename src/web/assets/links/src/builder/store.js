@@ -45,11 +45,16 @@ const initial = () => ({
     warning: null,         // soft post-save warning banner (e.g. overlapping
                            // resource mapping); persists until the next save
 
-    // UI mode: the link is endpoint-per-site instead of one base endpoint.
-    // Derived from the saved data on load, then owned by the General tab's
-    // lightswitch. Not persisted itself — a link "is" site-specific when
-    // it has siteEndpoints; save() enforces that invariant.
-    siteEndpointsMode: false,
+    // The three General-tab feature switches. Each is DERIVED from the link on
+    // load (a link "has" a feature when its field is non-empty) and then owned
+    // here, so save() can strip the gated field from the outbound payload and
+    // dirty-tracking can see a flip. Not persisted themselves. Flipping one off
+    // does NOT touch root.link — the value stays in the editor; only the
+    // outbound copy is emptied (see outboundLink()), and the canonical stripped
+    // link comes back on save and reloads into state.
+    siteEndpointsMode: false,     // "Site-specific endpoints"
+    supportsItemEndpoint: false,  // "Resource Endpoint supported"
+    supportsOffset: false,        // "Sliding-window presets"
 });
 
 const root = reactive(initial());
@@ -65,11 +70,40 @@ const root = reactive(initial());
  */
 const isDirty = computed(() => {
     if (!root.link || root.savedSnapshot === null) return false;
-    return JSON.stringify(root.link) !== root.savedSnapshot;
+    return saveSignature() !== root.savedSnapshot;
 });
 
+/**
+ * The dirty/snapshot unit: the link plus the three transient switch states.
+ * A switch flip strips a field only in the outbound payload (root.link is
+ * untouched), so it must ride the signature to read as a pending change.
+ */
+function saveSignature() {
+    return JSON.stringify({
+        link: root.link,
+        switches: [root.supportsItemEndpoint, root.supportsOffset, root.siteEndpointsMode],
+    });
+}
+
 function rememberSnapshot() {
-    root.savedSnapshot = root.link ? JSON.stringify(root.link) : null;
+    root.savedSnapshot = root.link ? saveSignature() : null;
+}
+
+/**
+ * The link as it should be persisted: a shallow copy of the live link with
+ * each switched-off feature's field emptied. getConfig() then drops the empty
+ * value server-side and its YAML key is removed. root.link itself is left
+ * untouched, so the values stay in the editor until the save round-trip
+ * returns the canonical (stripped) link and the store reloads it into state.
+ */
+function outboundLink() {
+    const link = { ...root.link };
+
+    if (!root.supportsItemEndpoint) link.itemEndpoint = null;
+    if (!root.supportsOffset) link.offset = {};
+    if (!root.siteEndpointsMode) link.siteEndpoints = [];
+
+    return link;
 }
 
 /**
@@ -87,7 +121,11 @@ async function load(id, duplicateOf = null) {
         root.link    = data.link;
         root.options = data.options;
         root.meta    = data.meta;
-        root.siteEndpointsMode = (data.link.siteEndpoints || []).length > 0;
+        // Derive the feature switches from the saved data: a link "has" a
+        // feature exactly when its gated field is non-empty.
+        root.siteEndpointsMode    = (data.link.siteEndpoints || []).length > 0;
+        root.supportsItemEndpoint = !!data.link.itemEndpoint;
+        root.supportsOffset       = Object.keys(data.link.offset || {}).length > 0;
         // Reset lazily-loaded caches whenever we re-bootstrap so the next
         // tab activation re-fetches against the new link.
         root.mappable = null;
@@ -142,7 +180,7 @@ async function save(options = {}) {
 
     root.saving = true;
     try {
-        const result = await api.save(root.link);
+        const result = await api.save(outboundLink());
 
         const wasNew = !!(root.meta && root.meta.isNew);
         const savedId = result.link?.id;
@@ -345,15 +383,29 @@ watch(criteriaSignature, (signature) => {
 });
 
 /**
- * Flip the General tab's "Site-specific endpoints" mode. Pure UI state —
- * turning it off keeps any configured siteEndpoints (the editor is just
- * hidden), matching the other lightswitches' don't-lose-config behavior.
- * Re-evaluates the sample because the effective sample endpoint changes
- * with the mode.
+ * Flip the General tab's "Site-specific endpoints" switch. Off keeps any
+ * configured siteEndpoints in state (the editor is just hidden), so the user
+ * can toggle without losing rows; save() drops them from the outbound payload
+ * when the switch is off, which strips them from the persisted config.
+ * Re-evaluates the sample because the effective sample endpoint changes with
+ * the mode.
  */
 function setSiteEndpointsMode(on) {
     root.siteEndpointsMode = !!on;
     autoFetchSample();
+}
+
+/**
+ * Flip the "Resource Endpoint supported" / "Sliding-window presets" switches.
+ * Like setSiteEndpointsMode() these keep the field's value in state and only
+ * gate whether save() strips it from the outbound payload.
+ */
+function setSupportsItemEndpoint(on) {
+    root.supportsItemEndpoint = !!on;
+}
+
+function setSupportsOffset(on) {
+    root.supportsOffset = !!on;
 }
 
 /**
@@ -400,6 +452,8 @@ export const store = {
     fetchSample,
     autoFetchSample,
     setSiteEndpointsMode,
+    setSupportsItemEndpoint,
+    setSupportsOffset,
     refreshMappableFields,
     refreshEndpointTokenSuggestions,
 };

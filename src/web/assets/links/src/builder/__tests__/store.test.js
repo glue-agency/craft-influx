@@ -212,6 +212,50 @@ describe('store', () => {
         );
     });
 
+    it('a feature-switch flip marks the form dirty without touching root.link', async () => {
+        api.bootstrap.mockResolvedValue({
+            ...bootstrapPayload(),
+            link: { ...bootstrapPayload().link, itemEndpoint: 'https://example.test/items/{id}' },
+        });
+        await store.load(1);
+        expect(store.ui.supportsItemEndpoint).toBe(true);
+        expect(store.isDirty.value).toBe(false);
+
+        store.setSupportsItemEndpoint(false);
+
+        // The value stays in state (the editor is just hidden)...
+        expect(store.link.itemEndpoint).toBe('https://example.test/items/{id}');
+        // ...but the flip reads as a pending change.
+        expect(store.isDirty.value).toBe(true);
+
+        // Reverting the flip reads clean again — nothing was lost.
+        store.setSupportsItemEndpoint(true);
+        expect(store.isDirty.value).toBe(false);
+    });
+
+    it('strips only the switched-off fields from the outbound save payload', async () => {
+        api.bootstrap.mockResolvedValue({
+            ...bootstrapPayload(),
+            link: {
+                ...bootstrapPayload().link,
+                itemEndpoint: 'https://example.test/items/{id}',
+                offset: { hour: { since: '-1 hour', queryParam: 'since' } },
+                siteEndpoints: [{ site: 'nl', endpoint: 'https://example.test/nl' }],
+            },
+        });
+        await store.load(1);
+        api.save.mockResolvedValue({ success: true, link: { ...bootstrapPayload().link } });
+
+        // Turn the resource endpoint off; the other two switches stay on.
+        store.setSupportsItemEndpoint(false);
+        await store.save({ continueEditing: true });
+
+        const sent = api.save.mock.calls[0][0];
+        expect(sent.itemEndpoint).toBe(null); // stripped — getConfig() will drop it
+        expect(sent.offset).toEqual({ hour: { since: '-1 hour', queryParam: 'since' } }); // kept
+        expect(sent.siteEndpoints).toEqual([{ site: 'nl', endpoint: 'https://example.test/nl' }]); // kept
+    });
+
     it('blocks saving in site-specific mode without a single site endpoint', async () => {
         store.link.siteEndpoints = [{ site: 'en', endpoint: '   ' }];
         store.setSiteEndpointsMode(true);
