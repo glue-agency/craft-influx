@@ -17,10 +17,6 @@ use yii\base\Event;
  *           $event->options[] = ['value' => 'd.m.Y', 'label' => 'DE date'];
  *       }
  *   );
- *
- * Each entry is `['value' => string, 'label' => string]`. Strategies use
- * the same event class for every list so a third-party plugin can register
- * one handler per option set without learning a new event shape each time.
  */
 class RegisterMappingOptionsEvent extends Event
 {
