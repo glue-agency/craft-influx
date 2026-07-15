@@ -26,7 +26,7 @@ enum SyncDecision: string
      * Decide what a sync run should do with one remote item given its match
      * value and the element (if any) that was found for it. Used by both
      * {@see \GlueAgency\Influx\services\SynchronizationService::processItem()} for
-     * the real run and {@see \GlueAgency\Influx\services\DebugService::debugItem()}
+     * the real run and {@see \GlueAgency\Influx\services\InspectorService::inspectWithTarget()}
      * for the dry-run inspector, so both stay aligned on the rule.
      *
      * Moved here from {@see Link::decideAction()} — it reads the link's

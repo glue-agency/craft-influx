@@ -19,7 +19,7 @@ use Throwable;
 /**
  * Shapes a single inspected item — its resolved element and per-field mapping
  * results — into the Twig/JS-facing row arrays the debug and log viewers
- * render. Extracted from {@see \GlueAgency\Influx\services\DebugService} so the
+ * render. Extracted from {@see \GlueAgency\Influx\services\InspectorService} so the
  * orchestration (the dry-run pipeline walk) stays in the service and the
  * presentation lives here, unit-testable in isolation.
  *
@@ -88,11 +88,9 @@ class ItemRowPresenter
                 }
             }
 
-            // Log context only: values with a richer display than plain text
-            // also render server-side — relations as element chips (fetched
-            // once, rendered both ways; see describeElementChips()), booleans
-            // as a display-only lightswitch. Everything else keeps the plain
-            // stringified value and a null html key.
+            // Log context only: render rich values server-side too — relations as
+            // element chips (see describeElementChips()), booleans as a lightswitch;
+            // everything else keeps the plain string and a null html key.
             $parsedHtml = null;
 
             if ($withParsedHtml && $parsedValue instanceof ElementQueryInterface) {

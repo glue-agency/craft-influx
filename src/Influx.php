@@ -27,6 +27,7 @@ use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\services\EndpointTokensService;
 use GlueAgency\Influx\services\FieldsService;
+use GlueAgency\Influx\services\InspectorService;
 use GlueAgency\Influx\services\LinkBuilderService;
 use GlueAgency\Influx\services\LinksService;
 use GlueAgency\Influx\services\LogsService;
@@ -50,6 +51,7 @@ use yii\base\Event;
  * @property BackupService $backup
  * @property AssetUploadService $assetUpload
  * @property DebugService $debug
+ * @property InspectorService $inspector
  * @property AuthService $auth
  * @property EndpointTokensService $endpointTokens
  * @property FeedMeService $feedMe
@@ -85,6 +87,7 @@ class Influx extends Plugin
                 'backup'          => BackupService::class,
                 'assetUpload'     => AssetUploadService::class,
                 'debug'           => DebugService::class,
+                'inspector'       => InspectorService::class,
                 'auth'            => AuthService::class,
                 'endpointTokens'  => EndpointTokensService::class,
                 'feedMe'          => FeedMeService::class,
@@ -150,8 +153,7 @@ class Influx extends Plugin
             ];
         }
 
-        // Flag error logs on the nav, like Utilities flags available updates:
-        // a badge on the section and its Logs subitem when any log has errors.
+        // Badge the section and its Logs subitem when any log has errors.
         $errorCount = Influx::getInstance()->logs->errorLogCount();
 
         if ($errorCount > 0) {
@@ -183,14 +185,11 @@ class Influx extends Plugin
                 $event->rules['influx/links'] = 'influx/links/index';
                 $event->rules['influx/links/new'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/duplicate'] = 'influx/links/duplicate';
-                // Same editor in read-only environments — the builder loads
-                // the stored config with every field disabled; there's no
-                // separate detail view.
+                // Same editor in read-only — the builder loads the config with fields disabled; no separate detail view.
                 $event->rules['influx/links/<id:\d+>'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/edit'] = 'influx/links/edit';
 
-                // Debug is a standalone inspector scoped by link handle
-                // (?link=<handle>), with a link switcher — not a per-link page.
+                // Standalone inspector scoped by link handle (?link=<handle>), not a per-link page.
                 $event->rules['influx/debug'] = 'influx/links/debug';
                 $event->rules['influx/debug/inspect'] = 'influx/links/debug-inspect';
 
@@ -323,8 +322,7 @@ class Influx extends Plugin
     protected function registerEntrySyncButton(): void
     {
         Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
-            // Hidden entirely for users without the sync permission — they can
-            // neither see nor trigger the button.
+            // Hidden entirely for users without the sync permission.
             if (! Craft::$app->getUser()->checkPermission(self::PERMISSION_SYNC)) {
                 return;
             }
@@ -335,8 +333,7 @@ class Influx extends Plugin
             $candidates = [];
 
             foreach ($this->links->findLinksForElement($element) as $link) {
-                // A resource mapping is required to sync a single element — a
-                // link without one can only run the full-list sweep.
+                // A resource mapping is required to sync a single element; without one, only the full-list sweep.
                 if (! $link->itemEndpoint) {
                     continue;
                 }
@@ -385,10 +382,9 @@ class Influx extends Plugin
             }
         }
 
-        // Only a per-site-endpoints link scopes to one site; a link with a
-        // single base endpoint always syncs the primary site, so don't pin the
-        // action to the editor's current site there (it would just make the
-        // sync build its item endpoint from a non-primary localization).
+        // Only a per-site-endpoints link scopes to one site; a single-base-endpoint
+        // link always syncs the primary site, so don't pin the action to the
+        // editor's current site there.
         $params = ['elementId' => $element->id, 'link' => $link->handle];
 
         if ($link->siteHandles() !== []) {

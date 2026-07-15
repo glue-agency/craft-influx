@@ -59,7 +59,7 @@ class SynchronizationService extends Component
 
     /**
      * The shared per-item pipeline. Also used (dry-run) by
-     * {@see DebugService} — the logic exists exactly once.
+     * {@see InspectorService} — the logic exists exactly once.
      */
     protected ItemProcessor $itemProcessor;
 
@@ -107,8 +107,7 @@ class SynchronizationService extends Component
     ): array {
         $plugin = Influx::getInstance();
 
-        // The before-event fires ONCE for the whole run; cancelling it cancels
-        // every site.
+        // The before-event fires once per run; cancelling it cancels every site
         $beforeEvent = new SyncLinkEvent(['link' => $link]);
         $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
 
@@ -116,9 +115,7 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        // No backup here: the trigger layer takes ONE for the whole operation
-        // before this runs — the console command via BackupService::backupForLinks(),
-        // a CP run via PrepareSyncJob. syncLink itself is backup-agnostic.
+        // No backup here: the trigger layer takes one before this runs; syncLink is backup-agnostic
 
         $target = $this->resolveTarget($link);
         $siteHandles = $this->runSites($link, $siteHandle);
@@ -126,9 +123,7 @@ class SynchronizationService extends Component
         $preset = OffsetPreset::forLink($link, $offset);
         [$queryParams] = $preset?->resolve() ?? [[], null];
 
-        // Serialise the whole run against any other run of the SAME link (a
-        // queued per-site step, a concurrent trigger, another worker) so
-        // find-or-create can't race into duplicate canonical elements.
+        // Serialise against any other run of the same link so find-or-create can't race into duplicate elements
         $mutex = Craft::$app->getMutex();
         $lockKey = $this->syncLockKey($link);
 
@@ -136,9 +131,7 @@ class SynchronizationService extends Component
             throw new InfluxException("Could not acquire the sync lock for link '{$link->handle}' — another run is already in progress.");
         }
 
-        // Each site runs under its OWN log with its OWN per-pass sweep — a
-        // failure fails THIS site's log and the run CONTINUES with the next
-        // site (per-site isolation).
+        // Each site runs under its own log; a failure fails that site's log and the run continues (per-site isolation)
         $logs = [];
 
         try {
@@ -152,9 +145,7 @@ class SynchronizationService extends Component
                 } catch (FeedFetchException $e) {
                     $plugin->logs->fail($log, $e->getMessage());
                 } catch (Throwable $e) {
-                    // A non-fetch failure (DB error, sweep query, an unresolvable
-                    // site, a listener throw) must still close THIS site's log as
-                    // failed — never leave it 'running' — and let the run go on.
+                    // A non-fetch failure still closes this site's log as failed (never left 'running') and the run goes on
                     Craft::error("Influx: link '{$link->handle}' failed for site '" . ($handle ?? 'primary') . "': {$e->getMessage()}", __METHOD__);
                     $plugin->logs->fail($log, $e->getMessage());
                 }
@@ -245,8 +236,7 @@ class SynchronizationService extends Component
         $state['unattributedErrors'] ??= 0;
         $target = $this->resolveTarget($link);
 
-        // Validate the requested scope (null = the single no-site-endpoints
-        // scope; a handle must be one the link is configured for).
+        // Validate the requested scope (null = the no-site-endpoints scope; a handle must be one the link is configured for)
         if ($requestedSite !== null && ! in_array($requestedSite, $link->siteHandles(), true)) {
             throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$requestedSite}'.");
         }
@@ -267,9 +257,7 @@ class SynchronizationService extends Component
         }
 
         try {
-            // forSite may throw when a configured site no longer resolves (M4);
-            // treat it like a fetch failure — fail this log, never leave it
-            // stuck 'running'.
+            // forSite may throw when a configured site no longer resolves (M4); treat it like a fetch failure and fail this log
             $context = SyncContext::forSite($link, $target, $requestedSite, $trigger);
             $page = $plugin->data->page($link, $requestedSite, $state['cursorUrl'], $queryParams, $state['page']);
         } catch (Throwable $e) {
@@ -280,16 +268,11 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // Dedupe the running seen-set as a value-keyed map (list re-derived on
-        // write-back), so a re-processed tail after a retried step can't
-        // double-count.
+        // Dedupe the seen-set as a value-keyed map so a re-processed tail after a retried step can't double-count
         $seen = array_fill_keys($state['seenIds'], true);
 
-        // Serialise item processing against any other step of the SAME link (a
-        // per-site fan-out, a concurrent trigger) so find-or-create can't race
-        // into duplicate canonical elements. If a concurrent step still holds
-        // the lock past the wait, leave this step unprocessed so the job
-        // re-queues and retries it (idempotent — seenIds/creates carry across).
+        // Serialise against any other step of the same link so find-or-create can't race. If the lock isn't
+        // acquired, leave this step unprocessed for the job to re-queue (idempotent — seenIds/creates carry across)
         $mutex = Craft::$app->getMutex();
         $lockKey = $this->syncLockKey($link);
 
@@ -297,10 +280,8 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // Flush at the page boundary — and in a finally so a throw escaping the
-        // loop still persists rows for items already saved this step. A retried
-        // queue step then re-processes only the un-flushed tail (and re-folds
-        // its ids into the seen-set, hence the dedupe above).
+        // Flush at the page boundary in a finally, so a throw still persists rows already saved this step;
+        // a retried step re-processes only the un-flushed tail
         try {
             foreach ($page->items as $item) {
                 try {
@@ -342,15 +323,12 @@ class SynchronizationService extends Component
             return $state;
         }
 
-        // Scope finished. Run the single missing-elements sweep over the set
-        // accumulated across this scope's steps, then close the log — the job
-        // walks no further sites.
+        // Scope finished: run the missing-elements sweep over the accumulated set, then close the log
         try {
             $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
             $this->finishSync($link, $log);
         } catch (Throwable $e) {
-            // A non-fetch failure in the sweep/finish must fail the log rather
-            // than leave it 'running' with the job retrying the page forever.
+            // A non-fetch failure in the sweep/finish fails the log rather than leaving it 'running' forever
             Craft::error("Influx: link '{$link->handle}' failed during the missing-elements sweep: {$e->getMessage()}", __METHOD__);
             $plugin->logs->fail($log, $e->getMessage());
         }
@@ -379,8 +357,7 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        // No backup here: PrepareSyncJob takes ONE for the whole fan-out before
-        // enqueuing the per-site jobs this opens a log for.
+        // No backup here: PrepareSyncJob takes one for the whole fan-out before enqueuing the per-site jobs
 
         return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle);
     }
@@ -424,18 +401,14 @@ class SynchronizationService extends Component
             );
         }
 
-        // A single-element sync resolves to exactly one scope: the element's
-        // current site, or null (primary) for a no-site-endpoints link. It's
-        // recorded on the log so the overview shows the right site.
+        // A single-element sync resolves to one scope: the element's current site (or null for a no-site-endpoints link)
         $siteHandle = $siteHandles[0];
 
         return $this->runWithLog($link, SyncTrigger::ELEMENT, $element->id, $siteHandle, function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandle) {
             $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
             $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
 
-            // Single-resource responses carry the same envelope as the list
-            // feed — unwrap via the link's rootNode or every match path misses
-            // and the item logs as an inexplicable skip.
+            // Single-resource responses carry the same envelope as the list feed — unwrap via rootNode or every match path misses
             $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);
 
             try {
@@ -541,16 +514,12 @@ class SynchronizationService extends Component
     {
         $plugin = Influx::getInstance();
 
-        // The feed's reported total (via totalCountNode, or pageCount × the
-        // first page's size) — constant across pages, captured once so the
-        // job can show a real % instead of the eased heuristic.
+        // The feed's reported total, captured once so the job can show a real % instead of the eased heuristic
         $total = null;
         $firstPageSize = null;
 
-        // The sweep's inputs, accumulated across every page of this site.
-        // seenIds protects present items from being swept; unattributedErrors
-        // is the count of items that failed WITHOUT a resolvable element — any
-        // such failure means the seen-set is incomplete, so the sweep bails.
+        // The sweep's inputs, accumulated across every page: seenIds protects present items from the sweep;
+        // any unattributedError (an item that failed without a resolvable element) leaves the seen-set incomplete, so the sweep bails
         $seenIds = [];
         $unattributedErrors = 0;
 
@@ -560,9 +529,7 @@ class SynchronizationService extends Component
             }
 
             foreach ($page->items as $item) {
-                // One bad item must not kill the run — transport/config
-                // errors abort (they throw from the pages() iterator), but
-                // per-item failures become an error row and the run goes on.
+                // One bad item must not kill the run: per-item failures become an error row and the run goes on
                 try {
                     $elementId = $this->processItem($context, $item, $log);
 
@@ -575,12 +542,10 @@ class SynchronizationService extends Component
                 }
             }
 
-            // Flush per page so the DB rows/counters match what progress
-            // reports (progress reads the live in-memory itemsSeen).
+            // Flush per page so the DB rows/counters match what progress reports
             $plugin->logs->flush($log);
 
-            // Report progress once per page (not per item) to keep the queue
-            // writes bounded; itemsSeen is the cumulative count across sites.
+            // Report progress once per page (not per item) to keep queue writes bounded
             if ($onProgress !== null) {
                 if ($total === null) {
                     $total = $page->totalCount
@@ -591,9 +556,7 @@ class SynchronizationService extends Component
             }
         }
 
-        // Scope fully walked — run the single missing-elements sweep over the
-        // elements this scope owns that its feed never mentioned. One pass, one
-        // resolved policy. flush() inside sweepMissing() persists its rows.
+        // Scope fully walked — run the missing-elements sweep over the elements this scope owns but its feed never mentioned
         $this->sweepMissing($context, array_keys($seenIds), $unattributedErrors, $log);
     }
 
@@ -631,9 +594,7 @@ class SynchronizationService extends Component
                 return $resolution->element?->id;
             }
 
-            // Allow listeners to swap in a different element. The decision is
-            // re-derived: handing us an element turns a no-create skip into
-            // an update.
+            // Let listeners swap in a different element; the decision is re-derived (a supplied element turns a no-create skip into an update)
             $resolution = $resolution->withElement($link, $beforeEvent->element);
         }
 
@@ -804,10 +765,8 @@ class SynchronizationService extends Component
             return;
         }
 
-        // D2 guard: a global delete must never fire on a link with site
-        // endpoints — deleting off one site's feed would nuke content the other
-        // sites still carry. Validation forbids the combo; this is the runtime
-        // backstop against a hand-edited config.
+        // D2 guard: a global delete must never fire on a link with site endpoints (it would nuke content other sites carry).
+        // Runtime backstop against a hand-edited config
         if ($policy === ItemAction::DELETED && ! empty($link->getSiteEndpoints())) {
             $this->warnSweepSkipped(
                 "Influx: missing-elements delete sweep skipped for link '{$link->handle}'"
@@ -865,8 +824,7 @@ class SynchronizationService extends Component
             return;
         }
 
-        // The disable policies only touch still-enabled elements (skip the
-        // churn of re-disabling); the delete policies consider every status.
+        // Disable policies only touch still-enabled elements; delete policies consider every status
         $disablePolicy = in_array($policy, [ItemAction::DISABLED, ItemAction::DISABLED_FOR_SITE], true);
         $query->status($disablePolicy ? 'enabled' : null);
 
@@ -877,9 +835,7 @@ class SynchronizationService extends Component
                 $matchValue = $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null;
 
                 try {
-                    // A false return means the save didn't persist (validation,
-                    // etc.) — record an ERROR row, NOT a success row, so the log
-                    // never claims a disable/delete that never happened.
+                    // A false return means the save didn't persist — record an ERROR row, not a success row
                     if (! $this->applyMissingAction($context, $policy, $element)) {
                         $plugin->logs->recordItem(
                             $log,
@@ -905,11 +861,8 @@ class SynchronizationService extends Component
             }
         }
 
-        // The sweep can add hundreds of rows; the buffer auto-flushes at 100,
-        // but finish the tail explicitly. On the synchronous path finish()
-        // flushes again (harmless — the buffer is then empty); on the
-        // batchStep path nothing else flushes before the state returns, so
-        // this is the flush that persists the sweep's rows.
+        // Flush the tail explicitly: the buffer auto-flushes at 100, but on the batchStep path nothing else
+        // flushes before the state returns, so this is what persists the sweep's rows
         $plugin->logs->flush($log);
     }
 
@@ -932,11 +885,8 @@ class SynchronizationService extends Component
             ItemAction::DELETED           => $target->delete($element),
             ItemAction::DELETED_FOR_SITE  => $target->deleteForSite($element, (int) $context->siteId),
             ItemAction::DISABLED_FOR_SITE => $target->disableForSite($element, (int) $context->siteId),
-            // DISABLED stays adaptive: post-migration it only runs on a
-            // no-site pass (global disable), but an un-migrated `disable` +
-            // site-endpoints config still disables just that site's row here
-            // rather than reaching across sites — disable is reversible, so
-            // (unlike the DELETED D2 guard) the safe downgrade beats a skip.
+            // DISABLED stays adaptive: an un-migrated `disable` + site-endpoints config disables just that site's
+            // row rather than reaching across sites — disable is reversible, so the downgrade beats a skip
             ItemAction::DISABLED => $context->siteId !== null
                 ? $target->disableForSite($element, $context->siteId)
                 : $target->disable($element),

@@ -250,7 +250,7 @@ class LogsController extends AbstractController
             ]);
         }
 
-        $row = $plugin->debug->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null, withParsedHtml: true);
+        $row = $plugin->inspector->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null, withParsedHtml: true);
         $row['index'] = (int) $item->id;
         $row['action'] = (string) $item->action;
 
