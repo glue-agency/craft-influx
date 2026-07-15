@@ -9,8 +9,8 @@ use GlueAgency\Influx\services\AuthService;
 /**
  * Spec for the Basic auth strategy: the inherited `token` property carries
  * the password, both halves resolve `$VARNAME` references at apply time, and
- * the result is a single RFC 7617 `Authorization: Basic` header — the query
- * string is left untouched.
+ * apply() returns a single RFC 7617 `Authorization: Basic` header and no query
+ * params.
  */
 class BasicAuthTest extends Unit
 {
@@ -18,12 +18,9 @@ class BasicAuthTest extends Unit
     {
         $strategy = new BasicAuth(['username' => 'alice', 'token' => 'hunter2']);
 
-        $headers = [];
-        $query = [];
-        $strategy->apply($headers, $query);
+        $auth = $strategy->apply();
 
-        $this->assertSame(['Authorization' => 'Basic ' . base64_encode('alice:hunter2')], $headers);
-        $this->assertSame([], $query);
+        $this->assertSame(['headers' => ['Authorization' => 'Basic ' . base64_encode('alice:hunter2')]], $auth);
     }
 
     public function testResolvesEnvReferencesAtApplyTime(): void
@@ -37,11 +34,9 @@ class BasicAuthTest extends Unit
                 'token'    => '$INFLUX_TEST_BASIC_PASS',
             ]);
 
-            $headers = [];
-            $query = [];
-            $strategy->apply($headers, $query);
+            $auth = $strategy->apply();
 
-            $this->assertSame('Basic ' . base64_encode('bob:s3cret'), $headers['Authorization']);
+            $this->assertSame('Basic ' . base64_encode('bob:s3cret'), $auth['headers']['Authorization']);
         } finally {
             unset($_SERVER['INFLUX_TEST_BASIC_USER'], $_SERVER['INFLUX_TEST_BASIC_PASS']);
         }

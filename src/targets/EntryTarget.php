@@ -14,6 +14,7 @@ use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
 use DateTime;
 use DateTimeInterface;
+use DateTimeZone;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Compat;
@@ -443,7 +444,9 @@ class EntryTarget extends AbstractElementTarget
 
         if (is_string($format) && $format !== '') {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
-            $parsed = DateTime::createFromFormat($phpFormat, (string) $value);
+            // UTC fallback timezone — see Date::parseValue(); a format carrying
+            // its own tz token still wins.
+            $parsed = DateTime::createFromFormat($phpFormat, (string) $value, new DateTimeZone('UTC'));
 
             return $parsed === false ? null : $parsed;
         }

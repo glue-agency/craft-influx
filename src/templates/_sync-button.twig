@@ -36,10 +36,16 @@
             {{ label }}
         </button>
     {% else %}
-        <button type="button" class="btn disabled" disabled style="order: -1; {{ mutedStyle }}">
-            {{ label }}
-        </button>
-        <span class="info" style="order: -1; align-self: center;">{{ candidate.reason }}</span>
+        {# The disabled button and its explanatory info icon must travel as ONE
+           flex item: they're appended after Craft's own buttons, so as separate
+           order:-1 siblings Craft's "Create a draft" slots between them. Wrapping
+           keeps the icon attached to the button. #}
+        <div style="order: -1; display: flex; align-items: center; gap: 5px;">
+            <button type="button" class="btn disabled" disabled style="{{ mutedStyle }}">
+                {{ label }}
+            </button>
+            <span class="info">{{ candidate.reason }}</span>
+        </div>
     {% endif %}
 {% else %}
     {# Multiple links target this element — a plain menu button (no split):

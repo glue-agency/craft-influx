@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\auth;
 
 use craft\base\Model;
 use craft\helpers\App;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 
 /**
  * Base for auth strategies. Strategies are real Craft/Yii models so per-type
@@ -33,20 +34,25 @@ abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterfa
 
     /**
      * Default empty schema so subclasses that haven't been updated for the
-     * SPA's Authentication tab still satisfy the interface contract: no
-     * fields → no schema → the tab renders nothing for the strategy. The
-     * three built-ins override this with real SchemaBuilder node lists.
+     * SPA's Authentication tab still satisfy the interface contract: an empty
+     * builder → no fields → the tab renders nothing for the strategy. The
+     * built-ins override this with real SchemaBuilder node lists.
      */
-    public static function schema(): array
+    public static function schema(): SchemaBuilder
     {
-        return [];
+        return SchemaBuilder::make();
     }
 
     /**
      * Resolve `$VARNAME` / alias references in a stored setting at request
-     * time, so secrets stay out of Project Config. Null-safe: an unset
-     * setting resolves to '' (unreachable for required settings — every
-     * built-in strategy `require`s the values it applies).
+     * time, so secrets stay out of Project Config. Deliberately lenient: an
+     * unset or empty env var resolves to '' and is sent as an empty credential
+     * rather than throwing. Env resolution is environment-specific — a local
+     * dev environment legitimately leaves a token blank — so a hard "must be
+     * set" check at request time can't tell that apart from a real misconfig
+     * and would break dev. The stored value's presence is validated at save
+     * time via each strategy's defineRules(); the actual secret is an env
+     * concern per deployment.
      */
     protected function resolve(?string $value): string
     {

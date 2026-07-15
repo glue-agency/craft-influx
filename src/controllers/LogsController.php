@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -58,20 +59,35 @@ class LogsController extends AbstractController
             $selectedStatus = null;
         }
 
-        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $selectedLink, $selectedStatus);
+        $selectedTrigger = $this->stringQueryParam('trigger');
+
+        if ($selectedTrigger !== null && SyncTrigger::tryFrom($selectedTrigger) === null) {
+            $selectedTrigger = null;
+        }
+
+        // value => label for the trigger filter, in enum declaration order.
+        $triggers = [];
+
+        foreach (SyncTrigger::cases() as $trigger) {
+            $triggers[$trigger->value] = $trigger->label();
+        }
+
+        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $selectedLink, $selectedStatus, $selectedTrigger);
 
         return $this->renderTemplate('influx/logs/index', [
-            'logs'           => $logs,
-            'page'           => $page,
-            'perPage'        => $perPage,
-            'total'          => $total,
-            'linkIds'        => $linkIds,
-            'linkNames'      => $linkNames,
-            'presenter'      => new LogPresenter(),
-            'selectedLink'   => $selectedLink,
-            'selectedStatus' => $selectedStatus,
-            'statuses'       => self::FILTER_STATUSES,
-            'retentionDays'  => $plugin->getSettings()->logRetentionDays,
+            'logs'            => $logs,
+            'page'            => $page,
+            'perPage'         => $perPage,
+            'total'           => $total,
+            'linkIds'         => $linkIds,
+            'linkNames'       => $linkNames,
+            'presenter'       => new LogPresenter(),
+            'selectedLink'    => $selectedLink,
+            'selectedStatus'  => $selectedStatus,
+            'statuses'        => self::FILTER_STATUSES,
+            'selectedTrigger' => $selectedTrigger,
+            'triggers'        => $triggers,
+            'retentionDays'   => $plugin->getSettings()->logRetentionDays,
         ]);
     }
 

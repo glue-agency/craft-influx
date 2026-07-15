@@ -8,6 +8,7 @@ use craft\elements\Asset;
 use craft\helpers\Assets as AssetsHelper;
 use craft\helpers\FileHelper;
 use GlueAgency\Influx\exceptions\AssetUploadException;
+use GlueAgency\Influx\Influx;
 use GuzzleHttp\Client;
 use Throwable;
 
@@ -26,9 +27,15 @@ class AssetUploadService extends Component
     public function init(): void
     {
         parent::init();
+
+        $followRedirects = Influx::getInstance()->getSettings()->followRedirects;
+
         $this->client = Craft::createGuzzleClient([
             'timeout'         => 30,
             'connect_timeout' => 10,
+            'allow_redirects' => $followRedirects
+                ? ['max' => 5, 'strict' => true, 'protocols' => ['http', 'https']]
+                : false,
         ]);
     }
 
@@ -123,6 +130,14 @@ class AssetUploadService extends Component
      */
     protected function downloadToTemp(string $url): string
     {
+        // Feed-controlled URL: allow only http(s), so a hostile feed can't
+        // point it at file://, ftp://, gopher://, etc. (local-file read / SSRF).
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            throw new AssetUploadException("Refusing to download '{$url}': only http and https URLs are allowed.");
+        }
+
         $tempPath = Craft::$app->getPath()->getTempPath() . '/influx-' . uniqid('', true);
         FileHelper::createDirectory(dirname($tempPath));
 

@@ -17,15 +17,14 @@ class BearerAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Bearer token');
     }
 
-    public static function schema(): array
+    public static function schema(): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->tokenInput([
                 'handle'       => 'token',
                 'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Bearer &lt;token&gt;</code>.'),
-            ])
-            ->toArray();
+            ]);
     }
 
     protected function defineRules(): array
@@ -36,8 +35,8 @@ class BearerAuth extends AbstractAuthStrategy
         ];
     }
 
-    public function apply(array &$headers, array &$query): void
+    public function apply(): array
     {
-        $headers['Authorization'] = 'Bearer ' . $this->resolve($this->token);
+        return ['headers' => ['Authorization' => 'Bearer ' . $this->resolve($this->token)]];
     }
 }

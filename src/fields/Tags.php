@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\db\Table as CraftTable;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\Tag as CraftTagElement;
 use craft\fields\BaseRelationField;
@@ -84,6 +85,6 @@ class Tags extends Relation
     /** Tag-group id (this environment) from a `taggroup:UID` source key, or null. */
     protected function sourceGroupId(mixed $source): ?int
     {
-        return $this->sourceIdByUid($source, 'taggroup:', '{{%taggroups}}');
+        return $this->sourceIdByUid($source, 'taggroup:', CraftTable::TAGGROUPS);
     }
 }

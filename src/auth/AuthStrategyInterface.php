@@ -2,6 +2,8 @@
 
 namespace GlueAgency\Influx\auth;
 
+use GlueAgency\Influx\helpers\SchemaBuilder;
+
 /**
  * Per-auth-type strategy. One concrete class per shape currently stored under
  * `Link::$auth` — basic / bearer / custom header / query-string. Adding a new
@@ -28,27 +30,24 @@ interface AuthStrategyInterface
 
     /**
      * Form schema rendered by the LinkBuilder SPA's Authentication tab when
-     * this strategy is selected: a list of
-     * {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes — the same vocabulary
-     * the mapping extras use, rendered by the same generic SchemaForm.
-     * Each node's `handle` keys into the link's `auth` slice. Return an
-     * empty array when the strategy needs no extra fields (e.g. a
-     * hypothetical "anonymous" strategy).
+     * this strategy is selected, built with {@see SchemaBuilder} — the same
+     * vocabulary the mapping extras use, rendered by the same generic
+     * SchemaForm. Each node's `handle` keys into the link's `auth` slice.
+     * Return an empty builder ({@see SchemaBuilder::make()}) when the strategy
+     * needs no extra fields (e.g. a hypothetical "anonymous" strategy).
      *
      * Labels / instructions are not auto-translated; return them through
      * `Craft::t()` yourself so your plugin's translation category applies.
-     *
-     * @return list<array>
      */
-    public static function schema(): array;
+    public static function schema(): SchemaBuilder;
 
     /**
-     * Mutate the outgoing request's headers + query string to attach
-     * credentials. Implementations resolve env-variable references at call
-     * time so secrets stay out of Project Config.
+     * The auth contributions for one HTTP request — headers and/or query
+     * params to merge into it. Either key may be omitted. Implementations
+     * resolve env-variable references at call time so secrets stay out of
+     * Project Config.
      *
-     * @param array<string,string> $headers
-     * @param array<string,string> $query
+     * @return array{headers?: array<string,string>, query?: array<string,string>}
      */
-    public function apply(array &$headers, array &$query): void;
+    public function apply(): array;
 }

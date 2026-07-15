@@ -87,21 +87,20 @@ class AuthService extends Component
     }
 
     /**
-     * Mutate the given header / query arrays to add the link's auth
-     * credentials. The actual rule per auth type lives on the strategy classes
-     * in {@see \GlueAgency\Influx\auth}, dispatched via {@see fromConfig()}.
+     * The auth headers + query params for a link's outgoing requests, ready to
+     * merge into them. The rule per auth type lives on the strategy classes in
+     * {@see \GlueAgency\Influx\auth}, dispatched via {@see fromConfig()}; empty
+     * arrays when the link has no auth configured.
      *
-     * Moved here from {@see Link::applyAuth()} — the model still owns the auth
-     * config, but building and applying the strategy is this service's job.
-     *
+     * @return array{headers: array<string,string>, query: array<string,string>}
      * @throws InfluxException when auth is configured but its type no longer
      * resolves (e.g. a third-party strategy was unregistered after the link
      * was saved) — fail loudly rather than fire the request unauthenticated.
      */
-    public function applyToRequest(Link $link, array &$headers, array &$query): void
+    public function requestAuth(Link $link): array
     {
         if (empty($link->auth)) {
-            return;
+            return ['headers' => [], 'query' => []];
         }
 
         $strategy = $this->fromConfig($link->auth);
@@ -112,7 +111,12 @@ class AuthService extends Component
             );
         }
 
-        $strategy->apply($headers, $query);
+        $auth = $strategy->apply();
+
+        return [
+            'headers' => $auth['headers'] ?? [],
+            'query'   => $auth['query'] ?? [],
+        ];
     }
 
     /**

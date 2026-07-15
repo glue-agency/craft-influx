@@ -20,6 +20,15 @@ class Users extends Relation
     }
 
     /**
+     * Users aren't localized per-site (one global layout, global rows), so
+     * scoping a lookup by site would only narrow it incorrectly.
+     */
+    protected function scopesBySite(): bool
+    {
+        return false;
+    }
+
+    /**
      * Users share a single global field layout in Craft 5 — there's no
      * per-source layout to walk, so we yield it once.
      */

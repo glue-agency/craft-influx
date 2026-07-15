@@ -19,7 +19,7 @@ class QueryStringAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Query string parameter');
     }
 
-    public static function schema(): array
+    public static function schema(): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->code([
@@ -31,8 +31,7 @@ class QueryStringAuth extends AbstractAuthStrategy
                 'handle'       => 'token',
                 'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Appended to every request as the parameter value.'),
-            ])
-            ->toArray();
+            ]);
     }
 
     protected function defineRules(): array
@@ -43,8 +42,8 @@ class QueryStringAuth extends AbstractAuthStrategy
         ];
     }
 
-    public function apply(array &$headers, array &$query): void
+    public function apply(): array
     {
-        $query[$this->param] = $this->resolve($this->token);
+        return ['query' => [$this->param => $this->resolve($this->token)]];
     }
 }

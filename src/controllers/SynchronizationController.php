@@ -4,10 +4,13 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\queue\jobs\SyncLinkJob;
+use GlueAgency\Influx\queue\jobs\PrepareSyncJob;
 use Throwable;
+use yii\base\Action;
 use yii\web\BadRequestHttpException;
+use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -20,6 +23,17 @@ use yii\web\Response;
  */
 class SynchronizationController extends AbstractController
 {
+    /**
+     * Gated on the dedicated sync permission rather than the plugin-section
+     * permission: the element "Sync from remote" button lives on the entry
+     * edit page, so an entry editor must be able to trigger a sync without
+     * Influx CP-section access. Admins always pass.
+     */
+    protected function requireAccess(Action $action): void
+    {
+        $this->requirePermission(Influx::PERMISSION_SYNC);
+    }
+
     public function actionLink(): ?Response
     {
         $this->requirePostRequest();
@@ -41,35 +55,24 @@ class SynchronizationController extends AbstractController
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        $queue = Craft::$app->getQueue();
-        $siteHandles = $link->siteHandles();
-
-        // An all-sites trigger on a multi-endpoint link fans out to ONE job per
-        // site, each scoped to (and logged for) its own site. A single-site
-        // trigger, or a link with 0/1 site endpoints, pushes a single job.
-        if ($site === null && count($siteHandles) > 1) {
-            foreach ($siteHandles as $handle) {
-                $queue->push(new SyncLinkJob([
-                    'linkHandle' => $link->handle,
-                    'offset'     => $offset,
-                    'site'       => $handle,
-                    'trigger'    => SyncTrigger::CP->value,
-                ]));
-            }
-
-            return $this->asSuccess(Craft::t('influx', 'Syncs queued for {n} sites.', ['n' => count($siteHandles)]));
-        }
-
-        $queue->push(new SyncLinkJob([
+        // Enqueue the orchestrator: it takes ONE pre-run backup (when the link
+        // wants one), then fans out the per-site sync jobs. The request returns
+        // immediately — no blocking on a DB dump — and a backup failure surfaces
+        // as a failed log rather than a lost request.
+        Craft::$app->getQueue()->push(new PrepareSyncJob([
             'linkHandle' => $link->handle,
             'offset'     => $offset,
             'site'       => $site,
             'trigger'    => SyncTrigger::CP->value,
         ]));
 
-        $message = $site
-            ? Craft::t('influx', 'Sync queued for {link} ({site}).', ['link' => $link->name, 'site' => $site])
-            : Craft::t('influx', 'Sync queued for {link}.', ['link' => $link->name]);
+        $siteHandles = $link->siteHandles();
+
+        $message = ($site === null && count($siteHandles) > 1)
+            ? Craft::t('influx', 'Syncs queued for {n} sites.', ['n' => count($siteHandles)])
+            : ($site
+                ? Craft::t('influx', 'Sync queued for {link} ({site}).', ['link' => $link->name, 'site' => $site])
+                : Craft::t('influx', 'Sync queued for {link}.', ['link' => $link->name]));
 
         return $this->asSuccess($message);
     }
@@ -88,6 +91,12 @@ class SynchronizationController extends AbstractController
 
         if (! $element) {
             throw new NotFoundHttpException("Element #{$elementId} not found.");
+        }
+
+        // Even with the sync permission, never let a user push remote data into
+        // an element they couldn't edit by hand.
+        if (! Compat::canSaveElement($element)) {
+            throw new ForbiddenHttpException("You don’t have permission to save element #{$elementId}.");
         }
 
         $plugin = Influx::getInstance();

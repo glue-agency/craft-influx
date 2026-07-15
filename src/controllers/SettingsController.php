@@ -4,21 +4,20 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use GlueAgency\Influx\Influx;
+use yii\base\Action;
 use yii\web\Response;
 
 class SettingsController extends AbstractController
 {
-    public function beforeAction($action): bool
+    /**
+     * Settings are Project Config — admin territory, like {@see LinksController}.
+     * requireAdmin() (with its default allowAdminChanges check) gates both view
+     * and save, mirroring how the Settings nav item only appears when admin
+     * changes are allowed.
+     */
+    protected function requireAccess(Action $action): void
     {
-        if (! parent::beforeAction($action)) {
-            return false;
-        }
-
-        // Settings are Project Config — every action here mutates, so gate the
-        // whole controller rather than per-action.
-        $this->assertWriteable();
-
-        return true;
+        $this->requireAdmin();
     }
 
     public function actionEdit(): Response
@@ -55,7 +54,8 @@ class SettingsController extends AbstractController
         $data = [
             'defaultItemCooldown' => (int) $request->getBodyParam('defaultItemCooldown', 30),
             'loggingEnabled'      => (bool) $request->getBodyParam('loggingEnabled', true),
-            'logRetentionDays'    => (int) $request->getBodyParam('logRetentionDays', 0),
+            'logRetentionDays'    => (int) $request->getBodyParam('logRetentionDays', 14),
+            'followRedirects'     => (bool) $request->getBodyParam('followRedirects', false),
         ];
 
         if (! Craft::$app->getPlugins()->savePluginSettings($plugin, $data)) {

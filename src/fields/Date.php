@@ -8,6 +8,7 @@ use craft\fields\Date as CraftDateField;
 use craft\helpers\DateTimeHelper;
 use DateTime;
 use DateTimeInterface;
+use DateTimeZone;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\SchemaBuilder;
@@ -106,7 +107,11 @@ class Date extends Field
         if (is_string($format) && $format !== '' && is_scalar($raw)) {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
 
-            return DateTime::createFromFormat($phpFormat, (string) $raw);
+            // Default the source timezone to UTC: a format with no tz token
+            // (e.g. `Y-m-d H:i:s`) would otherwise resolve in Craft's app
+            // timezone. Formats that carry a tz (P/e/O/T) still win — the 3rd
+            // arg is only the fallback when the value itself specifies none.
+            return DateTime::createFromFormat($phpFormat, (string) $raw, new DateTimeZone('UTC'));
         }
 
         return DateTimeHelper::toDateTime($raw);

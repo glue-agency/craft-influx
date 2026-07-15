@@ -10,8 +10,10 @@ use craft\events\DefineHtmlEvent;
 use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
+use craft\events\RegisterUserPermissionsEvent;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
+use craft\services\UserPermissions;
 use craft\web\UrlManager;
 use craft\web\View;
 use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
@@ -54,11 +56,19 @@ use yii\base\Event;
  */
 class Influx extends Plugin
 {
-    public string $schemaVersion = '1.0.0';
+    public string $schemaVersion = '1.1.0';
 
     public bool $hasCpSettings = false;
 
     public bool $hasCpSection = true;
+
+    /**
+     * Permission gating sync triggers — the entry "Sync from remote" button
+     * and the SynchronizationController endpoints. Deliberately NOT nested
+     * under the CP-section permission: an entry editor can hold it without
+     * Influx CP access. Admins always pass.
+     */
+    public const PERMISSION_SYNC = 'influx:sync';
 
     public static function config(): array
     {
@@ -97,6 +107,7 @@ class Influx extends Plugin
             $this->registerTwigExtensions();
             $this->registerEntrySyncButton();
             $this->registerGarbageCollection();
+            $this->registerPermissions();
         });
     }
 
@@ -250,9 +261,9 @@ class Influx extends Plugin
     }
 
     /**
-     * Prune old log rows on Craft's periodic garbage-collection cycle when
-     * the user has set a retention window. Zero (the default) keeps logs
-     * indefinitely.
+     * Prune log rows older than the configured retention window (default 14
+     * days) on Craft's periodic garbage-collection cycle. A non-positive value
+     * — only reachable via an explicit config override — skips pruning.
      */
     protected function registerGarbageCollection(): void
     {
@@ -263,6 +274,29 @@ class Influx extends Plugin
                 $this->logs->deleteOlderThan($days);
             }
         });
+    }
+
+    /**
+     * Register the plugin's user permissions. Currently just the sync-trigger
+     * permission ({@see PERMISSION_SYNC}); a top-level entry so it can be
+     * granted to entry editors independently of Influx CP-section access.
+     */
+    protected function registerPermissions(): void
+    {
+        Event::on(
+            UserPermissions::class,
+            UserPermissions::EVENT_REGISTER_PERMISSIONS,
+            function(RegisterUserPermissionsEvent $event) {
+                $event->permissions[] = [
+                    'heading'     => Craft::t('influx', 'Influx'),
+                    'permissions' => [
+                        self::PERMISSION_SYNC => [
+                            'label' => Craft::t('influx', 'Sync elements from a remote link'),
+                        ],
+                    ],
+                ];
+            },
+        );
     }
 
     /**
@@ -289,6 +323,12 @@ class Influx extends Plugin
     protected function registerEntrySyncButton(): void
     {
         Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
+            // Hidden entirely for users without the sync permission — they can
+            // neither see nor trigger the button.
+            if (! Craft::$app->getUser()->checkPermission(self::PERMISSION_SYNC)) {
+                return;
+            }
+
             /** @var Entry $element */
             $element = $event->sender;
 

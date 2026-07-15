@@ -6,6 +6,7 @@ use Craft;
 use GlueAgency\Influx\Influx;
 use ReflectionClass;
 use Throwable;
+use yii\base\Action;
 use yii\web\BadRequestHttpException;
 use yii\web\HttpException;
 use yii\web\Response;
@@ -21,6 +22,17 @@ use yii\web\Response;
  */
 class LinkBuilderController extends AbstractController
 {
+    /**
+     * The LinkBuilder SPA is the editor for Project-Config-backed links —
+     * admin territory, exactly like {@see LinksController}. Only `save` mutates
+     * config (so it also requires `allowAdminChanges`); the read / helper
+     * endpoints require admin but still work in a read-only environment.
+     */
+    protected function requireAccess(Action $action): void
+    {
+        $this->requireAdmin($action->id === 'save');
+    }
+
     /**
      * Wrap the standard runAction so any uncaught exception comes back as
      * a JSON `{success: false, message}` envelope instead of an HTML 500. The

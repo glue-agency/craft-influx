@@ -535,6 +535,9 @@ export default {
 /* ---- Counters (also the item filter) ------------------------------------ */
 .influx-log-counters {
     display: grid;
+    /* Stretch to a single row (auto-fit + 1fr), sizing down to fit however many
+       counters a run produced. The items column below (.influx-split-list) is a
+       fixed width chosen to read as ~two of these cells at a typical card width. */
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
@@ -592,7 +595,10 @@ export default {
 
 .influx-split-list {
     display: flex;
-    flex: 0 0 380px;
+    /* At most a quarter of the split width (capped via max-width; a flex-basis
+       percentage on its own wasn't taking effect). */
+    flex: 1 1 0;
+    max-width: 25%;
     flex-direction: column;
     min-height: 0;
     border-inline-end: 1px solid var(--hairline-color);

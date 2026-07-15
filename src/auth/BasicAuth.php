@@ -29,7 +29,7 @@ class BasicAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Basic auth');
     }
 
-    public static function schema(): array
+    public static function schema(): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->text(['handle' => 'username', 'label' => Craft::t('influx', 'Username')])
@@ -37,8 +37,7 @@ class BasicAuth extends AbstractAuthStrategy
                 'handle'       => 'token',
                 'label'        => Craft::t('influx', 'Password'),
                 'instructions' => Craft::t('influx', 'Sent as <code>Authorization: Basic &lt;base64(username:password)&gt;</code>.'),
-            ])
-            ->toArray();
+            ]);
     }
 
     protected function defineRules(): array
@@ -49,9 +48,10 @@ class BasicAuth extends AbstractAuthStrategy
         ];
     }
 
-    public function apply(array &$headers, array &$query): void
+    public function apply(): array
     {
         $credentials = $this->resolve($this->username) . ':' . $this->resolve($this->token);
-        $headers['Authorization'] = 'Basic ' . base64_encode($credentials);
+
+        return ['headers' => ['Authorization' => 'Basic ' . base64_encode($credentials)]];
     }
 }

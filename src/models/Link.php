@@ -26,8 +26,8 @@ use GlueAgency\Influx\sync\RemoteItem;
  *  - {@see \GlueAgency\Influx\web\LinkPresenter} resolves the human-readable
  *    labels the overview template renders (was `elementTypeLabel()`,
  *    `targetCriteriaLabel()`, `siteLabels()`).
- *  - {@see \GlueAgency\Influx\services\AuthService::applyToRequest()} applies
- *    this link's auth to an outbound request.
+ *  - {@see \GlueAgency\Influx\services\AuthService::requestAuth()} provides
+ *    this link's auth headers + query for an outbound request.
  *  - {@see \GlueAgency\Influx\enums\SyncDecision::decide()} decides the sync
  *    action for a remote item.
  */
@@ -265,6 +265,8 @@ class Link extends Model
         return array_merge(parent::defineRules(), [
             [['handle', 'name', 'elementType'], 'required'],
             [['handle'], 'match', 'pattern' => '/^[a-zA-Z][a-zA-Z0-9_\-]*$/', 'message' => 'Handle must start with a letter and contain only letters, numbers, underscores, and dashes.'],
+            [['handle'], 'string', 'max' => 100],
+            [['name'], 'string', 'max' => 255],
             [['endpoint', 'itemEndpoint'], 'string'],
             [['endpoint'], 'required', 'when' => fn(self $m) => empty($m->siteEndpoints), 'message' => 'Either an endpoint or at least one site endpoint is required.'],
             [['siteEndpoints'], 'validateSiteEndpoints'],

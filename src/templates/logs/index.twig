@@ -9,7 +9,7 @@
 {% set statusLabels = { running: "Running"|t("influx"), ok: "OK"|t("influx"), error: "Failed"|t("influx") } %}
 
 {# Active filters, carried through the pager links so paging keeps the view. #}
-{% set filterParams = { link: selectedLink, status: selectedStatus }|filter(v => v is not null and v != "") %}
+{% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger }|filter(v => v is not null and v != "") %}
 
 {% block actionButton %}
     <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
@@ -38,13 +38,28 @@
     });
     {% endjs %}
 
-    {# Filter by link and/or status without leaving the page. #}
-    <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap" style="margin-bottom: 14px;">
+    {% css %}
+    /* Give the toolbar selects a consistent minimum so they don't collapse to
+       odd widths — mirrors the debug inspector's toolbar. */
+    .influx-logs-toolbar .select { min-width: 160px; }
+    .influx-logs-toolbar .select select { width: 100%; }
+    {% endcss %}
+
+    {# Filter by link, trigger and/or status without leaving the page. #}
+    <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap influx-logs-toolbar" style="margin-bottom: 14px;">
         <div class="select">
             <select name="link" data-influx-filter aria-label="{{ 'Filter by link'|t('influx') }}">
                 <option value="">{{ "All links"|t("influx") }}</option>
                 {% for handle, name in linkNames %}
                     <option value="{{ handle }}"{{ handle == selectedLink ? " selected" }}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="select">
+            <select name="trigger" data-influx-filter aria-label="{{ 'Filter by trigger'|t('influx') }}">
+                <option value="">{{ "All triggers"|t("influx") }}</option>
+                {% for value, label in triggers %}
+                    <option value="{{ value }}"{{ value == selectedTrigger ? " selected" }}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -61,7 +76,7 @@
     {% if logs is empty %}
         <div class="zilch">
             <p>{{ "No runs yet."|t("influx") }}</p>
-            {% if selectedLink or selectedStatus %}
+            {% if selectedLink or selectedStatus or selectedTrigger %}
                 <p class="light"><a href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a></p>
             {% endif %}
         </div>

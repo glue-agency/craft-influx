@@ -19,7 +19,7 @@ class CustomHeaderAuth extends AbstractAuthStrategy
         return Craft::t('influx', 'Custom header');
     }
 
-    public static function schema(): array
+    public static function schema(): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->code([
@@ -31,8 +31,7 @@ class CustomHeaderAuth extends AbstractAuthStrategy
                 'handle'       => 'token',
                 'label'        => Craft::t('influx', 'Token'),
                 'instructions' => Craft::t('influx', 'Used as the header value.'),
-            ])
-            ->toArray();
+            ]);
     }
 
     protected function defineRules(): array
@@ -43,8 +42,8 @@ class CustomHeaderAuth extends AbstractAuthStrategy
         ];
     }
 
-    public function apply(array &$headers, array &$query): void
+    public function apply(): array
     {
-        $headers[$this->header] = $this->resolve($this->token);
+        return ['headers' => [$this->header => $this->resolve($this->token)]];
     }
 }

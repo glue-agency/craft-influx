@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
+use craft\helpers\Db;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
@@ -26,7 +27,8 @@ use Throwable;
 /**
  * Owns the full sync lifecycle for a link:
  *
- *   1. Pre-run hooks (event, optional backup).
+ *   1. Pre-run hooks (the cancellable before-event; the pre-run backup is
+ *      taken once by the trigger layer, not here).
  *   2. For each configured site (or the primary site if none configured),
  *      fetch the JSON payload, walk paginated pages, and process every item.
  *      Each site runs under its own log (an all-sites run fans out to one queue
@@ -114,7 +116,9 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        $plugin->backup->backupForLink($link);
+        // No backup here: the trigger layer takes ONE for the whole operation
+        // before this runs — the console command via BackupService::backupForLinks(),
+        // a CP run via PrepareSyncJob. syncLink itself is backup-agnostic.
 
         $target = $this->resolveTarget($link);
         $siteHandles = $this->runSites($link, $siteHandle);
@@ -122,27 +126,57 @@ class SynchronizationService extends Component
         $preset = OffsetPreset::forLink($link, $offset);
         [$queryParams] = $preset?->resolve() ?? [[], null];
 
+        // Serialise the whole run against any other run of the SAME link (a
+        // queued per-site step, a concurrent trigger, another worker) so
+        // find-or-create can't race into duplicate canonical elements.
+        $mutex = Craft::$app->getMutex();
+        $lockKey = $this->syncLockKey($link);
+
+        if (! $mutex->acquire($lockKey, 15)) {
+            throw new InfluxException("Could not acquire the sync lock for link '{$link->handle}' — another run is already in progress.");
+        }
+
         // Each site runs under its OWN log with its OWN per-pass sweep — a
-        // fetch failure fails THIS site's log and the run CONTINUES with the
-        // next site (per-site isolation). A non-fetch throw still propagates.
+        // failure fails THIS site's log and the run CONTINUES with the next
+        // site (per-site isolation).
         $logs = [];
 
-        foreach ($siteHandles as $handle) {
-            $context = SyncContext::forSite($link, $target, $handle, $trigger);
-            $log = $plugin->logs->start($link, $trigger, $handle, $preset?->handle);
+        try {
+            foreach ($siteHandles as $handle) {
+                $log = $plugin->logs->start($link, $trigger, $handle, $preset?->handle);
 
-            try {
-                $this->processSite($context, $queryParams, $log, $onProgress);
-                $plugin->logs->finish($log);
-            } catch (FeedFetchException $e) {
-                $plugin->logs->fail($log, $e->getMessage());
+                try {
+                    $context = SyncContext::forSite($link, $target, $handle, $trigger);
+                    $this->processSite($context, $queryParams, $log, $onProgress);
+                    $plugin->logs->finish($log);
+                } catch (FeedFetchException $e) {
+                    $plugin->logs->fail($log, $e->getMessage());
+                } catch (Throwable $e) {
+                    // A non-fetch failure (DB error, sweep query, an unresolvable
+                    // site, a listener throw) must still close THIS site's log as
+                    // failed — never leave it 'running' — and let the run go on.
+                    Craft::error("Influx: link '{$link->handle}' failed for site '" . ($handle ?? 'primary') . "': {$e->getMessage()}", __METHOD__);
+                    $plugin->logs->fail($log, $e->getMessage());
+                }
+
+                $logs[] = $log;
+                $this->fireAfterSyncLink($link, $log);
             }
-
-            $logs[] = $log;
-            $this->fireAfterSyncLink($link, $log);
+        } finally {
+            $mutex->release($lockKey);
         }
 
         return $logs;
+    }
+
+    /**
+     * Mutex key serialising runs of one link. Keyed on the handle (not the
+     * site) so a per-site fan-out can't create the same canonical element
+     * twice from two sites at once.
+     */
+    protected function syncLockKey(Link $link): string
+    {
+        return "influx:sync:{$link->handle}";
     }
 
     /**
@@ -232,12 +266,14 @@ class SynchronizationService extends Component
             }
         }
 
-        $context = SyncContext::forSite($link, $target, $requestedSite, $trigger);
-
         try {
+            // forSite may throw when a configured site no longer resolves (M4);
+            // treat it like a fetch failure — fail this log, never leave it
+            // stuck 'running'.
+            $context = SyncContext::forSite($link, $target, $requestedSite, $trigger);
             $page = $plugin->data->page($link, $requestedSite, $state['cursorUrl'], $queryParams, $state['page']);
         } catch (Throwable $e) {
-            // A page fetch failed — fail the run and stop (no retry).
+            // A page fetch (or scope resolution) failed — fail the run and stop.
             $plugin->logs->fail($log, $e->getMessage());
             $state['done'] = true;
 
@@ -248,6 +284,18 @@ class SynchronizationService extends Component
         // write-back), so a re-processed tail after a retried step can't
         // double-count.
         $seen = array_fill_keys($state['seenIds'], true);
+
+        // Serialise item processing against any other step of the SAME link (a
+        // per-site fan-out, a concurrent trigger) so find-or-create can't race
+        // into duplicate canonical elements. If a concurrent step still holds
+        // the lock past the wait, leave this step unprocessed so the job
+        // re-queues and retries it (idempotent — seenIds/creates carry across).
+        $mutex = Craft::$app->getMutex();
+        $lockKey = $this->syncLockKey($link);
+
+        if (! $mutex->acquire($lockKey, 15)) {
+            return $state;
+        }
 
         // Flush at the page boundary — and in a finally so a throw escaping the
         // loop still persists rows for items already saved this step. A retried
@@ -267,6 +315,7 @@ class SynchronizationService extends Component
                 }
             }
         } finally {
+            $mutex->release($lockKey);
             $plugin->logs->flush($log);
             $state['seenIds'] = array_keys($seen);
         }
@@ -296,16 +345,24 @@ class SynchronizationService extends Component
         // Scope finished. Run the single missing-elements sweep over the set
         // accumulated across this scope's steps, then close the log — the job
         // walks no further sites.
-        $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
-        $this->finishSync($link, $log);
+        try {
+            $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
+            $this->finishSync($link, $log);
+        } catch (Throwable $e) {
+            // A non-fetch failure in the sweep/finish must fail the log rather
+            // than leave it 'running' with the job retrying the page forever.
+            Craft::error("Influx: link '{$link->handle}' failed during the missing-elements sweep: {$e->getMessage()}", __METHOD__);
+            $plugin->logs->fail($log, $e->getMessage());
+        }
         $state['done'] = true;
 
         return $state;
     }
 
     /**
-     * Begin a run: fire the cancellable before-event, take the backup, open the
-     * log. Shared with {@see batchStep()}; {@see syncLink()} does this inline.
+     * Begin a run: fire the cancellable before-event and open the log. Shared
+     * with {@see batchStep()}; {@see syncLink()} does this inline. The pre-run
+     * backup is the trigger layer's job (see {@see \GlueAgency\Influx\queue\jobs\PrepareSyncJob}).
      *
      * @param string|null $siteHandle The site this run was scoped to (null =
      * an all-sites run), recorded on the log so the viewer can show which
@@ -322,7 +379,8 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        Influx::getInstance()->backup->backupForLink($link);
+        // No backup here: PrepareSyncJob takes ONE for the whole fan-out before
+        // enqueuing the per-site jobs this opens a log for.
 
         return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle);
     }
@@ -814,7 +872,7 @@ class SynchronizationService extends Component
 
         $matchAttr = $link->matchAttribute();
 
-        foreach ($query->batch(100) as $elements) {
+        foreach (Db::batch($query, 100) as $elements) {
             foreach ($elements as $element) {
                 $matchValue = $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null;
 

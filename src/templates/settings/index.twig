@@ -12,6 +12,14 @@
         value: settings.defaultItemCooldown,
         errors: settings.getErrors("defaultItemCooldown"),
     }) }}
+
+    {{ forms.lightswitchField({
+        label: "Follow redirects"|t("influx"),
+        instructions: "When on, the HTTP client follows 3xx redirects (capped, http(s) only) when fetching feeds and downloading assets. Off by default, so a redirect can’t bounce a credentialed request to an unexpected host."|t("influx"),
+        id: "followRedirects",
+        name: "followRedirects",
+        on: settings.followRedirects,
+    }) }}
 </div>
 
 <div id="logging" class="hidden">
@@ -25,11 +33,11 @@
 
     {{ forms.textField({
         label: "Log retention (days)"|t("influx"),
-        instructions: "Number of days to keep log entries before they are removed automatically by Craft’s garbage collector. Use <code>0</code> to keep logs forever."|t("influx")|raw,
+        instructions: "Number of days to keep log entries before Craft’s garbage collector removes them automatically. Minimum 1."|t("influx"),
         id: "logRetentionDays",
         name: "logRetentionDays",
         type: "number",
-        min: 0,
+        min: 1,
         size: 6,
         value: settings.logRetentionDays,
         errors: settings.getErrors("logRetentionDays"),

@@ -72,12 +72,14 @@ class Install extends Migration
 
         $this->createIndex(null, Table::LOGS, ['linkHandle']);
         $this->createIndex(null, Table::LOGS, ['startedAt']);
+        // errorLogCount() (the CP nav badge) filters on status every page load.
+        $this->createIndex(null, Table::LOGS, ['status']);
 
         $this->createTable(Table::LOG_ITEMS, [
             'id'            => $this->primaryKey(),
             'logId'         => $this->integer()->notNull(),
             'elementId'     => $this->integer()->null(),
-            'matchValue'    => $this->string(255)->null(),
+            'matchValue'    => $this->text()->null(),
             'action'        => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
             'message'       => $this->text()->null(),
             'fieldErrors'   => $this->text()->null(),        // {handle: message} for fields whose strategy threw

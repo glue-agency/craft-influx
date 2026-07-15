@@ -264,13 +264,13 @@ class LogsService extends Component
 
     /**
      * One page of logs, newest first, plus the total for the pager. Optionally
-     * restricted to one link (by handle) and/or one run status — the two
-     * filters the Logs overview toolbar exposes. A null filter is ignored, so
-     * `paginate($page, $perPage)` still returns everything.
+     * restricted to one link (by handle), one run status, and/or one trigger —
+     * the filters the Logs overview toolbar exposes. A null filter is ignored,
+     * so `paginate($page, $perPage)` still returns everything.
      *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null): array
+    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
 
@@ -280,6 +280,10 @@ class LogsService extends Component
 
         if ($status !== null && $status !== '') {
             $query->andWhere(['status' => $status]);
+        }
+
+        if ($trigger !== null && $trigger !== '') {
+            $query->andWhere(['trigger' => $trigger]);
         }
 
         $total = (int) $query->count();

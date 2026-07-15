@@ -743,10 +743,10 @@ class LinkBuilderService extends Component
         foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
             $schema = $class::schema();
 
-            if (empty($schema)) {
+            if ($schema->isEmpty()) {
                 continue;
             }
-            $out[] = ['type' => $type, 'schema' => $schema];
+            $out[] = ['type' => $type, 'schema' => $schema->toArray()];
         }
 
         return $out;

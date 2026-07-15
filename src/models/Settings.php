@@ -20,16 +20,24 @@ class Settings extends Model
 
     /**
      * How many days of log history to keep before garbage collection removes
-     * them. `0` disables automatic deletion, so runs accumulate indefinitely.
-     * Pruning runs on Craft's GC event, not on every sync.
+     * them (minimum 1). Pruning runs on Craft's GC event, not on every sync.
      */
-    public int $logRetentionDays = 0;
+    public int $logRetentionDays = 14;
+
+    /**
+     * Whether the HTTP client follows 3xx redirects when fetching feeds and
+     * downloading assets. Off by default: a redirect can send a credentialed
+     * request to an unexpected host. When on, redirects are capped and
+     * restricted to http(s).
+     */
+    public bool $followRedirects = false;
 
     public function defineRules(): array
     {
         return [
-            [['defaultItemCooldown', 'logRetentionDays'], 'integer', 'min' => 0],
-            [['loggingEnabled'], 'boolean'],
+            [['defaultItemCooldown'], 'integer', 'min' => 0],
+            [['logRetentionDays'], 'integer', 'min' => 1],
+            [['loggingEnabled', 'followRedirects'], 'boolean'],
         ];
     }
 }

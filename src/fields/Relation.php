@@ -231,15 +231,22 @@ abstract class Relation extends RelationalField
     }
 
     /**
-     * Cache scope for this field's lookups: the Craft field's id. Scope matters
-     * because {@see scopeBySources()} narrows the lookup by the field's own
-     * sources, so the same value can resolve to different elements per field —
-     * they must not share a cache slot. Empty string when there's no Craft
-     * field (native/test contexts), which still keys consistently.
+     * Cache scope for this field's lookups: the Craft field's id, plus the
+     * lookup site when one applies. The field id matters because
+     * {@see scopeBySources()} narrows by the field's own sources, so the same
+     * value can resolve to different elements per field; the site matters
+     * because {@see scopesBySite()} scopes localized lookups per-site, so a
+     * value must not reuse another site's cached hit. The site suffix is
+     * omitted when there's none (a non-site-scoped relation like Users, or no
+     * siteId), leaving the bare field id — so native/test contexts still key
+     * consistently.
      */
     protected function lookupScope(FieldContext $context): string
     {
-        return (string) ($context->craftField->id ?? '');
+        $scope = (string) ($context->craftField->id ?? '');
+        $site = $this->scopesBySite() ? (string) ($context->element->siteId ?? '') : '';
+
+        return $site !== '' ? "{$scope}:{$site}" : $scope;
     }
 
     protected function shouldCreate(FieldContext $context): bool
@@ -286,9 +293,31 @@ abstract class Relation extends RelationalField
             default => $query->$match($value),
         };
 
+        if ($this->scopesBySite()) {
+            // Match within the synced element's site — slug/title/localized
+            // fields are per-site, so Craft's ambient "current site" (the
+            // primary site in a queue/console run) would mis-match or miss.
+            $siteId = $context->element->siteId ?? null;
+            $query->siteId($siteId ?: '*');
+
+            if (! $siteId) {
+                $query->unique();
+            }
+        }
+
         $this->scopeBySources($context, $query);
 
         return $query->one();
+    }
+
+    /**
+     * Whether lookups are constrained to the synced element's site. True for
+     * localized relations (Entries / Categories / Tags); overridden to false
+     * by non-localized ones (Users), whose rows are global.
+     */
+    protected function scopesBySite(): bool
+    {
+        return true;
     }
 
     /**

@@ -308,7 +308,9 @@ export default {
 
 .influx-split-list {
     display: flex;
-    flex: 0 0 360px;
+    /* Matches the log detail's items column — at most a quarter of the split. */
+    flex: 1 1 0;
+    max-width: 25%;
     flex-direction: column;
     min-height: 0;
     border-inline-end: 1px solid var(--hairline-color);

@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\db\Table as CraftTable;
 use craft\elements\Category as CraftCategoryElement;
 use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
@@ -77,6 +78,6 @@ class Categories extends Relation
     /** Category-group id (this environment) from a `group:UID` source key, or null. */
     protected function sourceGroupId(mixed $source): ?int
     {
-        return $this->sourceIdByUid($source, 'group:', '{{%categorygroups}}');
+        return $this->sourceIdByUid($source, 'group:', CraftTable::CATEGORYGROUPS);
     }
 }

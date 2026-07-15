@@ -7,7 +7,6 @@ use Craft;
 use craft\helpers\UrlHelper;
 use Generator;
 use GlueAgency\Influx\exceptions\FeedFetchException;
-use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DataService;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -103,10 +102,11 @@ class PagedFeed implements IteratorAggregate
         if ($cursorUrl === null) {
             $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
         } else {
-            $headers = [];
-            $query = [];
-            Influx::getInstance()->auth->applyToRequest($this->link, $headers, $query);
-            $response = $this->data->fetchUrl($cursorUrl, $headers, $query);
+            // Only the first request is authenticated. A paginated feed must
+            // return next-page URLs that are fetchable as-is — the remote owns
+            // whatever auth/token they carry. We never attach the link's own
+            // credentials to a feed-supplied URL, which could point anywhere.
+            $response = $this->data->fetchUrl($cursorUrl);
         }
 
         $items = array_map(

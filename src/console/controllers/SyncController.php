@@ -67,6 +67,18 @@ class SyncController extends Controller
             }
         }
 
+        // One backup covering the whole run, taken once when ANY targeted link
+        // requires it — then each link syncs with its own per-run backup
+        // skipped. Same "one dump, then fan out" principle as a CP fan-out.
+        try {
+            $plugin->backup->backupForLinks($links);
+        } catch (Throwable $e) {
+            $this->failure('Backup failed, aborting: ' . $e->getMessage());
+            Craft::error($e, __METHOD__);
+
+            return ExitCode::SOFTWARE;
+        }
+
         foreach ($links as $link) {
             $this->stdout("→ Syncing '{$link->handle}'\n");
 

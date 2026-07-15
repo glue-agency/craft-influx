@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\sync;
 
 use Craft;
 use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 
@@ -77,9 +78,18 @@ class SyncContext
         ?SyncTrigger $trigger = null,
         bool $dryRun = false,
     ): self {
-        $siteId = $siteHandle
-            ? Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id
-            : null;
+        $siteId = null;
+
+        if ($siteHandle !== null) {
+            $siteId = Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id;
+
+            // A per-site run whose configured site no longer exists must NOT
+            // fall back to siteId=null — downstream that reads as a cross-site
+            // sweep, the exact hazard the -for-site policies guard against.
+            if ($siteId === null) {
+                throw new InfluxException("Link '{$link->handle}' is configured for site '{$siteHandle}', which no longer exists — refusing to run a per-site sync that would degrade into a cross-site sweep.");
+            }
+        }
 
         return new self(
             link: $link,

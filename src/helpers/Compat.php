@@ -7,6 +7,7 @@ use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\db\Table as CraftTable;
 use craft\elements\Entry;
+use craft\elements\User;
 use craft\helpers\Cp;
 use craft\helpers\Db;
 use craft\helpers\Html;
@@ -237,6 +238,23 @@ class Compat
             'siteId'    => $siteId,
         ]);
         $elements->invalidateCachesForElement($element);
+    }
+
+    /**
+     * Whether $user (default: the current user) may save $element, via Craft's
+     * element authorization API (Elements::canSave(), @since 4.3). Absent on
+     * Craft 4.0–4.2, where this returns true and the caller's own permission
+     * gate is the only check.
+     */
+    public static function canSaveElement(ElementInterface $element, ?User $user = null): bool
+    {
+        $elements = Craft::$app->getElements();
+
+        if (method_exists($elements, 'canSave')) {
+            return $elements->canSave($element, $user);
+        }
+
+        return true;
     }
 
     // -- CP chrome -------------------------------------------------------------
