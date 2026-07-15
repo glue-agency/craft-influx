@@ -85,10 +85,8 @@ class LogsService extends Component
             $log->save(false);
         }
 
-        // Stamp the run onto the link itself — a timestamp that outlives the
-        // log, plus a pointer to it (null when logging is off). Element-
-        // triggered syncs are one-off single-resource resyncs, not feed runs,
-        // so they don't count as the link's "last run" on the overview.
+        // Stamp the run onto the link — a timestamp that outlives the log, plus a pointer to it
+        // (null when logging is off). Element-triggered resyncs don't count as the link's "last run"
         if ($trigger !== SyncTrigger::ELEMENT) {
             Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
         }
@@ -123,10 +121,8 @@ class LogsService extends Component
 
         $counterAttr = $action->counterAttribute();
 
-        // Row values in ITEM_COLUMNS order — the batch insert in flush() relies
-        // on this alignment. json_encode logic matches the pre-buffer path.
-        // changedFields, unlike fieldErrors, keeps an empty array as `[]` (not
-        // null): "nothing changed" is information, distinct from "unknown".
+        // Row values in ITEM_COLUMNS order — the batch insert in flush() relies on this alignment.
+        // changedFields keeps an empty array as `[]` (not null): "nothing changed" differs from "unknown"
         $row = [
             $log->id,
             $elementId,
@@ -140,10 +136,8 @@ class LogsService extends Component
 
         $this->bufferFor($log)->add($row, $counterAttr);
 
-        // Keep the record's live counters advancing immediately: progress
-        // callbacks and the after-run events read $log->itemsSeen / the per-
-        // action columns off the in-memory record, not the DB. The DB catches
-        // up on the next flush(); finish()/fail() then reconcile absolutes.
+        // Advance the record's live counters immediately: progress callbacks and after-run events
+        // read them off the in-memory record, not the DB. The DB catches up on the next flush()
         if ($counterAttr) {
             $log->$counterAttr = (int) $log->$counterAttr + 1;
         }
@@ -179,8 +173,7 @@ class LogsService extends Component
 
         $db = Craft::$app->getDb();
 
-        // 3-arg batchInsert (no audit columns) — Craft 4 and 5 both accept
-        // this and add dateCreated/dateUpdated/uid themselves.
+        // 3-arg batchInsert (no audit columns) — Craft 4 and 5 both add dateCreated/dateUpdated/uid themselves
         $db->createCommand()
             ->batchInsert(Table::LOG_ITEMS, self::ITEM_COLUMNS, $buffer->rows())
             ->execute();
@@ -215,9 +208,7 @@ class LogsService extends Component
 
     public function fail(LogRecord $log, string $error): void
     {
-        // Flush first so rows for already-processed items aren't lost when the
-        // run fails — but never let a flush failure prevent status='error'
-        // from landing.
+        // Flush first so already-processed rows aren't lost, but never let a flush failure prevent status='error' from landing
         try {
             $this->flush($log);
         } catch (Throwable $e) {

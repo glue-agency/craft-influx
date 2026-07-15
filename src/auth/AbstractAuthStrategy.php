@@ -26,8 +26,7 @@ abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterfa
 
     public function __construct(array $config = [])
     {
-        // The `type` discriminator lives in the auth slice but identifies the
-        // strategy class — it isn't a property on the strategy itself.
+        // The `type` discriminator identifies the strategy class, not a property on it
         unset($config['type']);
         parent::__construct($config);
     }

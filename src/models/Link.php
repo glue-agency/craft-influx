@@ -319,8 +319,7 @@ class Link extends Model
             $migrated[] = $to;
         }
 
-        // A migration can collide the global and -for-site forms onto the same
-        // value (a config carrying both) — dedupe while keeping first-seen order.
+        // Dedupe collided global/-for-site forms, keeping first-seen order
         $this->processing = array_values(array_unique($migrated));
 
         return $migrations;
@@ -356,8 +355,7 @@ class Link extends Model
             return;
         }
 
-        // The match value is read from the node configured on the mapped
-        // field, so the chosen match attribute must have an active mapping.
+        // Match value comes from the mapped field's node, so it needs an active mapping
         $mappedNode = $this->getMappingCollection()->get($value['attribute'])?->node;
 
         if (! $mappedNode) {

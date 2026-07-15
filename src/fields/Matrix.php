@@ -93,13 +93,8 @@ class Matrix extends Field
 
         $builder = SchemaBuilder::make();
 
-        // One always-visible card per block type (Feed Me-style): the card
-        // is labeled with the type's name, carries the type's custom fields
-        // as rows, and reads/writes its own `blocks.<handle>.fields` slice
-        // of the mapping. A type without custom fields still gets its card —
-        // the SPA renders an empty-state hint so the full type list stays
-        // visible. Row labels carry the field NAME only; the SPA renders the
-        // handle separately, styled like every other sub-field row.
+        // One always-visible card per block type, each reading/writing its own
+        // blocks.<handle>.fields slice; types without custom fields still get a card
         foreach ($blockTypes as $blockType) {
             $subFields = SchemaBuilder::make();
             $layout = $blockType['layout'];
@@ -168,9 +163,7 @@ class Matrix extends Field
     {
         $configured = $context->mapping->blockMappings();
 
-        // Validate every configured type handle against the field's block
-        // types up front — an unknown handle is a config error, not a per-item
-        // "no data" case, so it throws rather than silently emitting nothing.
+        // Reject unknown configured block-type handles up front (config error, so throw)
         $fieldHandles = $this->blockTypeHandles($context);
 
         foreach (array_keys($configured) as $typeHandle) {
@@ -184,8 +177,7 @@ class Matrix extends Field
         $blocks = [];
         $index = 0;
 
-        // Field-declared order — deterministic, grouped by type. Skip types the
-        // mapping doesn't configure.
+        // Walk types in field-declared order (deterministic); skip unconfigured ones
         foreach ($fieldHandles as $typeHandle) {
             if (! isset($configured[$typeHandle])) {
                 continue;
@@ -194,10 +186,8 @@ class Matrix extends Field
             $index = $this->appendTypeBlocks($context, $typeHandle, $configured[$typeHandle], $blocks, $index);
         }
 
-        // addressed() was true, so the feed spoke — but every contributing
-        // child across every configured type resolved to null. The feed is
-        // authoritative: return an explicit clear rather than leaving stale
-        // blocks.
+        // addressed() was true but every child resolved to null: return the
+        // (possibly empty) blocks as an explicit clear — the feed is authoritative
         return $blocks;
     }
 
@@ -217,10 +207,8 @@ class Matrix extends Field
         array &$blocks,
         int $index,
     ): int {
-        // Collect each active child's per-block value list, keyed by handle,
-        // split into the native (title/slug) and custom channels. resolve()
-        // reads the child's absolute node against the top-level item; null
-        // means the feed doesn't address that child, so it's skipped entirely.
+        // Collect each active child's per-block value list (keyed by handle,
+        // split native/custom); a child resolving to null is skipped
         $customLists = [];
         $customSubs = [];
 
@@ -282,8 +270,7 @@ class Matrix extends Field
 
                 $childCraftField = $layout?->getFieldByHandle($handle);
 
-                // Handle isn't on the block type's layout — skip silently,
-                // mirroring MappingApplier::applySubMappings().
+                // Handle not on this block type's layout — skip silently
                 if ($childCraftField === null) {
                     continue;
                 }
@@ -353,9 +340,8 @@ class Matrix extends Field
         foreach ($current->all() as $block) {
             $type = $block->getType()->handle;
 
-            // A block whose type the feed doesn't configure fingerprints on its
-            // type alone — no mapped handles to read, so it can never match an
-            // incoming block, and the comparison differs.
+            // A block of an unconfigured type fingerprints on its type alone, so it
+            // never matches an incoming block and reads as a difference (dropped)
             $currentPrint[] = $this->currentFingerprint(
                 $block,
                 $customByType[$type] ?? [],

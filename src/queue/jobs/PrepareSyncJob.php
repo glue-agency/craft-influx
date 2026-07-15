@@ -47,9 +47,8 @@ class PrepareSyncJob extends BaseJob
         try {
             $plugin->backup->backupForLink($link);
         } catch (Throwable $e) {
-            // Backup failed — abort, recording a failed log for visibility and
-            // enqueuing nothing. Not rethrown, so the queue doesn't retry the
-            // failing backup.
+            // Backup failed — record a failed log, enqueue nothing; not rethrown
+            // so the queue won't retry the failing backup
             $log = $plugin->logs->start($link, $trigger, $this->site, $this->offset);
             $plugin->logs->fail($log, $e->getMessage());
             Craft::error($e, __METHOD__);
@@ -57,9 +56,8 @@ class PrepareSyncJob extends BaseJob
             return;
         }
 
-        // Fan out. An all-sites trigger on a multi-endpoint link → one job per
-        // site (each its own log); otherwise a single job. Each skips its own
-        // backup — this job already took it.
+        // Fan out: one job per site for an all-sites multi-endpoint link, else a
+        // single job — each skips its own backup (this job already took it)
         $siteHandles = $link->siteHandles();
         $sites = ($this->site === null && count($siteHandles) > 1) ? $siteHandles : [$this->site];
 

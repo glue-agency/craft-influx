@@ -142,9 +142,7 @@ class FieldsService extends Component
         $fqcn = $class::craftFieldClass();
 
         if (! $fqcn) {
-            // Subclass forgot to declare which Craft field it handles —
-            // can't register without that, but it's not an error worth
-            // breaking init for.
+            // No Craft field declared — can't register, but not worth breaking init
             return;
         }
         $this->byCraftFqcn[$fqcn] = new $class();

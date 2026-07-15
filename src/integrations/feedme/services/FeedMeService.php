@@ -75,8 +75,7 @@ class FeedMeService extends Component
         $plugin = Influx::getInstance();
         $converter = new FeedMeConverter();
 
-        // Reserve existing handles so generated ones can't collide — neither
-        // with saved links nor between feeds in this batch.
+        // Reserve existing handles so generated ones can't collide (saved links or this batch)
         $takenHandles = array_keys($plugin->links->getAllLinks());
 
         $results = [];

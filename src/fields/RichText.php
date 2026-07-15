@@ -36,11 +36,8 @@ class RichText extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        // Keep our own inner guard: getRawContent()/serializeValue() run the
-        // purifier and ref-tag expansion, which can throw on malformed HTML.
-        // A failure here falls back to the base normalize() comparison rather
-        // than the "assume changed" guard — a broken purifier shouldn't force
-        // a needless save.
+        // getRawContent()/serializeValue() run the purifier and can throw on bad
+        // HTML; on failure fall back to base normalize() rather than assume-changed
         try {
             $currentRaw = is_a($current, 'craft\htmlfield\HtmlFieldData')
                 ? $current->getRawContent()

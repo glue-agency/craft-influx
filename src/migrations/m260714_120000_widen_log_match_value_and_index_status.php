@@ -28,8 +28,7 @@ class m260714_120000_widen_log_match_value_and_index_status extends Migration
     public function safeDown(): bool
     {
         $this->alterColumn(Table::LOG_ITEMS, 'matchValue', $this->string(255)->null());
-        // The status index is left in place on down — harmless, and its
-        // auto-generated name isn't reliably reconstructable across Craft 4/5.
+        // Leave the status index on down — its name isn't reliably reconstructable across Craft 4/5
 
         return true;
     }

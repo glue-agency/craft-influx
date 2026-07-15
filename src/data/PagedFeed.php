@@ -102,10 +102,8 @@ class PagedFeed implements IteratorAggregate
         if ($cursorUrl === null) {
             $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
         } else {
-            // Only the first request is authenticated. A paginated feed must
-            // return next-page URLs that are fetchable as-is — the remote owns
-            // whatever auth/token they carry. We never attach the link's own
-            // credentials to a feed-supplied URL, which could point anywhere.
+            // Only the first request is authenticated; feed-supplied next-page
+            // URLs are fetched as-is (we never attach the link's credentials).
             $response = $this->data->fetchUrl($cursorUrl);
         }
 
@@ -185,8 +183,7 @@ class PagedFeed implements IteratorAggregate
                 try {
                     return rtrim(UrlHelper::hostInfo($base), '/') . $url;
                 } catch (Throwable) {
-                    // Base wasn't a parsable URL — hand the raw value to the
-                    // fetch layer, whose error message names the URL.
+                    // Base wasn't parsable — hand the raw value to the fetch layer to report
                 }
             }
         }

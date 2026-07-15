@@ -40,8 +40,7 @@ class EntryTypeResolver
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
 
-        // Entry types are global in Craft 5. Resolve by handle, but make sure
-        // the chosen type is actually attached to the configured section.
+        // Entry types are global in Craft 5; ensure the resolved type is attached to the section
         $sectionEntryTypes = $section->getEntryTypes();
         $entryType = null;
 

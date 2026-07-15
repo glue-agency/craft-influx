@@ -70,7 +70,6 @@ class Entries extends Relation
 
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        // Constrain by the Craft field's configured sources (section UIDs).
         if (! $context->craftField) {
             return;
         }
@@ -101,8 +100,7 @@ class Entries extends Relation
         [$sectionId, $typeId] = $this->createTarget($context);
 
         if (! $sectionId || ! $typeId) {
-            // Without an explicit target we'd be guessing — bail rather than
-            // dropping the entry into the first section we find.
+            // No explicit target — bail rather than guess a section
             return null;
         }
 

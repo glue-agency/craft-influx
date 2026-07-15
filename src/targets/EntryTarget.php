@@ -176,10 +176,7 @@ class EntryTarget extends AbstractElementTarget
             $query->siteId('*')->unique();
         }
 
-        // Exclude the ids the run just touched — Craft's 'not' prefix syntax.
-        // An empty seen-set means no items matched: leave the id param off so
-        // the whole owned set is a candidate (the policy's status filter and
-        // the unattributed-errors guard still gate what actually gets swept).
+        // Exclude the ids the run just touched ('not' prefix); an empty seen-set leaves the whole owned set as candidates
         if ($seenIds !== []) {
             $query->id(array_merge(['not'], $seenIds));
         }
@@ -224,9 +221,7 @@ class EntryTarget extends AbstractElementTarget
         }
 
         if ($entryType->hasTitleField) {
-            // The title's label is user-editable in the entry type's field
-            // layout — surface what the editor actually sees. label()
-            // handles the custom value (site-translated) and the default.
+            // Use the field layout's title label — what the editor actually sees
             $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
                 EntryTitleField::class,
             );
@@ -254,9 +249,7 @@ class EntryTarget extends AbstractElementTarget
             return $fields;
         }
 
-        // Walk the field-layout tabs so custom fields keep the same grouping
-        // they have in Craft's own entry editor. CustomField elements have a
-        // `field` property; tabs without a name fall back to a generic label.
+        // Walk the field-layout tabs so custom fields keep their entry-editor grouping
         $fallbackTab = Craft::t('influx', 'Content');
 
         foreach ($layout->getTabs() as $tab) {
@@ -297,9 +290,7 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        // An active mapping that's now empty clears the title — the feed is
-        // authoritative. Saves run with validation off, so an empty title
-        // persists rather than failing (mirrors Feed Me's essentials scenario).
+        // Empty clears the title — the feed is authoritative, and validation-off saves let it persist
         $new = $value === null ? null : StringHelper::safeTruncate((string) $value, 255);
         $changed = (string) ($element->title ?? '') !== (string) ($new ?? '');
         $element->title = $new;
@@ -333,10 +324,8 @@ class EntryTarget extends AbstractElementTarget
     protected function parseAuthor(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         /** @var Entry $element */
-        // Compare current author id(s) against the INTENDED id — computed here,
-        // not read back off the element after setting it (reading the resolved
-        // author relation back on an unsaved element is unreliable). An empty
-        // value, or one that matches no user, clears the author.
+        // Compare current author id(s) against the intended id computed here —
+        // reading it back off an unsaved element is unreliable; empty/no-match clears
         $before = Compat::entryAuthorIds($element);
         $newId = $this->resolveAuthorId($context, $item, $mapping);
 
@@ -416,8 +405,7 @@ class EntryTarget extends AbstractElementTarget
 
         $parsed = $this->parseDateValue($value, $mapping);
 
-        // A present-but-unparseable value is left as a no-op — malformed feed
-        // data shouldn't wipe a valid stored date.
+        // Unparseable value is a no-op — malformed feed data shouldn't wipe a stored date
         if ($parsed === null) {
             return false;
         }
@@ -444,8 +432,7 @@ class EntryTarget extends AbstractElementTarget
 
         if (is_string($format) && $format !== '') {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
-            // UTC fallback timezone — see Date::parseValue(); a format carrying
-            // its own tz token still wins.
+            // UTC fallback timezone (see Date::parseValue()); a format's own tz token still wins
             $parsed = DateTime::createFromFormat($phpFormat, (string) $value, new DateTimeZone('UTC'));
 
             return $parsed === false ? null : $parsed;

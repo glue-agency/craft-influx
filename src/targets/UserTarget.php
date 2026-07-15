@@ -150,8 +150,7 @@ class UserTarget extends AbstractElementTarget
             return $fields;
         }
 
-        // Walk the field-layout tabs so custom fields keep the same grouping
-        // they have in Craft's own user editor (mirrors EntryTarget).
+        // Walk the field-layout tabs so custom fields keep their user-editor grouping (mirrors EntryTarget)
         $fallbackTab = Craft::t('influx', 'Profile');
 
         foreach ($layout->getTabs() as $tab) {
@@ -236,16 +235,14 @@ class UserTarget extends AbstractElementTarget
         $update = ! empty($options['groupsUpdate']);
         $remove = ! empty($options['groupsRemove']);
 
-        // Existing users are only reconciled when the link opts into updating
-        // them; new users always are.
+        // Existing users are reconciled only when the link opts in; new users always are
         if (! $isNew && ! $update) {
             return;
         }
 
         $byHandle = $this->groupIdMap();
 
-        // Selected groups: truthy toggles whose handle is a real group. The two
-        // behaviour flags are reserved and never counted as a selection.
+        // Selected groups: truthy toggles matching a real group handle; the behaviour flags are reserved
         $selectedIds = [];
 
         foreach ($options as $handle => $on) {
@@ -269,8 +266,7 @@ class UserTarget extends AbstractElementTarget
             ? $selectedIds
             : array_values(array_unique(array_merge($currentIds, $selectedIds)));
 
-        // Skip the write when membership already matches (assignUserToGroups
-        // would no-op anyway, but this avoids the query + events).
+        // Skip the write when membership already matches — avoids the query + events
         $current = $currentIds;
         $target = $targetIds;
         sort($current);
@@ -369,9 +365,7 @@ class UserTarget extends AbstractElementTarget
                     $builder->lightswitch(['handle' => $group->handle, 'label' => $group->name]);
                 }
 
-                // Reserved behaviour handles — read as flags by afterCommit(),
-                // never as group selections. Kept distinct enough that a real
-                // group handle won't collide with them.
+                // Reserved behaviour handles read as flags by afterCommit(), never as group selections
                 $builder
                     ->lightswitch([
                         'handle'       => 'groupsUpdate',

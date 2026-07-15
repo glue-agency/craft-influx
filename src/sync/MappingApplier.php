@@ -87,8 +87,7 @@ class MappingApplier
             $craftField = $layout?->getFieldByHandle($handle);
 
             if ($craftField === null) {
-                // Native attribute (title/slug/status/...) — the target
-                // translates it to whatever attribute Craft actually accepts.
+                // Native attribute (title/slug/status/...) — the target maps it to what Craft accepts.
                 $result = $this->applyNativeAttribute($syncContext, $element, $handle, $mapping, $item);
             } else {
                 $context = new FieldContext(
@@ -145,14 +144,11 @@ class MappingApplier
             $craftField = $element->getFieldLayout()?->getFieldByHandle($sub->handle);
 
             if (! $craftField) {
-                // Sub-mappings whose handle isn't on the related element's
-                // layout are skipped silently — surfacing those as notes needs
-                // a richer return and is deliberately deferred.
+                // Handle not on the related element's layout — skipped silently.
                 continue;
             }
 
-            // No try/catch here: a throwing sub-strategy propagates to the
-            // parent relation's row (it has no row of its own).
+            // No try/catch: a throwing sub-strategy propagates to the parent relation's row.
             if ($this->mapCustomField($parentContext->descend($element, $sub, $craftField))->changed === true) {
                 $changed = true;
             }
@@ -183,8 +179,7 @@ class MappingApplier
         $currentValue = $this->safeAttribute($element, $handle);
 
         if (! $mapping->addressedBy($item)) {
-            // Node absent from this item (and no default) — leave the attribute
-            // alone rather than clearing it.
+            // Node absent (and no default) — leave the attribute untouched.
             return new MappingResult(
                 handle: $handle,
                 node: $mapping->node,
@@ -237,21 +232,17 @@ class MappingApplier
             return false;
         }
 
-        // Node absent from this item (and no default) — leave it untouched
-        // rather than clearing it.
+        // Node absent (and no default) — leave it untouched.
         if (! $sub->addressedBy($item)) {
             return false;
         }
 
         $before = $this->safeAttribute($element, $sub->handle);
-        // An active-but-empty sub-mapping resolves to null and clears the
-        // attribute — the feed is authoritative at every depth.
+        // An active-but-empty sub-mapping clears the attribute — the feed is authoritative.
         $element->{$sub->handle} = $sub->resolve($item);
         $after = $this->safeAttribute($element, $sub->handle);
 
-        // Native sub-fields are only ever title/slug (plain strings), so a
-        // null-aware string compare is enough to decide whether the related
-        // element is worth re-saving.
+        // Native sub-fields are always title/slug strings, so a null-aware string compare suffices.
         return (string) ($before ?? '') !== (string) ($after ?? '');
     }
 
@@ -295,13 +286,9 @@ class MappingApplier
         $currentValue = $this->safeFieldValue($context->element, $context->handle);
         $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
 
-        // The feed only touches a field it addresses: a node it provides a
-        // value for (even an explicit empty string), or an explicit default. A
-        // node that's simply absent from this item is left untouched — the feed
-        // isn't saying "make this empty", it just doesn't mention the field.
-        // The strategy owns the gate ({@see Field::addressed()}) because a
-        // node-less parent (Matrix) is addressed via its sub-mappings, not its
-        // own node.
+        // The feed only touches a field it addresses (a node it provides a value
+        // for, or a default); an absent node is left untouched. The strategy owns
+        // the gate so a node-less Matrix parent is addressed via its sub-mappings.
         if (! $strategy->addressed($context)) {
             return new MappingResult(
                 handle: $context->handle,
@@ -315,11 +302,9 @@ class MappingApplier
             );
         }
 
-        // An addressed-but-empty value (explicit empty string, or one that no
-        // longer resolves) clears the field — the feed is authoritative. The
-        // row is "changed" only when the value differs from what the element
-        // already holds, so a clear of an already-empty field is not a change,
-        // even on a new element (the element still saves; see apply()).
+        // An addressed-but-empty value clears the field — the feed is authoritative.
+        // The row is "changed" only when the value differs from what's already there,
+        // so clearing an already-empty field isn't a change (the new element still saves).
         $value = $strategy->parse($context);
         $rowChanged = $strategy->hasChanged($context, $value);
 

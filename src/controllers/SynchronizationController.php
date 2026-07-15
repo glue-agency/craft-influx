@@ -49,16 +49,13 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
-        // Validate the requested site up front so the user gets immediate
-        // feedback instead of a job that fails later in the queue.
+        // Validate the requested site up front for immediate feedback instead of a later queue failure
         if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        // Enqueue the orchestrator: it takes ONE pre-run backup (when the link
-        // wants one), then fans out the per-site sync jobs. The request returns
-        // immediately — no blocking on a DB dump — and a backup failure surfaces
-        // as a failed log rather than a lost request.
+        // Enqueue the orchestrator: it takes ONE pre-run backup (when wanted), then fans out the
+        // per-site sync jobs. Returns immediately; a backup failure surfaces as a failed log
         Craft::$app->getQueue()->push(new PrepareSyncJob([
             'linkHandle' => $link->handle,
             'offset'     => $offset,
@@ -83,8 +80,7 @@ class SynchronizationController extends AbstractController
 
         $elementId = (int) Craft::$app->getRequest()->getRequiredBodyParam('elementId');
 
-        // Load the element in the site the editor triggered the sync from, so a
-        // per-site-endpoints link syncs only that site (see elementSyncSites).
+        // Load the element in the site the sync was triggered from, so a per-site-endpoints link syncs only that site
         $siteHandle = Craft::$app->getRequest()->getBodyParam('site');
         $siteId = $siteHandle ? Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id : null;
         $element = Craft::$app->getElements()->getElementById($elementId, null, $siteId);
@@ -93,19 +89,16 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Element #{$elementId} not found.");
         }
 
-        // Even with the sync permission, never let a user push remote data into
-        // an element they couldn't edit by hand.
+        // Even with the sync permission, never push remote data into an element the user couldn't edit by hand
         if (! Compat::canSaveElement($element)) {
             throw new ForbiddenHttpException("You don’t have permission to save element #{$elementId}.");
         }
 
         $plugin = Influx::getInstance();
 
-        // An explicit link handle (the button/menu always sends one) pins the
-        // sync to THAT link. We still require it to structurally target the
-        // element — otherwise a caller could sync any link against an unrelated
-        // element. Without a handle, fall back to the first link that targets
-        // the element (preserves the pre-explicit-link single-link behaviour).
+        // An explicit link handle (always sent) pins the sync to THAT link, still requiring it to
+        // target the element so a caller can't sync an unrelated one. Without a handle, fall back
+        // to the first link that targets the element
         $linkHandle = Craft::$app->getRequest()->getBodyParam('link');
 
         if ($linkHandle !== null && $linkHandle !== '') {

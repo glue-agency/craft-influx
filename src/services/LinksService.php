@@ -60,8 +60,7 @@ class LinksService extends Component
 
         $this->links = [];
 
-        // Query order (sortOrder, then name) carries through — PHP preserves
-        // insertion order, so the handle-keyed array reads in display order.
+        // Query order (sortOrder, name) carries through, so the handle-keyed array reads in display order
         foreach ($this->createQuery()->all() as $row) {
             $link = $this->linkFromRow($row);
             $this->links[$link->handle] = $link;
@@ -140,13 +139,11 @@ class LinksService extends Component
     {
         $isNew = ! $link->id;
 
-        // Hygiene, not validation — runs on forced saves too, so the stored
-        // config never carries handles the target can't map.
+        // Hygiene, not validation — runs on forced saves too, so stored config never carries unmappable handles
         $this->pruneUnknownMappings($link);
 
-        // Keep the missing-element policies in step with the endpoint shape
-        // (global delete/disable <-> the -for-site variants). Idempotent; the
-        // builder layer diffs the result to tell the user when it fired.
+        // Keep missing-element policies in step with the endpoint shape (global
+        // <-> per-site variants); idempotent
         $link->migrateProcessingForEndpointShape();
 
         if ($runValidation && ! $link->validate()) {
@@ -535,7 +532,6 @@ class LinksService extends Component
         $row['id'] = (int) $row['id'];
         $row['sortOrder'] = isset($row['sortOrder']) ? (int) $row['sortOrder'] : null;
 
-        // Runtime last-run columns → typed model props.
         $row['lastRunAt'] = ! empty($row['lastRunAt']) ? (DateTimeHelper::toDateTime($row['lastRunAt']) ?: null) : null;
         $row['lastLogId'] = isset($row['lastLogId']) && $row['lastLogId'] !== null ? (int) $row['lastLogId'] : null;
 

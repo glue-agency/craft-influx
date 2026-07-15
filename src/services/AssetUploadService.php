@@ -70,8 +70,7 @@ class AssetUploadService extends Component
 
         $filename = $this->filenameFor($url);
 
-        // 'index' mode — return the existing asset if its filename already
-        // matches in the target folder. Mirrors FeedMe's SCENARIO_INDEX path.
+        // 'index' mode — reuse the existing asset if its filename already matches in the folder
         if ($conflict === 'index') {
             $existing = Asset::find()
                 ->folderId($folder->id)
@@ -130,8 +129,7 @@ class AssetUploadService extends Component
      */
     protected function downloadToTemp(string $url): string
     {
-        // Feed-controlled URL: allow only http(s), so a hostile feed can't
-        // point it at file://, ftp://, gopher://, etc. (local-file read / SSRF).
+        // Feed-controlled URL: allow only http(s) to block file://, etc. (local-file read / SSRF)
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
 
         if (! in_array($scheme, ['http', 'https'], true)) {

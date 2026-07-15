@@ -97,11 +97,7 @@ class LogPresenter
      */
     public function presentItem(LogItemRecord $item, ?array $elementMap = null): array
     {
-        // The split viewer's item list shows a plain title, not a rendered
-        // chip — the element chip is fetched with the drill-down, so there's no
-        // need to render one per row (a real cost across a page, and on every
-        // poll tick of a live run). The element's UI label, else the match
-        // value, else the row id.
+        // Plain title only (UI label, else match value, else row id) — no per-row chip
         $title = null;
 
         if ($item->elementId) {
@@ -116,9 +112,7 @@ class LogPresenter
         $matchValue = (string) ($item->matchValue ?? '');
         $title = $title ?? ($matchValue !== '' ? $matchValue : '#' . $item->id);
 
-        // How many fields errored — lets the viewer flag an item that still
-        // committed (created/updated) despite a field failure, which the
-        // green action tag alone would otherwise hide.
+        // Field-error count — flags an item that committed despite a field failure
         $errorCount = count($this->fieldErrors($item->fieldErrors));
 
         return [
@@ -270,9 +264,7 @@ class LogPresenter
             $segments[] = ['count' => (int) ($counters['seen'] ?? 0), 'kind' => 'seen', 'color' => 'blue'];
         }
 
-        // Fixed display order → result-palette colour. `seen` is handled above
-        // (progress only, while a run is live); the rest surface once they've
-        // happened.
+        // Fixed display order → result-palette colour ('seen' handled above)
         $palette = [
             'created'   => 'green',
             'updated'   => 'green',

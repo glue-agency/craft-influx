@@ -67,9 +67,7 @@ class SyncController extends Controller
             }
         }
 
-        // One backup covering the whole run, taken once when ANY targeted link
-        // requires it — then each link syncs with its own per-run backup
-        // skipped. Same "one dump, then fan out" principle as a CP fan-out.
+        // One backup for the whole run, taken once if any targeted link needs it
         try {
             $plugin->backup->backupForLinks($links);
         } catch (Throwable $e) {
@@ -83,12 +81,9 @@ class SyncController extends Controller
             $this->stdout("→ Syncing '{$link->handle}'\n");
 
             try {
-                // syncLink() runs synchronously here and returns one log per
-                // site — the console reports only the dispatch, so the return is
-                // ignored; the per-site logs are viewable in the CP. A single
-                // site failing its own feed fetch is isolated to that site's log
-                // and does NOT abort the run or change the exit code (D3); only a
-                // non-fetch throw propagates here and returns SOFTWARE.
+                // Runs synchronously; per-site logs are viewable in the CP, so the
+                // return is ignored. A site's own feed-fetch failure stays in its
+                // log; only a non-fetch throw propagates here and returns SOFTWARE
                 $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE, $this->site);
                 $this->success('done.');
             } catch (Throwable $e) {

@@ -107,10 +107,8 @@ class Date extends Field
         if (is_string($format) && $format !== '' && is_scalar($raw)) {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
 
-            // Default the source timezone to UTC: a format with no tz token
-            // (e.g. `Y-m-d H:i:s`) would otherwise resolve in Craft's app
-            // timezone. Formats that carry a tz (P/e/O/T) still win — the 3rd
-            // arg is only the fallback when the value itself specifies none.
+            // Default the source timezone to UTC (the 3rd arg is only a fallback);
+            // formats carrying their own tz token still win
             return DateTime::createFromFormat($phpFormat, (string) $raw, new DateTimeZone('UTC'));
         }
 

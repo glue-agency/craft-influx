@@ -33,9 +33,8 @@ class Install extends Migration
             'offset'          => $this->text()->null(),
             'backup'          => $this->boolean()->notNull()->defaultValue(false),
             'sortOrder'       => $this->integer(),
-            // Runtime last-run tracking — NOT Project Config. lastRunAt
-            // survives log deletion; lastLogId is a soft pointer to the run's
-            // log for quick access, nulled when that log is deleted.
+            // Runtime last-run tracking, not Project Config; lastLogId is a soft
+            // pointer, nulled when its log is deleted
             'lastRunAt'   => $this->dateTime()->null(),
             'lastLogId'   => $this->integer()->null(),
             'dateCreated' => $this->dateTime()->notNull(),
@@ -90,8 +89,7 @@ class Install extends Migration
             'uid'           => $this->uid(),
         ]);
 
-        // Composite: covers logId-only lookups via its leftmost prefix, and the
-        // per-action counts/filters on the log detail view.
+        // Composite: leftmost prefix covers logId-only lookups, plus per-action filters
         $this->createIndex(null, Table::LOG_ITEMS, ['logId', 'action']);
         $this->createIndex(null, Table::LOG_ITEMS, ['elementId']);
         $this->createIndex(null, Table::LOG_ITEMS, ['action']);

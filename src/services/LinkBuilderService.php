@@ -97,15 +97,11 @@ class LinkBuilderService extends Component
                 'isNew'    => $isNew,
                 'readOnly' => $readOnly,
                 'handle'   => $link->handle ?: null,
-                // Delete goes by UID (the Project Config key) — the header
-                // menu's Delete action posts it to influx/links/delete.
+                // Delete keys on UID — the Project Config key
                 'uid'           => $link->uid ?: null,
                 'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
                 'csrfToken'     => Craft::$app->getRequest()->getCsrfToken(),
-                // Environment-variable + Craft-alias suggestions for the
-                // endpoint pickers. Same shape as `tokenSuggestions` but
-                // each item is `type: 'text'` — selecting one drops the
-                // literal `$NAME` / `@alias` into the URL, not a chip.
+                // Env-var / alias suggestions inserted as literal text ($NAME / @alias), not chips
                 'envSuggestions' => $this->envAndAliasSuggestions(),
             ],
         ];
@@ -131,9 +127,7 @@ class LinkBuilderService extends Component
 
         $this->serializer->apply($link, $payload);
 
-        // Heal a delete/disable policy that no longer fits the endpoint shape
-        // BEFORE saving, so we can tell the user what we changed. saveLink()
-        // re-runs the (idempotent) migration as its own invariant backstop.
+        // Heal the processing policy to fit the endpoint shape before saving, so we can report what changed
         $migrations = $link->migrateProcessingForEndpointShape();
 
         if (! $plugin->links->saveLink($link)) {
@@ -251,11 +245,7 @@ class LinkBuilderService extends Component
         $fields = $target ? $target->getMappableFields($stub) : [];
         $groups = $this->groupMappableFields($fields);
 
-        // Grouped for the SPA's SearchableSelect: the clear sentinel renders
-        // as a plain row, the target's matchable natives (unique identifiers
-        // only — not every mappable attribute) under the element type's
-        // display name (green `element` chips), custom fields under
-        // "Fields" (gray).
+        // Grouped match options for the SPA's SearchableSelect: clear sentinel, matchable natives, then custom fields
         $nativeOptions = $target ? $target->matchableNativeAttributes($stub) : [];
         $fieldOptions = [];
 
@@ -384,9 +374,7 @@ class LinkBuilderService extends Component
 
         $hostId = 'influx-el-' . StringHelper::randomString(8);
 
-        // Read-only environments render the control disabled — the chips
-        // stay visible for inspection but the choose/remove affordances are
-        // dead, matching the rest of the read-only builder.
+        // Read-only environments render the control disabled — chips stay visible, choose/remove dead
         $readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
 
         $renderArgs = [
@@ -408,9 +396,7 @@ class LinkBuilderService extends Component
             $renderArgs,
         );
 
-        // Mirror the jsSettings the Twig template builds at the tail.
-        // BaseElementSelectInput tolerates omitting most of these, but
-        // the explicit ones below match what the standard CP fields use.
+        // Mirror the jsSettings the Twig template builds, matching the standard CP fields
         $jsSettings = [
             'id'               => $hostId,
             'name'             => null,
@@ -580,10 +566,7 @@ class LinkBuilderService extends Component
                 continue;
             }
 
-            // Slugify the group by inspecting the first item's prefix —
-            // Craft's `getEnvSuggestions` returns env vars first, aliases
-            // second; the prefix is a more reliable marker than the
-            // (translated) label.
+            // Detect env vs alias from the item's prefix — more reliable than the translated label
             $kind = str_starts_with($items[0]['name'], '@') ? 'alias' : 'env';
             $out[] = [
                 'kind'  => $kind,
@@ -597,8 +580,7 @@ class LinkBuilderService extends Component
 
 
     // ------------------------------------------------------------------
-    //  Option builders. Internal — the SPA only sees their output
-    //  via `bootstrap()`.
+    //  Option builders — internal; output reaches the SPA via bootstrap()
     // ------------------------------------------------------------------
 
     protected function elementTypeOptions(): array
@@ -609,9 +591,7 @@ class LinkBuilderService extends Component
             $out[] = [
                 'value' => $target::elementType(),
                 'label' => $target::friendlyName(),
-                // Capability flags the General tab reacts to: which criteria
-                // dropdowns to render (section/type for entries, none for
-                // users) and whether the site-specific endpoint controls apply.
+                // Capability flags the General tab reacts to: criteria dropdowns and multi-site support
                 'criteria'  => $target::criteriaKeys(),
                 'multiSite' => $target::supportsMultiSite(),
             ];

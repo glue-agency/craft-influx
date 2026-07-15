@@ -41,10 +41,7 @@ class FeedInspector
         $rootCandidates = $this->findArrayPaths($response, '', 3);
         $paginatorCandidates = $this->findPaginatorPaths($response);
 
-        // Use only the user's configured root node. Auto-guessing the first
-        // array path silently mis-targets feeds whose iterable lives behind
-        // a real key, so we surface a hard error instead and let the user
-        // pick from the candidate dropdown.
+        // Don't auto-guess the root node; require it (or a top-level list) or error out
         $rootNode = $link->rootNode;
         $paginatorNode = $link->paginatorNode;
 
@@ -94,9 +91,7 @@ class FeedInspector
             }
         }
 
-        // Response-level scalar leaves (outside the item list) — candidates for
-        // the total-count / page-count nodes, which live on the response, not
-        // the item.
+        // Response-level scalar leaves — total-count / page-count node candidates
         $countCandidates = array_values(array_filter(
             $this->stringLeafPaths($response, []),
             static fn(string $path): bool => $path !== '',
@@ -128,8 +123,7 @@ class FeedInspector
             return '';
         }
 
-        // Resolve exactly the way the sync pipeline will — collapsed list
-        // hops included — so the preview shows what a mapping would read.
+        // Resolve like the sync pipeline so the preview matches what a mapping reads
         $value = (new RemoteItem($sampleItem))->get($path);
 
         if ($value === null) {
@@ -229,10 +223,8 @@ class FeedInspector
             $paths[] = implode('.', $childPrefix);
 
             if (is_array($child) && $this->looksLikeListOfObjects($child)) {
-                // Lists of objects expose their first element's leaves under
-                // the parent key itself — the index collapses away entirely
-                // ('directors.full_name'); RemoteItem fans the read out over
-                // every element at sync time.
+                // List-of-objects: expose the first element's leaves under the
+                // parent key with the index collapsed; RemoteItem fans out at sync
                 foreach ($this->flattenLeafPaths($child[0], $childPrefix) as $p) {
                     $paths[] = $p;
                 }
@@ -320,8 +312,7 @@ class FeedInspector
             }
         }
 
-        // Walk the whole response (skipping the iterable root list, which is
-        // identified by findArrayPaths) and add any string leaves.
+        // Add any string leaves from the whole response (root list skipped by findArrayPaths)
         foreach ($this->stringLeafPaths($response, []) as $path) {
             if ($path === '' || isset($seen[$path])) {
                 continue;

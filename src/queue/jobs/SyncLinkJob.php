@@ -48,8 +48,7 @@ class SyncLinkJob extends BaseJob
     public ?string $site = null;
     public string $trigger = 'queue';
 
-    // Run state carried across steps; defaults are the first step's values, so
-    // an initial push (handle/offset/site/trigger only) starts a fresh run.
+    // Run state carried across steps; defaults start a fresh run
     public ?int $logId = null;
     public ?string $cursorUrl = null;
     public int $page = 1;
@@ -72,8 +71,7 @@ class SyncLinkJob extends BaseJob
 
     public function execute($queue): void
     {
-        // tryFrom (not from) so a job serialised with an unexpected trigger
-        // value degrades to QUEUE instead of throwing a raw ValueError.
+        // tryFrom so an unexpected trigger degrades to QUEUE instead of throwing
         $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
 
         $state = Influx::getInstance()->synchronization->batchStep(
@@ -97,8 +95,7 @@ class SyncLinkJob extends BaseJob
                         'total' => $total,
                     ]);
                 } else {
-                    // No total: ease the bar toward 1 as items arrive (never
-                    // reaching it); the label carries the live count.
+                    // No total: ease the bar toward 1 as items arrive; label carries the live count
                     $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
                     $label = Craft::t('influx', '{count} items synced', ['count' => $seen]);
                 }
@@ -108,8 +105,7 @@ class SyncLinkJob extends BaseJob
         );
 
         if (empty($state['done'])) {
-            // More pages to go — re-queue the next step on the same log so this
-            // scope's whole walk reads as one log entry.
+            // More pages — re-queue the next step on the same log
             Craft::$app->getQueue()->push(new self([
                 'linkHandle'         => $this->linkHandle,
                 'offset'             => $this->offset,

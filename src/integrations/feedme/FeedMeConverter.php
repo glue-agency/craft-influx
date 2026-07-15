@@ -327,10 +327,7 @@ class FeedMeConverter
 
             if ($topLevel && ! empty($info['attribute'])) {
                 if (in_array($handle, self::UNSUPPORTED_NATIVE_HANDLES, true)) {
-                    // Only flag it when the feed actually mapped a value here.
-                    // A "don't import" / unmapped native attribute carries
-                    // nothing to drop, so skip it silently like any other
-                    // no-op mapping.
+                    // Only warn when the feed actually mapped a value here (no-op mappings drop silently)
                     if ($this->mapsAValue($info)) {
                         $this->warn("Native attribute mapping '{$handle}' has no Influx counterpart and was dropped.");
                     }
@@ -343,8 +340,7 @@ class FeedMeConverter
             if (is_array($info['blocks'] ?? null)) {
                 $blocks = $this->convertMatrixBlocks((string) $handle, $info['blocks']);
 
-                // Nothing mapped inside any block type → skip silently, like
-                // any other no-op mapping.
+                // Nothing mapped in any block type → skip silently
                 if ($blocks !== []) {
                     $mappings[$handle] = ['blocks' => $blocks];
                 }
@@ -487,8 +483,7 @@ class FeedMeConverter
             $mapping['options'] = $options;
         }
 
-        // Related-element sub-fields: same conversion, one level down. Feed
-        // Me only maps custom fields there, which is Influx's `fields` key.
+        // Related-element sub-fields: same conversion one level down (Influx's `fields`)
         if (is_array($info['fields'] ?? null)) {
             $subMappings = $this->convertMappings($info['fields'], false);
 
@@ -809,9 +804,8 @@ class FeedMeConverter
         $this->warnings[] = $message;
     }
 
-    // Craft lookups — isolated so the no-boot unit suite can stub them.
-    // (StringHelper::toHandle transliterates via Craft::$app->language, so it
-    // counts as one.)
+    // Craft lookups — isolated so the no-boot unit suite can stub them
+    // (toHandle counts too, via Craft::$app->language).
 
     protected function handleFromName(string $name): string
     {

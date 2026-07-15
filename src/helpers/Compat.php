@@ -79,12 +79,9 @@ class Compat
     }
 
     // -- Matrix block types ----------------------------------------------------
-    // Craft 5 renamed Matrix block types to nested entry types: block-type
-    // discovery moved from $field->getBlockTypes() (MatrixBlockType[]) to
-    // $field->getEntryTypes() (EntryType[]), and blocks themselves from
-    // craft\elements\MatrixBlock to craft\elements\Entry. Both block-type
-    // objects still expose ->handle, ->name and ->getFieldLayout(); the two
-    // divergences (discovery + block-element construction) live entirely here.
+    // Craft 5 renamed Matrix block types to nested entry types: discovery moved
+    // from getBlockTypes() to getEntryTypes(), and blocks from MatrixBlock to
+    // Entry. Both divergences (discovery + block construction) live here.
 
     /**
      * Normalized block-type descriptors for a Matrix field. Feature-detects the

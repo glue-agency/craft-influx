@@ -41,14 +41,11 @@ class Assets extends RelationalField
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
-        // The mode / conflict option sets are fixed: each value maps to a
-        // branch in parse() / the upload helper, so they're intentionally
-        // closed (no event registry — an unknown value would be inert).
+        // mode / conflict values each map to a fixed parse() branch — intentionally
+        // closed, no event registry
         return SchemaBuilder::make()
-            // Grouped options so this renders via the shared SearchableSelect,
-            // matching the relation / author "Match by" controls. id + url are
-            // the asset's native identifiers; the handle stays `mode` so saved
-            // configs keep round-tripping.
+            // Grouped so it renders via the shared SearchableSelect like the
+            // relation "Match by"; handle stays `mode` so saved configs round-trip
             ->select([
                 'handle'  => 'mode',
                 'label'   => Craft::t('influx', 'Match by'),
@@ -100,9 +97,8 @@ class Assets extends RelationalField
 
         $mode = $context->mapping->option('mode', 'id');
 
-        // A single source node can carry many values (a JSON array of URLs or
-        // ids) — resolve each to an asset, exactly as a relation field maps a
-        // list of remote references to a list of element ids.
+        // A source node may carry many values (array of URLs/ids); resolve each
+        // to an asset, like a relation field maps a list of references
         $ids = [];
 
         foreach ($this->referenceValues($raw) as $value) {
@@ -142,8 +138,7 @@ class Assets extends RelationalField
      */
     protected function resolveByUrl(FieldContext $context, string $url): ?Asset
     {
-        // First try matching an existing asset by url() — cheap and avoids
-        // pointless re-uploads when the source already lives in Craft.
+        // Try matching an existing asset by url() first — avoids needless re-uploads
         $existing = $this->matchExistingByUrl($context, $url);
 
         if ($existing) {
@@ -155,8 +150,7 @@ class Assets extends RelationalField
         }
 
         if ($context->dryRun) {
-            // Dry-runs must not download/save anything; report "no asset"
-            // rather than uploading one as a side effect.
+            // Dry-runs must not download/save — report "no asset" instead
             return null;
         }
 
@@ -200,12 +194,10 @@ class Assets extends RelationalField
 
         if ($subpath !== '') {
             try {
-                // Subpaths may be object templates ({slug}, …) rendered
-                // against the element being synced — same as a CP upload.
+                // Subpaths may be object templates, rendered against the synced element
                 $subpath = Craft::$app->getView()->renderObjectTemplate($subpath, $context->element);
             } catch (Throwable) {
-                // A failing dynamic subpath shouldn't kill the sync run —
-                // fall back to the volume root.
+                // A failing subpath shouldn't kill the sync — fall back to the volume root
                 $subpath = '';
             }
         }

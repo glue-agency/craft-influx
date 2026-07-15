@@ -90,10 +90,8 @@ class ItemProcessor
 
         $results = $this->applier->apply($context, $element, $item);
 
-        // A freshly-built element always saves on its first pass, so seed the
-        // aggregate "changed" from $isNew, then fold in each row: a field that
-        // threw never counts as a change (so the UNCHANGED→ERROR flip below can
-        // still catch an item whose only mapping failed).
+        // Seed "changed" from $isNew (new elements always save), then fold in each
+        // row; a field that threw never counts as a change
         $changed = $isNew;
         $hasFieldErrors = false;
 
@@ -106,11 +104,8 @@ class ItemProcessor
             ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
             : ItemAction::UNCHANGED;
 
-        // A field that threw never counts as a change, so an item whose only
-        // mapping failed would otherwise be logged as "unchanged" and hide the
-        // failure — surface it as an error instead. (The per-field errors
-        // themselves ride on the mapping results, persisted by the recorder
-        // and shown on each field's row, not lumped into the item message.)
+        // An item whose only mapping failed would log as "unchanged" and hide the
+        // failure — surface it as an error instead
         if ($action === ItemAction::UNCHANGED && $hasFieldErrors) {
             $action = ItemAction::ERROR;
         }

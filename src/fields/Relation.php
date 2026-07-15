@@ -157,9 +157,8 @@ abstract class Relation extends RelationalField
                 continue;
             }
 
-            // Keyed by handle so a relation spanning several source layouts
-            // (multiple entry types / category groups) contributes each native
-            // field at most once — the first layout that includes it wins.
+            // Keyed by handle so multiple source layouts contribute each native
+            // field at most once — the first layout that includes it wins
             if (! isset($seen['title']) && $layout->isFieldIncluded('title')) {
                 $seen['title'] = true;
                 $builder->text(['handle' => 'title', 'label' => $layout->getField('title')->label() ?: Craft::t('app', 'Title')]);
@@ -178,8 +177,7 @@ abstract class Relation extends RelationalField
     {
         $raw = $context->mapping->resolve($context->item);
 
-        // resolve() already normalises empty to null; empty entries within a
-        // list value are dropped by referenceValues().
+        // resolve() normalises empty to null; referenceValues() drops empty list entries
         if ($raw === null) {
             return null;
         }
@@ -194,8 +192,7 @@ abstract class Relation extends RelationalField
             if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
 
-                // Flip the cached miss to a hit: without this, every later item
-                // carrying the same value would re-create the element (dupes).
+                // Flip the cached miss to a hit, else later items re-create it (dupes)
                 $context->lookups?->put($this->elementType(), $match, $this->lookupScope($context), $value, $element);
             }
 
@@ -294,9 +291,8 @@ abstract class Relation extends RelationalField
         };
 
         if ($this->scopesBySite()) {
-            // Match within the synced element's site — slug/title/localized
-            // fields are per-site, so Craft's ambient "current site" (the
-            // primary site in a queue/console run) would mis-match or miss.
+            // Match within the synced element's site — localized fields are per-site,
+            // so Craft's ambient "current site" would mis-match or miss
             $siteId = $context->element->siteId ?? null;
             $query->siteId($siteId ?: '*');
 
@@ -327,8 +323,7 @@ abstract class Relation extends RelationalField
      */
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        // Default: no-op. Concrete strategies that need source scoping
-        // override this (e.g. Entries narrowing by sectionId).
+        // No-op by default; strategies needing source scoping override (e.g. Entries)
     }
 
     /**

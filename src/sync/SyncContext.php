@@ -83,9 +83,8 @@ class SyncContext
         if ($siteHandle !== null) {
             $siteId = Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id;
 
-            // A per-site run whose configured site no longer exists must NOT
-            // fall back to siteId=null — downstream that reads as a cross-site
-            // sweep, the exact hazard the -for-site policies guard against.
+            // A missing configured site must NOT fall back to siteId=null —
+            // downstream that reads as a cross-site sweep
             if ($siteId === null) {
                 throw new InfluxException("Link '{$link->handle}' is configured for site '{$siteHandle}', which no longer exists — refusing to run a per-site sync that would degrade into a cross-site sweep.");
             }
