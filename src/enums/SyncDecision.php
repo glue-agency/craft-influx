@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\enums;
 
+use Craft;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\models\Link;
 
@@ -62,16 +63,19 @@ enum SyncDecision: string
     }
 
     /**
-     * Human-readable reason for the skip outcomes whose message doesn't
-     * depend on item data. SKIP_NO_MATCH messages are built by the caller —
-     * they embed the configured match node — and CREATE/UPDATE have none.
+     * Human-readable label for a decision — e.g. the inspector's outcome
+     * column. The skip variants double as the message shown on a skipped log
+     * item; {@see \GlueAgency\Influx\sync\ItemProcessor} overrides SKIP_NO_MATCH
+     * with the configured match node.
      */
-    public function skipReason(): ?string
+    public function label(): string
     {
         return match ($this) {
-            self::SKIP_NO_CREATE => "No existing element and 'create' not enabled.",
-            self::SKIP_NO_UPDATE => "'update' not enabled for this link.",
-            default              => null,
+            self::CREATE         => Craft::t('influx', 'Create'),
+            self::UPDATE         => Craft::t('influx', 'Update'),
+            self::SKIP_NO_MATCH  => Craft::t('influx', 'Remote item has no match value.'),
+            self::SKIP_NO_CREATE => Craft::t('influx', "No existing element and 'create' not enabled for this link."),
+            self::SKIP_NO_UPDATE => Craft::t('influx', "'update' not enabled for this link."),
         };
     }
 }

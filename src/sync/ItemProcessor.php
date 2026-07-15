@@ -156,7 +156,7 @@ class ItemProcessor
         return $draft;
     }
 
-    protected function skipMessage(Link $link, SyncDecision $decision): ?string
+    protected function skipMessage(Link $link, SyncDecision $decision): string
     {
         if ($decision === SyncDecision::SKIP_NO_MATCH) {
             $matchAttr = $link->matchAttribute() ?: '?';
@@ -165,6 +165,6 @@ class ItemProcessor
             return "Remote item has no value at match path '{$node}' (match attribute: {$matchAttr}).";
         }
 
-        return $decision->skipReason();
+        return $decision->label();
     }
 }
