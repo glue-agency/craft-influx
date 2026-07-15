@@ -1,0 +1,61 @@
+/* Missing-mapping badge: shown after Fetch sample detects that this row's
+   saved source node is no longer present in the feed. Same shape as the
+   auto badge, warm-amber palette to signal "needs attention". */
+.influx-missing-badge {
+    display: none;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: #fdecc8;
+    color: #8a6d00;
+    border: 1px solid #f0c674;
+    font-size: 10px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.influx-mapping-row[data-missing="true"] > .meta .influx-missing-badge { display: inline-block; }
+.influx-mapping-row[data-missing="true"],
+.influx-mapping-row.has-extras[data-missing="true"]:has(.influx-mapping-extras[data-expanded="true"]) {
+    background: #fff9ea;
+    /* Orange rail flagging the row needs attention — inset shadow instead
+       of border-left so the grid columns stay aligned with healthy rows. */
+    box-shadow: inset 3px 0 0 #ed8936;
+}
+
+/* Sub-fields are independent mappings rendered as a nested group card —
+   its own white background (from .influx-mapping-group) stops the parent
+   row's missing tint; each row flags only its own missing node. */
+.influx-schema-form .sub-field-row[data-missing="true"] {
+    background: #fff9ea;
+}
+.sub-field-row[data-missing="true"] .influx-missing-badge { display: inline-block; }
+
+/* ---------------------------------------------------------------------
+   Cross-component glue that cannot live in one component style: the
+   missing-mapping recolor of the SearchableSelect dropdown reaches from a
+   MappingRow ([data-missing]) into SearchableSelect options. Everything
+   else is now co-located in component <style> blocks.
+--------------------------------------------------------------------- */
+
+/* When the saved source node fell out of the fetched sample, the selected
+   item inside the source-node dropdown gets the same warm-amber palette as
+   the missing badge (instead of the usual selection blue) — the selected
+   option IS the missing node. The node select is the row's second grid
+   cell (meta | node | default). */
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected {
+    background: #fdecc8;
+    color: #8a6d00;
+}
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected.highlighted,
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) .influx-searchable-select-options li.selected:hover {
+    background: #f7dca2;
+}
+
+/* Missing saved node: the selected chip in the source-node dropdown takes
+   the missing-badge amber instead of the node grey. */
+.influx-mapping-row[data-missing="true"] > div:nth-child(2) li.selected .influx-tokenized-chip-inline {
+    background: #fdecc8;
+    color: #8a6d00;
+    border-color: #f0c674;
+}

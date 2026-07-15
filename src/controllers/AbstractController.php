@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
+use GlueAgency\Influx\web\assets\links\InfluxAsset;
 use yii\base\Action;
 use yii\web\ForbiddenHttpException;
 
@@ -28,6 +29,7 @@ abstract class AbstractController extends Controller
         }
 
         $this->requireAccess($action);
+        $this->registerCpAssets();
 
         return true;
     }
@@ -39,6 +41,20 @@ abstract class AbstractController extends Controller
     protected function requireAccess(Action $action): void
     {
         $this->requirePermission('accessPlugin-influx');
+    }
+
+    /**
+     * Register the plugin's single CP asset bundle for every screen that
+     * renders a full HTML page. Skipped for the SPA's JSON data routes, where
+     * there's no page to style and the bundle would just be published unused.
+     */
+    protected function registerCpAssets(): void
+    {
+        if (Craft::$app->getRequest()->getAcceptsJson()) {
+            return;
+        }
+
+        Craft::$app->getView()->registerAssetBundle(InfluxAsset::class);
     }
 
     /**

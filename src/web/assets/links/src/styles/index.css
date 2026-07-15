@@ -1,0 +1,7 @@
+/* Influx CP chrome — server-rendered classes shared by the SPA and the
+   server-rendered CP pages. Vite bundles these into influx-app.css. */
+@import './mapping-row.css';
+@import './missing.css';
+@import './overview-cells.css';
+@import './table-foot.css';
+@import './pills.css';

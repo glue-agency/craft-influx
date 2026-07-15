@@ -1,0 +1,22 @@
+/* Pill group: one wrapping row of pills (sites, processing, run result). */
+.influx-pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Pills — the shared verb/result vocabulary. */
+.influx-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.influx-pill--green { background: #d6f1de; color: #064f1f; border-color: #7fcb95; }
+.influx-pill--red   { background: #fde2e2; color: #8a1f1f; border-color: #e7a3a3; }
+.influx-pill--blue  { background: #e1eefc; color: #1c4f8a; border-color: #b9d3f0; }
+.influx-pill--gray  { background: rgba(0, 0, 0, .06); color: #4a4f57; border-color: rgba(0, 0, 0, .08); }

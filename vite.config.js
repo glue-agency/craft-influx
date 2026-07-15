@@ -17,7 +17,7 @@ export default defineConfig({
 
     build: {
         outDir: resolve(here, 'src/web/assets/links/dist'),
-        emptyOutDir: false, // keep the hand-written CSS that lives there
+        emptyOutDir: true,
         manifest: false,
         sourcemap: true,
         cssCodeSplit: false,

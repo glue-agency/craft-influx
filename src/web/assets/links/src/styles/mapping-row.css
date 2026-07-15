@@ -1,0 +1,119 @@
+/* Mapping list */
+.influx-mapping-list { margin-top: 12px; }
+
+.influx-mapping-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+
+.influx-mapping-row.has-extras { grid-template-rows: auto auto; row-gap: 0; }
+
+/* The slot lives inside the row's padded content area — same horizontal
+   bounds as the meta / source-node / default-value columns above — so the
+   extras content lines up edge-for-edge with the parent row. The gray
+   tint when expanded is provided by the parent row's background (which
+   covers padding too), no need for the slot to stretch beyond the row. */
+.influx-mapping-row .influx-mapping-extras-slot { grid-column: 1 / -1; }
+
+/* Light gray tint applied to the whole row only while the user has the
+   extras open. Collapsed state stays unstyled — the "Configure" toggle
+   rides on the handle line inside the meta column. */
+.influx-mapping-row.has-extras:has(.influx-mapping-extras[data-expanded="true"]) {
+    background: #f8f9fb;
+}
+
+.influx-mapping-row:last-child { border-bottom: none; }
+.influx-mapping-row .meta {
+    /* Explicit reset: Craft's CP ships a global .meta (metadata pane)
+       whose padding/background leak in here and push the field name out
+       of alignment with the extras rows below.
+       The 22px left gutter hosts the disclosure chevron; rows without
+       extras keep the gutter empty so every field name shares one
+       alignment edge. */
+    position: relative;
+    line-height: 1.2;
+    padding: 4px 0 0 22px;
+    background: transparent;
+}
+/* Rows with extras: the whole meta cell is the expand/collapse target —
+   a bigger hit area than the chevron alone. Text stays selectable (the
+   handle is copy-paste material); a stray toggle costs nothing. */
+.influx-mapping-row .meta.is-toggleable { cursor: pointer; }
+.influx-mapping-row .meta.is-toggleable:hover .extras-chevron { color: #333; }
+.influx-mapping-row .meta.is-toggleable:hover .name { color: #0b69a3; }
+
+.influx-mapping-row .meta .name { font-weight: 600; }
+.influx-mapping-row .meta .handle {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    /* Lighter than Craft's .light gray — the handle is reference info,
+       not something to read on every pass. */
+    color: #9aa5b1;
+}
+
+/* Disclosure chevron for the per-field options — sits in the meta gutter,
+   left of the field name. Mirrors the group headers' chevron (same glyph,
+   same -90° collapse rotation) so expand/collapse reads as one gesture
+   across the whole mapping tree. */
+.influx-mapping-row .meta .extras-chevron {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: #888;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: left;
+}
+.influx-mapping-row .meta .extras-chevron:hover { color: #333; }
+.influx-mapping-row .meta .extras-chevron span {
+    display: inline-block;
+    transition: transform .15s ease;
+}
+.influx-mapping-row .meta .extras-chevron.collapsed span { transform: rotate(-90deg); }
+.influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
+
+.influx-auto-badge {
+    display: none;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: #fff7d6;
+    color: #8a6d00;
+    border: 1px solid #f0d97a;
+    font-size: 10px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.influx-mapping-row[data-auto="true"] .influx-auto-badge { display: inline-block; }
+
+.influx-mapping-headings {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    gap: 12px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    /* Tinted like a Craft table head so the heading row reads as group
+       chrome instead of part of the first field row below it. */
+    background: #f3f7fc;
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
+}
+
+/* The Field heading shares the rows' chevron gutter so it stays flush
+   with the field names below. */
+.influx-mapping-headings > div:first-child { padding-left: 22px; }

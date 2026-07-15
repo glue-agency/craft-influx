@@ -1,3 +1,5 @@
+import './styles/index.css';
+
 import { initLinkBuilder } from './builder/main.js';
 import { initDebug } from './debug/main.js';
 import { initLog } from './logs/main.js';
