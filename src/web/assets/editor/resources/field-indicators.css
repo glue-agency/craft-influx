@@ -1,14 +1,19 @@
-/* Influx "linked field" indicator, injected by field-indicators.js next to a
-   mapped field's label. Scoped entirely to .influx-field-indicator so it never
-   leaks into the rest of the CP; colour follows Craft's theme vars (light/dark)
-   with a static fallback. */
+/* Influx "managed field" indicator, injected by field-indicators.js next to a
+   mapped field's label. It's a bare <button> (focusable, like Craft's own
+   translation indicator), so reset the chrome and keep just the icon. Scoped
+   entirely to .influx-field-indicator; colour follows Craft's theme vars
+   (light/dark) with a static fallback. */
 .influx-field-indicator {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-sizing: content-box;
     width: 14px;
     height: 14px;
     margin-left: 5px;
+    padding: 0;
+    border: 0;
+    background: none;
     vertical-align: middle;
     color: var(--blue-600, #2d5bff);
     cursor: help;
