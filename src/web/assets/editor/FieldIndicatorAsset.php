@@ -14,8 +14,8 @@ use craft\web\assets\cp\CpAsset;
  * with nothing to build, and keeping it separate means the editor page never
  * loads the heavier link-builder SPA. Registered on demand from
  * {@see \GlueAgency\Influx\Influx::registerFieldIndicators()}, only when the
- * element being edited actually has mapped fields, with the handle → link-name
- * data handed alongside as the `influxFieldIndicators` JS var.
+ * element being edited actually has mapped fields, with the list of mapped
+ * field handles handed alongside as the `influxFieldIndicators` JS var.
  */
 class FieldIndicatorAsset extends AssetBundle
 {

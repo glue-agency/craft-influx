@@ -305,9 +305,9 @@ class Influx extends Plugin
     /**
      * Flag every field an Influx mapping writes, on the edit screen of any
      * element the plugin targets: a small icon is injected next to each mapped
-     * field's label, its tooltip naming the link(s) responsible — so an editor
-     * sees at a glance which values are Influx-managed and may be overwritten
-     * on the next sync.
+     * field's label, its tooltip explaining the value is set by synchronisation
+     * — so an editor sees at a glance which values are Influx-managed and may be
+     * overwritten on the next sync.
      *
      * Registered on the base {@see Element} event rather than per element type:
      * Yii fires class-level handlers for every subclass, and

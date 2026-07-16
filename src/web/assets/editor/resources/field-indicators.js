@@ -1,13 +1,13 @@
 /**
  * Marks Influx-managed fields in the element editor.
  *
- * `window.influxFieldIndicators` is a map of field/attribute handle → the
- * name(s) of the Influx link(s) that write it, registered by
- * Influx::registerFieldIndicators() only when the edited element has mapped
- * fields. For each handle we find its field wrapper in the editor DOM and drop
- * a small icon next to the label, whose hover popup names the responsible
- * link(s). Handle-driven, so it stays element-type-agnostic; idempotent, so
- * slideouts / re-renders never stack icons.
+ * `window.influxFieldIndicators` is an array of field/attribute handles that an
+ * active Influx mapping writes, registered by Influx::registerFieldIndicators()
+ * only when the edited element has mapped fields. For each handle we find its
+ * field wrapper in the editor DOM and drop a small icon next to the label,
+ * whose hover popup explains the value is set by synchronisation. Handle-driven,
+ * so it stays element-type-agnostic; idempotent, so slideouts / re-renders never
+ * stack icons.
  *
  * The popup reuses Craft's <craft-tooltip> web component — the same one the
  * native "translated for each site" indicator uses — so it looks and behaves
@@ -16,6 +16,8 @@
  */
 (function () {
     'use strict';
+
+    var LABEL = 'This field is updated by synchronisation';
 
     // "sync" glyph (Feather refresh-cw): the field's value is kept in sync from
     // the remote source, not the "link" chain used elsewhere.
@@ -57,47 +59,39 @@
         return found;
     }
 
-    function tooltipText(linkNames) {
-        return linkNames.length === 1
-            ? 'Managed by Influx link: ' + linkNames[0]
-            : 'Managed by Influx links: ' + linkNames.join(', ');
-    }
-
-    function buildIndicator(linkNames) {
-        var text = tooltipText(linkNames);
-
+    function buildIndicator() {
         // A non-submitting button, mirroring Craft's own indicator: focusable
         // for a11y, prevent-autofocus so it never grabs focus on open.
         var button = document.createElement('button');
         button.type = 'button';
         button.className = 'influx-field-indicator prevent-autofocus';
-        button.setAttribute('aria-label', text);
+        button.setAttribute('aria-label', LABEL);
         button.innerHTML = ICON;
 
         if (window.customElements && customElements.get('craft-tooltip')) {
             var tip = document.createElement('craft-tooltip');
             tip.setAttribute('placement', 'bottom');
             tip.setAttribute('max-width', '200px');
-            tip.setAttribute('text', text);
+            tip.setAttribute('text', LABEL);
             tip.setAttribute('delay', '1000');
             tip.appendChild(button);
 
             return tip;
         }
 
-        button.title = text;
+        button.title = LABEL;
 
         return button;
     }
 
-    function decorate(field, linkNames) {
+    function decorate(field) {
         if (field.hasAttribute('data-influx-indicated')) {
             return;
         }
 
         var heading = field.querySelector(':scope > .heading');
         var labelEl = heading ? heading.querySelector(':scope > label') : null;
-        var indicator = buildIndicator(linkNames);
+        var indicator = buildIndicator();
 
         if (labelEl) {
             labelEl.insertAdjacentElement('afterend', indicator);
@@ -111,17 +105,15 @@
     }
 
     function run() {
-        var map = window.influxFieldIndicators;
+        var handles = window.influxFieldIndicators;
 
-        if (!map || typeof map !== 'object') {
+        if (! Array.isArray(handles)) {
             return;
         }
 
-        Object.keys(map).forEach(function (handle) {
-            var linkNames = map[handle] || [];
-
+        handles.forEach(function (handle) {
             fieldsFor(handle).forEach(function (field) {
-                decorate(field, linkNames);
+                decorate(field);
             });
         });
     }

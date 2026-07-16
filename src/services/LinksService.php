@@ -130,10 +130,9 @@ class LinksService extends Component
     }
 
     /**
-     * The active field/attribute mappings targeting this element, grouped by
-     * handle — each handle mapped to the display name(s) of the link(s) that
-     * write it, so the element editor can flag every mapped field and name the
-     * link responsible.
+     * The handles of every field/attribute an active Influx mapping writes on
+     * this element (deduped across links), so the element editor can flag each
+     * mapped field.
      *
      * "Active" is {@see FieldMapping::isActive()}: a mapping that reads a feed
      * node OR writes an explicit default (a static default like `author` /
@@ -141,7 +140,7 @@ class LinksService extends Component
      * Only top-level mappings are reported; nested Matrix-block / relation
      * sub-mappings are not walked.
      *
-     * @return array<string, list<string>> field/attribute handle => link names
+     * @return list<string> field/attribute handles
      */
     public function mappedHandlesForElement(ElementInterface $element): array
     {
@@ -149,15 +148,13 @@ class LinksService extends Component
 
         foreach ($this->findLinksForElement($element) as $link) {
             foreach ($link->getMappingCollection() as $handle => $mapping) {
-                if (! $mapping->isActive()) {
-                    continue;
+                if ($mapping->isActive()) {
+                    $handles[$handle] = true;
                 }
-
-                $handles[$handle][] = $link->name;
             }
         }
 
-        return $handles;
+        return array_keys($handles);
     }
 
     /**
