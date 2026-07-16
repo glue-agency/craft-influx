@@ -11,6 +11,7 @@ use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
+use craft\helpers\UrlHelper;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\services\UserPermissions;
@@ -60,7 +61,7 @@ class Influx extends Plugin
 {
     public string $schemaVersion = '1.1.0';
 
-    public bool $hasCpSettings = false;
+    public bool $hasCpSettings = true;
 
     public bool $hasCpSection = true;
 
@@ -117,6 +118,17 @@ class Influx extends Plugin
     protected function createSettingsModel(): ?Model
     {
         return Craft::createObject(Settings::class);
+    }
+
+    /**
+     * Send the Settings → Plugins entry to the plugin's own settings screen —
+     * the same one the CP nav dropdown's "Settings" item opens — so both routes
+     * land on one page (mirrors SeoMatic). Overriding this instead of rendering
+     * settingsHtml() keeps the full custom settings UI.
+     */
+    public function getSettingsResponse(): mixed
+    {
+        return Craft::$app->getResponse()->redirect(UrlHelper::cpUrl('influx/settings'));
     }
 
     /**
