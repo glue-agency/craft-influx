@@ -8,14 +8,14 @@
     align-items: center;
     justify-content: center;
     box-sizing: content-box;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     margin-left: 5px;
     padding: 0;
     border: 0;
     background: none;
     vertical-align: middle;
-    color: var(--blue-600, #2d5bff);
+    color: var(--light-text-color, #606d7b);
     cursor: pointer;
 }
 

@@ -19,14 +19,14 @@
 
     var LABEL = 'This field is updated by synchronisation';
 
-    // "sync" glyph (Feather refresh-cw): the field's value is kept in sync from
-    // the remote source, not the "link" chain used elsewhere.
+    // The Influx plugin mark (mirrors src/icon-mask.svg): three streams
+    // converging into a destination bar — data flowing into the field. Drawn in
+    // currentColor so it tints like a native CP icon (e.g. the language icon).
     var ICON =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"' +
-        ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<polyline points="23 4 23 10 17 10"/>' +
-        '<polyline points="1 20 1 14 7 14"/>' +
-        '<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+        '<svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">' +
+        '<g stroke="currentColor" stroke-width="9" stroke-linecap="round" fill="none">' +
+        '<path d="M22 18 L48 56"/><path d="M50 14 L50 56"/><path d="M78 18 L52 56"/></g>' +
+        '<rect x="22" y="62" width="56" height="16" rx="5"/></svg>';
 
     function escape(handle) {
         return (window.CSS && CSS.escape) ? CSS.escape(handle) : handle;
