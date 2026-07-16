@@ -34,7 +34,7 @@ class Dropdown extends Field
         return BaseOptionsField::class;
     }
 
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->matchBy([
@@ -43,8 +43,7 @@ class Dropdown extends Field
                     ['value' => 'value', 'label' => Craft::t('influx', 'Value')],
                 ],
                 'default' => 'value',
-            ])
-            ->toArray();
+            ]);
     }
 
     public function parse(FieldContext $context): mixed

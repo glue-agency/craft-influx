@@ -62,11 +62,10 @@ class Date extends Field
         return $event->options;
     }
 
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         return SchemaBuilder::make()
-            ->dateFormat(['options' => self::formatOptions()])
-            ->toArray();
+            ->dateFormat(['options' => self::formatOptions()]);
     }
 
     /**

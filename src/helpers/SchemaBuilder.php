@@ -48,6 +48,7 @@ class SchemaBuilder
     public const ELEMENT_SUB_FIELDS = 'elementSubFields';
     public const MATRIX_FIELDS = 'matrixFields';
     public const NOTE = 'note';
+    public const ELEMENT = 'element';
 
     /** @var list<array> Accumulated fields (nodes or descriptors), in call order. */
     protected array $fields = [];
@@ -92,6 +93,17 @@ class SchemaBuilder
     public function select(array $config = []): self
     {
         return $this->push(['type' => self::SELECT] + $config);
+    }
+
+    /**
+     * A native mappable field whose default-value editor is an element picker
+     * (e.g. an entry's Author). For use inside {@see group()} — `elementType`
+     * is the FQCN to pick from. Not a form-node type SchemaForm renders on its
+     * own; group() reads it into the descriptor's `defaultType`.
+     */
+    public function element(array $config = []): self
+    {
+        return $this->push(['type' => self::ELEMENT] + $config);
     }
 
     public function lightswitch(array $config = []): self
@@ -174,47 +186,50 @@ class SchemaBuilder
     /**
      * Native mappable-field descriptors for an element target's
      * {@see \GlueAgency\Influx\targets\ElementTargetInterface::getMappableFields()},
-     * grouped under $label. A batch helper (it emits many descriptors), so it
-     * takes the label + a list of field specs rather than a single config:
+     * declared with the same fluent field methods as any other schema and
+     * grouped under $label. Each field the callback pushes becomes a descriptor:
+     * its method ({@see text()} / {@see select()} / {@see element()}) sets
+     * `defaultType`, and any `extras` / `meta` in its config are wrapped through
+     * {@see Field::meta()} into the `fieldMeta` envelope. Every descriptor is
+     * stamped `native => true` + `group => $label`.
      *
-     *   ['handle' => 'author', 'name' => 'Author',
-     *    'type' => 'element',                                 // → defaultType (default 'text')
-     *    'elementType' => User::class,                        // element only
-     *    'options' => ['live' => 'Live', ...],                // select only (value => label map)
-     *    'extras' => fn (SchemaBuilder $b) => $b->matchBy([...]),  // builds fieldMeta.schema
-     *    'meta' => ['subfieldsOnly' => true]]                 // extra fieldMeta keys
+     *   ->group('Native', fn (SchemaBuilder $g) => $g
+     *       ->text(['handle' => 'title', 'name' => 'Title'])
+     *       ->select(['handle' => 'enabled', 'name' => 'Enabled', 'options' => ['true' => 'Enabled', ...]])
+     *       ->element(['handle' => 'author', 'name' => 'Author', 'elementType' => User::class,
+     *           'extras' => fn (SchemaBuilder $b) => $b->matchBy([...])]))
      *
-     * Each spec is stamped `native => true` + `group => $label`; `extras` / `meta`
-     * are wrapped through {@see Field::meta()} into the `fieldMeta` envelope.
-     *
-     * @param list<array> $fields Field specs.
+     * @param callable(self): mixed $fields Pushes the group's fields onto the given builder.
      */
-    public function group(string $label, array $fields): self
+    public function group(string $label, callable $fields): self
     {
-        foreach ($fields as $spec) {
+        $group = self::make();
+        $fields($group);
+
+        foreach ($group->toArray() as $field) {
             $descriptor = [
-                'handle'      => $spec['handle'],
-                'name'        => $spec['name'],
+                'handle'      => $field['handle'],
+                'name'        => $field['name'],
                 'native'      => true,
                 'group'       => $label,
-                'defaultType' => $spec['type'] ?? self::TEXT,
+                'defaultType' => $field['type'] ?? self::TEXT,
             ];
 
-            if (isset($spec['options'])) {
-                $descriptor['options'] = $spec['options'];
+            if (isset($field['options'])) {
+                $descriptor['options'] = $field['options'];
             }
 
-            if (isset($spec['elementType'])) {
-                $descriptor['elementType'] = $spec['elementType'];
+            if (isset($field['elementType'])) {
+                $descriptor['elementType'] = $field['elementType'];
             }
 
-            if (isset($spec['extras']) || isset($spec['meta'])) {
+            if (isset($field['extras']) || isset($field['meta'])) {
                 $extras = self::make();
 
-                if (isset($spec['extras'])) {
-                    ($spec['extras'])($extras);
+                if (isset($field['extras'])) {
+                    ($field['extras'])($extras);
                 }
-                $descriptor['fieldMeta'] = Field::meta($extras->toArray(), $spec['meta'] ?? []);
+                $descriptor['fieldMeta'] = Field::meta($extras->toArray(), $field['meta'] ?? []);
             }
 
             $this->push($descriptor);

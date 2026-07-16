@@ -22,8 +22,8 @@
                 class="extras-chevron"
                 :class="{ collapsed: !extrasExpanded }"
                 :aria-expanded="extrasExpanded ? 'true' : 'false'"
-                :aria-label="extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure"
-                :title="extrasExpanded ? toggleLabels.hideOptions : toggleLabels.configure"
+                :aria-label="extrasExpanded ? $t('Hide options') : $t('Configure')"
+                :title="extrasExpanded ? $t('Hide options') : $t('Configure')"
             >
                 <span aria-hidden="true">▼</span>
             </button>
@@ -195,17 +195,6 @@ export default {
         // (Matrix): the row shows no source-node select and no default editor.
         subfieldsOnly() {
             return !!this.field.fieldMeta?.subfieldsOnly;
-        },
-
-        // Toggle copy ships translated through fieldMeta.labels (the shared
-        // commonExtrasLabels set); fall back to the raw strings for metas
-        // that don't carry labels.
-        toggleLabels() {
-            const labels = this.field.fieldMeta?.labels || {};
-            return {
-                configure: labels.configure || 'Configure',
-                hideOptions: labels.hideOptions || 'Hide options',
-            };
         },
 
         // Rows the user hasn't mapped yet keep their extras collapsed —

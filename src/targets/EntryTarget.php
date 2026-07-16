@@ -234,7 +234,7 @@ class EntryTarget extends AbstractElementTarget
 
     public function getMappableFields(Link $link): array
     {
-        $fields = $this->nativeFieldDefinitions();
+        $fields = $this->nativeFieldDefinitions()->toArray();
 
         $resolved = (new EntryTypeResolver())->tryResolve($link);
 
@@ -470,27 +470,43 @@ class EntryTarget extends AbstractElementTarget
     /**
      * The Entry-native mappable attributes — the fixed part of
      * {@see getMappableFields()}, independent of any section/type criteria.
-     *
-     * @return list<array>
      */
-    protected function nativeFieldDefinitions(): array
+    protected function nativeFieldDefinitions(): SchemaBuilder
     {
         return SchemaBuilder::make()
-            ->group(Craft::t('influx', 'Native'), [
-                ['handle' => 'title', 'name' => Craft::t('app', 'Title')],
-                ['handle' => 'slug', 'name' => Craft::t('app', 'Slug')],
-                ['handle' => 'enabled', 'name' => Craft::t('app', 'Enabled'), 'type' => 'select', 'options' => [
-                    'true'  => Craft::t('app', 'Enabled'),
-                    'false' => Craft::t('app', 'Disabled'),
-                ]],
-                ['handle'    => 'postDate', 'name' => Craft::t('app', 'Post Date'),
-                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]), ],
-                ['handle'    => 'expiryDate', 'name' => Craft::t('app', 'Expiry Date'),
-                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]), ],
-                ['handle'    => 'author', 'name' => Craft::t('app', 'Author'), 'type' => 'element', 'elementType' => User::class,
-                    'extras' => fn(SchemaBuilder $builder) => $builder->matchBy(['options' => $this->authorMatchOptions()]), ],
-            ])
-            ->toArray();
+            ->group(Craft::t('influx', 'Native'), fn(SchemaBuilder $group) => $group
+                ->text([
+                    'handle' => 'title',
+                    'name'   => Craft::t('app', 'Title'),
+                ])
+                ->text([
+                    'handle' => 'slug',
+                    'name'   => Craft::t('app', 'Slug'),
+                ])
+                ->select([
+                    'handle'  => 'enabled',
+                    'name'    => Craft::t('app', 'Enabled'),
+                    'options' => [
+                        'true'  => Craft::t('app', 'Enabled'),
+                        'false' => Craft::t('app', 'Disabled'),
+                    ],
+                ])
+                ->text([
+                    'handle' => 'postDate',
+                    'name'   => Craft::t('app', 'Post Date'),
+                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
+                ])
+                ->text([
+                    'handle' => 'expiryDate',
+                    'name'   => Craft::t('app', 'Expiry Date'),
+                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
+                ])
+                ->element([
+                    'handle'      => 'author',
+                    'name'        => Craft::t('app', 'Author'),
+                    'elementType' => User::class,
+                    'extras'      => fn(SchemaBuilder $builder)      => $builder->matchBy(['options' => $this->authorMatchOptions()]),
+                ]));
     }
 
     /**

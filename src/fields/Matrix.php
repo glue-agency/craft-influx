@@ -81,14 +81,13 @@ class Matrix extends Field
         return CraftMatrixField::class;
     }
 
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         $blockTypes = Compat::matrixBlockTypes($field);
 
         if (! $blockTypes) {
             return SchemaBuilder::make()
-                ->note(['text' => Craft::t('influx', 'This Matrix field has no block types to map yet.')])
-                ->toArray();
+                ->note(['text' => Craft::t('influx', 'This Matrix field has no block types to map yet.')]);
         }
 
         $builder = SchemaBuilder::make();
@@ -113,7 +112,7 @@ class Matrix extends Field
             ]);
         }
 
-        return $builder->toArray();
+        return $builder;
     }
 
     /**

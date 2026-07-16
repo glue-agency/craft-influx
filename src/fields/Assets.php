@@ -36,7 +36,7 @@ class Assets extends RelationalField
         return CraftAssetsField::class;
     }
 
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
@@ -82,8 +82,7 @@ class Assets extends RelationalField
                     ->text(['handle' => 'alt', 'label' => Craft::t('influx', 'Alt text')])
                     ->text(['handle' => 'title', 'label' => Craft::t('influx', 'Title')])
                     ->toArray(),
-            ])
-            ->toArray();
+            ]);
     }
 
     public function parse(FieldContext $context): mixed

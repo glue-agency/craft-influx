@@ -118,7 +118,7 @@ abstract class Relation extends RelationalField
         return [];
     }
 
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         /** @var BaseRelationField $field */
         $nativeSubFields = $this->nativeSubFields($field);
@@ -129,8 +129,7 @@ abstract class Relation extends RelationalField
             ->when($nativeSubFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
                 'label'     => Craft::t('influx', 'Sub-fields'),
                 'subFields' => $nativeSubFields,
-            ]))
-            ->toArray();
+            ]));
     }
 
     /**

@@ -2,8 +2,8 @@
 
 namespace GlueAgency\Influx\fields;
 
-use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
+use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use Stringable;
 use Throwable;
@@ -66,7 +66,7 @@ abstract class Field
      * extras UI is declared via {@see schema()} — the primary
      * contract, with labels co-located on each node — so most strategies
      * never need this. Override only to ship structured meta a schema node
-     * can't express; `schema` and `labels` are reserved keys set by metaFor.
+     * can't express; `schema` is a reserved key set by metaFor.
      */
     public function fieldMeta(CraftFieldInterface $field): array
     {
@@ -74,45 +74,26 @@ abstract class Field
     }
 
     /**
-     * Declarative form schema for this field type's mapping-extras block —
-     * a list of {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes the SPA
-     * renders generically. Declaring the UI next to the parse logic is what
-     * keeps the Vue side free of per-field-type branches: adding a kind is
-     * a single-PHP-file change.
+     * Declarative form schema for this field type's mapping-extras block — a
+     * {@see SchemaBuilder} the SPA renders generically. Declaring the UI next
+     * to the parse logic is what keeps the Vue side free of per-field-type
+     * branches: adding a kind is a single-PHP-file change.
      *
-     * Default: no extras.
+     * Default: an empty builder (no extras).
      */
-    public function schema(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): SchemaBuilder
     {
-        return [];
-    }
-
-    /**
-     * The extras block's show/hide toggle copy — the only UI strings not
-     * carried on a schema node, and identical for every field kind.
-     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()} ships them
-     * as `fieldMeta.labels` so the Vue toggle reads translated copy instead
-     * of hard-coding English.
-     *
-     * @return array<string, string>
-     */
-    public static function commonExtrasLabels(): array
-    {
-        return [
-            'configure'   => Craft::t('influx', 'Configure'),
-            'hideOptions' => Craft::t('influx', 'Hide options'),
-        ];
+        return SchemaBuilder::make();
     }
 
     /**
      * Wrap a builder-schema node list in the `fieldMeta` envelope the SPA's
-     * SchemaForm consumes: the {@see schema()} nodes plus the shared show/hide
-     * toggle {@see commonExtrasLabels()}, with any extra meta merged in. THE
-     * one place the `{schema, labels}` shape is defined — every mappable field
-     * routes its schema through here, whether it's a custom field (via
+     * SchemaForm consumes: the {@see schema()} nodes, with any extra meta
+     * merged in. THE one place the `{schema}` shape is defined — every mappable
+     * field routes its schema through here, whether it's a custom field (via
      * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}) or a native
      * attribute declared by an {@see \GlueAgency\Influx\targets\ElementTargetInterface}.
-     * `schema` / `labels` are reserved and win over `$extra`.
+     * `schema` is reserved and wins over `$extra`.
      *
      * @param list<array> $schema SchemaBuilder nodes.
      * @param array<string, mixed> $extra Extra meta keys (e.g. `subfieldsOnly`).
@@ -120,10 +101,7 @@ abstract class Field
      */
     public static function meta(array $schema, array $extra = []): array
     {
-        return [
-            'schema' => $schema,
-            'labels' => static::commonExtrasLabels(),
-        ] + $extra;
+        return ['schema' => $schema] + $extra;
     }
 
     /**

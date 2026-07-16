@@ -494,6 +494,7 @@ class LinkBuilderService extends Component
             // MappingRow.vue
             'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
             'missing mapping', '— no mapping —',
+            'Configure', 'Hide options',
 
             // MatrixFields.vue / ElementSubFields.vue (shared sub-field rows)
             'Sub-fields with an active source node',

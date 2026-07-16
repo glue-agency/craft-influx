@@ -142,7 +142,7 @@ class UserTarget extends AbstractElementTarget
 
     public function getMappableFields(Link $link): array
     {
-        $fields = $this->nativeFieldDefinitions();
+        $fields = $this->nativeFieldDefinitions()->toArray();
 
         $layout = Craft::$app->getFields()->getLayoutByType(User::class);
 
@@ -305,79 +305,73 @@ class UserTarget extends AbstractElementTarget
      * email as the username (Craft manages it from the email then, so mapping it
      * would fight that); fullName / firstName / lastName are all offered — a
      * feed may carry either the combined name or the split parts. The `groups`
-     * field is appended when this install has user groups (see
-     * {@see groupsFieldSpec()}).
-     *
-     * @return list<array>
+     * field is appended when this install has user groups.
      */
-    protected function nativeFieldDefinitions(): array
+    protected function nativeFieldDefinitions(): SchemaBuilder
     {
-        $specs = [];
-
-        if (! Craft::$app->getConfig()->getGeneral()->useEmailAsUsername) {
-            $specs[] = ['handle' => 'username', 'name' => Craft::t('app', 'Username')];
-        }
-
-        $specs[] = ['handle' => 'email', 'name' => Craft::t('app', 'Email')];
-        $specs[] = ['handle' => 'fullName', 'name' => Craft::t('app', 'Full Name')];
-        $specs[] = ['handle' => 'firstName', 'name' => Craft::t('app', 'First Name')];
-        $specs[] = ['handle' => 'lastName', 'name' => Craft::t('app', 'Last Name')];
-        $specs[] = ['handle' => 'enabled', 'name' => Craft::t('app', 'Enabled'), 'type' => 'select', 'options' => [
-            'true'  => Craft::t('app', 'Enabled'),
-            'false' => Craft::t('app', 'Disabled'),
-        ]];
-
-        $groupsSpec = $this->groupsFieldSpec();
-
-        if ($groupsSpec) {
-            $specs[] = $groupsSpec;
-        }
-
-        return SchemaBuilder::make()->group(Craft::t('influx', 'Native'), $specs)->toArray();
-    }
-
-    /**
-     * User groups (a Pro-edition feature) as a config-only `groups` field spec:
-     * a lightswitch per user group (which to assign) plus the reserved
-     * `groupsUpdate` / `groupsRemove` behaviour toggles {@see afterCommit()}
-     * reads back to reconcile membership. `subfieldsOnly` hides the
-     * source-node/default columns — the field has no feed value of its own.
-     *
-     * Null on installs with no user groups (Solo edition), where the control
-     * would be empty and meaningless.
-     *
-     * @return array|null A {@see SchemaBuilder::group()} field spec, or null.
-     */
-    protected function groupsFieldSpec(): ?array
-    {
-        $groups = Craft::$app->getUserGroups()->getAllGroups();
-
-        if (! $groups) {
-            return null;
-        }
-
-        return [
-            'handle' => 'groups',
-            'name'   => Craft::t('app', 'Groups'),
-            'meta'   => ['subfieldsOnly' => true],
-            'extras' => function(SchemaBuilder $builder) use ($groups): void {
-                foreach ($groups as $group) {
-                    $builder->lightswitch(['handle' => $group->handle, 'label' => $group->name]);
+        return SchemaBuilder::make()
+            ->group(Craft::t('influx', 'Native'), function(SchemaBuilder $group): void {
+                if (! Craft::$app->getConfig()->getGeneral()->useEmailAsUsername) {
+                    $group->text([
+                        'handle' => 'username',
+                        'name'   => Craft::t('app', 'Username'),
+                    ]);
                 }
 
-                // Reserved behaviour handles read as flags by afterCommit(), never as group selections
-                $builder
-                    ->lightswitch([
-                        'handle'       => 'groupsUpdate',
-                        'label'        => Craft::t('influx', 'Update existing users'),
-                        'instructions' => Craft::t('influx', 'Also apply these groups to users that already exist, not just newly-created ones.'),
+                $group
+                    ->text([
+                        'handle' => 'email',
+                        'name'   => Craft::t('app', 'Email'),
                     ])
-                    ->lightswitch([
-                        'handle'       => 'groupsRemove',
-                        'label'        => Craft::t('influx', 'Remove other groups'),
-                        'instructions' => Craft::t('influx', 'Remove any groups a synced user has that aren’t selected above (makes the selection authoritative).'),
+                    ->text([
+                        'handle' => 'fullName',
+                        'name'   => Craft::t('app', 'Full Name'),
+                    ])
+                    ->text([
+                        'handle' => 'firstName',
+                        'name'   => Craft::t('app', 'First Name'),
+                    ])
+                    ->text([
+                        'handle' => 'lastName',
+                        'name'   => Craft::t('app', 'Last Name'),
+                    ])
+                    ->select([
+                        'handle'  => 'enabled',
+                        'name'    => Craft::t('app', 'Enabled'),
+                        'options' => [
+                            'true'  => Craft::t('app', 'Enabled'),
+                            'false' => Craft::t('app', 'Disabled'),
+                        ],
                     ]);
-            },
-        ];
+
+                // User groups (Pro edition)
+                $userGroups = Craft::$app->getUserGroups()->getAllGroups();
+
+                if ($userGroups) {
+                    $group->text([
+                        'handle' => 'groups',
+                        'name'   => Craft::t('app', 'Groups'),
+                        'meta'   => ['subfieldsOnly' => true],
+                        'extras' => function(SchemaBuilder $builder) use ($userGroups): void {
+                            foreach ($userGroups as $userGroup) {
+                                $builder->lightswitch(['handle' => $userGroup->handle, 'label' => $userGroup->name]);
+                            }
+
+                            // Reserved behaviour handles read as flags by afterCommit(), never as group selections
+                            $builder
+                                ->lightswitch([
+                                    'handle'       => 'groupsUpdate',
+                                    'label'        => Craft::t('influx', 'Update existing users'),
+                                    'instructions' => Craft::t('influx', 'Also apply these groups to users that already exist, not just newly-created ones.'),
+                                ])
+                                ->lightswitch([
+                                    'handle'       => 'groupsRemove',
+                                    'label'        => Craft::t('influx', 'Remove other groups'),
+                                    'instructions' => Craft::t('influx', 'Remove any groups a synced user has that aren’t selected above (makes the selection authoritative).'),
+                                ]);
+                        },
+                    ]);
+                }
+            });
     }
 }

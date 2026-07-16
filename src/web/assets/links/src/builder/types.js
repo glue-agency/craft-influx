@@ -63,7 +63,7 @@
  * @property {Object<string, string>} [options] For defaultType 'select': value → label.
  * @property {string} [elementType] For defaultType 'element': FQCN to pick from.
  * @property {?string} [fieldClass] FQCN of the Craft field class.
- * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {kind, schema, labels, ...} — an extras block exists when schema is non-empty.
+ * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {schema, subfieldsOnly, ...} — an extras block exists when schema is non-empty.
  */
 
 /**
