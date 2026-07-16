@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="currentColor">
     <title>Influx</title>
-    <!-- Silhouette form: same convergence-into-element mark, single-color
-         so Craft can tint it via CSS color. -->
-    <g stroke="currentColor" stroke-width="9" stroke-linecap="round" fill="none">
-        <path d="M22 18 L48 56"/>
-        <path d="M50 14 L50 56"/>
-        <path d="M78 18 L52 56"/>
-    </g>
-    <rect x="22" y="62" width="56" height="16" rx="5"/>
+    <!-- Monochrome silhouette of filled bars — no strokes, so Craft's icon-mask
+         (which forces stroke-width:0) renders it fully rather than dropping to a bar. -->
+    <rect x="20" y="10" width="60" height="16" rx="8"/>
+    <rect x="20" y="34" width="60" height="16" rx="8" opacity="0.7"/>
+    <rect x="20" y="58" width="60" height="16" rx="8" opacity="0.4"/>
+    <rect x="20" y="82" width="60" height="16" rx="8" opacity="0.18"/>
 </svg>
