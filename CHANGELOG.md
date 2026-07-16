@@ -1,5 +1,24 @@
 # Release Notes for Influx
 
+## 1.0.0-alpha.3 - 2026-07-16
+
+### Added
+- Plugin settings are now reachable from the CMS **Settings → Plugins** list, not just the Influx nav dropdown — both open the same settings screen.
+- Elements targeted by more than one link can be synced per link from the "Sync from remote" control.
+
+### Changed
+- New plugin icon.
+- CP-triggered syncs take their pre-run DB backup inside the queue job now, so the request returns immediately instead of blocking on the dump.
+- Field-type schema definitions build their mapping UI through a fluent `SchemaBuilder`, and the link builder strips switched-off fields from the saved config.
+- Refined the run-log and debug inspector rows.
+
+### Fixed
+- **Data loss:** a sliding-window (offset) sync no longer runs the missing-elements sweep. An offset run fetches only part of the feed, so its "missing" set is everything outside the window — deleting or disabling it would wipe content that simply wasn't in the slice. Only a full sync may delete or disable.
+- Assorted sync-correctness fixes.
+
+### Security
+- Hardened the sync and backup flow.
+
 ## 1.0.0-alpha.2 - 2026-07-13
 
 ### Added
