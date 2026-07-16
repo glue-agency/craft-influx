@@ -102,9 +102,17 @@ class PagedFeed implements IteratorAggregate
         if ($cursorUrl === null) {
             $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
         } else {
-            // Only the first request is authenticated; feed-supplied next-page
-            // URLs are fetched as-is (we never attach the link's credentials).
-            $response = $this->data->fetchUrl($cursorUrl);
+            // Re-apply the link's auth when the next-page URL stays on the same
+            // origin as the configured endpoint (the normal case — the cursor
+            // points back at the same protected API). If a feed's cursor points
+            // at a DIFFERENT host, withhold credentials rather than leak the
+            // link's token to a third party the feed happened to link to. Auth
+            // rides the request headers / query, never the stored cursor URL;
+            // the cursor already encodes the continuation, so no offset params
+            // are re-added.
+            $response = $this->sameOriginAsEndpoint($cursorUrl)
+                ? $this->data->fetchForLink($this->link, $cursorUrl)
+                : $this->data->fetchUrl($cursorUrl);
         }
 
         $items = array_map(
@@ -189,5 +197,37 @@ class PagedFeed implements IteratorAggregate
         }
 
         return $url;
+    }
+
+    /**
+     * Whether a paginator-supplied URL is on the same origin (scheme + host +
+     * port) as the link's configured endpoint. Auth is re-applied only when it
+     * is — a next-page URL pointing at a different host never receives the
+     * link's credentials.
+     */
+    protected function sameOriginAsEndpoint(string $cursorUrl): bool
+    {
+        $base = $this->data->endpoints()->listUrlForDisplay($this->link, $this->siteHandle);
+        $cursor = $this->origin($cursorUrl);
+
+        return $cursor !== null && $base !== null && $cursor === $this->origin($base);
+    }
+
+    /**
+     * The lowercased scheme://host:port origin of a URL, or null when it has no
+     * host or scheme (a relative or unparsable URL — treated as cross-origin,
+     * so it is fetched without credentials).
+     */
+    protected function origin(string $url): ?string
+    {
+        $parts = parse_url($url);
+
+        if (empty($parts['host']) || empty($parts['scheme'])) {
+            return null;
+        }
+
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+
+        return strtolower($parts['scheme'] . '://' . $parts['host'] . $port);
     }
 }

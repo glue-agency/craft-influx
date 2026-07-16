@@ -47,8 +47,18 @@ class DataService extends Component
 
     public function fetch(Link $link, ?string $siteHandle = null, array $queryParams = []): array
     {
-        $url = $this->endpoints->listUrl($link, $siteHandle);
+        return $this->fetchForLink($link, $this->endpoints->listUrl($link, $siteHandle), $queryParams);
+    }
 
+    /**
+     * Fetch a feed URL with the link's authentication applied — used for the
+     * initial page AND every paginator-supplied next-page URL, so auth rides
+     * every request (mirrors Feed Me, which re-applies its request options per
+     * page). Credentials are attached as request headers / Guzzle query options
+     * at fetch time; they are never merged into the URL we store, log, or show.
+     */
+    public function fetchForLink(Link $link, string $url, array $queryParams = []): array
+    {
         if ($this->isLocalPath($url)) {
             return $this->read($url);
         }
