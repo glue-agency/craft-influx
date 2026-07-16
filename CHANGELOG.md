@@ -1,5 +1,10 @@
 # Release Notes for Influx
 
+## 1.0.0-alpha.4 - 2026-07-16
+
+### Fixed
+- **Authenticated pagination:** a paginated sync against a token-protected API failed on the second page — feed-supplied next-page URLs were fetched without the link's credentials, so the gateway dropped the request. The link's auth is now re-applied to every same-origin page. A next-page URL pointing at a different host is still fetched unauthenticated, so the token never leaks off-origin.
+
 ## 1.0.0-alpha.3 - 2026-07-16
 
 ### Added
