@@ -9,20 +9,23 @@ use GlueAgency\Influx\Influx;
 use Throwable;
 
 /**
- * Orchestrates a CP-triggered link sync: takes ONE pre-run DB backup (when the
- * link wants one), then fans out the actual work — one {@see SyncLinkJob} per
- * configured site, or a single job. Keeping the backup here rather than in each
- * SyncLinkJob means a multi-site fan-out dumps the DB once (not once per site),
- * and the CP request that queued this returns instantly instead of blocking on
- * the dump.
+ * Takes the pre-run DB backup for a queued link sync, then fans out the actual
+ * work via {@see \GlueAgency\Influx\services\SynchronizationService::queueSyncJobs()}.
  *
- * On backup failure the run is aborted: a failed log is recorded (so it shows
- * in the Logs overview with the error badge) and NO sync jobs are enqueued — a
+ * Only enqueued when the link actually wants a backup — {@see
+ * \GlueAgency\Influx\services\SynchronizationService::queueSync()} skips straight
+ * to the fan-out otherwise, so a no-backup sync never pays for this extra hop.
+ * Splitting the backup into its own job means the triggering request returns
+ * instantly instead of blocking on the dump, and a multi-site fan-out dumps the
+ * DB once rather than once per site.
+ *
+ * On backup failure the run is aborted: a failed log is recorded (so it shows in
+ * the Logs overview with the error badge) and NO sync jobs are enqueued — a
  * destructive missing-elements sweep must never run without its backup. The job
  * does not rethrow (that would retry the failing backup on a loop); the failed
  * log is the durable signal.
  */
-class PrepareSyncJob extends BaseJob
+class BackupJob extends BaseJob
 {
     public string $linkHandle = '';
 
@@ -56,24 +59,13 @@ class PrepareSyncJob extends BaseJob
             return;
         }
 
-        // Fan out: one job per site for an all-sites multi-endpoint link, else a
-        // single job — each skips its own backup (this job already took it)
-        $siteHandles = $link->siteHandles();
-        $sites = ($this->site === null && count($siteHandles) > 1) ? $siteHandles : [$this->site];
-
-        foreach ($sites as $site) {
-            Craft::$app->getQueue()->push(new SyncLinkJob([
-                'linkHandle' => $link->handle,
-                'offset'     => $this->offset,
-                'site'       => $site,
-                'trigger'    => $trigger->value,
-            ]));
-        }
+        // Backup done — fan out the per-site sync jobs (each skips its own backup).
+        $plugin->synchronization->queueSyncJobs($link, $this->offset, $this->site, $trigger);
     }
 
     protected function defaultDescription(): ?string
     {
-        return Craft::t('influx', 'Preparing sync for influx link “{handle}”', [
+        return Craft::t('influx', 'Taking backup for influx link “{handle}”', [
             'handle' => $this->linkHandle,
         ]);
     }

@@ -6,7 +6,6 @@ use Craft;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\queue\jobs\PrepareSyncJob;
 use Throwable;
 use yii\base\Action;
 use yii\web\BadRequestHttpException;
@@ -54,14 +53,11 @@ class SynchronizationController extends AbstractController
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        // Enqueue the orchestrator: it takes ONE pre-run backup (when wanted), then fans out the
-        // per-site sync jobs. Returns immediately; a backup failure surfaces as a failed log
-        Craft::$app->getQueue()->push(new PrepareSyncJob([
-            'linkHandle' => $link->handle,
-            'offset'     => $offset,
-            'site'       => $site,
-            'trigger'    => SyncTrigger::CP->value,
-        ]));
+        // Queue the sync: when the link wants a pre-run backup, a BackupJob takes
+        // it (and fans out afterwards); otherwise the per-site sync jobs are
+        // enqueued directly. Returns immediately; a backup failure lands as a
+        // failed log rather than blocking the request.
+        $plugin->synchronization->queueSync($link, $offset, $site, SyncTrigger::CP);
 
         $siteHandles = $link->siteHandles();
 

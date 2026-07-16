@@ -17,6 +17,8 @@ use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\OffsetPreset;
+use GlueAgency\Influx\queue\jobs\BackupJob;
+use GlueAgency\Influx\queue\jobs\SyncLinkJob;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\sync\ItemProcessor;
 use GlueAgency\Influx\sync\RemoteItem;
@@ -191,6 +193,50 @@ class SynchronizationService extends Component
     }
 
     /**
+     * Queue a link sync from a trigger (the CP button / endpoint). When the link
+     * wants a pre-run DB backup, that's taken in its own {@see BackupJob} — so
+     * the request returns instantly and the dump happens once for the whole
+     * fan-out. When it doesn't, the per-site sync jobs are enqueued directly,
+     * skipping that hop entirely.
+     */
+    public function queueSync(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
+    {
+        if ($link->backup) {
+            Craft::$app->getQueue()->push(new BackupJob([
+                'linkHandle' => $link->handle,
+                'offset'     => $offset,
+                'site'       => $site,
+                'trigger'    => $trigger->value,
+            ]));
+
+            return;
+        }
+
+        $this->queueSyncJobs($link, $offset, $site, $trigger);
+    }
+
+    /**
+     * Fan out the per-site sync jobs: one {@see SyncLinkJob} per configured site
+     * for an all-sites run, else a single job for the requested (or unscoped)
+     * site. Called directly by {@see queueSync()} when no pre-run backup is
+     * needed, and by {@see BackupJob} once its backup has been taken.
+     */
+    public function queueSyncJobs(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
+    {
+        $siteHandles = $link->siteHandles();
+        $sites = ($site === null && count($siteHandles) > 1) ? $siteHandles : [$site];
+
+        foreach ($sites as $handle) {
+            Craft::$app->getQueue()->push(new SyncLinkJob([
+                'linkHandle' => $link->handle,
+                'offset'     => $offset,
+                'site'       => $handle,
+                'trigger'    => $trigger->value,
+            ]));
+        }
+    }
+
+    /**
      * Advance a queued, resumable run by one feed page. {@see SyncLinkJob}
      * calls this each step and re-queues itself with the returned state until
      * `done` — so one log spans this job's single scope while each page is its
@@ -340,7 +386,7 @@ class SynchronizationService extends Component
     /**
      * Begin a run: fire the cancellable before-event and open the log. Shared
      * with {@see batchStep()}; {@see syncLink()} does this inline. The pre-run
-     * backup is the trigger layer's job (see {@see \GlueAgency\Influx\queue\jobs\PrepareSyncJob}).
+     * backup is the trigger layer's job (see {@see queueSync}).
      *
      * @param string|null $siteHandle The site this run was scoped to (null =
      * an all-sites run), recorded on the log so the viewer can show which
@@ -357,7 +403,7 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
         }
 
-        // No backup here: PrepareSyncJob takes one for the whole fan-out before enqueuing the per-site jobs
+        // No backup here: BackupJob takes one for the whole fan-out before enqueuing the per-site jobs
 
         return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle);
     }
