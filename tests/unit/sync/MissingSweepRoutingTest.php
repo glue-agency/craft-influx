@@ -29,6 +29,8 @@ use RuntimeException;
  *     hand-edited config) skips the delete and records a SKIPPED row rather
  *     than deleting cross-site off one site's feed.
  *   - Any unattributed errors block the sweep.
+ *   - Offset (sliding-window) run — sweep skipped SILENTLY: a partial feed's
+ *     complement isn't "missing", so only a full sync may delete/disable.
  *
  * No Craft boot: {@see SynchronizationService::applySweep()} (the code that
  * actually queries + deletes) and {@see SynchronizationService::logSweepSkip()}
@@ -155,6 +157,36 @@ class MissingSweepRoutingTest extends Unit
         $this->assertSame([], $service->skips);
     }
 
+    public function testOffsetRunNeverDeletes(): void
+    {
+        // A sliding-window (offset) run fetches only a slice of the feed, so the
+        // seen-set is partial — its complement isn't missing, just outside the
+        // window. The sweep must NOT fire, and silently (expected behaviour):
+        // no delete, no skip row.
+        $service = $this->service();
+        $context = $this->context($this->link(['update', 'delete']), siteId: null, siteHandle: null, offsetHandle: 'hour');
+
+        $service->publicSweepMissing($context, [1, 2, 3], 0, $this->log());
+
+        $this->assertSame([], $service->sweeps);
+        $this->assertSame([], $service->skips);
+    }
+
+    public function testOffsetRunNeverDisablesEvenWhenScoped(): void
+    {
+        // disable-for-site scoped to a site would normally sweep; an offset run
+        // must still block it — the guard is policy-agnostic.
+        $link = $this->link(['update', 'disable-for-site']);
+        $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
+        $service = $this->service();
+        $context = $this->context($link, siteId: 7, siteHandle: 'fr', offsetHandle: 'day');
+
+        $service->publicSweepMissing($context, [9], 0, $this->log());
+
+        $this->assertSame([], $service->sweeps);
+        $this->assertSame([], $service->skips);
+    }
+
     // -- fixtures -------------------------------------------------------------
 
     /**
@@ -215,13 +247,14 @@ class MissingSweepRoutingTest extends Unit
      * A context wrapping a throwaway target (never touched — applySweep is
      * stubbed) at the given site scope.
      */
-    protected function context(Link $link, ?int $siteId, ?string $siteHandle): SyncContext
+    protected function context(Link $link, ?int $siteId, ?string $siteHandle, ?string $offsetHandle = null): SyncContext
     {
         return new SyncContext(
             link: $link,
             target: $this->target(),
             siteId: $siteId,
             siteHandle: $siteHandle,
+            offsetHandle: $offsetHandle,
         );
     }
 

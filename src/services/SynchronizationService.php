@@ -139,7 +139,7 @@ class SynchronizationService extends Component
                 $log = $plugin->logs->start($link, $trigger, $handle, $preset?->handle);
 
                 try {
-                    $context = SyncContext::forSite($link, $target, $handle, $trigger);
+                    $context = SyncContext::forSite($link, $target, $handle, $trigger, offsetHandle: $preset?->handle);
                     $this->processSite($context, $queryParams, $log, $onProgress);
                     $plugin->logs->finish($log);
                 } catch (FeedFetchException $e) {
@@ -258,7 +258,7 @@ class SynchronizationService extends Component
 
         try {
             // forSite may throw when a configured site no longer resolves (M4); treat it like a fetch failure and fail this log
-            $context = SyncContext::forSite($link, $target, $requestedSite, $trigger);
+            $context = SyncContext::forSite($link, $target, $requestedSite, $trigger, offsetHandle: $preset?->handle);
             $page = $plugin->data->page($link, $requestedSite, $state['cursorUrl'], $queryParams, $state['page']);
         } catch (Throwable $e) {
             // A page fetch (or scope resolution) failed — fail the run and stop.
@@ -746,6 +746,15 @@ class SynchronizationService extends Component
         $policy = $this->perSitePolicy($link);
 
         if ($policy === null) {
+            return;
+        }
+
+        // Sliding-window guard: an offset run fetches only a slice of the feed,
+        // so its seen-set is intentionally partial — the complement isn't
+        // "missing", just outside the window. Sweeping it would delete/disable
+        // everything beyond the slice. Only a full sync (no offset) may sweep.
+        // This is expected behaviour, so it's silent — no warning, no log row.
+        if ($context->offsetHandle !== null) {
             return;
         }
 

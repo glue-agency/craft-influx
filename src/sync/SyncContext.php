@@ -39,6 +39,16 @@ class SyncContext
     public bool $dryRun = false;
 
     /**
+     * The sliding-window offset preset this run used (null = the full feed).
+     * A partial (offset) run must NEVER run the missing-elements sweep: its
+     * seen-set covers only the window, so the complement isn't missing — it's
+     * just outside the slice. Deleting/disabling it would wipe everything
+     * beyond the window. {@see \GlueAgency\Influx\services\SynchronizationService::sweepMissing()}
+     * gates the sweep on this: only a full sync may delete or disable.
+     */
+    public ?string $offsetHandle = null;
+
+    /**
      * Per-run memo of element lookups (relations, authors). Isolation is
      * automatic: every runner builds a fresh context, so one run never reads
      * another's cache. A queued, page-per-step run builds a context per step,
@@ -53,6 +63,7 @@ class SyncContext
         ?int $siteId = null,
         ?string $siteHandle = null,
         ?SyncTrigger $trigger = null,
+        ?string $offsetHandle = null,
         bool $dryRun = false,
     ) {
         $this->link = $link;
@@ -60,6 +71,7 @@ class SyncContext
         $this->siteId = $siteId;
         $this->siteHandle = $siteHandle;
         $this->trigger = $trigger;
+        $this->offsetHandle = $offsetHandle;
         $this->dryRun = $dryRun;
         $this->lookups = new ElementLookupCache();
     }
@@ -76,6 +88,7 @@ class SyncContext
         ElementTargetInterface $target,
         ?string $siteHandle,
         ?SyncTrigger $trigger = null,
+        ?string $offsetHandle = null,
         bool $dryRun = false,
     ): self {
         $siteId = null;
@@ -96,6 +109,7 @@ class SyncContext
             siteId: $siteId,
             siteHandle: $siteHandle,
             trigger: $trigger,
+            offsetHandle: $offsetHandle,
             dryRun: $dryRun,
         );
     }
