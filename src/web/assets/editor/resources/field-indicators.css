@@ -1,0 +1,21 @@
+/* Influx "linked field" indicator, injected by field-indicators.js next to a
+   mapped field's label. Scoped entirely to .influx-field-indicator so it never
+   leaks into the rest of the CP; colour follows Craft's theme vars (light/dark)
+   with a static fallback. */
+.influx-field-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: 5px;
+    vertical-align: middle;
+    color: var(--blue-600, #2d5bff);
+    cursor: help;
+}
+
+.influx-field-indicator svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}

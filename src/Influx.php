@@ -3,6 +3,8 @@
 namespace GlueAgency\Influx;
 
 use Craft;
+use craft\base\Element;
+use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\Entry;
@@ -33,6 +35,7 @@ use GlueAgency\Influx\services\LinksService;
 use GlueAgency\Influx\services\LogsService;
 use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\services\TargetsService;
+use GlueAgency\Influx\web\assets\editor\FieldIndicatorAsset;
 use GlueAgency\Influx\web\twig\InfluxTwigExtension;
 use yii\base\Event;
 
@@ -109,6 +112,7 @@ class Influx extends Plugin
             $this->registerCpTemplateRoots();
             $this->registerTwigExtensions();
             $this->registerEntrySyncButton();
+            $this->registerFieldIndicators();
             $this->registerGarbageCollection();
             $this->registerPermissions();
         });
@@ -296,6 +300,43 @@ class Influx extends Plugin
                 ];
             },
         );
+    }
+
+    /**
+     * Flag every field an Influx mapping writes, on the edit screen of any
+     * element the plugin targets: a small icon is injected next to each mapped
+     * field's label, its tooltip naming the link(s) responsible — so an editor
+     * sees at a glance which values are Influx-managed and may be overwritten
+     * on the next sync.
+     *
+     * Registered on the base {@see Element} event rather than per element type:
+     * Yii fires class-level handlers for every subclass, and
+     * {@see LinksService::mappedHandlesForElement()} returns nothing for types
+     * without an Influx target — so this self-limits to Entries and Users today
+     * and covers any future target type with no extra wiring.
+     *
+     * Placement is client-side: the additional-buttons event can only append to
+     * the edit page's #action-buttons row, and Craft exposes no cross-version
+     * per-field render event, so the mapped-handle set is handed to a small
+     * vanilla-JS asset ({@see FieldIndicatorAsset}) that decorates fields by
+     * handle. No permission gate — the indicator is purely informational.
+     */
+    protected function registerFieldIndicators(): void
+    {
+        Event::on(Element::class, Element::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
+            /** @var ElementInterface $element */
+            $element = $event->sender;
+
+            $handles = $this->links->mappedHandlesForElement($element);
+
+            if ($handles === []) {
+                return;
+            }
+
+            $view = Craft::$app->getView();
+            $view->registerAssetBundle(FieldIndicatorAsset::class);
+            $view->registerJsVar('influxFieldIndicators', $handles);
+        });
     }
 
     /**

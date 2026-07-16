@@ -130,6 +130,37 @@ class LinksService extends Component
     }
 
     /**
+     * The active field/attribute mappings targeting this element, grouped by
+     * handle — each handle mapped to the display name(s) of the link(s) that
+     * write it, so the element editor can flag every mapped field and name the
+     * link responsible.
+     *
+     * "Active" is {@see FieldMapping::isActive()}: a mapping that reads a feed
+     * node OR writes an explicit default (a static default like `author` /
+     * `enabled` counts — the sync still overwrites the field on every run).
+     * Only top-level mappings are reported; nested Matrix-block / relation
+     * sub-mappings are not walked.
+     *
+     * @return array<string, list<string>> field/attribute handle => link names
+     */
+    public function mappedHandlesForElement(ElementInterface $element): array
+    {
+        $handles = [];
+
+        foreach ($this->findLinksForElement($element) as $link) {
+            foreach ($link->getMappingCollection() as $handle => $mapping) {
+                if (! $mapping->isActive()) {
+                    continue;
+                }
+
+                $handles[$handle][] = $link->name;
+            }
+        }
+
+        return $handles;
+    }
+
+    /**
      * Persist a link.
      *
      * Writes to Project Config — the PC change handler {@see handleChangedLink}
