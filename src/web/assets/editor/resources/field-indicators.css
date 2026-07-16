@@ -16,7 +16,7 @@
     background: none;
     vertical-align: middle;
     color: var(--blue-600, #2d5bff);
-    cursor: help;
+    cursor: pointer;
 }
 
 .influx-field-indicator svg {
