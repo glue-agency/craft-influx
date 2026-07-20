@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\web\assets\links;
+namespace GlueAgency\Influx\web\assets\cp;
 
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset;
@@ -31,7 +31,7 @@ class InfluxAsset extends AssetBundle
         ];
 
         $this->js = [
-            'js/influx-links.js',
+            'js/influx-app.js',
         ];
 
         parent::init();

@@ -74,7 +74,7 @@ Auth level: unchanged. `SynchronizationController` stays permission-gated as-is
   - Complexity: small
 
 - [ ] **A2: Builder reactive gating + strings** — in
-  `src/web/assets/links/src/builder/tabs/GeneralTab.vue` (processing checkboxes render here at
+  `src/web/assets/cp/src/builder/tabs/GeneralTab.vue` (processing checkboxes render here at
   lines 130-142, NOT SettingsTab): add a `computed` that, given `siteEndpointsMode`
   (already wired via the store getter at GeneralTab.vue:182-185), returns per-option
   `{ disabled, hint }` — `delete` disabled when `siteEndpointsMode` is true, `delete-for-site`
@@ -86,7 +86,7 @@ Auth level: unchanged. `SynchronizationController` stays permission-gated as-is
   under a `// GeneralTab.vue` block) and wrap them in `$t(...)`. Update the
   `processingActionOptions()` labels only if wording needs to align (LinkBuilderService.php:549-558).
   - Layers: Vue component, translatable strings (service)
-  - Gate: `cd src/web/assets/links && npm run build` succeeds; existing vitest suite
+  - Gate: `npm run build` (from the project root) succeeds; existing vitest suite
     (`npm run test` if present) green — else rely on manual check below
   - Manual (required): toggle the mode switch, confirm the correct delete box disables with
     hint and the other enables; a pre-checked invalid flag shows disabled and the save 400s.

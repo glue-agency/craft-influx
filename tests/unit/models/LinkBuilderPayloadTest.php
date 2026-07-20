@@ -11,7 +11,7 @@ use GlueAgency\Influx\web\LinkBuilderSerializer;
  * Contract test for the LinkBuilder wire shape. PHP is the authority
  * ({@see LinkBuilderSerializer}); the committed fixture is the contract
  * artifact, and the SPA asserts its own assumptions against the same file
- * (see `src/web/assets/links/src/builder/__tests__/contract.test.js`).
+ * (see `src/web/assets/cp/src/builder/__tests__/contract.test.js`).
  *
  * If this test fails after a deliberate shape change: update the fixture,
  * `builder/types.js`, and the JS contract test together.
@@ -60,7 +60,7 @@ class LinkBuilderPayloadTest extends Unit
 
     protected function fixture(): array
     {
-        $path = dirname(__DIR__, 3) . '/src/web/assets/links/tests/fixtures/link-payload.json';
+        $path = dirname(__DIR__, 3) . '/src/web/assets/cp/tests/fixtures/link-payload.json';
 
         return json_decode(file_get_contents($path), true);
     }

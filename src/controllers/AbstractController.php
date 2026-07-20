@@ -4,7 +4,7 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
-use GlueAgency\Influx\web\assets\links\InfluxAsset;
+use GlueAgency\Influx\web\assets\cp\InfluxAsset;
 use yii\base\Action;
 use yii\web\ForbiddenHttpException;
 

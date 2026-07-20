@@ -10,7 +10,7 @@ export default defineConfig({
     plugins: [vue()],
     test: {
         environment: 'happy-dom',
-        include: ['src/web/assets/links/src/**/__tests__/*.test.js'],
-        setupFiles: ['src/web/assets/links/tests/setup.js'],
+        include: ['src/web/assets/cp/src/**/__tests__/*.test.js'],
+        setupFiles: ['src/web/assets/cp/tests/setup.js'],
     },
 });

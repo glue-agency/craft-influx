@@ -9,7 +9,7 @@ use GlueAgency\Influx\models\Link;
  * Marshals a {@see Link} to and from the JSON wire shape the LinkBuilder Vue
  * SPA consumes — the single authority for that contract (the JS side documents
  * it in `builder/types.js` and asserts it against the committed fixture in
- * `src/web/assets/links/tests/fixtures/link-payload.json`).
+ * `src/web/assets/cp/tests/fixtures/link-payload.json`).
  *
  * Extracted from the model so {@see Link} stays a plain state object: the SPA's
  * serialization concern lives here, next to {@see LogPresenter} and
