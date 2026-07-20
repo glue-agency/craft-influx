@@ -15,14 +15,13 @@
                 class="btn influx-fetch-btn"
                 :class="fetchBtnClass"
                 :data-icon="fetchIcon"
-                :disabled="!canSample || ui.sampling"
+                :disabled="! canSample || ui.sampling"
                 :title="fetchTitle"
                 @click="onFetch"
                 @mouseenter="fetchHovered = true"
                 @mouseleave="fetchHovered = false"
-            >
-                {{ fetchLabel }}
-            </button>
+                v-text="fetchLabel"
+            />
 
             <!-- Save split-button. Native Craft `.btngroup.submit.first`
                  with the chevron driven by Garnish's MenuBtn — the same
@@ -32,21 +31,22 @@
                  async bootstrap. Hidden entirely in a read-only
                  environment — matching Craft's own read-only settings
                  screens, which show no save action at all. -->
-            <div v-if="!readOnly" class="btngroup submit first" ref="saveRoot">
+            <div v-if="! readOnly" class="btngroup submit first" ref="saveRoot">
                 <a
                     href="#"
                     class="btn submit"
-                    :class="{ disabled: !canSave && !ui.saving }"
+                    :class="{ disabled: ! canSave && ! ui.saving }"
                     role="button"
                     @click.prevent="doSave({ continue: false })"
-                >{{ saveLabel }}</a>
+                    v-text="saveLabel"
+                />
 
                 <button
                     ref="menuBtn"
                     type="button"
                     class="btn submit menubtn"
                     :aria-label="$t('More save options')"
-                ></button>
+                />
 
                 <div class="menu" ref="menu">
                     <ul>
@@ -54,7 +54,8 @@
                             <a
                                 href="#"
                                 @click.prevent="doSave({ continue: true })"
-                            >{{ $t('Save and continue editing') }}</a>
+                                v-text="$t('Save and continue editing')"
+                            />
                         </li>
                     </ul>
 
@@ -69,7 +70,8 @@
                                     class="error"
                                     data-icon="trash"
                                     @click.prevent="doDelete"
-                                >{{ $t('Delete link') }}</a>
+                                    v-text="$t('Delete link')"
+                                />
                             </li>
                         </ul>
                     </template>
@@ -119,13 +121,13 @@ export default {
         },
 
         canSave() {
-            return !!this.ui.link && !this.readOnly && store.isDirty.value && !this.ui.saving;
+            return !!this.ui.link && ! this.readOnly && store.isDirty.value && ! this.ui.saving;
         },
 
         // Delete needs a persisted link (a uid) and a writable environment —
         // a brand-new unsaved link has nothing to delete yet.
         canDelete() {
-            return !!this.ui.meta?.uid && !this.ui.meta?.isNew && !this.ui.meta?.readOnly;
+            return !!this.ui.meta?.uid && ! this.ui.meta?.isNew && ! this.ui.meta?.readOnly;
         },
 
         saveLabel() {
@@ -134,7 +136,7 @@ export default {
 
         canSample() {
             const link = this.ui.link;
-            if (!link) return false;
+            if (! link) return false;
             // Site-specific mode samples against the first filled site
             // endpoint (the base endpoint is hidden there) — mirrors the
             // store's sampleEndpoint() resolution.
@@ -177,7 +179,7 @@ export default {
         },
 
         fetchTitle() {
-            if (!this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
+            if (! this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
             if (this.ui.sampling) return this.$t('Fetching sample…');
             if (this.ui.sampleError) return this.$t('Last attempt failed: {message}', { message: this.ui.sampleError });
             if (this.ui.sample?.url) return this.$t('Last fetched from {url}', { url: this.ui.sample.url });
@@ -210,16 +212,16 @@ export default {
         },
 
         doSave({ continue: keepEditing }) {
-            if (!this.canSave) return;
+            if (! this.canSave) return;
             // Toast + redirect logic lives in store.save() so Cmd+S and
             // both buttons here share identical behavior.
             store.save({ continueEditing: keepEditing });
         },
 
         doDelete() {
-            if (!this.canDelete) return;
+            if (! this.canDelete) return;
 
-            if (!window.confirm(this.$t('Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.'))) {
+            if (! window.confirm(this.$t('Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.'))) {
                 return;
             }
 

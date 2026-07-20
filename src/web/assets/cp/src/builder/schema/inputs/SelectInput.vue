@@ -6,7 +6,7 @@
     <!-- Schema selects are closed enums: every option — including a
          value='' entry like the date format's "Auto-detect" — is a real,
          labeled choice, never a no-selection placeholder. -->
-    <searchable-select
+    <v-searchable-select
         v-if="grouped || searchable"
         :model-value="modelValue ?? ''"
         :options="node.options || []"
@@ -20,7 +20,7 @@
     <!-- Flat options: the plain native select. -->
     <div v-else class="select">
         <select :value="modelValue ?? ''" :disabled="readOnly" @change="$emit('update:modelValue', $event.target.value)">
-            <option v-for="opt in (node.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <option v-for="opt in (node.options || [])" :key="opt.value" :value="opt.value" v-text="opt.label"></option>
         </select>
     </div>
 </template>
@@ -37,7 +37,7 @@ import SearchableSelect from '../../SearchableSelect.vue';
 export default {
     name: 'SelectInput',
 
-    components: { SearchableSelect },
+    emits: ['update:modelValue'],
 
     props: {
         node: { type: Object, required: true },
@@ -50,13 +50,13 @@ export default {
         readOnly: { type: Boolean, default: false },
     },
 
-    emits: ['update:modelValue'],
-
     computed: {
         grouped() {
             const options = this.node.options || [];
             return options.length > 0 && Array.isArray(options[0]?.options);
         },
     },
+
+    components: { 'v-searchable-select': SearchableSelect },
 };
 </script>

@@ -1,16 +1,16 @@
 <template>
     <div>
-        <table class="editable fullwidth" :class="{ hidden: !rows.length }">
+        <table class="editable fullwidth" :class="{ hidden: ! rows.length }">
             <col v-for="i in 4" :key="i">
             <col>
             <thead>
                 <tr>
-                    <th class="singleline-cell textual" scope="col">{{ $t('Handle') }}</th>
+                    <th class="singleline-cell textual" scope="col" v-text="$t('Handle')"></th>
                     <th class="singleline-cell textual has-info" scope="col">
                         {{ $t('Since') }}
                         <span class="info" v-html="$t('Anything <code>DateTime::modify</code> accepts.')"></span>
                     </th>
-                    <th class="singleline-cell textual" scope="col">{{ $t('Query param') }}</th>
+                    <th class="singleline-cell textual" scope="col" v-text="$t('Query param')"></th>
                     <th class="singleline-cell textual has-info" scope="col">
                         {{ $t('Date format') }}
                         <span class="info" v-html="$t('Anything <code>DateTime::format</code> accepts.')"></span>
@@ -34,18 +34,24 @@
                     </td>
                     <td class="thin action">
                         <button
-                            v-if="!disabled"
+                            v-if="! disabled"
                             type="button"
                             class="delete icon"
                             :title="$t('Delete row {idx}', { idx: idx + 1 })"
                             @click="removeRow(idx)"
-                        ></button>
+                        />
                     </td>
                 </tr>
             </tbody>
         </table>
 
-        <button v-if="!disabled" type="button" class="btn dashed add icon" @click="addRow">{{ $t('Add a preset') }}</button>
+        <button
+            v-if="! disabled"
+            type="button"
+            class="btn dashed add icon"
+            @click="addRow"
+            v-text="$t('Add a preset')"
+        />
     </div>
 </template>
 
@@ -60,17 +66,27 @@
 export default {
     name: 'OffsetPresetsTable',
 
+    emits: ['update:modelValue'],
+
     props: {
         modelValue: { type: Object, default: () => ({}) },
         disabled:   { type: Boolean, default: false },
     },
 
-    emits: ['update:modelValue'],
-
     data() {
         return {
             rows: this.fromValue(this.modelValue),
         };
+    },
+
+    watch: {
+        modelValue: {
+            deep: true,
+            handler(next) {
+                if (this.toValue(this.rows).serialized === JSON.stringify(next || {})) return;
+                this.rows = this.fromValue(next);
+            },
+        },
     },
 
     mounted() {
@@ -84,16 +100,6 @@ export default {
                 $(this.$el).find('.info').infoicon();
             }
         });
-    },
-
-    watch: {
-        modelValue: {
-            deep: true,
-            handler(next) {
-                if (this.toValue(this.rows).serialized === JSON.stringify(next || {})) return;
-                this.rows = this.fromValue(next);
-            },
-        },
     },
 
     methods: {
@@ -112,7 +118,7 @@ export default {
                 const handle = (row.handle || '').trim();
                 const since = (row.since || '').trim();
                 const queryParam = (row.queryParam || '').trim();
-                if (!handle || !since || !queryParam) continue;
+                if (! handle || ! since || ! queryParam) continue;
                 const entry = { since, queryParam };
                 const format = (row.format || '').trim();
                 if (format) entry.format = format;

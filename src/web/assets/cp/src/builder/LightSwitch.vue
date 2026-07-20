@@ -32,17 +32,28 @@
 export default {
     name: 'LightSwitch',
 
+    emits: ['update:modelValue'],
+
     props: {
         modelValue: { type: Boolean, default: false },
         small:      { type: Boolean, default: false },
         disabled:   { type: Boolean, default: false },
     },
 
-    emits: ['update:modelValue'],
+    watch: {
+        modelValue(next) {
+            const $ = window.jQuery;
+            if (! $) return;
+            const ls = $(this.$el).data('lightswitch');
+            if (! ls) return;
+            if (next && ! ls.on)       ls.turnOn();
+            else if (! next && ls.on)  ls.turnOff();
+        },
+    },
 
     mounted() {
         const $ = window.jQuery;
-        if (!$ || !$.fn.lightswitch) return;
+        if (! $ || ! $.fn.lightswitch) return;
         const $el = $(this.$el);
         $el.lightswitch();
         $el.on('change.influxLs', () => {
@@ -55,22 +66,11 @@ export default {
 
     beforeUnmount() {
         const $ = window.jQuery;
-        if (!$) return;
+        if (! $) return;
         const $el = $(this.$el);
         $el.off('change.influxLs');
         const ls = $el.data('lightswitch');
         if (ls && typeof ls.destroy === 'function') ls.destroy();
-    },
-
-    watch: {
-        modelValue(next) {
-            const $ = window.jQuery;
-            if (!$) return;
-            const ls = $(this.$el).data('lightswitch');
-            if (!ls) return;
-            if (next && !ls.on)       ls.turnOn();
-            else if (!next && ls.on)  ls.turnOff();
-        },
     },
 };
 </script>

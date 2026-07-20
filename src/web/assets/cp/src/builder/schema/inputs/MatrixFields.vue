@@ -4,7 +4,7 @@
          block type without custom fields still gets its card so the full
          type list stays visible — the empty hint says why there are no rows
          to map. -->
-    <sub-field-rows
+    <v-sub-field-rows
         :node="node"
         :rows="typeFields"
         :node-options="nodeOptions"
@@ -45,7 +45,7 @@ import SubFieldRows from './SubFieldRows.vue';
 export default {
     name: 'MatrixFields',
 
-    components: { SubFieldRows },
+    emits: ['update:modelValue'],
 
     props: {
         node: { type: Object, required: true },
@@ -57,8 +57,6 @@ export default {
         discoveredNodes: { type: Array, default: null },
         readOnly: { type: Boolean, default: false },
     },
-
-    emits: ['update:modelValue'],
 
     computed: {
         /** This card's own slice: its block type's child `fields` map. */
@@ -95,5 +93,7 @@ export default {
             this.$emit('update:modelValue', next);
         },
     },
+
+    components: { 'v-sub-field-rows': SubFieldRows },
 };
 </script>

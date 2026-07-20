@@ -1,5 +1,5 @@
 <template>
-    <div ref="host" class="influx-element-host"></div>
+    <div ref="host" class="influx-element-host" />
 </template>
 
 <script>
@@ -25,12 +25,12 @@ import * as api from './api.js';
 export default {
     name: 'ElementPicker',
 
+    emits: ['update:modelValue'],
+
     props: {
         modelValue:  { type: [String, Number, null], default: null },
         elementType: { type: String, required: true },
     },
-
-    emits: ['update:modelValue'],
 
     data() {
         return {
@@ -70,7 +70,7 @@ export default {
 
         async renderAndInit() {
             const Craft = window.Craft;
-            if (!Craft?.BaseElementSelectInput) {
+            if (! Craft?.BaseElementSelectInput) {
                 console.warn('[influx] Craft.BaseElementSelectInput not available');
                 return;
             }
@@ -96,7 +96,7 @@ export default {
         },
 
         syncFromInstance() {
-            if (!this.instance) return;
+            if (! this.instance) return;
             let ids = [];
             try { ids = this.instance.getSelectedElementIds() ?? []; }
             catch (_) { ids = []; }

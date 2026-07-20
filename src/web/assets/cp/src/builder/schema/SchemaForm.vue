@@ -3,10 +3,10 @@
          input), used by full-width forms like the Auth tab. -->
     <div v-if="layout === 'stacked'" class="influx-schema-form is-stacked">
         <div v-for="(node, idx) in visibleNodes" :key="node.handle || idx" class="field">
-            <div class="heading"><label :for="fieldId(node)">{{ node.label }}</label></div>
+            <div class="heading"><label :for="fieldId(node)" v-text="node.label"></label></div>
             <div v-if="node.instructions" class="instructions"><p v-html="node.instructions" /></div>
             <div class="input ltr">
-                <select-input
+                <v-select-input
                     v-if="node.type === 'select'"
                     :node="node"
                     :model-value="valueFor(node)"
@@ -21,7 +21,7 @@
                         @change="setOption(node, $event.target.checked)"
                     >
                 </label>
-                <tokenized-input
+                <v-tokenized-input
                     v-else-if="node.type === 'tokenInput'"
                     :model-value="valueFor(node) ?? ''"
                     :token-groups="tokenGroups"
@@ -54,7 +54,7 @@
         <div v-if="optionNodes.length" class="extras-options" role="group">
             <template v-for="(node, idx) in optionNodes" :key="node.handle || idx">
                 <!-- Static explanatory text (e.g. the Matrix stub) -->
-                <p v-if="node.type === 'note'" class="light">{{ node.text }}</p>
+                <p v-if="node.type === 'note'" class="light" v-text="node.text"></p>
 
                 <label v-else-if="node.type === 'lightswitch'" class="inline-toggle">
                     <input
@@ -70,8 +70,8 @@
                      server-authored BuilderSchema strings (may contain
                      <code>), never user input. -->
                 <div v-else class="option">
-                    <label>{{ node.label }}</label>
-                    <select-input
+                    <label v-text="node.label"></label>
+                    <v-select-input
                         v-if="node.type === 'select'"
                         :node="node"
                         :model-value="valueFor(node)"
@@ -79,7 +79,7 @@
                         :read-only="readOnly"
                         @update:model-value="setOption(node, $event)"
                     />
-                    <tokenized-input
+                    <v-tokenized-input
                         v-else-if="node.type === 'tokenInput'"
                         :model-value="valueFor(node) ?? ''"
                         :token-groups="tokenGroups"
@@ -104,7 +104,7 @@
         <!-- Recursive native sub-fields (asset alt/title) — writes the
              mapping's nativeFields channel, not options. Rendered after
              the options fieldset as their own group cards. -->
-        <element-sub-fields
+        <v-element-sub-fields
             v-for="(node, idx) in subFieldNodes"
             :key="'subfields-' + (node.handle || idx)"
             :node="node"
@@ -119,7 +119,7 @@
              at once (Feed Me-style; matrixFields nodes are never showIf-
              gated). Each card reads and writes its own type's slice of the
              mapping's recursive `blocks` channel (absolute item paths). -->
-        <matrix-fields
+        <v-matrix-fields
             v-for="(node, idx) in matrixFieldNodes"
             :key="'matrixfields-' + (node.blockType || idx)"
             :node="node"
@@ -151,7 +151,7 @@ import TokenizedInput from '../TokenizedInput.vue';
 export default {
     name: 'SchemaForm',
 
-    components: { SelectInput, ElementSubFields, MatrixFields, TokenizedInput },
+    emits: ['update:options', 'update:nativeFields', 'update:blocks'],
 
     props: {
         schema: { type: Array, required: true },
@@ -171,8 +171,6 @@ export default {
         layout: { type: String, default: 'grid' },
         readOnly: { type: Boolean, default: false },
     },
-
-    emits: ['update:options', 'update:nativeFields', 'update:blocks'],
 
     computed: {
         /**
@@ -238,5 +236,7 @@ export default {
             return `schema-field-${node.handle}`;
         },
     },
+
+    components: { 'v-select-input': SelectInput, 'v-element-sub-fields': ElementSubFields, 'v-matrix-fields': MatrixFields, 'v-tokenized-input': TokenizedInput },
 };
 </script>

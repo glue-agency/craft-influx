@@ -1,6 +1,6 @@
 <template>
     <div class="influx-site-endpoints">
-        <table class="editable fullwidth" :class="{ hidden: !rows.length }">
+        <table class="editable fullwidth" :class="{ hidden: ! rows.length }">
             <col class="thin">
             <col>
             <col>
@@ -8,8 +8,8 @@
             <thead>
                 <tr>
                     <th class="thin">&nbsp;</th>
-                    <th class="select-cell" scope="col">{{ $t('Site') }}</th>
-                    <th class="singleline-cell textual" scope="col">{{ $t('Endpoint URL') }}</th>
+                    <th class="select-cell" scope="col" v-text="$t('Site')"></th>
+                    <th class="singleline-cell textual" scope="col" v-text="$t('Endpoint URL')"></th>
                     <th class="thin">&nbsp;</th>
                 </tr>
             </thead>
@@ -23,29 +23,30 @@
                 >
                     <td class="thin action">
                         <a
-                            v-if="!disabled"
+                            v-if="! disabled"
                             class="move icon"
                             :title="$t('Reorder')"
                             draggable="true"
                             @dragstart="onDragStart(idx, $event)"
                             @dragend="onDragEnd"
-                        ></a>
+                        />
                     </td>
                     <td class="select-cell">
                         <div class="select small">
                             <select v-model="row.handle" :disabled="disabled" @change="onChange">
-                                <option value="">{{ $t('— select a site —') }}</option>
+                                <option value="" v-text="$t('— select a site —')"></option>
                                 <option
                                     v-for="o in sites"
                                     :key="o.value"
                                     :value="o.value"
                                     :disabled="isTakenElsewhere(o.value, idx)"
-                                >{{ o.label }}</option>
+                                    v-text="o.label"
+                                ></option>
                             </select>
                         </div>
                     </td>
                     <td class="singleline-cell textual">
-                        <tokenized-input
+                        <v-tokenized-input
                             :model-value="row.url"
                             :token-groups="tokenGroups"
                             :disabled="disabled"
@@ -55,28 +56,41 @@
                     </td>
                     <td class="thin action">
                         <button
-                            v-if="!disabled"
+                            v-if="! disabled"
                             type="button"
                             class="delete icon"
                             :title="$t('Delete row {idx}', { idx: idx + 1 })"
                             @click="removeRow(idx)"
-                        ></button>
+                        />
                     </td>
                 </tr>
             </tbody>
         </table>
 
         <button
-            v-if="!disabled"
+            v-if="! disabled"
             type="button"
             class="btn dashed add icon"
             :disabled="allSitesTaken"
             @click="addRow"
-        >{{ $t('Add a site endpoint') }}</button>
+            v-text="$t('Add a site endpoint')"
+        />
     </div>
 </template>
 
+<style scoped>
+.influx-site-endpoints .influx-dragging {
+    opacity: 0.4;
+}
+
+.influx-site-endpoints .move.icon {
+    cursor: grab;
+}
+</style>
+
 <script>
+import TokenizedInput from './TokenizedInput.vue';
+
 /**
  * Editor for `link.siteEndpoints` — an ordered list of {site, endpoint}
  * rows rendered in Craft's standard editable-table shell. Site options come from the
@@ -90,7 +104,6 @@
  * {@link toValue} rebuilds the map in row order and both JS objects and
  * PHP assoc arrays preserve insertion order through Project Config.
  */
-import TokenizedInput from './TokenizedInput.vue';
 
 // Stable per-row key so Vue tracks the dragged <tr> by identity (not index)
 // while the rows array is reordered live during a drag.
@@ -99,7 +112,7 @@ let nextRowId = 0;
 export default {
     name: 'SiteEndpointsTable',
 
-    components: { TokenizedInput },
+    emits: ['update:modelValue'],
 
     props: {
         modelValue:  { type: Array, default: () => [] },
@@ -107,8 +120,6 @@ export default {
         tokenGroups: { type: Array, default: () => [] },
         disabled:    { type: Boolean, default: false },
     },
-
-    emits: ['update:modelValue'],
 
     data() {
         return {
@@ -149,7 +160,7 @@ export default {
             for (const row of rows) {
                 const site = (row.handle || '').trim();
                 const url = (row.url || '').trim();
-                if (!site || !url) continue;
+                if (! site || ! url) continue;
                 out.push({ site, endpoint: url });
             }
             return { value: out, serialized: JSON.stringify(out) };
@@ -201,15 +212,7 @@ export default {
             this.$emit('update:modelValue', this.toValue(this.rows).value);
         },
     },
+
+    components: { 'v-tokenized-input': TokenizedInput },
 };
 </script>
-
-<style scoped>
-.influx-site-endpoints .influx-dragging {
-    opacity: 0.4;
-}
-
-.influx-site-endpoints .move.icon {
-    cursor: grab;
-}
-</style>

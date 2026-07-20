@@ -1,12 +1,12 @@
 <template>
     <div class="influx-tab-pagination">
         <div class="field">
-            <div class="heading"><label>{{ $t('Root node') }}</label></div>
+            <div class="heading"><label v-text="$t('Root node')"></label></div>
             <div class="instructions">
-                <p>{{ $t('The main node containing every element that needs to be parsed by the mappings.') }}</p>
+                <p v-text="$t('The main node containing every element that needs to be parsed by the mappings.')"></p>
             </div>
             <div class="input ltr">
-                <searchable-select
+                <v-searchable-select
                     :model-value="link.rootNode ?? ''"
                     :options="rootNodeOptions"
                     :disabled="readOnly"
@@ -20,15 +20,15 @@
         </div>
 
         <hr>
-        <h2>{{ $t('Pagination') }}</h2>
+        <h2 v-text="$t('Pagination')"></h2>
 
         <div class="field">
-            <div class="heading"><label>{{ $t('Paginator node') }}</label></div>
+            <div class="heading"><label v-text="$t('Paginator node')"></label></div>
             <div class="instructions">
-                <p>{{ $t('The node containing the URL of the next page to fetch.') }}</p>
+                <p v-text="$t('The node containing the URL of the next page to fetch.')"></p>
             </div>
             <div class="input ltr">
-                <searchable-select
+                <v-searchable-select
                     :model-value="link.paginatorNode ?? ''"
                     :options="paginatorNodeOptions"
                     :disabled="readOnly"
@@ -42,12 +42,12 @@
         </div>
 
         <div class="field">
-            <div class="heading"><label>{{ $t('Total-count node') }}</label></div>
+            <div class="heading"><label v-text="$t('Total-count node')"></label></div>
             <div class="instructions">
-                <p>{{ $t('The node containing the total number of items.') }}</p>
+                <p v-text="$t('The node containing the total number of items.')"></p>
             </div>
             <div class="input ltr">
-                <searchable-select
+                <v-searchable-select
                     :model-value="link.totalCountNode ?? ''"
                     :options="totalCountNodeOptions"
                     :disabled="readOnly"
@@ -61,12 +61,12 @@
         </div>
 
         <div class="field">
-            <div class="heading"><label>{{ $t('Page-count node') }}</label></div>
+            <div class="heading"><label v-text="$t('Page-count node')"></label></div>
             <div class="instructions">
-                <p>{{ $t('The node containing the total number of pages.') }}</p>
+                <p v-text="$t('The node containing the total number of pages.')"></p>
             </div>
             <div class="input ltr">
-                <searchable-select
+                <v-searchable-select
                     :model-value="link.pageCountNode ?? ''"
                     :options="pageCountNodeOptions"
                     :disabled="readOnly"
@@ -89,8 +89,6 @@ import { mergeNodeOptions } from '../lib/mappings.js';
 
 export default {
     name: 'PaginationTab',
-
-    components: { SearchableSelect },
 
     data() {
         return {
@@ -162,5 +160,7 @@ export default {
             return groups;
         },
     },
+
+    components: { 'v-searchable-select': SearchableSelect },
 };
 </script>

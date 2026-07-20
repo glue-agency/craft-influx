@@ -1,5 +1,5 @@
 <template>
-    <sub-field-rows
+    <v-sub-field-rows
         :node="node"
         :rows="modelValue"
         :node-options="nodeOptions"
@@ -28,7 +28,7 @@ import SubFieldRows from './SubFieldRows.vue';
 export default {
     name: 'ElementSubFields',
 
-    components: { SubFieldRows },
+    emits: ['update:modelValue'],
 
     props: {
         node: { type: Object, required: true },
@@ -40,6 +40,6 @@ export default {
         readOnly: { type: Boolean, default: false },
     },
 
-    emits: ['update:modelValue'],
+    components: { 'v-sub-field-rows': SubFieldRows },
 };
 </script>

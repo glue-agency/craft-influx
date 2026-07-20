@@ -4,17 +4,13 @@
             <strong>{{ $t('Couldn’t load mappable fields:') }}</strong> {{ ui.mappableError }}
         </div>
 
-        <p v-if="ui.loading || !ui.mappable" class="light">
-            {{ $t('Loading mappable fields…') }}
-        </p>
+        <p v-if="ui.loading || ! ui.mappable" class="light" v-text="$t('Loading mappable fields…')"></p>
 
-        <p v-else-if="!ui.mappable.fields.length" class="light">
-            {{ $t('Pick an element type (and a section, for entries) on the General tab to see destination fields here.') }}
-        </p>
+        <p v-else-if="! ui.mappable.fields.length" class="light" v-text="$t('Pick an element type (and a section, for entries) on the General tab to see destination fields here.')"></p>
 
         <template v-else>
             <div class="influx-mapping-list">
-                <mapping-group
+                <v-mapping-group
                     v-for="(group, idx) in ui.mappable.groups"
                     :key="group.label + ':' + idx"
                     :group="group"
@@ -23,12 +19,12 @@
             </div>
 
             <hr>
-            <h2>{{ $t('Match key') }}</h2>
+            <h2 v-text="$t('Match key')"></h2>
 
             <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
                 <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
                 <div class="input ltr">
-                    <searchable-select
+                    <v-searchable-select
                         v-model="matchAttribute"
                         :options="ui.mappable.matchOptions"
                         :disabled="readOnly"
@@ -37,7 +33,7 @@
                         :search-placeholder="$t('Search attributes…')"
                     />
                 </div>
-                <field-errors :messages="ui.errors.match" />
+                <v-field-errors :messages="ui.errors.match" />
             </div>
         </template>
     </div>
@@ -62,8 +58,6 @@ import { mergeNodeOptions } from '../lib/mappings.js';
  */
 export default {
     name: 'MappingTab',
-
-    components: { MappingGroup, FieldErrors, SearchableSelect },
 
     data() {
         return {
@@ -98,5 +92,7 @@ export default {
             },
         },
     },
+
+    components: { 'v-mapping-group': MappingGroup, 'v-field-errors': FieldErrors, 'v-searchable-select': SearchableSelect },
 };
 </script>

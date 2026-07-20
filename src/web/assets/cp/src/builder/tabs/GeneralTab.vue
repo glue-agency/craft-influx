@@ -2,67 +2,67 @@
     <div class="influx-tab-general">
         <div class="field" :class="{ 'has-errors': errors.name?.length }">
             <div class="heading"><label for="builder-name">{{ $t('Name') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
-            <div class="instructions"><p>{{ $t('What this link will be called in the control panel.') }}</p></div>
+            <div class="instructions"><p v-text="$t('What this link will be called in the control panel.')"></p></div>
             <div class="input ltr"><input id="builder-name" type="text" class="text fullwidth" v-model="link.name" :disabled="readOnly" /></div>
-            <field-errors :messages="errors.name" />
+            <v-field-errors :messages="errors.name" />
         </div>
 
         <div class="field" :class="{ 'has-errors': errors.handle?.length }">
             <div class="heading"><label for="builder-handle">{{ $t('Handle') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
-            <div class="instructions"><p>{{ $t('Identifier used in console commands and event keys.') }}</p></div>
+            <div class="instructions"><p v-text="$t('Identifier used in console commands and event keys.')"></p></div>
             <div class="input ltr"><input id="builder-handle" type="text" class="text fullwidth code" v-model="link.handle" :disabled="readOnly" /></div>
-            <field-errors :messages="errors.handle" />
+            <v-field-errors :messages="errors.handle" />
         </div>
 
         <hr>
-        <h2>{{ $t('Element') }}</h2>
+        <h2 v-text="$t('Element')"></h2>
 
         <div class="field" :class="{ 'has-errors': errors.elementType?.length }">
             <div class="heading"><label for="builder-elementType">{{ $t('Element type') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-elementType" v-model="link.elementType" :disabled="readOnly" @change="onElementTypeChange">
-                        <option v-for="o in options.elementTypes" :key="o.value" :value="o.value">{{ o.label }}</option>
+                        <option v-for="o in options.elementTypes" :key="o.value" :value="o.value" v-text="o.label"></option>
                     </select>
                 </div>
             </div>
-            <field-errors :messages="errors.elementType" />
+            <v-field-errors :messages="errors.elementType" />
         </div>
 
         <div class="field" v-if="usesCriteria('section')">
-            <div class="heading"><label for="builder-section">{{ $t('Section') }}</label></div>
+            <div class="heading"><label for="builder-section" v-text="$t('Section')"></label></div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-section" v-model="section" :disabled="readOnly">
-                        <option v-for="o in options.sections" :key="o.value" :value="o.value">{{ o.label }}</option>
+                        <option v-for="o in options.sections" :key="o.value" :value="o.value" v-text="o.label"></option>
                     </select>
                 </div>
             </div>
         </div>
 
         <div class="field" v-if="usesCriteria('type')">
-            <div class="heading"><label for="builder-entryType">{{ $t('Entry type') }}</label></div>
+            <div class="heading"><label for="builder-entryType" v-text="$t('Entry type')"></label></div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-entryType" v-model="entryType" :disabled="readOnly">
-                        <option value="">{{ $t('— select —') }}</option>
-                        <option v-for="o in entryTypeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                        <option value="" v-text="$t('— select —')"></option>
+                        <option v-for="o in entryTypeOptions" :key="o.value" :value="o.value" v-text="o.label"></option>
                     </select>
                 </div>
             </div>
         </div>
 
         <hr>
-        <h2>{{ $t('Endpoint') }}</h2>
+        <h2 v-text="$t('Endpoint')"></h2>
 
-<!-- In site-specific mode every site lists its own URL, so the base
+        <!-- In site-specific mode every site lists its own URL, so the base
              endpoint is hidden rather than shown as dead config. Its value
              is kept — flipping the switch back restores it untouched. -->
-        <div class="field" v-if="!siteEndpointsMode" :class="{ 'has-errors': errors.endpoint?.length }">
-            <div class="heading"><label>{{ $t('Base Endpoint') }}</label></div>
+        <div class="field" v-if="! siteEndpointsMode" :class="{ 'has-errors': errors.endpoint?.length }">
+            <div class="heading"><label v-text="$t('Base Endpoint')"></label></div>
             <div class="instructions"><p v-html="$t('JSON URL, or an <code>@alias</code> pointing to a local JSON file.')"></p></div>
             <div class="input ltr">
-                <tokenized-input
+                <v-tokenized-input
                     v-model="link.endpoint"
                     :token-groups="envSuggestions"
                     :disabled="readOnly"
@@ -70,30 +70,30 @@
                     @blur="onEndpointBlur"
                 />
             </div>
-            <field-errors :messages="errors.endpoint" />
+            <v-field-errors :messages="errors.endpoint" />
         </div>
 
         <div class="field" v-if="supportsMultiSite">
-            <div class="heading"><label class="lightswitch-label">{{ $t('Site-specific endpoints') }}</label></div>
-            <div class="instructions"><p>{{ $t('Enable if the external service supports resource localisation.') }}</p></div>
+            <div class="heading"><label class="lightswitch-label" v-text="$t('Site-specific endpoints')"></label></div>
+            <div class="instructions"><p v-text="$t('Enable if the external service supports resource localisation.')"></p></div>
             <div class="input">
-                <light-switch v-model="siteEndpointsMode" :disabled="readOnly" />
+                <v-light-switch v-model="siteEndpointsMode" :disabled="readOnly" />
             </div>
         </div>
 
         <div class="field" v-if="supportsMultiSite && siteEndpointsMode" :class="{ 'has-errors': errors.siteEndpoints?.length }">
             <div class="instructions">
-                <p>{{ $t('The link runs once per listed site and writes localized data to the same canonical element.') }}</p>
+                <p v-text="$t('The link runs once per listed site and writes localized data to the same canonical element.')"></p>
             </div>
-            <site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" :disabled="readOnly" />
-            <field-errors :messages="errors.siteEndpoints" />
+            <v-site-endpoints-table v-model="link.siteEndpoints" :sites="options.sites" :token-groups="envSuggestions" :disabled="readOnly" />
+            <v-field-errors :messages="errors.siteEndpoints" />
         </div>
 
         <div class="field">
-            <div class="heading"><label class="lightswitch-label">{{ $t('Sliding-window presets') }}</label></div>
-            <div class="instructions"><p>{{ $t('Enable if the external service supports synchronisation by offset.') }}</p></div>
+            <div class="heading"><label class="lightswitch-label" v-text="$t('Sliding-window presets')"></label></div>
+            <div class="instructions"><p v-text="$t('Enable if the external service supports synchronisation by offset.')"></p></div>
             <div class="input">
-                <light-switch v-model="supportsOffset" :disabled="readOnly" />
+                <v-light-switch v-model="supportsOffset" :disabled="readOnly" />
             </div>
         </div>
 
@@ -101,23 +101,23 @@
             <div class="instructions">
                 <p v-html="$t('Each preset becomes a button on the link page and a <code>--offset=KEY</code> option on the console command.')"></p>
             </div>
-            <offset-presets-table v-model="link.offset" :disabled="readOnly" />
+            <v-offset-presets-table v-model="link.offset" :disabled="readOnly" />
         </div>
 
         <div class="field">
-            <div class="heading"><label class="lightswitch-label">{{ $t('Resource Endpoint supported') }}</label></div>
+            <div class="heading"><label class="lightswitch-label" v-text="$t('Resource Endpoint supported')"></label></div>
             <div class="input">
-                <light-switch v-model="supportsItemEndpoint" :disabled="readOnly" />
+                <v-light-switch v-model="supportsItemEndpoint" :disabled="readOnly" />
             </div>
         </div>
 
         <div class="field" v-if="supportsItemEndpoint">
-            <div class="heading"><label>{{ $t('Resource Endpoint') }}</label></div>
+            <div class="heading"><label v-text="$t('Resource Endpoint')"></label></div>
             <div class="instructions">
                 <p>{{ $t('URL pattern for the per-element "Sync from remote" button. Type the URL and use the picker to inline a token where the cursor is — chips show you where each placeholder lives.') }}</p>
             </div>
             <div class="input ltr">
-                <tokenized-input
+                <v-tokenized-input
                     v-model="link.itemEndpoint"
                     :token-groups="combinedSuggestions"
                     :disabled="readOnly"
@@ -127,7 +127,7 @@
         </div>
 
         <hr>
-        <h2>{{ $t('Processing actions') }}</h2>
+        <h2 v-text="$t('Processing actions')"></h2>
 
         <div class="field">
             <ul class="checkbox-group">
@@ -139,8 +139,8 @@
                            :checked="link.processing.includes(opt.value)"
                            :disabled="readOnly"
                            @change="toggleProcessing(opt.value, $event.target.checked)" />
-                    <label :for="`builder-processing-${opt.value}`">{{ opt.label }}</label>
-                    <p v-if="opt.note" class="influx-processing-note light">{{ opt.note }}</p>
+                    <label :for="`builder-processing-${opt.value}`" v-text="opt.label"></label>
+                    <p v-if="opt.note" class="influx-processing-note light" v-text="opt.note"></p>
                 </li>
             </ul>
         </div>
@@ -157,8 +157,6 @@ import FieldErrors from '../FieldErrors.vue';
 
 export default {
     name: 'GeneralTab',
-
-    components: { TokenizedInput, OffsetPresetsTable, SiteEndpointsTable, LightSwitch, FieldErrors },
 
     data() {
         return {
@@ -302,7 +300,7 @@ export default {
         onElementTypeChange() {
             this.link.elementCriteria = {};
 
-            if (!this.supportsMultiSite) {
+            if (! this.supportsMultiSite) {
                 store.setSiteEndpointsMode(false);
             }
         },
@@ -319,5 +317,7 @@ export default {
             store.autoFetchSample();
         },
     },
+
+    components: { 'v-tokenized-input': TokenizedInput, 'v-offset-presets-table': OffsetPresetsTable, 'v-site-endpoints-table': SiteEndpointsTable, 'v-light-switch': LightSwitch, 'v-field-errors': FieldErrors },
 };
 </script>

@@ -20,12 +20,12 @@
             />
         </div>
 
-        <p v-if="!filteredGroups.length" class="influx-tokenized-picker-empty">
-            {{ $t('No matches for') }} <code>{{ effectiveQuery }}</code>.
+        <p v-if="! filteredGroups.length" class="influx-tokenized-picker-empty">
+            {{ $t('No matches for') }} <code v-text="effectiveQuery"></code>.
         </p>
 
         <template v-for="group in filteredGroups" :key="group._gid">
-            <h6 v-if="group.label">{{ group.label }}</h6>
+            <h6 v-if="group.label" v-text="group.label"></h6>
             <ul class="influx-token-group" :data-kind="group.kind || 'custom'">
                 <li v-for="item in group.data" :key="item.name">
                     <button
@@ -38,8 +38,8 @@
                         @mousedown.prevent
                         @click="$emit('select', item)"
                     >
-                        <span class="influx-tokenized-chip-inline" :data-kind="group.kind || 'custom'">{{ item.name }}</span>
-                        <span v-if="item.hint" class="hint">{{ item.hint }}</span>
+                        <span class="influx-tokenized-chip-inline" :data-kind="group.kind || 'custom'" v-text="item.name"></span>
+                        <span v-if="item.hint" class="hint" v-text="item.hint"></span>
                     </button>
                 </li>
             </ul>
@@ -56,6 +56,8 @@
 export default {
     name: 'TokenPickerMenu',
 
+    emits: ['select', 'highlight', 'update:searchQuery', 'search-keydown'],
+
     props: {
         filteredGroups: { type: Array, required: true },
         highlightedIndex: { type: Number, default: 0 },
@@ -63,8 +65,6 @@ export default {
         showSearch: { type: Boolean, default: false },
         searchQuery: { type: String, default: '' },
     },
-
-    emits: ['select', 'highlight', 'update:searchQuery', 'search-keydown'],
 
     mounted() {
         // The menu mounts fresh on every open; manual mode autofocuses its

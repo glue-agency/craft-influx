@@ -1,6 +1,17 @@
 <template>
-    <div class="influx-error-panel"><pre>{{ error }}</pre></div>
+    <div class="influx-error-panel"><pre v-text="error"></pre></div>
 </template>
+
+<style scoped>
+/* Text colour is inherited on purpose: the apps disagree (#8a1f1f vs
+   var(--error-color)), so each sets it on its fallthrough class. */
+.influx-error-panel pre {
+    margin: 0;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+</style>
 
 <script>
 /**
@@ -18,14 +29,3 @@ export default {
     },
 };
 </script>
-
-<style scoped>
-/* Text colour is inherited on purpose: the apps disagree (#8a1f1f vs
-   var(--error-color)), so each sets it on its fallthrough class. */
-.influx-error-panel pre {
-    margin: 0;
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-</style>

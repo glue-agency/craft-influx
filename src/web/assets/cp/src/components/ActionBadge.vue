@@ -2,6 +2,21 @@
     <span class="influx-action-badge" :class="resolvedColor"><slot>{{ action }}</slot></span>
 </template>
 
+<style scoped>
+.influx-action-badge {
+    border-radius: 9px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* The one copy of the action-tag palette (green/grey/red = Craft's
+   live/pending/expired status colours). */
+.influx-action-badge.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
+.influx-action-badge.pending { background: rgba(0, 0, 0, .08); color: #555; }
+.influx-action-badge.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
+</style>
+
 <script>
 import { actionColor } from '../lib/actionColors.js';
 
@@ -32,18 +47,3 @@ export default {
     },
 };
 </script>
-
-<style scoped>
-.influx-action-badge {
-    border-radius: 9px;
-    padding: 2px 9px;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-/* The one copy of the action-tag palette (green/grey/red = Craft's
-   live/pending/expired status colours). */
-.influx-action-badge.live { background: #d6f1de; color: #064f1f; border: 1px solid #7fcb95; }
-.influx-action-badge.pending { background: rgba(0, 0, 0, .08); color: #555; }
-.influx-action-badge.expired { background: #fde2e2; color: #8a1f1f; border: 1px solid #e7a3a3; }
-</style>

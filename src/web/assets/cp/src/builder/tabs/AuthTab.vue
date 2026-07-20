@@ -1,20 +1,20 @@
 <template>
     <div class="influx-tab-auth">
         <div class="field">
-            <div class="heading"><label for="builder-auth-type">{{ $t('Authentication type') }}</label></div>
+            <div class="heading"><label for="builder-auth-type" v-text="$t('Authentication type')"></label></div>
             <div class="instructions">
-                <p>{{ $t('How Influx should authenticate against the remote API.') }}</p>
+                <p v-text="$t('How Influx should authenticate against the remote API.')"></p>
             </div>
             <div class="input ltr">
                 <div class="select">
                     <select id="builder-auth-type" v-model="type" :disabled="readOnly">
-                        <option v-for="opt in options.authTypes" :key="opt.value || '_'" :value="opt.value">{{ opt.label }}</option>
+                        <option v-for="opt in options.authTypes" :key="opt.value || '_'" :value="opt.value" v-text="opt.label"></option>
                     </select>
                 </div>
             </div>
         </div>
 
-        <schema-form
+        <v-schema-form
             v-if="activeStrategy"
             layout="stacked"
             :schema="activeStrategy.schema"
@@ -25,12 +25,12 @@
         />
 
         <p v-else-if="type" class="light">
-            {{ $t('No SPA-side schema is registered for auth type') }} <code>{{ type }}</code>.
+            {{ $t('No SPA-side schema is registered for auth type') }} <code v-text="type"></code>.
         </p>
 
         <!-- Server-side `validateAuth` errors apply to the whole block
              rather than any single field, so we surface them once below. -->
-        <field-errors :messages="ui.errors.auth" />
+        <v-field-errors :messages="ui.errors.auth" />
     </div>
 </template>
 
@@ -56,8 +56,6 @@ import SchemaForm from '../schema/SchemaForm.vue';
 export default {
     name: 'AuthTab',
 
-    components: { FieldErrors, SchemaForm },
-
     data() {
         return {
             options: store.ui.options,
@@ -73,7 +71,7 @@ export default {
         type: {
             get() { return this.link.auth?.type ?? ''; },
             set(v) {
-                if (!v) {
+                if (! v) {
                     this.link.auth = {};
                     return;
                 }
@@ -105,5 +103,7 @@ export default {
             this.link.auth = { ...pruneEmpty(next), type: this.type };
         },
     },
+
+    components: { 'v-field-errors': FieldErrors, 'v-schema-form': SchemaForm },
 };
 </script>

@@ -20,7 +20,7 @@
                 v-if="hasExtras"
                 type="button"
                 class="extras-chevron"
-                :class="{ collapsed: !extrasExpanded }"
+                :class="{ collapsed: ! extrasExpanded }"
                 :aria-expanded="extrasExpanded ? 'true' : 'false'"
                 :aria-label="extrasExpanded ? $t('Hide options') : $t('Configure')"
                 :title="extrasExpanded ? $t('Hide options') : $t('Configure')"
@@ -28,15 +28,14 @@
                 <span aria-hidden="true">▼</span>
             </button>
 
-            <span class="name">{{ field.name }}</span>
+            <span class="name" v-text="field.name"></span>
 
             <span v-if="isMissing"
                   class="influx-missing-badge"
-                  :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
-                {{ $t('missing mapping') }}
-            </span>
+                  :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
+                  v-text="$t('missing mapping')"></span>
 
-            <code class="handle light">{{ field.handle }}</code>
+            <code class="handle light" v-text="field.handle"></code>
         </div>
 
         <!-- subfieldsOnly fields (fieldMeta flag, e.g. Matrix) carry no source
@@ -44,8 +43,8 @@
              the extras below. The cells stay so the row keeps the shared grid
              columns; they just render empty. -->
         <div>
-            <searchable-select
-                v-if="!subfieldsOnly"
+            <v-searchable-select
+                v-if="! subfieldsOnly"
                 :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
                 :options="sourceNodeOptions"
                 :disabled="readOnly"
@@ -64,7 +63,7 @@
                  - anything else → plain text -->
             <template v-if="subfieldsOnly" />
             <template v-else-if="field.defaultType === 'select'">
-                <searchable-select
+                <v-searchable-select
                     :model-value="mapping.default ?? ''"
                     :options="defaultSelectOptions"
                     :disabled="readOnly"
@@ -73,7 +72,7 @@
                 />
             </template>
             <template v-else-if="field.defaultType === 'element'">
-                <element-picker
+                <v-element-picker
                     :model-value="mapping.default"
                     :element-type="field.elementType || 'craft\\elements\\Entry'"
                     @update:model-value="onDefaultElementChange"
@@ -99,7 +98,7 @@
              :data-expanded="extrasExpanded ? 'true' : 'false'"
         >
             <div v-show="extrasExpanded" class="extras-body">
-                <schema-form
+                <v-schema-form
                     :schema="extrasSchema"
                     :options="extrasOptions"
                     :native-fields="extrasNativeFields"
@@ -115,6 +114,24 @@
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Extras span the row's full width (`grid-column: 1 / -1`, via the
+   `.influx-mapping-extras-slot` rule in mapping-row.css). The grid that
+   aligns extras rows with the row's Field / Source-node / Default-value
+   columns lives in schema-form.css. The block starts flush under the row
+   controls — collapsed it renders nothing at all. The expanded tint comes
+   from the row's `:has()` selector in mapping-row.css, keyed off
+   `data-expanded`. */
+
+.influx-mapping-extras {
+    margin-top: 0;
+    background: transparent;
+    border-top: 0;
+}
+
+.extras-body { padding: 0 0 4px; }
+</style>
 
 <script>
 import ElementPicker from '../ElementPicker.vue';
@@ -137,8 +154,6 @@ import { mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js
  */
 export default {
     name: 'MappingRow',
-
-    components: { ElementPicker, SearchableSelect, SchemaForm },
 
     props: {
         field: { type: Object, required: true },
@@ -236,10 +251,10 @@ export default {
         // signal.
         isMissing() {
             const saved = this.mapping.node;
-            if (!saved) return false;
+            if (! saved) return false;
             const discovered = store.ui.sample?.flatNodes;
-            if (!discovered) return false;
-            return !discovered.some(o => o.value === saved);
+            if (! discovered) return false;
+            return ! discovered.some(o => o.value === saved);
         },
 
         // Grouped for SearchableSelect: the sentinels render as plain rows
@@ -274,8 +289,8 @@ export default {
 
     methods: {
         toggleExtras() {
-            if (!this.hasExtras) return;
-            this.extrasExpanded = !this.extrasExpanded;
+            if (! this.hasExtras) return;
+            this.extrasExpanded = ! this.extrasExpanded;
         },
 
         onNodeSelect(value) {
@@ -333,23 +348,7 @@ export default {
             this.link.mappings = setMappingSlot(this.link.mappings, this.field.handle, key, value);
         },
     },
+
+    components: { 'v-element-picker': ElementPicker, 'v-searchable-select': SearchableSelect, 'v-schema-form': SchemaForm },
 };
 </script>
-
-<style scoped>
-/* Extras span the row's full width (`grid-column: 1 / -1`, via the
-   `.influx-mapping-extras-slot` rule in mapping-row.css). The grid that
-   aligns extras rows with the row's Field / Source-node / Default-value
-   columns lives in schema-form.css. The block starts flush under the row
-   controls — collapsed it renders nothing at all. The expanded tint comes
-   from the row's `:has()` selector in mapping-row.css, keyed off
-   `data-expanded`. */
-
-.influx-mapping-extras {
-    margin-top: 0;
-    background: transparent;
-    border-top: 0;
-}
-
-.extras-body { padding: 0 0 4px; }
-</style>

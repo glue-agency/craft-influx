@@ -5,10 +5,8 @@
              action does. Teleport keeps it a reactive Vue button (disabled/label
              track the fetch) while placing it there; it falls back to rendering
              in place when the target is absent (e.g. unit tests). -->
-        <teleport :to="actionTarget" :disabled="!hasActionTarget">
-            <button type="button" class="btn submit" data-icon="search" :disabled="loading" @click="inspect">
-                {{ loading ? $t('Inspecting…') : $t('Inspect') }}
-            </button>
+        <teleport :to="actionTarget" :disabled="! hasActionTarget">
+            <button type="button" class="btn submit" data-icon="search" :disabled="loading" @click="inspect" v-text="loading ? $t('Inspecting…') : $t('Inspect')"></button>
         </teleport>
 
         <!-- Controls. A form so Enter in any field re-inspects (and the unit
@@ -16,46 +14,46 @@
              above. The link field navigates rather than re-inspecting. -->
         <form class="toolbar flex flex-nowrap influx-debug-toolbar" @submit.prevent="inspect">
             <div v-if="links.length" class="influx-debug-field">
-                <label>{{ $t('Link') }}</label>
+                <label v-text="$t('Link')"></label>
                 <div class="select">
                     <select :value="linkHandle" @change="goToLink">
-                        <option v-for="l in links" :key="l.handle" :value="l.handle">{{ l.name }}</option>
+                        <option v-for="l in links" :key="l.handle" :value="l.handle" v-text="l.name"></option>
                     </select>
                 </div>
             </div>
 
             <div class="influx-debug-field">
-                <label>{{ $t('Site') }}</label>
-                <span v-if="!sites.length" class="influx-debug-static">{{ $t('Default endpoint') }}</span>
+                <label v-text="$t('Site')"></label>
+                <span v-if="! sites.length" class="influx-debug-static" v-text="$t('Default endpoint')"></span>
                 <div v-else class="select">
                     <select v-model="site">
-                        <option v-for="s in sites" :key="s.handle" :value="s.handle">{{ s.name }}</option>
+                        <option v-for="s in sites" :key="s.handle" :value="s.handle" v-text="s.name"></option>
                     </select>
                 </div>
             </div>
 
             <div v-if="offsetHandles.length" class="influx-debug-field">
-                <label>{{ $t('Sliding window') }}</label>
+                <label v-text="$t('Sliding window')"></label>
                 <div class="select">
                     <select v-model="offset">
-                        <option value="">{{ $t('Whole feed') }}</option>
-                        <option v-for="h in offsetHandles" :key="h" :value="h">{{ h }}</option>
+                        <option value="" v-text="$t('Whole feed')"></option>
+                        <option v-for="h in offsetHandles" :key="h" :value="h" v-text="h"></option>
                     </select>
                 </div>
             </div>
 
             <div class="influx-debug-field">
-                <label>{{ $t('Limit') }}</label>
+                <label v-text="$t('Limit')"></label>
                 <div class="influx-debug-limit-row">
                     <input v-model.number="limit" type="number" min="1" max="500" class="text influx-debug-limit">
-                    <span v-if="totalAvailable != null" class="influx-debug-of">{{ $t('of {n}', { n: totalAvailable }) }}</span>
+                    <span v-if="totalAvailable != null" class="influx-debug-of" v-text="$t('of {n}', { n: totalAvailable })"></span>
                 </div>
             </div>
 
-            <div class="flex-grow"></div>
+            <div class="flex-grow" />
         </form>
 
-        <error-panel v-if="meta && meta.error" class="influx-feed-error influx-debug-error" :error="meta.error" />
+        <v-error-panel v-if="meta && meta.error" class="influx-feed-error influx-debug-error" :error="meta.error" />
 
         <!-- Split inspector: browse the fetched items left, drill into the
              selected one right. -->
@@ -64,13 +62,13 @@
                 <div class="influx-split-list-head">
                     <span class="influx-split-list-title">
                         {{ $t('Items') }}
-                        <span class="light">{{ $t('{n} fetched', { n: items.length }) }}</span>
+                        <span class="light" v-text="$t('{n} fetched', { n: items.length })"></span>
                     </span>
-                    <code v-if="meta && meta.url" class="influx-split-endpoint" :title="meta.url">{{ meta.url }}</code>
+                    <code v-if="meta && meta.url" class="influx-split-endpoint" :title="meta.url" v-text="meta.url"></code>
                 </div>
 
                 <div class="influx-split-list-scroll">
-                    <p v-if="loading" class="influx-split-loading"><span class="spinner"></span> {{ $t('Fetching feed…') }}</p>
+                    <p v-if="loading" class="influx-split-loading"><span class="spinner" /> {{ $t('Fetching feed…') }}</p>
 
                     <template v-else>
                         <button
@@ -82,167 +80,29 @@
                             @click="selectedIndex = i"
                         >
                             <span class="influx-split-item-top">
-                                <span class="influx-split-item-title">{{ itemTitle(item) }}</span>
-                                <action-badge :action="item.action" class="influx-split-item-badge" />
+                                <span class="influx-split-item-title" v-text="itemTitle(item)"></span>
+                                <v-action-badge :action="item.action" class="influx-split-item-badge" />
                             </span>
-                            <span class="influx-split-item-sub">{{ changesSummary(item) }}</span>
+                            <span class="influx-split-item-sub" v-text="changesSummary(item)"></span>
                         </button>
 
-                        <p v-if="!items.length" class="influx-split-empty light">{{ $t('No items on this page.') }}</p>
+                        <p v-if="! items.length" class="influx-split-empty light" v-text="$t('No items on this page.')"></p>
                     </template>
                 </div>
             </div>
 
             <div class="influx-split-detail">
-                <debug-item-detail
+                <v-debug-item-detail
                     v-if="selectedItem"
                     :key="`${inspectRun}:${selectedIndex}`"
                     :row="selectedItem"
                     :match-attribute="meta && meta.matchAttribute || ''"
                 />
-                <p v-else-if="!loading" class="influx-split-placeholder light">{{ $t('Select an item to inspect it.') }}</p>
+                <p v-else-if="! loading" class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
             </div>
         </div>
     </div>
 </template>
-
-<script>
-import DebugItemDetail from '../components/DebugItemDetail.vue';
-import ActionBadge from '../components/ActionBadge.vue';
-import ErrorPanel from '../components/ErrorPanel.vue';
-import { requestErrorMessage } from '../lib/requestError.js';
-
-/**
- * The debug inspector page — a split master/detail view. The toolbar owns the
- * link/site/window/limit controls; a single JSON fetch (the inspector only
- * ever reads the first page) fills the left item list, and the selected item's
- * drill-down renders on the right via DebugItemDetail. Inspecting again
- * re-fetches in place; changing the link navigates to that link's page.
- */
-export default {
-    name: 'DebugApp',
-
-    components: { DebugItemDetail, ActionBadge, ErrorPanel },
-
-    props: {
-        config: { type: Object, required: true },
-    },
-
-    data() {
-        return {
-            site: this.config.selectedSite || '',
-            offset: this.config.selectedOffset || '',
-            limit: this.config.limit || 10,
-            sites: this.config.sites || [],
-            offsetHandles: this.config.offsetHandles || [],
-            links: this.config.links || [],
-            linkHandle: this.config.linkHandle || null,
-            meta: null,
-            items: [],
-            selectedIndex: 0,
-            loading: false,
-            // Craft renders an empty action-buttons slot (see debug.twig) that
-            // we Teleport the Inspect button into. Resolved in mounted(); until
-            // then the Teleport is disabled and the button renders in place.
-            actionTarget: '#influx-debug-actions',
-            hasActionTarget: false,
-            // Monotonic per-inspect counter: guards against superseded
-            // responses (rapid re-clicks) AND keys the list rows + detail so a
-            // fresh inspect remounts them rather than patching stale state in.
-            inspectRun: 0,
-        };
-    },
-
-    computed: {
-        selectedItem() {
-            return this.items[this.selectedIndex] || null;
-        },
-
-        // The feed's reported total (or items-on-page) for the "of N" hint next
-        // to the limit — null when the feed reports neither.
-        totalAvailable() {
-            if (!this.meta) {
-                return null;
-            }
-
-            return this.meta.totalCount != null ? this.meta.totalCount : (this.meta.itemsOnPage ?? null);
-        },
-    },
-
-    mounted() {
-        this.hasActionTarget = !!document.querySelector(this.actionTarget);
-        this.inspect();
-    },
-
-    methods: {
-        // Left-list label: the resolved element's title, else the match value,
-        // else blank (a would-skip item with no match value).
-        itemTitle(item) {
-            return (item.element && item.element.title) || item.matchValue || '';
-        },
-
-        // One-line summary of what a real run would do to this item.
-        changesSummary(item) {
-            if (item.action === 'would-create') {
-                return this.$t('New element');
-            }
-
-            if (item.action === 'would-skip') {
-                return item.message || this.$t('Skipped');
-            }
-
-            const changed = (item.mappings || []).filter((m) => m.changed).length;
-
-            if (changed === 0) {
-                return this.$t('No changes');
-            }
-
-            return changed === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changed });
-        },
-
-        goToLink(e) {
-            const link = this.links.find((l) => l.handle === e.target.value);
-
-            if (link) {
-                window.location.href = link.url;
-            }
-        },
-
-        inspect() {
-            this.meta = null;
-            this.items = [];
-            this.selectedIndex = 0;
-            this.loading = true;
-
-            // Ignore a response that a newer inspect has superseded (rapid
-            // re-clicks) or that lands after the component is gone.
-            const token = ++this.inspectRun;
-
-            const base = this.config.inspectUrl;
-            const params = new URLSearchParams();
-            if (this.site) params.set('site', this.site);
-            if (this.offset) params.set('offset', this.offset);
-            params.set('limit', String(this.limit || 10));
-            const url = base + (base.includes('?') ? '&' : '?') + params.toString();
-
-            window.Craft.sendActionRequest('GET', url).then((response) => {
-                if (token !== this.inspectRun) return;
-                const data = response.data || {};
-                this.meta = data.meta || null;
-                this.items = data.items || [];
-                this.selectedIndex = 0;
-            }).catch((err) => {
-                if (token !== this.inspectRun) return;
-                // Surface as a feed-level error so the panel shows it.
-                this.meta = { error: requestErrorMessage(err, this.$t('Inspection failed.')) };
-                this.items = [];
-            }).finally(() => {
-                if (token === this.inspectRun) this.loading = false;
-            });
-        },
-    },
-};
-</script>
 
 <style scoped>
 /* ---- Toolbar ------------------------------------------------------------ */
@@ -425,3 +285,141 @@ export default {
     color: var(--error-color);
 }
 </style>
+
+<script>
+import DebugItemDetail from '../components/DebugItemDetail.vue';
+import ActionBadge from '../components/ActionBadge.vue';
+import ErrorPanel from '../components/ErrorPanel.vue';
+import { requestErrorMessage } from '../lib/requestError.js';
+
+/**
+ * The debug inspector page — a split master/detail view. The toolbar owns the
+ * link/site/window/limit controls; a single JSON fetch (the inspector only
+ * ever reads the first page) fills the left item list, and the selected item's
+ * drill-down renders on the right via DebugItemDetail. Inspecting again
+ * re-fetches in place; changing the link navigates to that link's page.
+ */
+export default {
+    name: 'DebugApp',
+
+    props: {
+        config: { type: Object, required: true },
+    },
+
+    data() {
+        return {
+            site: this.config.selectedSite || '',
+            offset: this.config.selectedOffset || '',
+            limit: this.config.limit || 10,
+            sites: this.config.sites || [],
+            offsetHandles: this.config.offsetHandles || [],
+            links: this.config.links || [],
+            linkHandle: this.config.linkHandle || null,
+            meta: null,
+            items: [],
+            selectedIndex: 0,
+            loading: false,
+            // Craft renders an empty action-buttons slot (see debug.twig) that
+            // we Teleport the Inspect button into. Resolved in mounted(); until
+            // then the Teleport is disabled and the button renders in place.
+            actionTarget: '#influx-debug-actions',
+            hasActionTarget: false,
+            // Monotonic per-inspect counter: guards against superseded
+            // responses (rapid re-clicks) AND keys the list rows + detail so a
+            // fresh inspect remounts them rather than patching stale state in.
+            inspectRun: 0,
+        };
+    },
+
+    computed: {
+        selectedItem() {
+            return this.items[this.selectedIndex] || null;
+        },
+
+        // The feed's reported total (or items-on-page) for the "of N" hint next
+        // to the limit — null when the feed reports neither.
+        totalAvailable() {
+            if (! this.meta) {
+                return null;
+            }
+
+            return this.meta.totalCount != null ? this.meta.totalCount : (this.meta.itemsOnPage ?? null);
+        },
+    },
+
+    mounted() {
+        this.hasActionTarget = !!document.querySelector(this.actionTarget);
+        this.inspect();
+    },
+
+    methods: {
+        // Left-list label: the resolved element's title, else the match value,
+        // else blank (a would-skip item with no match value).
+        itemTitle(item) {
+            return (item.element && item.element.title) || item.matchValue || '';
+        },
+
+        // One-line summary of what a real run would do to this item.
+        changesSummary(item) {
+            if (item.action === 'would-create') {
+                return this.$t('New element');
+            }
+
+            if (item.action === 'would-skip') {
+                return item.message || this.$t('Skipped');
+            }
+
+            const changed = (item.mappings || []).filter((m) => m.changed).length;
+
+            if (changed === 0) {
+                return this.$t('No changes');
+            }
+
+            return changed === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changed });
+        },
+
+        goToLink(e) {
+            const link = this.links.find((l) => l.handle === e.target.value);
+
+            if (link) {
+                window.location.href = link.url;
+            }
+        },
+
+        inspect() {
+            this.meta = null;
+            this.items = [];
+            this.selectedIndex = 0;
+            this.loading = true;
+
+            // Ignore a response that a newer inspect has superseded (rapid
+            // re-clicks) or that lands after the component is gone.
+            const token = ++this.inspectRun;
+
+            const base = this.config.inspectUrl;
+            const params = new URLSearchParams();
+            if (this.site) params.set('site', this.site);
+            if (this.offset) params.set('offset', this.offset);
+            params.set('limit', String(this.limit || 10));
+            const url = base + (base.includes('?') ? '&' : '?') + params.toString();
+
+            window.Craft.sendActionRequest('GET', url).then((response) => {
+                if (token !== this.inspectRun) return;
+                const data = response.data || {};
+                this.meta = data.meta || null;
+                this.items = data.items || [];
+                this.selectedIndex = 0;
+            }).catch((err) => {
+                if (token !== this.inspectRun) return;
+                // Surface as a feed-level error so the panel shows it.
+                this.meta = { error: requestErrorMessage(err, this.$t('Inspection failed.')) };
+                this.items = [];
+            }).finally(() => {
+                if (token === this.inspectRun) this.loading = false;
+            });
+        },
+    },
+
+    components: { 'v-debug-item-detail': DebugItemDetail, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
+};
+</script>

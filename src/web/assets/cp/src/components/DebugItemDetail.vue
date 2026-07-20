@@ -8,9 +8,9 @@
                 class="influx-detail-chip"
                 v-html="row.element.chipHtml"
             ></span>
-            <span v-else class="influx-detail-title">{{ title }}</span>
+            <span v-else class="influx-detail-title" v-text="title"></span>
 
-            <action-badge :action="row.action" class="influx-detail-badge" />
+            <v-action-badge :action="row.action" class="influx-detail-badge" />
 
             <div class="btngroup influx-detail-toggle">
                 <button
@@ -19,22 +19,24 @@
                     :class="{ active: view === 'parsed' }"
                     :aria-pressed="view === 'parsed'"
                     @click="view = 'parsed'"
-                >{{ $t('Parsed') }}</button>
+                    v-text="$t('Parsed')"
+                />
                 <button
                     type="button"
                     class="btn"
                     :class="{ active: view === 'raw' }"
                     :aria-pressed="view === 'raw'"
                     @click="view = 'raw'"
-                >{{ $t('Raw JSON') }}</button>
+                    v-text="$t('Raw JSON')"
+                />
             </div>
         </div>
 
         <!-- Parsed: incoming vs current (or, in the log context, vs parsed),
              one row per mapped field. -->
         <div v-if="view === 'parsed'" class="influx-detail-body">
-            <p v-if="row.message" class="influx-debug-item-note">{{ row.message }}</p>
-            <pre v-if="row.error" class="influx-debug-item-error">{{ row.error }}</pre>
+            <p v-if="row.message" class="influx-debug-item-note" v-text="row.message"></p>
+            <pre v-if="row.error" class="influx-debug-item-error" v-text="row.error"></pre>
 
             <template v-if="row.mappings && row.mappings.length">
                 <!-- Three columns; the "did it change" signal is the row's
@@ -42,9 +44,9 @@
                      carried by the pills beside the field label, each opening a
                      popover with the full "why" on click. -->
                 <div class="influx-detail-headings">
-                    <div>{{ $t('Field') }}</div>
-                    <div>{{ $t('Incoming') }}</div>
-                    <div>{{ context === 'log' ? $t('Parsed') : $t('Current') }}</div>
+                    <div v-text="$t('Field')"></div>
+                    <div v-text="$t('Incoming')"></div>
+                    <div v-text="context === 'log' ? $t('Parsed') : $t('Current')"></div>
                 </div>
 
                 <template v-for="m in row.mappings" :key="m.handle">
@@ -57,34 +59,34 @@
                                     type="button"
                                     class="influx-detail-pill influx-detail-pill--match"
                                     @click.stop="toggleInfo($event, m.handle + ':match', $t('the unique identifier used by this Element Link'))"
-                                >{{ $t('match by') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                >{{ $t('match by') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
                                 <button
                                     v-if="m.unaddressed"
                                     type="button"
                                     class="influx-detail-pill influx-detail-pill--untouched"
                                     @click.stop="toggleInfo($event, m.handle + ':untouched', $t('the mapped node does not exist for this Element Link'))"
-                                >{{ $t('missing node') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                >{{ $t('missing node') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
                                 <button
                                     v-if="m.usedDefault"
                                     type="button"
                                     class="influx-detail-pill influx-detail-pill--default"
                                     @click.stop="toggleInfo($event, m.handle + ':default', $t('the mapped node pushed a default value for this Element Link'))"
-                                >{{ $t('use default') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                >{{ $t('use default') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
                                 <button
                                     v-if="m.managedByTarget"
                                     type="button"
                                     class="influx-detail-pill influx-detail-pill--managed"
                                     @click.stop="toggleInfo($event, m.handle + ':managed', $t('This value isn\'t written during the element save — Influx reconciles it separately after each item is imported.'))"
-                                >{{ $t('not managed by element') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true"></span></button>
+                                >{{ $t('not managed by element') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
                             </span>
                             <!-- The feed node this mapping reads from. A
                                  node-less mapping (an explicit default) shows no
                                  line here — its "use default" pill says it. -->
-                            <code v-if="m.node" class="influx-detail-node">{{ m.node }}</code>
+                            <code v-if="m.node" class="influx-detail-node" v-text="m.node"></code>
                         </div>
 
                         <div class="influx-detail-val">
-                            <code v-if="!isNullish(incomingCell(m))">{{ incomingCell(m) }}</code>
+                            <code v-if="! isNullish(incomingCell(m))" v-text="incomingCell(m)"></code>
                         </div>
 
                         <div class="influx-detail-val" :class="{ 'influx-detail-val--current': context !== 'log' }">
@@ -95,25 +97,25 @@
                                  header chip). Everything else falls back to the
                                  plain text. -->
                             <div
-                                v-if="context === 'log' && !isNullish(m.parsedHtml)"
+                                v-if="context === 'log' && ! isNullish(m.parsedHtml)"
                                 class="influx-detail-rich"
                                 v-html="m.parsedHtml"
                             ></div>
-                            <code v-else-if="!isNullish(middleCell(m))">{{ middleCell(m) }}</code>
+                            <code v-else-if="! isNullish(middleCell(m))" v-text="middleCell(m)"></code>
                         </div>
                     </div>
 
                     <!-- A field whose strategy errored: a full-width red band
                          aligned to the value columns, between this row and the next. -->
-                    <p v-if="m.error" class="influx-detail-field-error"><span>{{ m.error }}</span></p>
+                    <p v-if="m.error" class="influx-detail-field-error"><span v-text="m.error"></span></p>
                 </template>
             </template>
 
-            <p v-else-if="!row.message && !row.error" class="influx-detail-empty light">{{ $t('No mapped fields.') }}</p>
+            <p v-else-if="! row.message && ! row.error" class="influx-detail-empty light" v-text="$t('No mapped fields.')"></p>
         </div>
 
         <!-- Raw: the item's payload exactly as it came off the feed. -->
-        <pre v-else class="influx-detail-raw">{{ rawJson }}</pre>
+        <pre v-else class="influx-detail-raw" v-text="rawJson"></pre>
 
         <!-- The "why" popover for a status pill. Teleported to <body> so the
              table's own overflow can't clip it; positioned at the clicked pill
@@ -124,153 +126,11 @@
                 class="influx-detail-info"
                 :style="{ top: info.top + 'px', left: info.left + 'px' }"
                 @click.stop
-            >{{ info.text }}</div>
+                v-text="info.text"
+            ></div>
         </teleport>
     </div>
 </template>
-
-<script>
-import ActionBadge from './ActionBadge.vue';
-
-/**
- * The right pane of the split debug inspector: the drill-down for one selected
- * item. Header (element chip or match-value title + action tag + Parsed /
- * Raw JSON switch) over either the field-comparison table or the raw payload.
- * Renders the same `row` shape DebugService::debugItem() produces, so it's
- * shared by both split inspectors — the live debug dry-run (DebugApp) and the
- * run-log drill-down (LogApp).
- *
- * A `context` prop tailors the middle value column: 'debug' (the default) shows
- * the element's live Current value; 'log' replaces it with the feed's Parsed
- * value next to the raw Incoming value, since a historical run has no
- * meaningful "current" state to compare against. In the log context a mapping
- * may also carry `parsedHtml` — a server-rendered rich variant of the parsed
- * value (Craft element chips for relations, a display-only lightswitch for
- * booleans) shown in that column in place of the plain text, which stays as
- * the fallback when the key is absent/null. The debug context ignores the key
- * entirely, so its live streaming table is unaffected.
- *
- * There is no "Changed?" column: a row that would change is marked by its green
- * tint (data-changed). Per-row status — match key, missing node, used default,
- * managed by the target — shows as pills beside the field label, each opening a
- * short popover explaining the "why" on click.
- */
-export default {
-    name: 'DebugItemDetail',
-
-    components: { ActionBadge },
-
-    props: {
-        row: { type: Object, required: true },
-        // The link's match attribute handle, so the field it reads from gets a
-        // "Match by" tag.
-        matchAttribute: { type: String, default: '' },
-        // Where this drill-down is rendered: 'debug' (the live dry-run, where
-        // the middle column is the element's Current value) or 'log' (a
-        // historical run, where it's the feed's Parsed value instead — rendered
-        // rich via a mapping's `parsedHtml` when present).
-        context: { type: String, default: 'debug' },
-    },
-
-    data() {
-        return {
-            view: 'parsed',
-            // The open status-pill popover: { key, text, top, left } (viewport
-            // coords), or null when none is open. Only one is open at a time.
-            info: null,
-        };
-    },
-
-    beforeUnmount() {
-        this.closeInfo();
-    },
-
-    computed: {
-        // Header label when there's no element chip (a would-create or
-        // would-skip item): the match value, else blank.
-        title() {
-            return (this.row.element && this.row.element.title)
-                || this.row.matchValue
-                || '';
-        },
-
-        rawJson() {
-            try {
-                return JSON.stringify(this.row.raw ?? {}, null, 2);
-            } catch (e) {
-                return String(this.row.raw);
-            }
-        },
-    },
-
-    methods: {
-        // The value coming in from the feed: the parsed value when there is one
-        // (falls back to the raw value for native attributes, which don't parse).
-        incoming(m) {
-            return this.isNullish(m.parsedValue) ? m.rawValue : m.parsedValue;
-        },
-
-        // The Incoming column: the parsed (raw-fallback) value in the debug
-        // inspector, but the untouched raw value straight off the feed in the
-        // log context, where the parsed value gets its own column.
-        incomingCell(m) {
-            return this.context === 'log' ? m.rawValue : this.incoming(m);
-        },
-
-        // The middle column: the element's live Current value in the debug
-        // inspector, the feed's Parsed (raw-fallback) value in the log context.
-        middleCell(m) {
-            return this.context === 'log' ? this.incoming(m) : m.currentValue;
-        },
-
-        isMatch(m) {
-            return this.matchAttribute !== '' && m.handle === this.matchAttribute;
-        },
-
-        // Values arrive already stringified + truncated by describeValue();
-        // a genuine null/undefined renders as a blank cell.
-        isNullish(v) {
-            return v === null || v === undefined;
-        },
-
-        // Open (or, on the same pill, close) the "why" popover for a status
-        // pill, anchored just under the clicked pill. One open at a time; a
-        // click anywhere else, Escape, or a scroll dismisses it (listeners are
-        // added only while open, and torn down in closeInfo / beforeUnmount).
-        toggleInfo(event, key, text) {
-            if (this.info && this.info.key === key) {
-                this.closeInfo();
-
-                return;
-            }
-
-            const rect = event.currentTarget.getBoundingClientRect();
-            this.info = { key, text, top: rect.bottom + 6, left: rect.left };
-
-            document.addEventListener('click', this.closeInfo);
-            document.addEventListener('keydown', this.onInfoKeydown);
-            window.addEventListener('scroll', this.closeInfo, true);
-        },
-
-        closeInfo() {
-            if (! this.info) {
-                return;
-            }
-
-            this.info = null;
-            document.removeEventListener('click', this.closeInfo);
-            document.removeEventListener('keydown', this.onInfoKeydown);
-            window.removeEventListener('scroll', this.closeInfo, true);
-        },
-
-        onInfoKeydown(event) {
-            if (event.key === 'Escape') {
-                this.closeInfo();
-            }
-        },
-    },
-};
-</script>
 
 <style scoped>
 .influx-detail {
@@ -515,3 +375,146 @@ export default {
 }
 
 </style>
+
+<script>
+import ActionBadge from './ActionBadge.vue';
+
+/**
+ * The right pane of the split debug inspector: the drill-down for one selected
+ * item. Header (element chip or match-value title + action tag + Parsed /
+ * Raw JSON switch) over either the field-comparison table or the raw payload.
+ * Renders the same `row` shape DebugService::debugItem() produces, so it's
+ * shared by both split inspectors — the live debug dry-run (DebugApp) and the
+ * run-log drill-down (LogApp).
+ *
+ * A `context` prop tailors the middle value column: 'debug' (the default) shows
+ * the element's live Current value; 'log' replaces it with the feed's Parsed
+ * value next to the raw Incoming value, since a historical run has no
+ * meaningful "current" state to compare against. In the log context a mapping
+ * may also carry `parsedHtml` — a server-rendered rich variant of the parsed
+ * value (Craft element chips for relations, a display-only lightswitch for
+ * booleans) shown in that column in place of the plain text, which stays as
+ * the fallback when the key is absent/null. The debug context ignores the key
+ * entirely, so its live streaming table is unaffected.
+ *
+ * There is no "Changed?" column: a row that would change is marked by its green
+ * tint (data-changed). Per-row status — match key, missing node, used default,
+ * managed by the target — shows as pills beside the field label, each opening a
+ * short popover explaining the "why" on click.
+ */
+export default {
+    name: 'DebugItemDetail',
+
+    props: {
+        row: { type: Object, required: true },
+        // The link's match attribute handle, so the field it reads from gets a
+        // "Match by" tag.
+        matchAttribute: { type: String, default: '' },
+        // Where this drill-down is rendered: 'debug' (the live dry-run, where
+        // the middle column is the element's Current value) or 'log' (a
+        // historical run, where it's the feed's Parsed value instead — rendered
+        // rich via a mapping's `parsedHtml` when present).
+        context: { type: String, default: 'debug' },
+    },
+
+    data() {
+        return {
+            view: 'parsed',
+            // The open status-pill popover: { key, text, top, left } (viewport
+            // coords), or null when none is open. Only one is open at a time.
+            info: null,
+        };
+    },
+
+    computed: {
+        // Header label when there's no element chip (a would-create or
+        // would-skip item): the match value, else blank.
+        title() {
+            return (this.row.element && this.row.element.title)
+                || this.row.matchValue
+                || '';
+        },
+
+        rawJson() {
+            try {
+                return JSON.stringify(this.row.raw ?? {}, null, 2);
+            } catch (e) {
+                return String(this.row.raw);
+            }
+        },
+    },
+
+    beforeUnmount() {
+        this.closeInfo();
+    },
+
+    methods: {
+        // The value coming in from the feed: the parsed value when there is one
+        // (falls back to the raw value for native attributes, which don't parse).
+        incoming(m) {
+            return this.isNullish(m.parsedValue) ? m.rawValue : m.parsedValue;
+        },
+
+        // The Incoming column: the parsed (raw-fallback) value in the debug
+        // inspector, but the untouched raw value straight off the feed in the
+        // log context, where the parsed value gets its own column.
+        incomingCell(m) {
+            return this.context === 'log' ? m.rawValue : this.incoming(m);
+        },
+
+        // The middle column: the element's live Current value in the debug
+        // inspector, the feed's Parsed (raw-fallback) value in the log context.
+        middleCell(m) {
+            return this.context === 'log' ? this.incoming(m) : m.currentValue;
+        },
+
+        isMatch(m) {
+            return this.matchAttribute !== '' && m.handle === this.matchAttribute;
+        },
+
+        // Values arrive already stringified + truncated by describeValue();
+        // a genuine null/undefined renders as a blank cell.
+        isNullish(v) {
+            return v === null || v === undefined;
+        },
+
+        // Open (or, on the same pill, close) the "why" popover for a status
+        // pill, anchored just under the clicked pill. One open at a time; a
+        // click anywhere else, Escape, or a scroll dismisses it (listeners are
+        // added only while open, and torn down in closeInfo / beforeUnmount).
+        toggleInfo(event, key, text) {
+            if (this.info && this.info.key === key) {
+                this.closeInfo();
+
+                return;
+            }
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            this.info = { key, text, top: rect.bottom + 6, left: rect.left };
+
+            document.addEventListener('click', this.closeInfo);
+            document.addEventListener('keydown', this.onInfoKeydown);
+            window.addEventListener('scroll', this.closeInfo, true);
+        },
+
+        closeInfo() {
+            if (! this.info) {
+                return;
+            }
+
+            this.info = null;
+            document.removeEventListener('click', this.closeInfo);
+            document.removeEventListener('keydown', this.onInfoKeydown);
+            window.removeEventListener('scroll', this.closeInfo, true);
+        },
+
+        onInfoKeydown(event) {
+            if (event.key === 'Escape') {
+                this.closeInfo();
+            }
+        },
+    },
+
+    components: { 'v-action-badge': ActionBadge },
+};
+</script>

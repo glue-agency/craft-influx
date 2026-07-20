@@ -3,22 +3,22 @@
          MappingGroupCard, with the subfields variant so SchemaForm's subgrid
          rules keep matching. Sub-field mappings ARE mappings, so they get the
          same furniture (chevron, mapped/missing pills, column headings). -->
-    <mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
-        <template #tags>
+    <v-mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
+        <template v-slot:tags>
             <span class="pill pill-mapped"
                   :data-mapped="mappedCount"
                   :title="$t('Sub-fields with an active source node')">
-                <span class="num">{{ mappedCount }}</span>&nbsp;{{ $t('mapped') }}
+                <span class="num" v-text="mappedCount"></span>&nbsp;{{ $t('mapped') }}
             </span>
 
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
                   :title="$t('Sub-fields whose saved source node is no longer in the fetched sample')">
-                <span class="num">{{ missingCount }}</span>&nbsp;{{ $t('missing') }}
+                <span class="num" v-text="missingCount"></span>&nbsp;{{ $t('missing') }}
             </span>
 
-            <span class="pill pill-count" :title="$t('Total sub-fields in this group')">{{ subFieldList.length }}</span>
+            <span class="pill pill-count" :title="$t('Total sub-fields in this group')" v-text="subFieldList.length"></span>
         </template>
 
         <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
@@ -26,18 +26,16 @@
         <!-- A group without sub-fields still gets its card when the consumer
              supplies an empty-state hint (MatrixFields: a block type with no
              custom fields) — the hint says why there are no rows to map. -->
-        <p v-if="!subFieldList.length && emptyHint" class="light sub-fields-hint">
-            {{ emptyHint }}
-        </p>
+        <p v-if="! subFieldList.length && emptyHint" class="light sub-fields-hint" v-text="emptyHint"></p>
 
         <!-- Same column headings as the main mapping list — sub-field rows are
              mappings too. Joined to the card's shared grid in SchemaForm.vue,
              which subgrids down from the parent mapping rows' tracks so the
              columns align with the row above. -->
         <div v-else class="influx-mapping-headings">
-            <div>{{ $t('Field') }}</div>
-            <div>{{ $t('Source node') }}</div>
-            <div>{{ $t('Default value') }}</div>
+            <div v-text="$t('Field')"></div>
+            <div v-text="$t('Source node')"></div>
+            <div v-text="$t('Default value')"></div>
         </div>
 
         <div
@@ -50,12 +48,11 @@
                 {{ sub.label }}
                 <span v-if="isMissing(sub.handle)"
                       class="influx-missing-badge"
-                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')">
-                    {{ $t('missing mapping') }}
-                </span>
-                <code class="handle light">{{ sub.handle }}</code>
+                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
+                      v-text="$t('missing mapping')"></span>
+                <code class="handle light" v-text="sub.handle"></code>
             </label>
-            <searchable-select
+            <v-searchable-select
                 :model-value="rowFor(sub.handle).node"
                 :options="sourceNodeOptions"
                 searchable
@@ -67,7 +64,7 @@
             />
             <!-- The default-value editor renders by the sub-field node's own
                  type — the same primitives the rest of the schema uses. -->
-            <select-input
+            <v-select-input
                 v-if="sub.type === 'select'"
                 :node="sub"
                 :model-value="rowFor(sub.handle).default"
@@ -85,7 +82,7 @@
                 @input="updateRow(sub.handle, 'default', $event.target.value)"
             >
         </div>
-    </mapping-group-card>
+    </v-mapping-group-card>
 </template>
 
 <script>
@@ -121,7 +118,7 @@ import MappingGroupCard from '../../../components/MappingGroupCard.vue';
 export default {
     name: 'SubFieldRows',
 
-    components: { SearchableSelect, SelectInput, MappingGroupCard },
+    emits: ['update:rows'],
 
     props: {
         // The schema node: label heads the card, instructions render as the
@@ -140,8 +137,6 @@ export default {
         // empty; without it the (row-less) headings still render.
         emptyHint: { type: String, default: null },
     },
-
-    emits: ['update:rows'],
 
     computed: {
         /** @returns the sub-field nodes (BuilderSchema primitives). */
@@ -203,9 +198,9 @@ export default {
 
         isMissing(handle) {
             const saved = this.rows[handle]?.node;
-            if (!saved) return false;
-            if (!this.discoveredNodes) return false;
-            return !this.discoveredNodes.some(o => o.value === saved);
+            if (! saved) return false;
+            if (! this.discoveredNodes) return false;
+            return ! this.discoveredNodes.some(o => o.value === saved);
         },
 
         updateRow(handle, key, value) {
@@ -235,5 +230,7 @@ export default {
             this.$emit('update:rows', next);
         },
     },
+
+    components: { 'v-searchable-select': SearchableSelect, 'v-select-input': SelectInput, 'v-mapping-group-card': MappingGroupCard },
 };
 </script>

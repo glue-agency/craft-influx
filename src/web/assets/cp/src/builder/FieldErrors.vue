@@ -1,6 +1,6 @@
 <template>
     <ul v-if="messages?.length" class="errors">
-        <li v-for="(msg, i) in messages" :key="i">{{ msg }}</li>
+        <li v-for="(msg, i) in messages" :key="i" v-text="msg"></li>
     </ul>
 </template>
 

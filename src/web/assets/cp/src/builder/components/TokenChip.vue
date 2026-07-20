@@ -1,8 +1,8 @@
 <template>
     <span class="influx-tokenized-chip" :data-kind="kind || 'custom'">
-        <span class="chip-name">{{ name }}</span>
+        <span class="chip-name" v-text="name"></span>
         <button
-            v-if="!disabled"
+            v-if="! disabled"
             type="button"
             class="chip-remove"
             tabindex="-1"
@@ -22,12 +22,12 @@
 export default {
     name: 'TokenChip',
 
+    emits: ['remove'],
+
     props: {
         name: { type: String, required: true },
         kind: { type: String, default: 'custom' },
         disabled: { type: Boolean, default: false },
     },
-
-    emits: ['remove'],
 };
 </script>

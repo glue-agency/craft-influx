@@ -1,6 +1,6 @@
 <template>
     <div class="influx-mapping-group"
-         :class="[variantClass, { collapsed: collapsible && !isExpanded, 'is-static': !collapsible }]">
+         :class="[variantClass, { collapsed: collapsible && ! isExpanded, 'is-static': ! collapsible }]">
         <div class="influx-mapping-group-header"
              :role="collapsible ? 'button' : null"
              :tabindex="collapsible ? 0 : null"
@@ -12,7 +12,7 @@
                  a chevron + label + a `tags` slot for right-side pills. -->
             <slot name="header" :expanded="isExpanded" :toggle="toggle">
                 <span v-if="collapsible" class="chevron" aria-hidden="true">▼</span>
-                <span class="label">{{ label }}</span>
+                <span class="label" v-text="label"></span>
                 <slot name="tags" />
             </slot>
         </div>
@@ -38,6 +38,10 @@
 export default {
     name: 'MappingGroupCard',
 
+    // Emitted with the new expanded state on every toggle, so consumers can
+    // react (e.g. the log viewer lazy-loads an item's detail on first expand).
+    emits: ['toggle'],
+
     props: {
         label: { type: String, default: '' },
         collapsible: { type: Boolean, default: true },
@@ -46,10 +50,6 @@ export default {
         // existing variant CSS (and SchemaForm's subgrid) keeps matching.
         variant: { type: String, default: '' },
     },
-
-    // Emitted with the new expanded state on every toggle, so consumers can
-    // react (e.g. the log viewer lazy-loads an item's detail on first expand).
-    emits: ['toggle'],
 
     data() {
         return {
@@ -69,7 +69,7 @@ export default {
     methods: {
         toggle() {
             if (this.collapsible) {
-                this.isExpanded = !this.isExpanded;
+                this.isExpanded = ! this.isExpanded;
                 this.$emit('toggle', this.isExpanded);
             }
         },

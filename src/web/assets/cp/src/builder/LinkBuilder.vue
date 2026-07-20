@@ -1,19 +1,19 @@
 <template>
     <div class="influx-link-builder" :class="{ 'is-loading': ui.loading }">
-        <p v-if="ui.loading" class="light">{{ $t('Loading…') }}</p>
+        <p v-if="ui.loading" class="light" v-text="$t('Loading…')"></p>
 
         <div v-else-if="ui.loadError" class="influx-link-builder-errors">
             <p><strong>{{ $t('Couldn’t load this link:') }}</strong> {{ ui.loadError }}</p>
-            <p class="light">{{ $t('Check the Craft logs for the full stack trace, or reload to retry.') }}</p>
+            <p class="light" v-text="$t('Check the Craft logs for the full stack trace, or reload to retry.')"></p>
         </div>
 
         <template v-else-if="ui.link">
-            <header-actions />
+            <v-header-actions />
 
             <!-- Soft post-save warning (e.g. another link defines a resource
                  mapping for the same elements). Stays until the next save. -->
             <div v-if="ui.warning" class="influx-link-builder-warning">
-                <p>{{ ui.warning }}</p>
+                <p v-text="ui.warning"></p>
             </div>
 
             <!-- Content panes. The tab nav is rendered by Craft's cpScreen
@@ -23,19 +23,19 @@
                  `.hidden` state on all but #general so the first paint
                  matches the active tab without a flash of all-five-panes. -->
             <section id="general" class="influx-link-builder-tab">
-                <general-tab />
+                <v-general-tab />
             </section>
             <section id="pagination" class="influx-link-builder-tab hidden">
-                <pagination-tab />
+                <v-pagination-tab />
             </section>
             <section id="mapping" class="influx-link-builder-tab hidden">
-                <mapping-tab />
+                <v-mapping-tab />
             </section>
             <section id="authentication" class="influx-link-builder-tab hidden">
-                <auth-tab />
+                <v-auth-tab />
             </section>
             <section id="settings" class="influx-link-builder-tab hidden">
-                <settings-tab />
+                <v-settings-tab />
             </section>
         </template>
     </div>
@@ -52,8 +52,6 @@ import HeaderActions from './HeaderActions.vue';
 
 export default {
     name: 'LinkBuilder',
-
-    components: { GeneralTab, PaginationTab, MappingTab, AuthTab, SettingsTab, HeaderActions },
 
     props: {
         // Pulled from the host template's data-id attribute (null for a new link).
@@ -93,7 +91,7 @@ export default {
                 };
                 for (const [tabId, attrs] of Object.entries(tabMap)) {
                     const anchor = document.querySelector(`a[href="#${tabId}"][role="tab"]`);
-                    if (!anchor) continue;
+                    if (! anchor) continue;
                     const hasError = attrs.some(a => (errors?.[a] || []).length > 0);
                     anchor.classList.toggle('error', hasError);
                 }
@@ -113,7 +111,7 @@ export default {
         const stop = this.$watch(
             () => this.ui.link,
             (next) => {
-                if (!next || applied) return;
+                if (! next || applied) return;
                 applied = true;
                 this.$nextTick(() => {
                     this.applyInitialHash();
@@ -130,7 +128,7 @@ export default {
         this._saveShortcutHandler = (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault();
-                if (this.ui.saving || !this.dirty) return;
+                if (this.ui.saving || ! this.dirty) return;
                 store.save({ continueEditing: true });
             }
         };
@@ -138,7 +136,7 @@ export default {
 
         // beforeunload guard — every other CP screen does this.
         this._beforeUnloadHandler = (e) => {
-            if (!this.dirty) return;
+            if (! this.dirty) return;
             e.preventDefault();
             e.returnValue = '';
             return '';
@@ -171,19 +169,21 @@ export default {
             // returns when the target equals `$selectedTab`, which would
             // skip the handlers entirely.
             const tabsContainer = document.getElementById('tabs');
-            if (!tabsContainer) return;
+            if (! tabsContainer) return;
             const selectedAnchor = tabsContainer.querySelector('a.sel[role="tab"]');
-            if (!selectedAnchor) return;
+            if (! selectedAnchor) return;
             const targetHref = selectedAnchor.getAttribute('href');
-            if (!targetHref) return;
+            if (! targetHref) return;
 
             tabsContainer.querySelectorAll('a[role="tab"]').forEach(anchor => {
                 const href = anchor.getAttribute('href');
-                if (!href || href[0] !== '#') return;
+                if (! href || href[0] !== '#') return;
                 const pane = document.querySelector(href);
                 if (pane) pane.classList.toggle('hidden', href !== targetHref);
             });
         },
     },
+
+    components: { 'v-general-tab': GeneralTab, 'v-pagination-tab': PaginationTab, 'v-mapping-tab': MappingTab, 'v-auth-tab': AuthTab, 'v-settings-tab': SettingsTab, 'v-header-actions': HeaderActions },
 };
 </script>
