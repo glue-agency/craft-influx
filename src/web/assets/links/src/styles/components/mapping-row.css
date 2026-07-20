@@ -88,9 +88,9 @@
     margin-left: 6px;
     padding: 1px 7px;
     border-radius: 9px;
-    background: #fff7d6;
-    color: #8a6d00;
-    border: 1px solid #f0d97a;
+    background: var(--influx-amber-auto-bg);
+    color: var(--influx-amber-fg);
+    border: 1px solid var(--influx-amber-auto-border);
     font-size: 10px;
     font-weight: 600;
     vertical-align: middle;

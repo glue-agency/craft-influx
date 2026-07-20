@@ -1,7 +1,71 @@
-/* Influx CP chrome — server-rendered classes shared by the SPA and the
-   server-rendered CP pages. Vite bundles these into influx-app.css. */
-@import './mapping-row.css';
-@import './missing.css';
-@import './overview-cells.css';
-@import './table-foot.css';
-@import './pills.css';
+/* Influx CP chrome — the server-rendered classes and the SPA component
+   styles, all class-namespaced under `.influx-` so nothing leaks into the
+   rest of Craft's CP. main.js imports this file; Vite bundles every import
+   below into a single influx-app.css (see vite.config.js). */
+
+/* Overview pages — Links + Logs indexes */
+@import './components/pills.css';
+@import './components/overview-cells.css';
+@import './components/table-foot.css';
+@import './components/links-table.css';
+@import './components/logs-toolbar.css';
+
+/* Mapping tree — link builder + debug / log inspectors */
+@import './components/mapping-group.css';
+@import './components/mapping-row.css';
+@import './components/schema-form.css';
+@import './components/missing.css';
+
+/* Form controls */
+@import './components/searchable-select.css';
+@import './components/tokenized-input.css';
+
+/* Builder shell */
+@import './components/link-builder.css';
+@import './components/header-actions.css';
+
+/* Plugin palette — the one source for the colours that carry meaning across
+   the CP: token-chip kinds, the verb/result pills, and the attention ambers.
+   Colour means the same thing wherever it appears. Structural chrome instead
+   reuses Craft's own CP custom properties (--gray-050, --hairline-color, …). */
+:root {
+    /* Token-chip kinds — element, site, neutral (fields/custom/node), env, alias */
+    --influx-kind-element-bg: #e4f5e5;
+    --influx-kind-element-fg: #1f6f30;
+    --influx-kind-element-border: #b9e0bf;
+    --influx-kind-site-bg: #e1eefc;
+    --influx-kind-site-fg: #1c4f8a;
+    --influx-kind-site-border: #b9d3f0;
+    --influx-kind-neutral-bg: #ececef;
+    --influx-kind-neutral-fg: #4a4f57;
+    --influx-kind-neutral-border: #d4d6db;
+    --influx-kind-env-bg: #fff4d6;
+    --influx-kind-env-fg: #8a6a00;
+    --influx-kind-env-border: #f0d676;
+    --influx-kind-alias-bg: #efe3fb;
+    --influx-kind-alias-fg: #5a26a0;
+    --influx-kind-alias-border: #d4baee;
+
+    /* Verb / result pills — green = wrote / enabled, red = destructive /
+       failed, blue = informative, gray = neutral / no change */
+    --influx-pill-green-bg: #d6f1de;
+    --influx-pill-green-fg: #064f1f;
+    --influx-pill-green-border: #7fcb95;
+    --influx-pill-red-bg: #fde2e2;
+    --influx-pill-red-fg: #8a1f1f;
+    --influx-pill-red-border: #e7a3a3;
+    --influx-pill-blue-bg: #e1eefc;
+    --influx-pill-blue-fg: #1c4f8a;
+    --influx-pill-blue-border: #b9d3f0;
+    --influx-pill-gray-bg: rgba(0, 0, 0, .06);
+    --influx-pill-gray-fg: #4a4f57;
+    --influx-pill-gray-border: rgba(0, 0, 0, .08);
+
+    /* Attention ambers — auto-mapped (soft yellow) vs missing node (needs
+       attention, warmer), sharing one amber text colour */
+    --influx-amber-auto-bg: #fff7d6;
+    --influx-amber-auto-border: #f0d97a;
+    --influx-amber-missing-bg: #fdecc8;
+    --influx-amber-missing-border: #f0c674;
+    --influx-amber-fg: #8a6d00;
+}

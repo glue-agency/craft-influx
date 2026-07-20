@@ -38,13 +38,6 @@
     });
     {% endjs %}
 
-    {% css %}
-    /* Give the toolbar selects a consistent minimum so they don't collapse to
-       odd widths — mirrors the debug inspector's toolbar. */
-    .influx-logs-toolbar .select { min-width: 160px; }
-    .influx-logs-toolbar .select select { width: 100%; }
-    {% endcss %}
-
     {# Filter by link, trigger and/or status without leaving the page. #}
     <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap influx-logs-toolbar" style="margin-bottom: 14px;">
         <div class="select">

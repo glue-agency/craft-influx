@@ -20,38 +20,6 @@
 {% endblock %}
 
 {% block content %}
-    {% css %}
-    /* Drag-to-sort handles on the links table. */
-    .influx-links-table .move.icon { cursor: grab; }
-    .influx-links-table tr.influx-dragging { opacity: 0.4; }
-
-    /* The Sync-options menu otherwise inherits Craft's classic menu hover — a
-       medium-grey fill (--gray-500) with white text — which reads heavy next
-       to the rest of the UI. Override it (with enough specificity to beat
-       Craft's own rule) with the lighter hover the plugin's other menus use. */
-    .menu.influx-sync-menu:not(.menu--disclosure) ul li .menu-option:not(.sel, .disabled):hover {
-        background-color: var(--gray-100);
-        color: var(--text-color);
-    }
-    {% endcss %}
-
-    {# Craft only applies a :hover background to anchor menu options; our sync
-       presets are <button class="menu-option"> elements, which rely on a JS-
-       added `.hover` class that doesn't fire here — so they sit dead on hover.
-       Replicate Craft's own plain-menu hover look for them. The custom class
-       survives Garnish teleporting `.menu` to <body> on open, keeping this
-       scoped to the sync dropdown rather than every menu on the page. #}
-    {% css %}
-    .influx-sync-menu ul li .menu-option:not(.sel, .disabled) {
-        transition: background-color 0.1s ease, color 0.1s ease;
-    }
-    .influx-sync-menu ul li .menu-option:not(.sel, .disabled):hover {
-        color: var(--white) !important;
-        --light-text-color: hsla(0, 0%, 100%, 0.8);
-        background-color: var(--bg-selection-dark);
-    }
-    {% endcss %}
-
     {% if not readOnly %}
         {% js %}
         document.querySelectorAll('[data-influx-delete-form]').forEach(function (anchor) {

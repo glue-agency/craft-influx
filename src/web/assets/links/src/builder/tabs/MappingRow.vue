@@ -93,7 +93,7 @@
              Field::schema(). No field-kind branches live here —
              adding a mapping kind is a single-PHP-file change. The
              `data-expanded` attribute mirrors the toggle state for the row's
-             `:has()` tint selector in links.css. -->
+             `:has()` tint selector in mapping-row.css. -->
         <div v-if="hasExtras"
              class="influx-mapping-extras influx-mapping-extras-slot"
              :data-expanded="extrasExpanded ? 'true' : 'false'"
@@ -338,11 +338,12 @@ export default {
 
 <style scoped>
 /* Extras span the row's full width (`grid-column: 1 / -1`, via the
-   `.influx-mapping-extras-slot` rule in links.css). The grid that aligns
-   extras rows with the row's Field / Source-node / Default-value columns
-   lives in SchemaForm.vue. The block starts flush under the row controls —
-   collapsed it renders nothing at all. The expanded tint comes from the
-   row's `:has()` selector in links.css, keyed off `data-expanded`. */
+   `.influx-mapping-extras-slot` rule in mapping-row.css). The grid that
+   aligns extras rows with the row's Field / Source-node / Default-value
+   columns lives in schema-form.css. The block starts flush under the row
+   controls — collapsed it renders nothing at all. The expanded tint comes
+   from the row's `:has()` selector in mapping-row.css, keyed off
+   `data-expanded`. */
 
 .influx-mapping-extras {
     margin-top: 0;

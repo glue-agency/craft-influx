@@ -1,0 +1,5 @@
+/* Logs overview filter toolbar. Give the selects a consistent minimum so
+   they don't collapse to odd widths — mirrors the debug inspector's
+   toolbar. Moved out of the template's inline {% css %}. */
+.influx-logs-toolbar .select { min-width: 160px; }
+.influx-logs-toolbar .select select { width: 100%; }
