@@ -130,6 +130,34 @@ class LinksService extends Component
     }
 
     /**
+     * The handles of every field/attribute an active Influx mapping writes on
+     * this element (deduped across links), so the element editor can flag each
+     * mapped field.
+     *
+     * "Active" is {@see FieldMapping::isActive()}: a mapping that reads a feed
+     * node OR writes an explicit default (a static default like `author` /
+     * `enabled` counts — the sync still overwrites the field on every run).
+     * Only top-level mappings are reported; nested Matrix-block / relation
+     * sub-mappings are not walked.
+     *
+     * @return list<string> field/attribute handles
+     */
+    public function mappedHandlesForElement(ElementInterface $element): array
+    {
+        $handles = [];
+
+        foreach ($this->findLinksForElement($element) as $link) {
+            foreach ($link->getMappingCollection() as $handle => $mapping) {
+                if ($mapping->isActive()) {
+                    $handles[$handle] = true;
+                }
+            }
+        }
+
+        return array_keys($handles);
+    }
+
+    /**
      * Persist a link.
      *
      * Writes to Project Config — the PC change handler {@see handleChangedLink}
