@@ -5,7 +5,7 @@ namespace GlueAgency\Influx\data;
 use Cake\Utility\Hash;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Given a decoded feed response, suggests its shape for the CP "Fetch sample"
@@ -122,7 +122,7 @@ class FeedInspector
      * labels as escaped text, so the angle brackets are safe. Null/empty
      * values get no suffix.
      *
-     * The value is resolved through {@see \GlueAgency\Influx\sync\RemoteItem::get()}
+     * The value is resolved through {@see \GlueAgency\Influx\sync\item\RemoteItem::get()}
      * — the same read the sync pipeline performs — so the preview matches what
      * a mapping on that node would actually see.
      */
@@ -192,7 +192,7 @@ class FeedInspector
      * nodes themselves (relation mappings consume whole arrays) and, when
      * they hold objects, additionally expose their element leaves under the
      * parent key with the index collapsed away (`directors.role.key`) —
-     * {@see \GlueAgency\Influx\sync\RemoteItem::get()} fans such reads out
+     * {@see \GlueAgency\Influx\sync\item\RemoteItem::get()} fans such reads out
      * over every list element at sync time.
      *
      * @return list<string>

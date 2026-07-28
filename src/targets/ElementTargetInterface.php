@@ -6,7 +6,7 @@ use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 
 /**

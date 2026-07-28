@@ -25,7 +25,7 @@ enum SyncDecision: string
     /**
      * Decide what a sync run should do with one remote item given its match
      * value and the element (if any) that was found for it. Used by both
-     * {@see \GlueAgency\Influx\services\SynchronizationService::processItem()} for
+     * {@see \GlueAgency\Influx\sync\item\ItemRunner::run()} for
      * the real run and {@see \GlueAgency\Influx\services\InspectorService::inspectWithTarget()}
      * for the dry-run inspector, so both stay aligned on the rule.
      *
@@ -65,7 +65,7 @@ enum SyncDecision: string
     /**
      * Human-readable label for a decision — e.g. the inspector's outcome
      * column. The skip variants double as the message shown on a skipped log
-     * item; {@see \GlueAgency\Influx\sync\ItemProcessor} overrides SKIP_NO_MATCH
+     * item; {@see \GlueAgency\Influx\sync\item\ItemProcessor} overrides SKIP_NO_MATCH
      * with the configured match node.
      */
     public function label(): string

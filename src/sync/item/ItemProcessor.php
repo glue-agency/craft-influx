@@ -1,11 +1,12 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\item;
 
 use Craft;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\SyncContext;
 
 /**
  * The per-item pipeline, in three phases that exist exactly once for both
@@ -19,9 +20,9 @@ use GlueAgency\Influx\models\Link;
  *   3. {@see commit()}   — persist, unless the run is a dry-run or nothing
  *                          changed.
  *
- * The phase boundaries are deliberately the seams where
- * {@see \GlueAgency\Influx\services\SynchronizationService} fires its item events,
- * so events stay on the service while the logic lives here. Dry-run safety
+ * The phase boundaries are deliberately the seams where {@see ItemRunner}
+ * fires its item events (through the service, which stays their sender), so
+ * events stay out of this class while the logic lives here. Dry-run safety
  * is structural: the debug inspector simply never calls commit(), and the
  * dryRun flag rides the context into every field strategy.
  */

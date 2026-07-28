@@ -8,7 +8,7 @@ use craft\fields\BaseOptionsField;
 use GlueAgency\Influx\fields\Dropdown;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**

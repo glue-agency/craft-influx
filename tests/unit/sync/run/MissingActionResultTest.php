@@ -1,31 +1,31 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
 use craft\base\Element;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\services\SynchronizationService;
+use GlueAgency\Influx\sync\run\MissingElementsSweeper;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\AbstractElementTarget;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 use RuntimeException;
 
 /**
- * Spec for {@see SynchronizationService::applyMissingAction()}: it must report
- * the target save's boolean result so {@see SynchronizationService::sweepMissing()}
- * can record an ERROR row for a save that didn't persist — never a
- * false-positive success row (a real run once logged 603 'disabled' rows for
- * disables that never landed).
+ * Spec for {@see MissingElementsSweeper::applyAction()}: it must report the
+ * target save's boolean result so {@see MissingElementsSweeper::apply()} can
+ * record an ERROR row for a save that didn't persist — never a false-positive
+ * success row (a real run once logged 603 'disabled' rows for disables that
+ * never landed).
  *
- * No Craft boot: applyMissingAction() dispatches straight to the target's
+ * No Craft boot: applyAction() dispatches straight to the target's
  * disable()/delete() methods. A fake target (extending {@see AbstractElementTarget}
  * so only the action method needs overriding) returns false without touching
  * Craft's element service, and a {@see SyncContext} is built directly (its
  * constructor only assigns — {@see SyncContext::forSite()} is the Craft-touching
- * factory we avoid). The method is protected, so an anonymous subclass exposes it.
+ * factory we avoid).
  */
 class MissingActionResultTest extends Unit
 {
@@ -50,8 +50,8 @@ class MissingActionResultTest extends Unit
     }
 
     /**
-     * Invoke applyMissingAction() against a context wrapping the given target
-     * and site scope, on a throwaway element.
+     * Invoke applyAction() against a context wrapping the given target and site
+     * scope, on a throwaway element.
      */
     protected function apply(ItemAction $policy, object $target, ?int $siteId): bool
     {
@@ -61,16 +61,7 @@ class MissingActionResultTest extends Unit
             siteId: $siteId,
         );
 
-        $element = $this->makeElement();
-
-        $service = new class() extends SynchronizationService {
-            public function publicApply(SyncContext $context, ItemAction $policy, ElementInterface $element): bool
-            {
-                return $this->applyMissingAction($context, $policy, $element);
-            }
-        };
-
-        return $service->publicApply($context, $policy, $element);
+        return (new MissingElementsSweeper())->applyAction($context, $policy, $this->makeElement());
     }
 
     /**
@@ -118,8 +109,8 @@ class MissingActionResultTest extends Unit
     }
 
     /**
-     * A bare element stand-in — applyMissingAction() only passes it through to
-     * the target, which here ignores it.
+     * A bare element stand-in — applyAction() only passes it through to the
+     * target, which here ignores it.
      */
     protected function makeElement(): ElementInterface
     {

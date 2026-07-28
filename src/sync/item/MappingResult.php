@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\item;
 
 /**
  * Outcome of applying one mapping to one element. Produced by

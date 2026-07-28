@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\item;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;

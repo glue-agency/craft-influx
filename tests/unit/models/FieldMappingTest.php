@@ -4,7 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Behaviour spec for FieldMapping::isActive() — THE distinction the sync walker

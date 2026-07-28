@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\models\Link;
@@ -8,8 +8,11 @@ use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
- * Spec for the scopes a queued CP trigger fans out to —
- * {@see SynchronizationService::sitesToQueue()}.
+ * Spec for the scopes ONE run covers, whether queued or synchronous —
+ * {@see SynchronizationService::syncScopes()}. It replaced two near-identical
+ * expansions (one for the queue fan-out, one for the synchronous run) that
+ * differed only in whether they also validated the requested handle; that
+ * validation now lives on its own seam, leaving this the single expansion rule.
  *
  * The regression this pins: the expansion used to be re-derived as
  * `count($link->siteHandles()) > 1 ? $handles : [$site]`, so a link with exactly
@@ -18,9 +21,9 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
  * elements cross-site. {@see Link::syncSiteHandles()} owns the rule; this method
  * must only add the "explicit site wins" case on top of it.
  *
- * No Craft boot: the method reads only the link's site endpoints. The method is
- * protected, so an anonymous subclass exposes it (same seam the rest of the
- * suite favours over reflection).
+ * No Craft boot: the method reads only the link's site endpoints, and the
+ * service's init() wires collaborators that touch no app services — so a bare
+ * service instance is enough.
  */
 class QueuedSyncSitesTest extends Unit
 {
@@ -68,13 +71,6 @@ class QueuedSyncSitesTest extends Unit
     {
         $link = FakeLink::make(['siteEndpoints' => $siteEndpoints]);
 
-        $service = new class() extends SynchronizationService {
-            public function publicSitesToQueue(Link $link, ?string $site): array
-            {
-                return $this->sitesToQueue($link, $site);
-            }
-        };
-
-        $this->assertSame($expected, $service->publicSitesToQueue($link, $site));
+        $this->assertSame($expected, (new SynchronizationService())->syncScopes($link, $site));
     }
 }

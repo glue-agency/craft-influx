@@ -136,7 +136,7 @@ abstract class Relation extends RelationalField
      * Native attributes (title / slug) the related element can receive values
      * for, rendered as an `elementSubFields` editor and applied via the
      * mapping's `nativeFields` channel
-     * ({@see \GlueAgency\Influx\sync\MappingApplier::applyNativeSubField()}).
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}).
      *
      * Driven by the related element's own field layout(s): each is offered
      * only when a source layout actually includes it — entry types can

@@ -5,7 +5,7 @@ namespace GlueAgency\Influx\Tests\unit\models;
 use Codeception\Test\Unit;
 use craft\elements\Entry;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Link model behaviour spec — the bits the sync engine relies on.

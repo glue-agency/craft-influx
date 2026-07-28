@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\models;
 
 use Cake\Utility\Hash;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * One entry of a link's `mappings` config, typed. The persisted shape stays
@@ -148,7 +148,7 @@ class FieldMapping
      * clearing them. Everything else — an empty feed value, or a non-empty
      * value that no longer resolves — is written through as empty (the feed is
      * authoritative). The single source of truth for that distinction, shared
-     * by {@see \GlueAgency\Influx\sync\MappingApplier} and the field strategies.
+     * by {@see \GlueAgency\Influx\sync\item\MappingApplier} and the field strategies.
      */
     public function isActive(): bool
     {

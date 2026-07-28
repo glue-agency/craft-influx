@@ -1,22 +1,25 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\data\FeedPage;
-use GlueAgency\Influx\services\SynchronizationService;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\sync\run\PageWalk;
 
 /**
  * Spec for the progress denominator both page loops share —
- * {@see SynchronizationService::estimatedTotal()}.
+ * {@see PageWalk::estimateTotal()}. It moved onto the walk accumulator when the
+ * per-page loop was unified: the multiplier it needs (the first page's size) is
+ * accumulated there, so the denominator belongs with it.
  *
  * The regression this pins: the queued loop used to multiply the page count by
  * the CURRENT page's size while the synchronous loop used the first page's, so
  * the two reported different totals once the final page came back short. The
  * multiplier is the FIRST page's size, always.
  *
- * No Craft boot: the helper reads only a {@see FeedPage}'s counts.
+ * No Craft boot: the helper reads only a {@see FeedPage}'s counts and the walk's
+ * own first-page size.
  */
 class ProgressTotalTest extends Unit
 {
@@ -47,15 +50,18 @@ class ProgressTotalTest extends Unit
         $this->assertNull($this->estimate(new FeedPage(1, [], null, null, 5), 0));
     }
 
+    public function testTheDenominatorIsMemoizedOnceItSettles(): void
+    {
+        // A synchronous run keeps ONE walk across every page, so a feed whose
+        // reported counts drift mid-run can't move the denominator it settled on.
+        $walk = new PageWalk(firstPageSize: 25);
+
+        $this->assertSame(120, $walk->estimateTotal(new FeedPage(1, [], null, 120, 5)));
+        $this->assertSame(120, $walk->estimateTotal(new FeedPage(2, [], null, 999, 5)));
+    }
+
     private function estimate(FeedPage $page, int $firstPageSize): ?int
     {
-        $service = new class() extends SynchronizationService {
-            public function publicEstimatedTotal(FeedPage $page, int $firstPageSize): ?int
-            {
-                return $this->estimatedTotal($page, $firstPageSize);
-            }
-        };
-
-        return $service->publicEstimatedTotal($page, $firstPageSize);
+        return (new PageWalk(firstPageSize: $firstPageSize))->estimateTotal($page);
     }
 }

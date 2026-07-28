@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\item;
 
 use Cake\Utility\Hash;
 use Throwable;

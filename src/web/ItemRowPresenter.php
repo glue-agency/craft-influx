@@ -13,6 +13,7 @@ use craft\helpers\Html;
 use DateTimeInterface;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use Throwable;
 
@@ -64,7 +65,7 @@ class ItemRowPresenter
      * other value keeps its plain string and a null `parsedHtml`, so the
      * emitted shape stays uniform.
      *
-     * @param list<\GlueAgency\Influx\sync\MappingResult> $results
+     * @param list<MappingResult> $results
      * @param array<string, string> $labels handle => friendly field name
      * @param bool $withParsedHtml render rich parsed values as server-side HTML too
      * @return list<array>

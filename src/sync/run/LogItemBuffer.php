@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\run;
 
 /**
  * Accumulates the pending log-item rows and counter deltas for ONE log record

@@ -2,7 +2,7 @@
 
 namespace GlueAgency\Influx\data;
 
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * One fetched page of a paginated feed, as yielded by {@see PagedFeed}.

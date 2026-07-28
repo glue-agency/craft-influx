@@ -13,7 +13,7 @@ use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Mapping strategy for Craft's Matrix field. Turns a remote list into Matrix

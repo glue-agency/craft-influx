@@ -4,7 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\data;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\data\FeedInspector;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use ReflectionClass;
 
 /**

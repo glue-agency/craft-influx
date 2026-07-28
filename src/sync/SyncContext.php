@@ -6,6 +6,9 @@ use Craft;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\item\ElementLookupCache;
+use GlueAgency\Influx\sync\item\ItemProcessor;
+use GlueAgency\Influx\sync\run\MissingElementsSweeper;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
@@ -43,7 +46,7 @@ class SyncContext
      * A partial (offset) run must NEVER run the missing-elements sweep: its
      * seen-set covers only the window, so the complement isn't missing — it's
      * just outside the slice. Deleting/disabling it would wipe everything
-     * beyond the window. {@see \GlueAgency\Influx\services\SynchronizationService::sweepMissing()}
+     * beyond the window. {@see MissingElementsSweeper::plan()}
      * gates the sweep on this: only a full sync may delete or disable.
      */
     public ?string $offsetHandle = null;

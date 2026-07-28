@@ -8,7 +8,7 @@ use craft\helpers\StringHelper;
 use DateTime;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * An Influx link: one configured connection between Craft and an external

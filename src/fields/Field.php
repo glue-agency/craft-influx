@@ -18,7 +18,7 @@ use Throwable;
  * in an immutable {@see FieldContext}, so the sub-mapping recursion can safely
  * re-enter the same instance.
  *
- * Lifecycle, driven by {@see \GlueAgency\Influx\sync\MappingApplier}:
+ * Lifecycle, driven by {@see \GlueAgency\Influx\sync\item\MappingApplier}:
  *
  *   $value = $strategy->parse($context);
  *   // An actively-mapped field is always written — a null/empty value clears
@@ -139,7 +139,7 @@ abstract class Field
 
     /**
      * Whether the feed addresses this mapping for the given item — the gate
-     * {@see \GlueAgency\Influx\sync\MappingApplier} consults before running the
+     * {@see \GlueAgency\Influx\sync\item\MappingApplier} consults before running the
      * strategy at all. Default: the mapping's own node/default addressing.
      * Strategies whose value derives from SUB-mappings rather than an own node
      * ({@see Matrix}) override this, because a node-less parent mapping would

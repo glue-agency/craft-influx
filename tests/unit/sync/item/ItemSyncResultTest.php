@@ -1,12 +1,12 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\item;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
-use GlueAgency\Influx\sync\ItemSyncResult;
-use GlueAgency\Influx\sync\MappingResult;
+use GlueAgency\Influx\sync\item\ItemSyncResult;
+use GlueAgency\Influx\sync\item\MappingResult;
 
 /**
  * Behaviour spec for {@see ItemSyncResult::changedFieldHandles()} — the run-time

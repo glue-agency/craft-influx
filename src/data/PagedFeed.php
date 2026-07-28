@@ -9,7 +9,7 @@ use Generator;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DataService;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use IteratorAggregate;
 use Throwable;
 

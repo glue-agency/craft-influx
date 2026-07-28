@@ -40,8 +40,8 @@ class SynchronizationController extends AbstractController
      * so a pre-run backup failure lands as a failed log rather than blocking the
      * request.
      *
-     * The flash message counts the scopes {@see \GlueAgency\Influx\models\Link::syncSiteHandles()}
-     * resolves — the same rule the fan-out queues on — so it can't claim a
+     * The flash message counts the scopes {@see \GlueAgency\Influx\services\SynchronizationService::syncScopes()}
+     * resolves — literally the seam the fan-out queues on — so it can't claim a
      * different number of runs than were actually pushed.
      */
     public function actionLink(): ?Response
@@ -65,7 +65,7 @@ class SynchronizationController extends AbstractController
 
         $plugin->synchronization->queueSync($link, $offset, $site, SyncTrigger::CP);
 
-        $queuedSites = $site !== null ? [$site] : $link->syncSiteHandles();
+        $queuedSites = $plugin->synchronization->syncScopes($link, $site);
 
         $message = count($queuedSites) > 1
             ? Craft::t('influx', 'Syncs queued for {n} sites.', ['n' => count($queuedSites)])

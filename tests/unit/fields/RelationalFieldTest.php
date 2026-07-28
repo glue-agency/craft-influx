@@ -7,7 +7,7 @@ use craft\base\ElementInterface;
 use GlueAgency\Influx\fields\RelationalField;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**

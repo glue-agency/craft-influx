@@ -1,9 +1,9 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\item;
 
 use Codeception\Test\Unit;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Behaviour spec for {@see RemoteItem::fromItemResponse()} — building an item

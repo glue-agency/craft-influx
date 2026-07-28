@@ -1,10 +1,10 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\item;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
-use GlueAgency\Influx\sync\ElementLookupCache;
+use GlueAgency\Influx\sync\item\ElementLookupCache;
 
 /**
  * Behaviour spec for {@see ElementLookupCache}: the resolver runs once per key

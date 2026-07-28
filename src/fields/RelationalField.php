@@ -5,7 +5,7 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\MappingApplier;
+use GlueAgency\Influx\sync\item\MappingApplier;
 
 /**
  * Shared base for fields that store related-element ids and may write values

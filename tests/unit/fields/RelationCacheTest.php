@@ -6,9 +6,9 @@ use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\fields\Relation;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\sync\ElementLookupCache;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\ElementLookupCache;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 use RuntimeException;
 

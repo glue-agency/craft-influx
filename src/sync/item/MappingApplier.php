@@ -1,10 +1,12 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\item;
 
 use craft\base\ElementInterface;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\SyncContext;
 use Throwable;
 
 /**

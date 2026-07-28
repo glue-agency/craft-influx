@@ -5,14 +5,10 @@ namespace GlueAgency\Influx\services;
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
-use craft\helpers\Db;
-use GlueAgency\Influx\data\FeedPage;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\enums\ItemAction;
-use GlueAgency\Influx\enums\SyncDecision;
+use GlueAgency\Influx\enums\RunFailure;
 use GlueAgency\Influx\enums\SyncTrigger;
-use GlueAgency\Influx\events\SyncItemEvent;
-use GlueAgency\Influx\events\SyncLinkEvent;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\Influx;
@@ -21,37 +17,47 @@ use GlueAgency\Influx\models\OffsetPreset;
 use GlueAgency\Influx\queue\jobs\BackupJob;
 use GlueAgency\Influx\queue\jobs\SyncLinkJob;
 use GlueAgency\Influx\records\Log as LogRecord;
-use GlueAgency\Influx\sync\ItemProcessor;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\ItemRunner;
+use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\sync\run\BatchState;
+use GlueAgency\Influx\sync\run\MissingElementsSweeper;
+use GlueAgency\Influx\sync\run\PageWalk;
+use GlueAgency\Influx\sync\run\PageWalker;
+use GlueAgency\Influx\sync\run\RunLifecycle;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use Throwable;
 
 /**
- * Owns the full sync lifecycle for a link:
+ * Orchestrates the sync lifecycle for a link. Every step below is owned by a
+ * collaborator under `src/sync/`, split by scope: `sync\run` holds the per-run
+ * machinery (log lifecycle, page walking, the sweep, the resumable queue state),
+ * `sync\item` the per-item pipeline, and `sync\` itself only the contexts both
+ * levels thread through. This class decides which scopes a run touches, where the
+ * lock and the log lifecycle go, and in which order those collaborators are
+ * called:
  *
- *   1. Pre-run hooks (the cancellable before-event; the pre-run backup is
- *      taken once by the trigger layer, not here).
- *   2. For each configured site (or the primary site if none configured),
- *      fetch the JSON payload, walk paginated pages, and process every item.
- *      Each site runs under its own log (an all-sites run fans out to one queue
- *      job per site).
- *   3. Per item: match-or-build the target element, apply mappings, check for
- *      changes, save (or skip), and log.
- *   4. The missing-elements sweep — disable/delete the elements this scope owns
- *      that the feed didn't mention. One pass resolves ONE policy
- *      ({@see perSitePolicy()}) and applies it in that same pass, once the
- *      scope's pages are exhausted, gated by an offset guard (an offset/delta
- *      run sweeps nothing, since it only ever sees a slice of the feed) and a
- *      clean-pass guard (a pass with any item that failed without a resolvable
- *      element does NOT sweep, since the seen-set can't be trusted). Policy
- *      precedence: DELETE > DELETE_FOR_SITE > DISABLE > DISABLE_FOR_SITE.
- *      The global DELETE/DISABLE only ever resolve on a no-site-endpoints link
- *      ({@see Link::migrateProcessingForEndpointShape()} swaps them for the
- *      -for-site forms when site endpoints exist), so they sweep the single
- *      `[null]` scope unscoped; the -for-site pair sweeps scoped to the
- *      running site (see {@see sweepMissing()}).
- *   5. Post-run hooks (event, log finalisation) — once per site log.
+ *   1. Pre-run hooks — the cancellable before-event, fired once per run by
+ *      {@see RunLifecycle::announce()} (the pre-run backup is taken by the trigger
+ *      layer, not here).
+ *   2. Scope fan-out — {@see syncScopes()} expands a run into one scope per
+ *      configured site (or the single `[null]` scope of a no-site-endpoints link),
+ *      each with its own log. An all-sites queue trigger fans out to one
+ *      {@see SyncLinkJob} per scope.
+ *   3. Page walking — {@see processSite()} walks a scope's pages synchronously,
+ *      {@see batchStep()} walks one page per queue step; both fold each page
+ *      through the same {@see PageWalker} into the same {@see PageWalk}
+ *      accumulator, and both run each item through the same {@see ItemRunner}.
+ *   4. The missing-elements sweep — {@see MissingElementsSweeper}, fired once per
+ *      pass as soon as that scope's pages are exhausted.
+ *   5. Post-run hooks — the log is finished (or failed) and the after-event fired,
+ *      once per scope log, through {@see RunLifecycle}.
+ *
+ * THE EVENT CONSTANTS AND SENDER STAY HERE. All five events are part of the
+ * plugin's documented API and third-party listeners bind them with
+ * `Event::on(SynchronizationService::class, …)`, so the collaborators that fire
+ * them hold this service and trigger through it rather than becoming senders of
+ * their own.
  */
 class SynchronizationService extends Component
 {
@@ -61,16 +67,25 @@ class SynchronizationService extends Component
     public const EVENT_AFTER_ITEM_MAPPING = 'afterItemMapping';
     public const EVENT_AFTER_ITEM = 'afterItem';
 
-    /**
-     * The shared per-item pipeline. Also used (dry-run) by
-     * {@see InspectorService} — the logic exists exactly once.
-     */
-    protected ItemProcessor $itemProcessor;
+    /** The one start/finish/fail scaffold, and the link events. */
+    protected RunLifecycle $lifecycle;
+
+    /** One remote item: pipeline, item events, log row. */
+    protected ItemRunner $itemRunner;
+
+    /** One fetched page: the item loop, the flush, the progress report. */
+    protected PageWalker $pageWalker;
+
+    /** The end-of-pass disable/delete sweep. */
+    protected MissingElementsSweeper $sweeper;
 
     public function init(): void
     {
         parent::init();
-        $this->itemProcessor = new ItemProcessor();
+        $this->lifecycle = new RunLifecycle($this);
+        $this->itemRunner = new ItemRunner($this);
+        $this->pageWalker = new PageWalker($this->itemRunner);
+        $this->sweeper = new MissingElementsSweeper();
     }
 
     /**
@@ -90,9 +105,10 @@ class SynchronizationService extends Component
      * log (siteHandle carries the requested scope, or null).
      *
      * A site whose feed fails to fetch fails THAT site's log and the run
-     * CONTINUES with the next site (per-site isolation); a non-fetch failure
-     * inside a site's processing does the same — that site's log closes as
-     * failed (never left 'running') and the next site still runs.
+     * CONTINUES with the next site (per-site isolation, spelled out as
+     * {@see RunFailure::FAIL_AND_CONTINUE}); a non-fetch failure inside a site's
+     * processing does the same — that site's log closes as failed (never left
+     * 'running') and the next site still runs.
      *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
      * @param string|null $siteHandle Restrict the run to a single configured
@@ -105,7 +121,8 @@ class SynchronizationService extends Component
      * caller ignores this (the queue-side path reports progress); it exists so
      * programmatic callers can inspect each site's outcome.
      * @throws InfluxException when a beforeSyncLink listener cancels the run,
-     * or when the link's sync lock is already held by another run.
+     * when the requested site has no endpoint, or when the link's sync lock is
+     * already held by another run.
      * @throws \Throwable for failures outside a site's own processing (opening
      * its log, or an afterSyncLink listener) — both fetch failures
      * ({@see FeedFetchException}) and processing failures are isolated to the
@@ -118,17 +135,11 @@ class SynchronizationService extends Component
         ?string $siteHandle = null,
         ?callable $onProgress = null,
     ): array {
-        $plugin = Influx::getInstance();
-
-        $beforeEvent = new SyncLinkEvent(['link' => $link]);
-        $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
-
-        if (! $beforeEvent->isValid) {
-            throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
-        }
+        $this->lifecycle->announce($link);
 
         $target = $this->resolveTarget($link);
-        $siteHandles = $this->runSites($link, $siteHandle);
+        $this->requireSiteEndpoint($link, $siteHandle);
+        $siteHandles = $this->syncScopes($link, $siteHandle);
 
         $preset = OffsetPreset::forLink($link, $offset);
         [$queryParams] = $preset?->resolve() ?? [[], null];
@@ -144,21 +155,21 @@ class SynchronizationService extends Component
 
         try {
             foreach ($siteHandles as $handle) {
-                $log = $plugin->logs->start($link, $trigger, $handle, $preset?->handle);
+                $log = $this->lifecycle->openLog($link, $trigger, $handle, $preset?->handle);
 
-                try {
-                    $context = SyncContext::forSite($link, $target, $handle, $trigger, offsetHandle: $preset?->handle);
-                    $this->processSite($context, $queryParams, $log, $onProgress);
-                    $plugin->logs->finish($log);
-                } catch (FeedFetchException $e) {
-                    $plugin->logs->fail($log, $e->getMessage());
-                } catch (Throwable $e) {
-                    Craft::error("Influx: link '{$link->handle}' failed for site '" . ($handle ?? 'primary') . "': {$e->getMessage()}", __METHOD__);
-                    $plugin->logs->fail($log, $e->getMessage());
-                }
+                $this->lifecycle->run(
+                    $link,
+                    $log,
+                    function(LogRecord $log) use ($link, $target, $handle, $trigger, $preset, $queryParams, $onProgress): void {
+                        $context = SyncContext::forSite($link, $target, $handle, $trigger, offsetHandle: $preset?->handle);
+                        $this->processSite($context, $queryParams, $log, $onProgress);
+                    },
+                    RunFailure::FAIL_AND_CONTINUE,
+                    "failed for site '" . ($handle ?? 'primary') . "'",
+                );
 
                 $logs[] = $log;
-                $this->fireAfterSyncLink($link, $log);
+                $this->lifecycle->fireAfterSyncLink($link, $log);
             }
         } finally {
             $mutex->release($lockKey);
@@ -175,26 +186,6 @@ class SynchronizationService extends Component
     protected function syncLockKey(Link $link): string
     {
         return "influx:sync:{$link->handle}";
-    }
-
-    /**
-     * Fire EVENT_AFTER_SYNC_LINK for one finished log, carrying its site handle
-     * and its own final counters. Fired once per site log — the one place the
-     * after-event is assembled from a record.
-     */
-    protected function fireAfterSyncLink(Link $link, LogRecord $log): void
-    {
-        $this->trigger(self::EVENT_AFTER_SYNC_LINK, new SyncLinkEvent([
-            'link'           => $link,
-            'siteHandle'     => $log->siteHandle,
-            'itemsSeen'      => (int) $log->itemsSeen,
-            'itemsCreated'   => (int) $log->itemsCreated,
-            'itemsUpdated'   => (int) $log->itemsUpdated,
-            'itemsUnchanged' => (int) $log->itemsUnchanged,
-            'itemsSkipped'   => (int) $log->itemsSkipped,
-            'itemsDeleted'   => (int) $log->itemsDeleted,
-            'itemsDisabled'  => (int) $log->itemsDisabled,
-        ]));
     }
 
     /**
@@ -222,13 +213,13 @@ class SynchronizationService extends Component
 
     /**
      * Fan out the per-site sync jobs: one {@see SyncLinkJob} per scope
-     * {@see sitesToQueue()} resolves. Called directly by {@see queueSync()} when
+     * {@see syncScopes()} resolves. Called directly by {@see queueSync()} when
      * no pre-run backup is needed, and by {@see BackupJob} once its backup has
      * been taken.
      */
     public function queueSyncJobs(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
     {
-        foreach ($this->sitesToQueue($link, $site) as $handle) {
+        foreach ($this->syncScopes($link, $site) as $handle) {
             Craft::$app->getQueue()->push(new SyncLinkJob([
                 'linkHandle' => $link->handle,
                 'offset'     => $offset,
@@ -239,23 +230,43 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Scopes a queue trigger fans out to: the requested site alone, else every
-     * site the link is configured for.
+     * The scopes one run covers: the requested site alone, else every site the
+     * link is configured for. THE one place "which sites does this run touch" is
+     * decided — the synchronous fan-out, the queued fan-out and the CP's
+     * "queued for N sites" message all read it from here, so they can't disagree
+     * about how many runs a trigger produces.
      *
      * Defers to {@see Link::syncSiteHandles()} — the single owner of the "no
      * sites = primary site" rule — instead of re-deriving it. A link with
-     * exactly ONE site endpoint must still queue THAT handle: the unscoped
+     * exactly ONE site endpoint must still resolve THAT handle: the unscoped
      * `[null]` scope would fetch the base endpoint (legitimately absent when
      * site endpoints exist) and sweep missing elements cross-site.
      *
-     * Pure: reads only the link's site endpoints, so it's unit-tested without a
-     * Craft boot.
+     * Deliberately unvalidated, so it stays pure and unit-testable without a
+     * Craft boot; validating a requested handle is {@see requireSiteEndpoint()}'s
+     * job, applied by the paths that actually run a scope.
      *
      * @return list<string|null>
      */
-    protected function sitesToQueue(Link $link, ?string $site): array
+    public function syncScopes(Link $link, ?string $site): array
     {
         return $site !== null ? [$site] : $link->syncSiteHandles();
+    }
+
+    /**
+     * Reject a requested site the link has no endpoint for, before anything is
+     * fetched or logged. Shared by the two paths that run a scope for real
+     * ({@see syncLink()} and {@see batchStep()}); the queue fan-out doesn't need
+     * it, since its callers validate before pushing and the step revalidates on
+     * the way in.
+     *
+     * @throws InfluxException when the site isn't one of the link's endpoints.
+     */
+    protected function requireSiteEndpoint(Link $link, ?string $siteHandle): void
+    {
+        if ($siteHandle !== null && ! in_array($siteHandle, $link->siteHandles(), true)) {
+            throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
+        }
     }
 
     /**
@@ -276,24 +287,19 @@ class SynchronizationService extends Component
      * page is done it fires the single missing-elements sweep, closes the log,
      * and reports `done`. There is no cross-site advance.
      *
-     * The missing-elements sweep needs the scope's seen-set, but the set is
-     * built one page per step — so `seenIds`/`unattributedErrors` ride the
-     * state array, accumulated across steps and consumed once the last page is
-     * done. The set rides the queue payload: fine for feeds up to tens of
-     * thousands of ids; flag as a known bound (a feed far larger would bloat
-     * the job row and should page the sweep differently).
+     * The state array is the queue payload's carried state and converts to a
+     * {@see BatchState} on the way in and back on the way out — the accumulated
+     * seen-set, unattributed-error count and first-page size have to survive
+     * across steps, since the sweep and the progress denominator are derived from
+     * them (see {@see BatchState} for why they're spelled out in one place).
      *
      * Retry-safe by construction: the step runs under {@see syncLockKey()}, so
      * no two steps of the same link can race find-or-create into duplicate
      * elements, and a step that can't take the lock returns unprocessed for the
-     * job to re-queue. The seen-set is rebuilt as a value-keyed map so a
-     * re-processed tail can't double-count, and the page's rows flush in a
-     * `finally`: a throw still persists what this step saved, leaving a retried
-     * step only the un-flushed tail to redo.
-     *
-     * `firstPageSize` rides the state for the same reason: the progress
-     * denominator is pages × the FIRST page's size ({@see estimatedTotal()}),
-     * which only stays stable if that size survives the steps that follow.
+     * job to re-queue. The seen-set is a value-keyed map so a re-processed tail
+     * can't double-count, and the page's rows flush in a `finally`
+     * ({@see PageWalker}): a throw still persists what this step saved, leaving a
+     * retried step only the un-flushed tail to redo.
      *
      * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
@@ -314,135 +320,73 @@ class SynchronizationService extends Component
             throw new InfluxException("Cannot sync link '{$linkHandle}' — no link with that handle exists.");
         }
 
-        $state['done'] = false;
-        $state['seenIds'] ??= [];
-        $state['unattributedErrors'] ??= 0;
-        $state['firstPageSize'] ??= null;
+        $batch = BatchState::fromArray($state);
         $target = $this->resolveTarget($link);
 
-        if ($requestedSite !== null && ! in_array($requestedSite, $link->siteHandles(), true)) {
-            throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$requestedSite}'.");
-        }
+        $this->requireSiteEndpoint($link, $requestedSite);
 
         $preset = OffsetPreset::forLink($link, $offset);
         [$queryParams] = $preset?->resolve() ?? [[], null];
 
-        if (($state['logId'] ?? null) === null) {
-            $log = $this->startSync($link, $trigger, $requestedSite, $preset?->handle);
-            $state['logId'] = $log->id;
+        if ($batch->logId === null) {
+            $this->lifecycle->announce($link);
+            $log = $this->lifecycle->openLog($link, $trigger, $requestedSite, $preset?->handle);
+            $batch->logId = $log->id;
         } else {
-            $log = LogRecord::findOne($state['logId']);
-
-            if (! $log) {
-                throw new InfluxException("Influx log #{$state['logId']} vanished mid-run.");
-            }
+            $log = $this->lifecycle->reopenLog($batch->logId);
         }
 
         try {
             $context = SyncContext::forSite($link, $target, $requestedSite, $trigger, offsetHandle: $preset?->handle);
-            $page = $plugin->data->page($link, $requestedSite, $state['cursorUrl'], $queryParams, $state['page']);
+            $page = $plugin->data->page($link, $requestedSite, $batch->cursorUrl, $queryParams, $batch->page);
         } catch (Throwable $e) {
-            $plugin->logs->fail($log, $e->getMessage());
-            $state['done'] = true;
+            $this->lifecycle->fail($log, $e->getMessage());
+            $batch->done = true;
 
-            return $state;
+            return $batch->toArray();
         }
-
-        $state['firstPageSize'] ??= count($page->items);
-
-        $seen = array_fill_keys($state['seenIds'], true);
 
         $mutex = Craft::$app->getMutex();
         $lockKey = $this->syncLockKey($link);
 
         if (! $mutex->acquire($lockKey, 15)) {
-            return $state;
+            return $batch->toArray();
         }
 
         try {
-            foreach ($page->items as $item) {
-                try {
-                    $elementId = $this->processItem($context, $item, $log);
-
-                    if ($elementId !== null) {
-                        $seen[$elementId] = true;
-                    }
-                } catch (Throwable $e) {
-                    $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
-                    $state['unattributedErrors']++;
-                }
-            }
+            $this->pageWalker->walk($context, $page, $log, $batch->walk, $onProgress);
         } finally {
             $mutex->release($lockKey);
-            $plugin->logs->flush($log);
-            $state['seenIds'] = array_keys($seen);
         }
 
-        if ($onProgress !== null) {
-            $onProgress((int) $log->itemsSeen, $this->estimatedTotal($page, (int) $state['firstPageSize']));
-        }
+        if ($page->nextUrl !== null) {
+            if ($batch->page >= PagedFeed::MAX_PAGES) {
+                $this->lifecycle->fail($log, 'Pagination exceeded ' . PagedFeed::MAX_PAGES . ' pages — aborting.');
+                $batch->done = true;
 
-        $nextUrl = $page->nextUrl;
-
-        if ($nextUrl !== null) {
-            if ($state['page'] >= PagedFeed::MAX_PAGES) {
-                $plugin->logs->fail($log, 'Pagination exceeded ' . PagedFeed::MAX_PAGES . ' pages — aborting.');
-                $state['done'] = true;
-
-                return $state;
+                return $batch->toArray();
             }
 
-            $state['cursorUrl'] = $nextUrl;
-            $state['page']++;
+            $batch->cursorUrl = $page->nextUrl;
+            $batch->page++;
 
-            return $state;
+            return $batch->toArray();
         }
 
-        try {
-            $this->sweepMissing($context, $state['seenIds'], $state['unattributedErrors'], $log);
-            $this->finishSync($link, $log);
-        } catch (Throwable $e) {
-            Craft::error("Influx: link '{$link->handle}' failed during the missing-elements sweep: {$e->getMessage()}", __METHOD__);
-            $plugin->logs->fail($log, $e->getMessage());
-        }
-        $state['done'] = true;
+        $this->lifecycle->run(
+            $link,
+            $log,
+            function(LogRecord $log) use ($context, $batch): void {
+                $this->sweeper->sweep($context, $batch->walk->seenIds(), $batch->walk->unattributedErrors, $log);
+            },
+            RunFailure::FAIL_AND_CONTINUE,
+            'failed during the missing-elements sweep',
+            fireAfterSyncLink: true,
+        );
 
-        return $state;
-    }
+        $batch->done = true;
 
-    /**
-     * Begin a run: fire the cancellable before-event and open the log. Shared
-     * with {@see batchStep()}; {@see syncLink()} does this inline. The pre-run
-     * backup is the trigger layer's job (see {@see queueSync}).
-     *
-     * @param string|null $siteHandle The site this run was scoped to (null =
-     * an all-sites run), recorded on the log so the viewer can show which
-     * site's endpoint was fetched.
-     * @param string|null $offsetHandle The sliding-window preset the run was
-     * triggered with (null = the full feed), recorded on the log.
-     */
-    protected function startSync(Link $link, SyncTrigger $trigger, ?string $siteHandle = null, ?string $offsetHandle = null): LogRecord
-    {
-        $beforeEvent = new SyncLinkEvent(['link' => $link]);
-        $this->trigger(self::EVENT_BEFORE_SYNC_LINK, $beforeEvent);
-
-        if (! $beforeEvent->isValid) {
-            throw new InfluxException("Link '{$link->handle}' run cancelled by a beforeSyncLink listener.");
-        }
-
-        return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle);
-    }
-
-    /**
-     * Finalise a run: close the log and fire the after-event with the final
-     * counters. Carries the log's `siteHandle` so the batch path's after-event
-     * matches the synchronous path's ({@see fireAfterSyncLink()}) shape.
-     */
-    protected function finishSync(Link $link, LogRecord $log): void
-    {
-        Influx::getInstance()->logs->finish($log);
-
-        $this->fireAfterSyncLink($link, $log);
+        return $batch->toArray();
     }
 
     /**
@@ -454,6 +398,10 @@ class SynchronizationService extends Component
      * takes the single handle that comes back. The single-resource response
      * carries the same envelope as the list feed, so it has to be unwrapped
      * through `rootNode` or every match path misses.
+     *
+     * Fires no link events: it isn't a link run, it's one element's refresh.
+     * A failure re-throws ({@see RunFailure::RETHROW}) so the CP endpoint can
+     * turn it into a message for the editor who pressed the button.
      */
     public function syncElement(Link $link, ElementInterface $element): LogRecord
     {
@@ -464,9 +412,7 @@ class SynchronizationService extends Component
             throw new InfluxException("Link '{$link->handle}' has no match attribute.");
         }
 
-        $matchValue = $element->$matchAttr;
-
-        if (! $matchValue) {
+        if (! $element->$matchAttr) {
             throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
         }
 
@@ -479,21 +425,27 @@ class SynchronizationService extends Component
         }
 
         $siteHandle = $siteHandles[0];
+        $log = $this->lifecycle->openLog($link, SyncTrigger::ELEMENT, $siteHandle, null, $element->id);
 
-        return $this->runWithLog($link, SyncTrigger::ELEMENT, $element->id, $siteHandle, function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandle) {
-            $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
-            $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
+        return $this->lifecycle->run(
+            $link,
+            $log,
+            function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandle): void {
+                $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
+                $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
 
-            $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);
+                $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);
 
-            try {
-                $this->processItem($context, $item, $log);
-            } catch (Throwable $e) {
-                $plugin->logs->recordItem($log, ItemAction::ERROR, $element->id, null, $e->getMessage(), $item->raw());
-            }
+                try {
+                    $this->itemRunner->run($context, $item, $log);
+                } catch (Throwable $e) {
+                    $plugin->logs->recordItem($log, ItemAction::ERROR, $element->id, null, $e->getMessage(), $item->raw());
+                }
 
-            $plugin->cooldown->mark($link, $element);
-        });
+                $plugin->cooldown->mark($link, $element);
+            },
+            RunFailure::RETHROW,
+        );
     }
 
     /**
@@ -523,491 +475,29 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Sites a run should cover: a single requested site (validated against the
-     * link's configured endpoints), or every configured site when none is
-     * requested. The one place "which sites does this run touch" is decided.
+     * Walk every page of the feed for one scope — one site, or the single [null]
+     * scope of a no-site-endpoints link — and sweep once at the end. Pagination
+     * mechanics (fetching, cycle guards, URL normalization) live in
+     * {@see PagedFeed}; everything per-page (the item loop, the flush, the
+     * progress report) lives in {@see PageWalker}, which the queued path calls
+     * with the same accumulator so the two can't drift.
      *
-     * @return list<string|null>
-     */
-    protected function runSites(Link $link, ?string $siteHandle): array
-    {
-        if ($siteHandle === null) {
-            return $link->syncSiteHandles();
-        }
-
-        if (! in_array($siteHandle, $link->siteHandles(), true)) {
-            throw new InfluxException("Link '{$link->handle}' has no endpoint for site '{$siteHandle}'.");
-        }
-
-        return [$siteHandle];
-    }
-
-    /**
-     * Run a body within the log lifecycle: start a log, run the body (which
-     * does the actual per-site work and receives the {@see LogRecord}), then
-     * finish — or, if anything throws, fail the log and re-throw. The one place
-     * the start/finish/fail/re-throw scaffold lives — {@see syncElement()}'s
-     * lifecycle wrapper.
-     *
-     * @param int|null $elementId The resource a single-element run was
-     * triggered for, recorded on the log so the viewer can name it.
-     * @param string|null $siteHandle The site the run is scoped to (a
-     * site-specific element sync), recorded on the log; null = primary.
-     */
-    protected function runWithLog(Link $link, SyncTrigger $trigger, ?int $elementId, ?string $siteHandle, callable $body): LogRecord
-    {
-        $logs = Influx::getInstance()->logs;
-        $log = $logs->start($link, $trigger, $siteHandle, null, $elementId);
-
-        try {
-            $body($log);
-            $logs->finish($log);
-        } catch (Throwable $e) {
-            $logs->fail($log, $e->getMessage());
-
-            throw $e;
-        }
-
-        return $log;
-    }
-
-    /**
-     * Walk every page of the feed for one site (or the single [null] scope of a
-     * no-site-endpoints link) and process every item. Pagination mechanics
-     * (fetching, cycle guards, URL normalization) live in
-     * {@see \GlueAgency\Influx\data\PagedFeed}.
-     *
-     * One bad item must not kill the walk: a per-item failure becomes an error
-     * row and the run goes on. Rows are flushed at every page boundary so the
-     * DB rows and counters match what progress reports, and progress itself is
-     * reported once per page rather than per item to keep queue writes bounded.
-     * The feed's reported total is captured once, so the job can show a real
-     * percentage instead of the eased heuristic.
-     *
-     * The missing-elements sweep fires here once this scope's pages are
-     * exhausted — one pass, one resolved policy ({@see sweepMissing()}). For a
-     * site pass it's scoped to that site (disable / delete-for-site); for the
-     * no-site-endpoints [null] pass a global delete sweeps cross-site. Its
-     * inputs accumulate across every page: `seenIds` protects the items the
-     * feed did mention, while any item that failed without a resolvable element
-     * leaves the seen-set incomplete and makes the sweep bail.
+     * The single {@see PageWalk} instance is what makes this pass different from a
+     * queue step: it accumulates across every page, so the sweep sees the whole
+     * scope's seen-set and the progress denominator is fixed on the first page.
      *
      * @throws FeedFetchException on fetch failures, paginator URL cycles, or
      * runaway pagination.
      */
     protected function processSite(SyncContext $context, array $queryParams, LogRecord $log, ?callable $onProgress = null): void
     {
-        $plugin = Influx::getInstance();
+        $walk = new PageWalk();
 
-        $total = null;
-        $firstPageSize = null;
-
-        $seenIds = [];
-        $unattributedErrors = 0;
-
-        foreach ($plugin->data->pages($context->link, $context->siteHandle, $queryParams) as $page) {
-            if ($firstPageSize === null) {
-                $firstPageSize = count($page->items);
-            }
-
-            foreach ($page->items as $item) {
-                try {
-                    $elementId = $this->processItem($context, $item, $log);
-
-                    if ($elementId !== null) {
-                        $seenIds[$elementId] = true;
-                    }
-                } catch (Throwable $e) {
-                    $plugin->logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
-                    $unattributedErrors++;
-                }
-            }
-
-            $plugin->logs->flush($log);
-
-            if ($onProgress !== null) {
-                $total ??= $this->estimatedTotal($page, $firstPageSize);
-
-                $onProgress((int) $log->itemsSeen, $total);
-            }
+        foreach (Influx::getInstance()->data->pages($context->link, $context->siteHandle, $queryParams) as $page) {
+            $this->pageWalker->walk($context, $page, $log, $walk, $onProgress);
         }
 
-        $this->sweepMissing($context, array_keys($seenIds), $unattributedErrors, $log);
-    }
-
-    /**
-     * The progress denominator for one page: the feed's own reported total when
-     * it has one, else pages × the FIRST page's size. Deliberately the first
-     * page's size and not the current page's — a short final page would
-     * otherwise shrink the estimate mid-run and walk the bar backwards. Null
-     * when the feed reports neither a total nor a page count; the caller then
-     * eases toward a soft target instead.
-     *
-     * Pure: shared by both page loops so the queued and synchronous paths can't
-     * drift onto different heuristics again.
-     */
-    protected function estimatedTotal(FeedPage $page, int $firstPageSize): ?int
-    {
-        return $page->totalCount
-            ?? ($page->pageCount !== null && $firstPageSize > 0 ? $page->pageCount * $firstPageSize : null);
-    }
-
-    /**
-     * Run one remote item through the shared pipeline, firing the item
-     * events at the phase seams and logging the outcome. The logic itself
-     * lives in {@see ItemProcessor} — this method only owns events + logs. A
-     * no-match item never reaches the listeners; there's nothing to act on. A
-     * listener may swap in a different element, and the decision is then
-     * re-derived — a supplied element turns a no-create skip into an update.
-     *
-     * Returns the id of the element this item resolved to (or null when it
-     * matched none), regardless of the row outcome — SKIPPED and ERROR rows
-     * included. The callers collect these ids as the run's "seen set": an
-     * item PRESENT in the feed must never be swept as missing, whatever its
-     * per-item result. A no-match item contributes null (nothing to protect).
-     */
-    protected function processItem(SyncContext $context, RemoteItem $item, LogRecord $log): ?int
-    {
-        $plugin = Influx::getInstance();
-        $link = $context->link;
-
-        $resolution = $this->itemProcessor->resolve($context, $item);
-
-        if ($resolution->decision !== SyncDecision::SKIP_NO_MATCH) {
-            $beforeEvent = new SyncItemEvent([
-                'link'       => $link,
-                'item'       => $item->raw(),
-                'element'    => $resolution->element,
-                'siteHandle' => $context->siteHandle,
-            ]);
-            $this->trigger(self::EVENT_BEFORE_ITEM, $beforeEvent);
-
-            if ($beforeEvent->skip) {
-                $plugin->logs->recordItem($log, ItemAction::SKIPPED, $resolution->element?->id, $this->matchValueString($resolution->matchValue), null, $item->raw());
-
-                return $resolution->element?->id;
-            }
-
-            $resolution = $resolution->withElement($link, $beforeEvent->element);
-        }
-
-        $result = $this->itemProcessor->populate($context, $item, $resolution);
-
-        if ($result->decision->isSkip()) {
-            $plugin->logs->recordItem($log, ItemAction::SKIPPED, $result->element?->id, $this->matchValueString($result->matchValue), $result->message, $item->raw());
-
-            return $result->element?->id;
-        }
-
-        $afterMappingEvent = new SyncItemEvent([
-            'link'       => $link,
-            'item'       => $item->raw(),
-            'element'    => $result->element,
-            'siteHandle' => $context->siteHandle,
-        ]);
-        $this->trigger(self::EVENT_AFTER_ITEM_MAPPING, $afterMappingEvent);
-
-        $result = $this->itemProcessor->commit($context, $result);
-
-        $plugin->logs->recordItem(
-            $log,
-            $result->action,
-            $result->element?->id,
-            $this->matchValueString($result->matchValue),
-            $result->message,
-            $item->raw(),
-            $result->mappingErrors(),
-            $result->changedFieldHandles(),
-        );
-
-        $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);
-
-        return $result->element?->id;
-    }
-
-    /**
-     * Stringify a match value for the log row, preserving null (an item with
-     * no match value logs NULL, not an empty string). The one place the cast
-     * happens, so every recordItem() call records it the same way.
-     */
-    protected function matchValueString(mixed $value): ?string
-    {
-        return $value !== null ? (string) $value : null;
-    }
-
-    /**
-     * Record the single SKIPPED row a bailed sweep leaves behind (clean-pass
-     * failure, delete-for-site on a siteless run, or a single-site run on a
-     * multi-endpoint link). SKIPPED, never ERROR — an error would flip the
-     * run's status; SKIPPED tells the user why nothing was swept. The one seam
-     * every sweep guard routes through, so the log shape stays uniform.
-     */
-    protected function logSweepSkip(LogRecord $log, string $message): void
-    {
-        Influx::getInstance()->logs->recordItem($log, ItemAction::SKIPPED, null, null, $message);
-    }
-
-    /**
-     * Emit the operator-facing warning a clean-pass bail leaves in the Craft
-     * log (distinct from the {@see logSweepSkip()} row it also writes: the
-     * SKIPPED row is for the run viewer, this is for the site log). Its own
-     * seam so the sweep guards route both messages through one place.
-     */
-    protected function warnSweepSkipped(string $message): void
-    {
-        Craft::warning($message, __METHOD__);
-    }
-
-    /**
-     * The single missing-elements action a link's `processing` flags call for,
-     * or null when no missing-elements flag is set. Resolved once per pass and
-     * applied in that same pass — there is no run-end second sweep.
-     *
-     * Precedence when several flags are set — the more destructive wins,
-     * and a global delete supersedes the rest (there's no point disabling
-     * elements you're about to delete outright):
-     *
-     *   DELETE > DELETE_FOR_SITE > DISABLE > DISABLE_FOR_SITE
-     *
-     * {@see Link::migrateProcessingForEndpointShape()} swaps global <-> -for-site
-     * on save to match the endpoint shape, so in practice DELETE/DISABLE only
-     * resolve on a no-site-endpoints link and the -for-site pair only on a
-     * site-endpoints link — but the sweep keeps a defensive guard (D2) against
-     * a hand-edited config that pairs global DELETE with site endpoints.
-     *
-     * Pure: reads only {@see Link::$processing}, so it's unit-tested without a
-     * Craft boot.
-     */
-    protected function perSitePolicy(Link $link): ?ItemAction
-    {
-        if (in_array(Link::PROCESSING_DELETE, $link->processing, true)) {
-            return ItemAction::DELETED;
-        }
-
-        if (in_array(Link::PROCESSING_DELETE_FOR_SITE, $link->processing, true)) {
-            return ItemAction::DELETED_FOR_SITE;
-        }
-
-        if (in_array(Link::PROCESSING_DISABLE, $link->processing, true)) {
-            return ItemAction::DISABLED;
-        }
-
-        if (in_array(Link::PROCESSING_DISABLE_FOR_SITE, $link->processing, true)) {
-            return ItemAction::DISABLED_FOR_SITE;
-        }
-
-        return null;
-    }
-
-    /**
-     * The single missing-elements sweep, run once per pass after that scope's
-     * pages are exhausted — step 4 of the run lifecycle. Handles all four
-     * policies ({@see perSitePolicy()} resolves exactly one):
-     *   - DISABLED: no-site-endpoints pass (siteId null) → {@see ElementTargetInterface::disable()}.
-     *     Stays adaptive — an un-migrated `disable` + site-endpoints config
-     *     disables only that site's row rather than reaching across sites.
-     *   - DISABLED_FOR_SITE: needs a site → {@see ElementTargetInterface::disableForSite()}
-     *     (leave the element live in its other sites); a siteless pass logs one SKIPPED row.
-     *   - DELETED_FOR_SITE: needs a site — a siteless pass logs one SKIPPED row.
-     *   - DELETED: the whole element is destroyed. Only ever resolves on a
-     *     no-site-endpoints link (save-time migration swaps DELETE → DELETE_FOR_SITE
-     *     when site endpoints exist), so the pass is the single `[null]` scope
-     *     and the delete is unscoped ({@see applyMissingAction()} routes DELETED → target->delete()).
-     *
-     * Sliding-window guard: an offset run fetches only a slice of the feed, so
-     * its seen-set is intentionally partial — the complement isn't missing,
-     * just outside the window, and sweeping it would delete/disable everything
-     * beyond the slice. Only a full sync (no offset) may sweep. That skip is
-     * expected behaviour, so it's silent: no warning, no SKIPPED row.
-     *
-     * Safety first: a sweep acts on the COMPLEMENT of the seen-set, so it's
-     * only safe when the seen-set is complete. If any item failed WITHOUT a
-     * resolvable element ($unattributedErrors > 0) the set is untrustworthy —
-     * an element that's actually in the feed but errored before it could be
-     * matched would be swept as missing. So the sweep bails, warns, and logs
-     * one SKIPPED row (not ERROR — an error would flip the run's status
-     * perception; SKIPPED tells the user why nothing was swept).
-     *
-     * Defensive guard (D2): save-time migration swaps DELETE → DELETE_FOR_SITE
-     * when a link has site endpoints, but a hand-edited config could still pair
-     * global DELETE with them. Rather than cross-site delete off one site's
-     * feed, such a link skips the delete, warns, and logs one SKIPPED row.
-     * (Disable needs no equivalent hard guard — it's reversible, so DISABLED
-     * downgrades to a per-site disable instead of skipping.)
-     *
-     * @param list<int> $seenIds Element ids present in this scope's feed.
-     * @param int $unattributedErrors Items that failed with no resolvable
-     * element — any at all disables the sweep.
-     */
-    protected function sweepMissing(SyncContext $context, array $seenIds, int $unattributedErrors, LogRecord $log): void
-    {
-        $link = $context->link;
-        $policy = $this->perSitePolicy($link);
-
-        if ($policy === null) {
-            return;
-        }
-
-        if ($context->offsetHandle !== null) {
-            return;
-        }
-
-        if ($unattributedErrors > 0) {
-            $this->warnSweepSkipped(
-                "Influx: missing-elements sweep skipped for link '{$link->handle}'"
-                . ($context->siteHandle !== null ? " (site '{$context->siteHandle}')" : '')
-                . " — {$unattributedErrors} item(s) failed without a resolvable element, "
-                . 'so the missing-set cannot be trusted.',
-            );
-            $this->logSweepSkip(
-                $log,
-                "Missing-elements sweep skipped: {$unattributedErrors} item(s) failed without a resolvable element.",
-            );
-
-            return;
-        }
-
-        if ($policy === ItemAction::DELETED && ! empty($link->getSiteEndpoints())) {
-            $this->warnSweepSkipped(
-                "Influx: missing-elements delete sweep skipped for link '{$link->handle}'"
-                . ' — global delete is not allowed with site-specific endpoints (would delete '
-                . 'cross-site off a single site\'s feed).',
-            );
-            $this->logSweepSkip(
-                $log,
-                'Missing-elements delete sweep skipped: global delete is not allowed with '
-                . 'site-specific endpoints — use “delete for site”.',
-            );
-
-            return;
-        }
-
-        if (in_array($policy, [ItemAction::DELETED_FOR_SITE, ItemAction::DISABLED_FOR_SITE], true) && $context->siteId === null) {
-            $this->logSweepSkip(
-                $log,
-                "Missing-elements sweep skipped: {$policy->value} needs a site-scoped run.",
-            );
-
-            return;
-        }
-
-        $this->applySweep($context, $policy, $seenIds, $context->siteId, $log);
-    }
-
-    /**
-     * The shared sweep body: build the target's candidate query, status-filter
-     * it per policy, walk it in batches, and apply the policy action to each
-     * element — logging a success row, an ERROR row on a failed/false save, or
-     * an ERROR row on a thrown failure. {@see sweepMissing()} routes here for
-     * all three policies, so the per-element loop, the false-vs-success
-     * discipline, and the tail flush live in exactly one place.
-     *
-     * DISABLED only touches still-enabled elements (skip the churn of
-     * re-disabling); the delete policies consider every status. A save that
-     * returns false WITHOUT throwing (a validation failure that didn't persist)
-     * is an ERROR row, never a success row — the log must not claim a
-     * disable/delete that never landed. The tail flush is explicit: the log
-     * buffer auto-flushes every 100 rows, but on the {@see batchStep()} path
-     * nothing else flushes before the state returns, so this is what persists
-     * the sweep's rows.
-     *
-     * @param list<int> $seenIds Element ids to exclude from the candidate set.
-     * @param int|null $siteId Site to scope the candidate query and the action
-     * to, or null for a cross-site (`siteId('*')->unique()`) sweep.
-     */
-    protected function applySweep(SyncContext $context, ItemAction $policy, array $seenIds, ?int $siteId, LogRecord $log): void
-    {
-        $plugin = Influx::getInstance();
-        $link = $context->link;
-
-        $query = $context->target->missingElementsQuery($link, $seenIds, $siteId);
-
-        if ($query === null) {
-            return;
-        }
-
-        $disablePolicy = in_array($policy, [ItemAction::DISABLED, ItemAction::DISABLED_FOR_SITE], true);
-        $query->status($disablePolicy ? 'enabled' : null);
-
-        $matchAttr = $link->matchAttribute();
-
-        foreach (Db::batch($query, 100) as $elements) {
-            foreach ($elements as $element) {
-                $matchValue = $matchAttr ? $this->matchValueString($element->{$matchAttr} ?? null) : null;
-
-                try {
-                    if (! $this->applyMissingAction($context, $policy, $element)) {
-                        $plugin->logs->recordItem(
-                            $log,
-                            ItemAction::ERROR,
-                            $element->id,
-                            $matchValue,
-                            "Missing-elements {$policy->value} failed to save.",
-                        );
-
-                        continue;
-                    }
-
-                    $plugin->logs->recordItem(
-                        $log,
-                        $policy,
-                        $element->id,
-                        $matchValue,
-                        'Missing from feed.',
-                    );
-                } catch (Throwable $e) {
-                    $plugin->logs->recordItem($log, ItemAction::ERROR, $element->id, null, $e->getMessage());
-                }
-            }
-        }
-
-        $plugin->logs->flush($log);
-    }
-
-    /**
-     * Apply the resolved missing-action to one element. Kept apart from
-     * {@see sweepMissing()} so the mode-per-policy dispatch reads as a single
-     * expression. The site scope is read off the context: DISABLED on a site
-     * run disables only that site; a global DISABLED disables the element.
-     * That downgrade is what an un-migrated `disable` + site-endpoints config
-     * lands on, and it is safe because a disable is reversible — downgrading
-     * beats skipping the sweep outright.
-     *
-     * Returns the target call's boolean result: false means the save did NOT
-     * persist (e.g. a validation error), which {@see sweepMissing()} turns into
-     * an ERROR row instead of a false-positive success row. An unknown policy
-     * returns false (nothing was applied — never log it as done).
-     */
-    protected function applyMissingAction(SyncContext $context, ItemAction $policy, ElementInterface $element): bool
-    {
-        $target = $context->target;
-
-        return match ($policy) {
-            ItemAction::DELETED           => $target->delete($element),
-            ItemAction::DELETED_FOR_SITE  => $target->deleteForSite($element, (int) $context->siteId),
-            ItemAction::DISABLED_FOR_SITE => $target->disableForSite($element, (int) $context->siteId),
-            ItemAction::DISABLED          => $context->siteId !== null
-                ? $target->disableForSite($element, $context->siteId)
-                : $target->disable($element),
-            default => false,
-        };
-    }
-
-    protected function fireAfterItem(
-        Link $link,
-        array $item,
-        ?ElementInterface $element,
-        ?string $siteHandle,
-        ItemAction $action,
-    ): void {
-        $afterEvent = new SyncItemEvent([
-            'link'       => $link,
-            'item'       => $item,
-            'element'    => $element,
-            'siteHandle' => $siteHandle,
-            'action'     => $action->value,
-        ]);
-        $this->trigger(self::EVENT_AFTER_ITEM, $afterEvent);
+        $this->sweeper->sweep($context, $walk->seenIds(), $walk->unattributedErrors, $log);
     }
 
     protected function resolveTarget(Link $link): ElementTargetInterface

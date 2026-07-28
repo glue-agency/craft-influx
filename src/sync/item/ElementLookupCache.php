@@ -1,8 +1,9 @@
 <?php
 
-namespace GlueAgency\Influx\sync;
+namespace GlueAgency\Influx\sync\item;
 
 use craft\base\ElementInterface;
+use GlueAgency\Influx\sync\SyncContext;
 
 /**
  * Per-run memo of element lookups keyed by (element type, match strategy,

@@ -7,6 +7,8 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\exceptions\MappingDepthException;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\item\ElementLookupCache;
+use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Everything a field strategy needs to parse one mapping for one remote item.

@@ -6,6 +6,7 @@ use Craft;
 use craft\queue\BaseJob;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\sync\run\BatchState;
 
 /**
  * Queue job that runs one scope of a link sync, one feed page per step: each
@@ -32,6 +33,11 @@ use GlueAgency\Influx\Influx;
  *   - firstPageSize (?int) — the progress denominator's multiplier, fixed on the
  *     first page so a short final page can't shrink the estimate mid-run.
  *
+ * These stay individual PUBLIC PROPERTIES because they are the serialised queue
+ * payload; {@see BatchState} is the value object they convert to and from at the
+ * {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()} boundary,
+ * and it owns the key names so they aren't spelled out a third time here.
+ *
  * seenIds rides the serialised job payload, so its size grows with the item
  * count: fine for feeds up to tens of thousands of ids; a feed far larger than
  * that would bloat the job row and should page the sweep differently.
@@ -57,8 +63,7 @@ class SyncLinkJob extends BaseJob
     /**
      * Element ids this scope's feed has mentioned so far, feeding the
      * missing-elements sweep. Excluded from that sweep — MUST survive across
-     * steps or the sweep over-disables. See
-     * {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()}.
+     * steps or the sweep over-disables. See {@see BatchState}.
      *
      * @var list<int>
      */
@@ -73,7 +78,7 @@ class SyncLinkJob extends BaseJob
     /**
      * Items on the first page of this scope's walk — the multiplier behind the
      * pages × page-size progress estimate
-     * ({@see \GlueAgency\Influx\services\SynchronizationService::estimatedTotal()}).
+     * ({@see \GlueAgency\Influx\sync\run\PageWalk::estimateTotal()}).
      * Carried across steps so the denominator stays put when the final page
      * comes back short. Null until the first page lands.
      */
@@ -86,6 +91,11 @@ class SyncLinkJob extends BaseJob
      * a total (via the link's count nodes) and otherwise eases toward 1 as
      * items arrive, with the live count carried in the label. While pages
      * remain, the next step is re-queued on the same log.
+     *
+     * The carried state travels as a {@see BatchState}, which owns the key names
+     * so this job only has to name its own properties: {@see carriedState()}
+     * converts them in, and {@see BatchState::carried()} converts the step's
+     * answer back out into the re-pushed payload.
      */
     public function execute($queue): void
     {
@@ -96,14 +106,7 @@ class SyncLinkJob extends BaseJob
             $this->offset,
             $trigger,
             $this->site,
-            [
-                'logId'              => $this->logId,
-                'cursorUrl'          => $this->cursorUrl,
-                'page'               => $this->page,
-                'seenIds'            => $this->seenIds,
-                'unattributedErrors' => $this->unattributedErrors,
-                'firstPageSize'      => $this->firstPageSize,
-            ],
+            $this->carriedState()->toArray(),
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
                     $progress = min(1.0, $seen / $total);
@@ -122,18 +125,28 @@ class SyncLinkJob extends BaseJob
 
         if (empty($state['done'])) {
             Craft::$app->getQueue()->push(new self([
-                'linkHandle'         => $this->linkHandle,
-                'offset'             => $this->offset,
-                'site'               => $this->site,
-                'trigger'            => $this->trigger,
-                'logId'              => $state['logId'],
-                'cursorUrl'          => $state['cursorUrl'],
-                'page'               => $state['page'],
-                'seenIds'            => $state['seenIds'],
-                'unattributedErrors' => $state['unattributedErrors'],
-                'firstPageSize'      => $state['firstPageSize'],
-            ]));
+                'linkHandle' => $this->linkHandle,
+                'offset'     => $this->offset,
+                'site'       => $this->site,
+                'trigger'    => $this->trigger,
+            ] + BatchState::fromArray($state)->carried()));
         }
+    }
+
+    /**
+     * This job's carried properties as the state a step resumes from — the one
+     * place the payload becomes a {@see BatchState}.
+     */
+    protected function carriedState(): BatchState
+    {
+        return new BatchState(
+            logId: $this->logId,
+            cursorUrl: $this->cursorUrl,
+            page: $this->page,
+            seenIds: $this->seenIds,
+            unattributedErrors: $this->unattributedErrors,
+            firstPageSize: $this->firstPageSize,
+        );
     }
 
     protected function defaultDescription(): ?string

@@ -1,13 +1,13 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\records\Log as LogRecord;
-use GlueAgency\Influx\services\SynchronizationService;
+use GlueAgency\Influx\sync\run\MissingElementsSweeper;
+use GlueAgency\Influx\sync\run\MissingSweepPlan;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\AbstractElementTarget;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
@@ -15,11 +15,11 @@ use RuntimeException;
 
 /**
  * Routing spec for the single missing-elements sweep
- * ({@see SynchronizationService::sweepMissing()}). One pass resolves one policy
- * and applies it in that same pass — there is no run-end second sweep and the
- * flags no longer compose. The corrected semantics guarding the original
- * multi-site incident (a global delete run per site against DISJOINT feeds
- * deleting one site's elements as "missing" from another's feed):
+ * ({@see MissingElementsSweeper::plan()}). One pass resolves one policy and
+ * applies it in that same pass — there is no run-end second sweep and the flags
+ * no longer compose. The corrected semantics guarding the original multi-site
+ * incident (a global delete run per site against DISJOINT feeds deleting one
+ * site's elements as "missing" from another's feed):
  *
  *   - DISABLED / DELETED_FOR_SITE — sweep scoped to the just-finished site.
  *   - DELETED (global delete) — only ever resolves on a no-site-endpoints link
@@ -32,61 +32,65 @@ use RuntimeException;
  *   - Offset (sliding-window) run — sweep skipped SILENTLY: a partial feed's
  *     complement isn't "missing", so only a full sync may delete/disable.
  *
- * No Craft boot: {@see SynchronizationService::applySweep()} (the code that
- * actually queries + deletes) and {@see SynchronizationService::logSweepSkip()}
- * (the code that writes the SKIPPED row) are the two seams these methods route
- * through, so an anonymous subclass overrides both to RECORD invocations
- * instead of touching Craft. What we assert is which seam fired, with which
- * scope — i.e. the routing, which is the whole of the fix.
+ * No Craft boot, and nothing stubbed: plan() is the pure decision half of the
+ * sweeper — it resolves the policy, runs every guard, and hands back a
+ * {@see MissingSweepPlan} without touching the database or the log. The
+ * database-touching half ({@see MissingElementsSweeper::apply()}) and the
+ * SKIPPED-row write both consume that plan, so asserting the plan asserts the
+ * routing, which is the whole of the fix: `$plan->policy` + `$plan->siteId` is
+ * the sweep that would fire, and `$plan->skipRow` is the row a bail leaves
+ * behind.
  */
 class MissingSweepRoutingTest extends Unit
 {
     public function testDisabledSweepsPerSite(): void
     {
-        $service = $this->service();
         $context = $this->context($this->link(['update', 'disable']), siteId: 5, siteHandle: 'nl');
 
-        $service->publicSweepMissing($context, [1, 2], 0, $this->log());
+        $plan = $this->plan($context, [1, 2], 0);
 
-        $this->assertSame([[ItemAction::DISABLED, [1, 2], 5]], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertSame(ItemAction::DISABLED, $plan->policy);
+        $this->assertSame([1, 2], $plan->seenIds);
+        $this->assertSame(5, $plan->siteId);
+        $this->assertNull($plan->skipRow);
     }
 
     public function testDeleteForSiteSweepsPerSiteWhenScoped(): void
     {
         $link = $this->link(['update', 'delete-for-site']);
         $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
-        $service = $this->service();
         $context = $this->context($link, siteId: 7, siteHandle: 'fr');
 
-        $service->publicSweepMissing($context, [9], 0, $this->log());
+        $plan = $this->plan($context, [9], 0);
 
-        $this->assertSame([[ItemAction::DELETED_FOR_SITE, [9], 7]], $service->sweeps);
+        $this->assertSame(ItemAction::DELETED_FOR_SITE, $plan->policy);
+        $this->assertSame([9], $plan->seenIds);
+        $this->assertSame(7, $plan->siteId);
     }
 
     public function testDisableForSiteSweepsPerSiteWhenScoped(): void
     {
         $link = $this->link(['update', 'disable-for-site']);
         $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
-        $service = $this->service();
         $context = $this->context($link, siteId: 7, siteHandle: 'fr');
 
-        $service->publicSweepMissing($context, [9], 0, $this->log());
+        $plan = $this->plan($context, [9], 0);
 
-        $this->assertSame([[ItemAction::DISABLED_FOR_SITE, [9], 7]], $service->sweeps);
+        $this->assertSame(ItemAction::DISABLED_FOR_SITE, $plan->policy);
+        $this->assertSame([9], $plan->seenIds);
+        $this->assertSame(7, $plan->siteId);
     }
 
     public function testDisableForSiteSkipsWhenNotScopedToASite(): void
     {
         // Like delete-for-site, the per-site disable needs a site scope; the
         // [null] pass records a skip and sweeps nothing.
-        $service = $this->service();
         $context = $this->context($this->link(['disable-for-site']), siteId: null, siteHandle: null);
 
-        $service->publicSweepMissing($context, [1], 0, $this->log());
+        $plan = $this->plan($context, [1], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNotNull($plan->skipRow);
     }
 
     public function testDeleteSweepsUnscopedOnNoSiteEndpointsLink(): void
@@ -94,13 +98,14 @@ class MissingSweepRoutingTest extends Unit
         // A no-site-endpoints link runs its single pass with siteId null; the
         // global delete sweeps cross-site (siteId null → target uses
         // siteId('*')->unique() and delete() removes the whole element).
-        $service = $this->service();
         $context = $this->context($this->link(['update', 'delete']), siteId: null, siteHandle: null);
 
-        $service->publicSweepMissing($context, [1, 2, 3], 0, $this->log());
+        $plan = $this->plan($context, [1, 2, 3], 0);
 
-        $this->assertSame([[ItemAction::DELETED, [1, 2, 3], null]], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertSame(ItemAction::DELETED, $plan->policy);
+        $this->assertSame([1, 2, 3], $plan->seenIds);
+        $this->assertNull($plan->siteId);
+        $this->assertNull($plan->skipRow);
     }
 
     public function testDeleteOnSiteEndpointsLinkSkipsViaD2Guard(): void
@@ -113,48 +118,45 @@ class MissingSweepRoutingTest extends Unit
             ['site' => 'nl', 'endpoint' => 'https://example.test/nl'],
             ['site' => 'fr', 'endpoint' => 'https://example.test/fr'],
         ];
-        $service = $this->service();
         $context = $this->context($link, siteId: 5, siteHandle: 'nl');
 
-        $service->publicSweepMissing($context, [1, 2], 0, $this->log());
+        $plan = $this->plan($context, [1, 2], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNotNull($plan->skipRow);
     }
 
     public function testPerSiteSweepBailsOnUnattributedErrors(): void
     {
-        $service = $this->service();
         $context = $this->context($this->link(['disable']), siteId: 5, siteHandle: 'nl');
 
-        $service->publicSweepMissing($context, [1], 3, $this->log());
+        $plan = $this->plan($context, [1], 3);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNotNull($plan->skipRow);
+        $this->assertNotNull($plan->warning);
     }
 
     public function testDeleteForSiteSkipsWhenNotScopedToASite(): void
     {
         // delete-for-site with no site scope (the [null] pass) can't scope the
         // deletion — records a skip and sweeps nothing.
-        $service = $this->service();
         $context = $this->context($this->link(['delete-for-site']), siteId: null, siteHandle: null);
 
-        $service->publicSweepMissing($context, [1], 0, $this->log());
+        $plan = $this->plan($context, [1], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertCount(1, $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNotNull($plan->skipRow);
     }
 
     public function testNoMissingFlagSweepsNothing(): void
     {
-        $service = $this->service();
         $context = $this->context($this->link(['create', 'update']), siteId: 5, siteHandle: 'nl');
 
-        $service->publicSweepMissing($context, [1, 2], 0, $this->log());
+        $plan = $this->plan($context, [1, 2], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNull($plan->skipRow);
     }
 
     public function testOffsetRunNeverDeletes(): void
@@ -162,14 +164,14 @@ class MissingSweepRoutingTest extends Unit
         // A sliding-window (offset) run fetches only a slice of the feed, so the
         // seen-set is partial — its complement isn't missing, just outside the
         // window. The sweep must NOT fire, and silently (expected behaviour):
-        // no delete, no skip row.
-        $service = $this->service();
+        // no delete, no skip row, no warning.
         $context = $this->context($this->link(['update', 'delete']), siteId: null, siteHandle: null, offsetHandle: 'hour');
 
-        $service->publicSweepMissing($context, [1, 2, 3], 0, $this->log());
+        $plan = $this->plan($context, [1, 2, 3], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNull($plan->skipRow);
+        $this->assertNull($plan->warning);
     }
 
     public function testOffsetRunNeverDisablesEvenWhenScoped(): void
@@ -178,58 +180,23 @@ class MissingSweepRoutingTest extends Unit
         // must still block it — the guard is policy-agnostic.
         $link = $this->link(['update', 'disable-for-site']);
         $link->siteEndpoints = [['site' => 'fr', 'endpoint' => 'https://example.test/fr']];
-        $service = $this->service();
         $context = $this->context($link, siteId: 7, siteHandle: 'fr', offsetHandle: 'day');
 
-        $service->publicSweepMissing($context, [9], 0, $this->log());
+        $plan = $this->plan($context, [9], 0);
 
-        $this->assertSame([], $service->sweeps);
-        $this->assertSame([], $service->skips);
+        $this->assertNull($plan->policy);
+        $this->assertNull($plan->skipRow);
+        $this->assertNull($plan->warning);
     }
 
     // -- fixtures -------------------------------------------------------------
 
     /**
-     * A service whose two sweep seams record instead of act:
-     *   - $sweeps: [policy, seenIds, siteId] per applySweep() call.
-     *   - $skips:  the message per logSweepSkip() call.
+     * @param list<int> $seenIds
      */
-    protected function service(): object
+    protected function plan(SyncContext $context, array $seenIds, int $unattributedErrors): MissingSweepPlan
     {
-        return new class() extends SynchronizationService {
-            /** @var list<array{0: ItemAction, 1: list<int>, 2: ?int}> */
-            public array $sweeps = [];
-
-            /** @var list<string> */
-            public array $skips = [];
-
-            public function init(): void
-            {
-                // Skip parent init() — it builds an ItemProcessor we don't need,
-                // and we never run the per-item pipeline here.
-            }
-
-            public function publicSweepMissing(SyncContext $context, array $seenIds, int $unattributedErrors, LogRecord $log): void
-            {
-                $this->sweepMissing($context, $seenIds, $unattributedErrors, $log);
-            }
-
-            protected function applySweep(SyncContext $context, ItemAction $policy, array $seenIds, ?int $siteId, LogRecord $log): void
-            {
-                $this->sweeps[] = [$policy, $seenIds, $siteId];
-            }
-
-            protected function logSweepSkip(LogRecord $log, string $message): void
-            {
-                $this->skips[] = $message;
-            }
-
-            protected function warnSweepSkipped(string $message): void
-            {
-                // No Craft log in a pure-logic test — the skip row (recorded via
-                // logSweepSkip) is what the routing assertions check.
-            }
-        };
+        return (new MissingElementsSweeper())->plan($context, $seenIds, $unattributedErrors);
     }
 
     /**
@@ -244,8 +211,8 @@ class MissingSweepRoutingTest extends Unit
     }
 
     /**
-     * A context wrapping a throwaway target (never touched — applySweep is
-     * stubbed) at the given site scope.
+     * A context wrapping a throwaway target (never touched — plan() decides
+     * without querying) at the given site scope.
      */
     protected function context(Link $link, ?int $siteId, ?string $siteHandle, ?string $offsetHandle = null): SyncContext
     {
@@ -259,8 +226,8 @@ class MissingSweepRoutingTest extends Unit
     }
 
     /**
-     * A bare target — the sweep routing never calls into it (applySweep, the
-     * only method that would, is stubbed), so only the abstract contract needs
+     * A bare target — the sweep routing never calls into it (only apply() would,
+     * and that isn't under test here), so only the abstract contract needs
      * satisfying.
      */
     protected function target(): object
@@ -284,20 +251,6 @@ class MissingSweepRoutingTest extends Unit
             public function buildNew(Link $link, ?int $siteId = null): ElementInterface
             {
                 throw new RuntimeException('not needed');
-            }
-        };
-    }
-
-    /**
-     * A LogRecord stand-in — the sweep routing only passes it to the stubbed
-     * seams, so its constructor's Craft dependencies are skipped.
-     */
-    protected function log(): LogRecord
-    {
-        return new class() extends LogRecord {
-            public function __construct()
-            {
-                // Skip ActiveRecord::init()'s schema lookup — never persisted here.
             }
         };
     }

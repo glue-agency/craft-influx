@@ -8,9 +8,9 @@ use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\ItemProcessor;
-use GlueAgency\Influx\sync\ItemResolution;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\ItemProcessor;
+use GlueAgency\Influx\sync\item\ItemResolution;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\web\ItemRowPresenter;
@@ -30,8 +30,8 @@ use Throwable;
 class InspectorService extends Component
 {
     /**
-     * The same pipeline {@see SynchronizationService} runs — invoked here
-     * with dry-run contexts and never committed.
+     * The same pipeline the real sync runs ({@see \GlueAgency\Influx\sync\item\ItemRunner})
+     * — invoked here with dry-run contexts and never committed.
      */
     protected ItemProcessor $itemProcessor;
 

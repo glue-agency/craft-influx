@@ -1,15 +1,15 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\services\SynchronizationService;
+use GlueAgency\Influx\sync\run\MissingElementsSweeper;
 
 /**
  * Spec for the single resolver that maps a link's `processing` flags onto the
- * one missing-elements sweep — {@see SynchronizationService::perSitePolicy()}.
+ * one missing-elements sweep — {@see MissingElementsSweeper::policyFor()}.
  * Resolved once per pass and applied in that same pass; there is no run-end
  * second sweep, and the flags no longer compose.
  *
@@ -21,10 +21,8 @@ use GlueAgency\Influx\services\SynchronizationService;
  * null when no missing-elements flag is set.
  *
  * No Craft boot: the resolver reads only {@see Link::$processing}, and the
- * service's init() builds a plain {@see \GlueAgency\Influx\sync\ItemProcessor}
- * that touches no app services — so a bare service instance is enough. The
- * method is protected, so an anonymous subclass exposes it (same seam the rest
- * of the suite favours over reflection).
+ * sweeper takes no collaborators — so a bare instance is enough, and the
+ * method is public, so nothing has to be subclassed to reach it.
  */
 class MissingPolicyTest extends Unit
 {
@@ -93,13 +91,6 @@ class MissingPolicyTest extends Unit
         $link = new Link();
         $link->processing = $processing;
 
-        $service = new class() extends SynchronizationService {
-            public function publicPerSitePolicy(Link $link): ?ItemAction
-            {
-                return $this->perSitePolicy($link);
-            }
-        };
-
-        $this->assertSame($expected, $service->publicPerSitePolicy($link));
+        $this->assertSame($expected, (new MissingElementsSweeper())->policyFor($link));
     }
 }

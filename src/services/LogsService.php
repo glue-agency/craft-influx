@@ -14,14 +14,16 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
-use GlueAgency\Influx\sync\LogItemBuffer;
+use GlueAgency\Influx\sync\run\LogItemBuffer;
 use Throwable;
 use yii\db\Expression;
 
 /**
- * Thin wrapper around the log records. SynchronizationService opens a run
- * with start(), writes per-item rows via recordItem(), and closes the run
- * with finish() or fail().
+ * Thin wrapper around the log records. {@see \GlueAgency\Influx\sync\run\RunLifecycle}
+ * opens a run with start() and closes it with finish() or fail();
+ * {@see \GlueAgency\Influx\sync\item\ItemRunner} and
+ * {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper} write the per-item rows
+ * via recordItem() in between.
  *
  * When `Settings::$loggingEnabled` is off, start() returns an unsaved record
  * (id === null) and the other methods short-circuit, so callers can keep the
@@ -31,7 +33,8 @@ use yii\db\Expression;
  * appends to an in-memory {@see LogItemBuffer} (and bumps the record's live
  * counters), and flush() writes the whole page in one batch insert plus one
  * counter UPDATE. The caller flushes at each page boundary (see
- * SynchronizationService), and finish()/fail() flush before closing the run.
+ * {@see \GlueAgency\Influx\sync\run\PageWalker}), and finish()/fail() flush before
+ * closing the run.
  * Net effect for the live log viewer: rows and counters advance per page (or
  * per {@see FLUSH_THRESHOLD} items on a huge page) instead of per item — a
  * bounded number of DB round-trips regardless of feed size.
@@ -108,7 +111,7 @@ class LogsService extends Component
      * whose strategy threw — stored so the drill-down can show each on its own
      * field row even when re-inspection can't reproduce it.
      * @param list<string>|null $changedFields The mapping handles that actually
-     * changed this run (see {@see \GlueAgency\Influx\sync\ItemSyncResult::changedFieldHandles()}),
+     * changed this run (see {@see \GlueAgency\Influx\sync\item\ItemSyncResult::changedFieldHandles()}),
      * so the drill-down can report what really happened instead of re-deriving
      * it from a present-tense dry-run. Three states, preserved into storage:
      * null = the item never went through populate (unknown); `[]` = compared,

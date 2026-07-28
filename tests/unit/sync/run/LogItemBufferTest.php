@@ -1,9 +1,9 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\sync;
+namespace GlueAgency\Influx\Tests\unit\sync\run;
 
 use Codeception\Test\Unit;
-use GlueAgency\Influx\sync\LogItemBuffer;
+use GlueAgency\Influx\sync\run\LogItemBuffer;
 use RuntimeException;
 
 /**
@@ -77,8 +77,8 @@ class LogItemBufferTest extends Unit
     }
 
     /**
-     * The flush-on-exception guarantee: SynchronizationService::batchStep()
-     * wraps the per-page item loop in try/finally { flush }, so rows recorded
+     * The flush-on-exception guarantee: PageWalker::walk() wraps the per-page
+     * item loop in try/finally { flush }, so rows recorded
      * before a mid-page throw must still be sitting in the buffer — complete
      * and in order, with their counter deltas — when the finally drains it.
      * This locks the buffer side of that contract; the DB write itself

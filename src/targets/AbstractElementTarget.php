@@ -9,7 +9,7 @@ use DateTimeInterface;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\RemoteItem;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use Stringable;
 
@@ -79,7 +79,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * {@see SyncContext} is passed to those parsers (first argument) so they
      * can reach the run's element-lookup cache.
      *
-     * The caller ({@see \GlueAgency\Influx\sync\MappingApplier}) only invokes
+     * The caller ({@see \GlueAgency\Influx\sync\item\MappingApplier}) only invokes
      * this for an actively-mapped handle, so an empty resolved value here means
      * "actively mapped, now empty" — written through to clear the attribute
      * (the feed is authoritative). Returns whether the value actually changed
