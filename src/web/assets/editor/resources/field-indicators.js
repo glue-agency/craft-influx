@@ -17,7 +17,7 @@
 (function () {
     'use strict';
 
-    var LABEL = 'This field is updated by Influx';
+    var LABEL = 'This field is updated by Influx.';
 
     // The Influx mark (the design's field-indicator variant): stacked inflow
     // bars fading into the destination. Filled shapes in currentColor, so it

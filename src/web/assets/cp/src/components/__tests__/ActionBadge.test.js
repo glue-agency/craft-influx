@@ -22,6 +22,11 @@ describe('ActionBadge', () => {
         expect(mount(ActionBadge, { props: { action: 'error' } }).classes()).toContain('expired');
     });
 
+    it('colours a per-site sweep action like its global sibling', () => {
+        expect(mount(ActionBadge, { props: { action: 'disabled-for-site' } }).classes()).toContain('expired');
+        expect(mount(ActionBadge, { props: { action: 'deleted-for-site' } }).classes()).toContain('expired');
+    });
+
     it('lets an explicit color override the action mapping', () => {
         const w = mount(ActionBadge, { props: { action: 'created', color: 'expired' } });
 

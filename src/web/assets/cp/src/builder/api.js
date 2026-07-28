@@ -1,7 +1,8 @@
 /**
- * Tiny fetch wrapper for the LinkBuilder SPA. Reads action URLs and the CSRF
- * token from the page's bootstrap meta (rendered server-side into the host
- * template) so we never have to hard-code CP paths into the JS.
+ * Tiny fetch wrapper for the LinkBuilder SPA. Builds action URLs through
+ * `Craft.getActionUrl()` and reads the CSRF token from the page's bootstrap
+ * meta (rendered server-side into the host template), so no CP path is ever
+ * hard-coded into the JS.
  *
  * Every helper returns the parsed JSON body on success. EVERY failure —
  * non-2xx transport status or a `{success: false}` body — throws one
@@ -28,7 +29,6 @@ export class ApiError extends Error {
     }
 }
 
-let actionUrls = null;
 let csrfTokenName = null;
 let csrfToken = null;
 
@@ -42,19 +42,15 @@ export function configureCsrf({ name, value }) {
     csrfToken = value;
 }
 
-export function configureActionUrls(map) {
-    actionUrls = { ...map };
-}
-
 /**
- * Resolve an action URL by its registered key. Falls back to a Craft-style
- * action path if the key isn't pre-registered, which keeps callers from
- * needing to thread URLs through the bootstrap response for one-off calls.
+ * Resolve an action URL from its Craft action path, so no CP path is ever
+ * hard-coded at a call site. `key` names the helper in the failure message —
+ * a call site that forgets its action path fails loudly instead of fetching
+ * `undefined`.
  */
 function resolve(key, fallbackAction) {
-    if (actionUrls && actionUrls[key]) return actionUrls[key];
     if (fallbackAction) return Craft.getActionUrl(fallbackAction);
-    throw new Error(`No URL registered for action '${key}' and no fallback provided.`);
+    throw new Error(`No action path provided for '${key}'.`);
 }
 
 /**

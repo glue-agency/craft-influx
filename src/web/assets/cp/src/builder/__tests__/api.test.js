@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, bootstrap, configureActionUrls, configureCsrf, deleteLink, save } from '../api.js';
+import { ApiError, bootstrap, configureCsrf, deleteLink, save } from '../api.js';
 
 const jsonResponse = (body, { status = 200 } = {}) => ({
     ok: status >= 200 && status < 300,
@@ -8,10 +8,6 @@ const jsonResponse = (body, { status = 200 } = {}) => ({
 });
 
 beforeEach(() => {
-    configureActionUrls({
-        bootstrap: '/actions/influx/link-builder/bootstrap',
-        save: '/actions/influx/link-builder/save',
-    });
     configureCsrf({ name: 'CRAFT_CSRF_TOKEN', value: 'token-123' });
     globalThis.fetch = vi.fn();
 });
@@ -28,7 +24,6 @@ describe('request envelope', () => {
         await deleteLink('abc-123');
 
         const [url, init] = fetch.mock.calls[0];
-        // No pre-registered 'delete' URL — falls back to the action path.
         expect(url).toContain('influx/links/delete');
         expect(init.method).toBe('POST');
         expect(JSON.parse(init.body)).toEqual({ uid: 'abc-123' });

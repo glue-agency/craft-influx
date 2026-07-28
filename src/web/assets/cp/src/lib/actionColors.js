@@ -5,17 +5,18 @@
  * LogApp so the colour of an action is defined once.
  */
 export const ACTION_COLORS = {
-    'would-create':     'live',
-    'would-update':     'live',
-    'would-skip':       'pending',
-    'created':          'live',
-    'updated':          'live',
-    'unchanged':        'pending',
-    'skipped':          'pending',
-    'disabled':         'expired',
-    'deleted':          'expired',
-    'deleted-for-site': 'expired',
-    'error':            'expired',
+    'would-create':      'live',
+    'would-update':      'live',
+    'would-skip':        'pending',
+    'created':           'live',
+    'updated':           'live',
+    'unchanged':         'pending',
+    'skipped':           'pending',
+    'disabled':          'expired',
+    'disabled-for-site': 'expired',
+    'deleted':           'expired',
+    'deleted-for-site':  'expired',
+    'error':             'expired',
 };
 
 export function actionColor(action) {

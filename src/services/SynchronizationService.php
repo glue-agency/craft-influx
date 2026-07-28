@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use craft\helpers\Db;
+use GlueAgency\Influx\data\FeedPage;
 use GlueAgency\Influx\data\PagedFeed;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
@@ -220,17 +221,14 @@ class SynchronizationService extends Component
     }
 
     /**
-     * Fan out the per-site sync jobs: one {@see SyncLinkJob} per configured site
-     * for an all-sites run, else a single job for the requested (or unscoped)
-     * site. Called directly by {@see queueSync()} when no pre-run backup is
-     * needed, and by {@see BackupJob} once its backup has been taken.
+     * Fan out the per-site sync jobs: one {@see SyncLinkJob} per scope
+     * {@see sitesToQueue()} resolves. Called directly by {@see queueSync()} when
+     * no pre-run backup is needed, and by {@see BackupJob} once its backup has
+     * been taken.
      */
     public function queueSyncJobs(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
     {
-        $siteHandles = $link->siteHandles();
-        $sites = ($site === null && count($siteHandles) > 1) ? $siteHandles : [$site];
-
-        foreach ($sites as $handle) {
+        foreach ($this->sitesToQueue($link, $site) as $handle) {
             Craft::$app->getQueue()->push(new SyncLinkJob([
                 'linkHandle' => $link->handle,
                 'offset'     => $offset,
@@ -238,6 +236,26 @@ class SynchronizationService extends Component
                 'trigger'    => $trigger->value,
             ]));
         }
+    }
+
+    /**
+     * Scopes a queue trigger fans out to: the requested site alone, else every
+     * site the link is configured for.
+     *
+     * Defers to {@see Link::syncSiteHandles()} — the single owner of the "no
+     * sites = primary site" rule — instead of re-deriving it. A link with
+     * exactly ONE site endpoint must still queue THAT handle: the unscoped
+     * `[null]` scope would fetch the base endpoint (legitimately absent when
+     * site endpoints exist) and sweep missing elements cross-site.
+     *
+     * Pure: reads only the link's site endpoints, so it's unit-tested without a
+     * Craft boot.
+     *
+     * @return list<string|null>
+     */
+    protected function sitesToQueue(Link $link, ?string $site): array
+    {
+        return $site !== null ? [$site] : $link->syncSiteHandles();
     }
 
     /**
@@ -273,9 +291,13 @@ class SynchronizationService extends Component
      * `finally`: a throw still persists what this step saved, leaving a retried
      * step only the un-flushed tail to redo.
      *
-     * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int} $state
+     * `firstPageSize` rides the state for the same reason: the progress
+     * denominator is pages × the FIRST page's size ({@see estimatedTotal()}),
+     * which only stays stable if that size survives the steps that follow.
+     *
+     * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
-     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, done: bool}
+     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, done: bool}
      */
     public function batchStep(
         string $linkHandle,
@@ -295,6 +317,7 @@ class SynchronizationService extends Component
         $state['done'] = false;
         $state['seenIds'] ??= [];
         $state['unattributedErrors'] ??= 0;
+        $state['firstPageSize'] ??= null;
         $target = $this->resolveTarget($link);
 
         if ($requestedSite !== null && ! in_array($requestedSite, $link->siteHandles(), true)) {
@@ -325,6 +348,8 @@ class SynchronizationService extends Component
             return $state;
         }
 
+        $state['firstPageSize'] ??= count($page->items);
+
         $seen = array_fill_keys($state['seenIds'], true);
 
         $mutex = Craft::$app->getMutex();
@@ -354,9 +379,7 @@ class SynchronizationService extends Component
         }
 
         if ($onProgress !== null) {
-            $total = $page->totalCount
-                ?? ($page->pageCount !== null ? $page->pageCount * max(1, count($page->items)) : null);
-            $onProgress((int) $log->itemsSeen, $total);
+            $onProgress((int) $log->itemsSeen, $this->estimatedTotal($page, (int) $state['firstPageSize']));
         }
 
         $nextUrl = $page->nextUrl;
@@ -603,16 +626,30 @@ class SynchronizationService extends Component
             $plugin->logs->flush($log);
 
             if ($onProgress !== null) {
-                if ($total === null) {
-                    $total = $page->totalCount
-                        ?? ($page->pageCount !== null && $firstPageSize > 0 ? $page->pageCount * $firstPageSize : null);
-                }
+                $total ??= $this->estimatedTotal($page, $firstPageSize);
 
                 $onProgress((int) $log->itemsSeen, $total);
             }
         }
 
         $this->sweepMissing($context, array_keys($seenIds), $unattributedErrors, $log);
+    }
+
+    /**
+     * The progress denominator for one page: the feed's own reported total when
+     * it has one, else pages × the FIRST page's size. Deliberately the first
+     * page's size and not the current page's — a short final page would
+     * otherwise shrink the estimate mid-run and walk the bar backwards. Null
+     * when the feed reports neither a total nor a page count; the caller then
+     * eases toward a soft target instead.
+     *
+     * Pure: shared by both page loops so the queued and synchronous paths can't
+     * drift onto different heuristics again.
+     */
+    protected function estimatedTotal(FeedPage $page, int $firstPageSize): ?int
+    {
+        return $page->totalCount
+            ?? ($page->pageCount !== null && $firstPageSize > 0 ? $page->pageCount * $firstPageSize : null);
     }
 
     /**

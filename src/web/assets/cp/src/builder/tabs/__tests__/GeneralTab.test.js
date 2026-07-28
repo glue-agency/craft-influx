@@ -11,7 +11,6 @@ vi.mock('../../api.js', () => ({
     renderElementSelect: vi.fn(),
     endpointTokenSuggestions: vi.fn(),
     configureCsrf: vi.fn(),
-    configureActionUrls: vi.fn(),
 }));
 
 import * as api from '../../api.js';

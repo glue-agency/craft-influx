@@ -29,6 +29,8 @@ use GlueAgency\Influx\Influx;
  *     sweep over-disable (it would only ever "see" the final page's items), so
  *     they must survive across steps. unattributedErrors counts items that
  *     failed WITHOUT a resolvable element — any at all makes the sweep bail.
+ *   - firstPageSize (?int) — the progress denominator's multiplier, fixed on the
+ *     first page so a short final page can't shrink the estimate mid-run.
  *
  * seenIds rides the serialised job payload, so its size grows with the item
  * count: fine for feeds up to tens of thousands of ids; a feed far larger than
@@ -69,6 +71,15 @@ class SyncLinkJob extends BaseJob
     public int $unattributedErrors = 0;
 
     /**
+     * Items on the first page of this scope's walk — the multiplier behind the
+     * pages × page-size progress estimate
+     * ({@see \GlueAgency\Influx\services\SynchronizationService::estimatedTotal()}).
+     * Carried across steps so the denominator stays put when the final page
+     * comes back short. Null until the first page lands.
+     */
+    public ?int $firstPageSize = null;
+
+    /**
      * Runs one step of this scope's walk. The trigger is resolved with
      * `tryFrom()` so an unexpected value degrades to {@see SyncTrigger::QUEUE}
      * instead of throwing. Progress is a real percentage when the feed reports
@@ -91,6 +102,7 @@ class SyncLinkJob extends BaseJob
                 'page'               => $this->page,
                 'seenIds'            => $this->seenIds,
                 'unattributedErrors' => $this->unattributedErrors,
+                'firstPageSize'      => $this->firstPageSize,
             ],
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
@@ -119,6 +131,7 @@ class SyncLinkJob extends BaseJob
                 'page'               => $state['page'],
                 'seenIds'            => $state['seenIds'],
                 'unattributedErrors' => $state['unattributedErrors'],
+                'firstPageSize'      => $state['firstPageSize'],
             ]));
         }
     }
