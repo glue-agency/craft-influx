@@ -70,6 +70,26 @@ class LogPresenterResultSegmentsTest extends Unit
         $this->assertSame('live', LogPresenter::statusColor('ok'));
         $this->assertSame('expired', LogPresenter::statusColor('error'));
         $this->assertSame('pending', LogPresenter::statusColor('running'));
-        $this->assertSame('pending', LogPresenter::statusColor('pending'));
+
+        // An unrecognised stored value reads as in-progress rather than blowing
+        // up the row.
+        $this->assertSame('pending', LogPresenter::statusColor('nonsense'));
+    }
+
+    public function testIsLiveOnlyCoversARunningRun(): void
+    {
+        $this->assertTrue(LogPresenter::isLive('running'));
+        $this->assertFalse(LogPresenter::isLive('ok'));
+        $this->assertFalse(LogPresenter::isLive('error'));
+        $this->assertFalse(LogPresenter::isLive(null));
+        $this->assertFalse(LogPresenter::isLive('nonsense'));
+    }
+
+    public function testIsFailedOnlyCoversAFailedRun(): void
+    {
+        $this->assertTrue(LogPresenter::isFailed('error'));
+        $this->assertFalse(LogPresenter::isFailed('ok'));
+        $this->assertFalse(LogPresenter::isFailed('running'));
+        $this->assertFalse(LogPresenter::isFailed(null));
     }
 }

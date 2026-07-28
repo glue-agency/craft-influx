@@ -7,6 +7,7 @@ use craft\base\Component;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use craft\web\twig\variables\Cp;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
@@ -72,7 +73,7 @@ class LinkBuilderService extends Component
         } elseif ($id === null) {
             $link = new Link([
                 'elementType' => Entry::class,
-                'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
+                'processing'  => ProcessingAction::defaults(),
             ]);
             $isNew = true;
         } else {
@@ -220,7 +221,7 @@ class LinkBuilderService extends Component
             ]);
         }
 
-        $reason = str_ends_with($migrations[0]['to'], '-for-site')
+        $reason = ProcessingAction::tryFrom($migrations[0]['to'])?->isForSite()
             ? Craft::t('influx', 'to match this link’s site-specific endpoints')
             : Craft::t('influx', 'because this link no longer uses site-specific endpoints');
 
@@ -643,60 +644,28 @@ class LinkBuilderService extends Component
         return $out;
     }
 
+    /**
+     * Label for a stored processing value, falling back to the raw value for one
+     * the enum doesn't know (hand-edited config).
+     */
+    protected function processingActionLabel(string $value): string
+    {
+        return ProcessingAction::tryFrom($value)?->label() ?? $value;
+    }
+
+    /**
+     * The builder's processing checkboxes: a terse label with the behaviour
+     * spelled out in a note beneath it, in {@see ProcessingAction::optionOrder()}.
+     */
     protected function processingActionOptions(): array
     {
         $out = [];
 
-        foreach ($this->processingActions() as $value => [$label, $note]) {
-            $out[] = ['value' => $value, 'label' => $label, 'note' => $note];
+        foreach (ProcessingAction::optionOrder() as $action) {
+            $out[] = ['value' => $action->value, 'label' => $action->label(), 'note' => $action->note()];
         }
 
         return $out;
-    }
-
-    /**
-     * Translated `[label, note]` per processing value — the single source for
-     * the builder's checkbox options (a terse label with the behaviour spelled
-     * out in a note beneath it) and the migration notice (which uses the label
-     * only). Order here is the render order: create/update, then the two
-     * global missing-element policies grouped together, then their per-site
-     * counterparts grouped together.
-     *
-     * @return array<string, array{0: string, 1: string}>
-     */
-    protected function processingActions(): array
-    {
-        return [
-            Link::PROCESSING_CREATE => [
-                Craft::t('influx', 'Create'),
-                Craft::t('influx', 'Adds elements from the feed that don’t exist in Craft yet.'),
-            ],
-            Link::PROCESSING_UPDATE => [
-                Craft::t('influx', 'Update'),
-                Craft::t('influx', 'Writes feed changes onto elements that already exist.'),
-            ],
-            Link::PROCESSING_DISABLE => [
-                Craft::t('influx', 'Disable globally'),
-                Craft::t('influx', 'When an element is missing from the feed, disables it across all sites.'),
-            ],
-            Link::PROCESSING_DELETE => [
-                Craft::t('influx', 'Delete globally'),
-                Craft::t('influx', 'When an element is missing from the feed, deletes it across all sites.'),
-            ],
-            Link::PROCESSING_DISABLE_FOR_SITE => [
-                Craft::t('influx', 'Disable for site'),
-                Craft::t('influx', 'When an element is missing from a site’s feed, disables just that site’s element.'),
-            ],
-            Link::PROCESSING_DELETE_FOR_SITE => [
-                Craft::t('influx', 'Delete for site'),
-                Craft::t('influx', 'When an element is missing from a site’s feed, deletes just that site’s element.'),
-            ],
-        ];
-    }
-
-    protected function processingActionLabel(string $value): string
-    {
-        return $this->processingActions()[$value][0] ?? $value;
     }
 
     protected function authTypeOptions(): array

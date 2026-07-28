@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\integrations\feedme;
 
 use Craft;
 use craft\helpers\StringHelper;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
 
@@ -97,15 +98,15 @@ class FeedMeConverter
     ];
 
     /**
-     * duplicateHandle value → Influx processing flag. `disableForSite` is
+     * duplicateHandle value → Influx processing action. `disableForSite` is
      * handled separately (approximated to `disable` with a warning).
      */
     protected const PROCESSING_MAP = [
-        'add'           => Link::PROCESSING_CREATE,
-        'update'        => Link::PROCESSING_UPDATE,
-        'disable'       => Link::PROCESSING_DISABLE,
-        'delete'        => Link::PROCESSING_DELETE,
-        'deleteForSite' => Link::PROCESSING_DELETE_FOR_SITE,
+        'add'           => ProcessingAction::CREATE,
+        'update'        => ProcessingAction::UPDATE,
+        'disable'       => ProcessingAction::DISABLE,
+        'delete'        => ProcessingAction::DELETE,
+        'deleteForSite' => ProcessingAction::DELETE_FOR_SITE,
     ];
 
     /**
@@ -280,13 +281,13 @@ class FeedMeConverter
             }
 
             if (isset(self::PROCESSING_MAP[$flag])) {
-                $processing[] = self::PROCESSING_MAP[$flag];
+                $processing[] = self::PROCESSING_MAP[$flag]->value;
 
                 continue;
             }
 
             if ($flag === 'disableForSite') {
-                $processing[] = Link::PROCESSING_DISABLE;
+                $processing[] = ProcessingAction::DISABLE->value;
                 $this->warn("'Disable missing elements for site' is not supported; approximated to 'disable'.");
 
                 continue;
@@ -299,7 +300,7 @@ class FeedMeConverter
         if (empty($processing)) {
             $this->warn("Feed had no duplicate handling flags; defaulted to 'create' + 'update'.");
 
-            return [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE];
+            return ProcessingAction::defaults();
         }
 
         return $processing;

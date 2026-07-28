@@ -20,6 +20,33 @@ enum ItemAction: string
     case DELETED_FOR_SITE = 'deleted-for-site';
 
     /**
+     * One case per distinct log counter, in canonical order: the base of each
+     * counter group (a per-site variant shares its base's counter, so it folds
+     * into it) with ERROR dropped, having no counter of its own. THE display
+     * order for both the overviews' result pills and the log viewer's counter
+     * row, so the two can't drift.
+     *
+     * @return list<self>
+     */
+    public static function countedCases(): array
+    {
+        $cases = [];
+        $counters = [];
+
+        foreach (self::cases() as $case) {
+            $counter = $case->counterAttribute();
+
+            if ($counter === null || isset($counters[$counter])) {
+                continue;
+            }
+            $counters[$counter] = true;
+            $cases[] = $case;
+        }
+
+        return $cases;
+    }
+
+    /**
      * The log counter column this action increments, or null when the action
      * isn't counted separately (errors only bump `itemsSeen`).
      */
@@ -84,6 +111,39 @@ enum ItemAction: string
             self::DISABLED_FOR_SITE => 'would-disable-for-site',
             self::DELETED           => 'would-delete',
             self::DELETED_FOR_SITE  => 'would-delete-for-site',
+        };
+    }
+
+    /**
+     * Craft status colour for the action badge — `live` (wrote), `pending`
+     * (neutral), `expired` (destructive / failed). The palette the Vue apps
+     * render both committed actions and {@see dryRunLabel()} strings with,
+     * shipped to them by {@see \GlueAgency\Influx\web\Vocabulary}.
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::CREATED, self::UPDATED => 'live',
+            self::UNCHANGED, self::SKIPPED => 'pending',
+            self::ERROR, self::DISABLED, self::DISABLED_FOR_SITE, self::DELETED, self::DELETED_FOR_SITE => 'expired',
+        };
+    }
+
+    /**
+     * Colour in the overviews' result-pill palette — green (wrote), gray
+     * (neutral / no change), red (destructive / failed).
+     *
+     * Deliberately NOT {@see color()}: the two are different vocabularies
+     * (`.influx-pill--*` versus Craft's status colours) and they disagree on
+     * `disabled`, which reads as neutral in a run's result summary but as
+     * destructive on the badge of the row that caused it.
+     */
+    public function pillColor(): string
+    {
+        return match ($this) {
+            self::CREATED, self::UPDATED => 'green',
+            self::UNCHANGED, self::SKIPPED, self::DISABLED, self::DISABLED_FOR_SITE => 'gray',
+            self::ERROR, self::DELETED, self::DELETED_FOR_SITE => 'red',
         };
     }
 }

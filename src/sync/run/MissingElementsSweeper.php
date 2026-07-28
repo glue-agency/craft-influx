@@ -6,6 +6,7 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\helpers\Db;
 use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -159,19 +160,19 @@ class MissingElementsSweeper
      */
     public function policyFor(Link $link): ?ItemAction
     {
-        if (in_array(Link::PROCESSING_DELETE, $link->processing, true)) {
+        if (in_array(ProcessingAction::DELETE->value, $link->processing, true)) {
             return ItemAction::DELETED;
         }
 
-        if (in_array(Link::PROCESSING_DELETE_FOR_SITE, $link->processing, true)) {
+        if (in_array(ProcessingAction::DELETE_FOR_SITE->value, $link->processing, true)) {
             return ItemAction::DELETED_FOR_SITE;
         }
 
-        if (in_array(Link::PROCESSING_DISABLE, $link->processing, true)) {
+        if (in_array(ProcessingAction::DISABLE->value, $link->processing, true)) {
             return ItemAction::DISABLED;
         }
 
-        if (in_array(Link::PROCESSING_DISABLE_FOR_SITE, $link->processing, true)) {
+        if (in_array(ProcessingAction::DISABLE_FOR_SITE->value, $link->processing, true)) {
             return ItemAction::DISABLED_FOR_SITE;
         }
 

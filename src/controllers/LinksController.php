@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\elements\Entry;
 use craft\helpers\UrlHelper;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
@@ -12,6 +13,7 @@ use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
 use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
+use GlueAgency\Influx\web\Vocabulary;
 use yii\base\Action;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -113,6 +115,7 @@ class LinksController extends AbstractController
             'links'          => $linkOptions,
             'linkHandle'     => $link->handle,
             'inspectUrl'     => UrlHelper::cpUrl('influx/debug/inspect', ['link' => $link->handle]),
+            'vocabulary'     => Vocabulary::payload(),
         ]);
     }
 
@@ -184,7 +187,7 @@ class LinksController extends AbstractController
         } else {
             $link = $link ?? new Link([
                 'elementType' => Entry::class,
-                'processing'  => [Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE],
+                'processing'  => ProcessingAction::defaults(),
             ]);
             $title = Craft::t('influx', 'New link');
         }

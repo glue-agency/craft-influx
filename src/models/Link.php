@@ -6,6 +6,7 @@ use craft\base\Model;
 use craft\elements\Entry;
 use craft\helpers\StringHelper;
 use DateTime;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\item\RemoteItem;
@@ -33,34 +34,6 @@ use GlueAgency\Influx\sync\item\RemoteItem;
  */
 class Link extends Model
 {
-    public const PROCESSING_CREATE = 'create';
-    public const PROCESSING_UPDATE = 'update';
-    public const PROCESSING_DISABLE = 'disable';
-    public const PROCESSING_DISABLE_FOR_SITE = 'disable-for-site';
-    public const PROCESSING_DELETE = 'delete';
-    public const PROCESSING_DELETE_FOR_SITE = 'delete-for-site';
-
-    public const ALL_PROCESSING = [
-        self::PROCESSING_CREATE,
-        self::PROCESSING_UPDATE,
-        self::PROCESSING_DISABLE,
-        self::PROCESSING_DISABLE_FOR_SITE,
-        self::PROCESSING_DELETE,
-        self::PROCESSING_DELETE_FOR_SITE,
-    ];
-
-    /**
-     * The global missing-element policies and their per-site counterparts.
-     * Keyed global => for-site: with site-specific endpoints a run owns one
-     * site's rows, so a global disable/delete off that site's feed would reach
-     * across sites — {@see migrateProcessingForEndpointShape()} swaps each
-     * pair to match the link's endpoint shape on save.
-     */
-    public const PROCESSING_SITE_COUNTERPARTS = [
-        self::PROCESSING_DISABLE => self::PROCESSING_DISABLE_FOR_SITE,
-        self::PROCESSING_DELETE  => self::PROCESSING_DELETE_FOR_SITE,
-    ];
-
     /**
      * The config fields a Link serialises to — its Project Config keys, which
      * are also its `influx_links` columns. THE single source of truth for
@@ -210,9 +183,13 @@ class Link extends Model
     public array $mappings = [];
 
     /**
-     * Allowed actions. Subset of {@see self::ALL_PROCESSING}.
+     * Allowed actions. Subset of {@see ProcessingAction::values()}; a fresh
+     * link starts on {@see ProcessingAction::defaults()}, assigned in the
+     * constructor.
+     *
+     * @var list<string>
      */
-    public array $processing = [self::PROCESSING_CREATE, self::PROCESSING_UPDATE];
+    public array $processing = [];
 
     /**
      * Sliding-window sync presets, e.g.
@@ -260,6 +237,22 @@ class Link extends Model
     /** The raw $mappings array the memo was built from, for staleness checks. */
     protected ?array $mappingCollectionSource = null;
 
+    /**
+     * Seeds the default processing policy. It can't be a property default:
+     * those must be constant expressions, which can't reach
+     * {@see ProcessingAction::defaults()} — and duplicating the values here is
+     * exactly what the enum owns. A `processing` key in `$config` still wins,
+     * since {@see \yii\base\BaseObject::__construct()} applies it after this.
+     *
+     * @param array $config
+     */
+    public function __construct($config = [])
+    {
+        $this->processing = ProcessingAction::defaults();
+
+        parent::__construct($config);
+    }
+
     public function defineRules(): array
     {
         return array_merge(parent::defineRules(), [
@@ -272,7 +265,7 @@ class Link extends Model
             [['siteEndpoints'], 'validateSiteEndpoints'],
             [['match'], 'validateMatch'],
             [['auth'], 'validateAuth'],
-            [['processing'], 'each', 'rule' => ['in', 'range' => self::ALL_PROCESSING]],
+            [['processing'], 'each', 'rule' => ['in', 'range' => ProcessingAction::values()]],
         ]);
     }
 
@@ -283,10 +276,12 @@ class Link extends Model
      *
      * With site-specific endpoints a run owns one site's rows, so the global
      * `disable`/`delete` policies (which touch the canonical element across
-     * every site) are swapped to their `-for-site` counterparts; without site
-     * endpoints the `-for-site` policies have no site to scope to and are
-     * swapped back to global. Rather than reject a mismatched combo on save,
-     * we heal it here and let the caller tell the user what changed.
+     * every site) are swapped to their {@see ProcessingAction::siteCounterpart()};
+     * without site endpoints the `-for-site` policies have no site to scope to
+     * and are swapped back to their {@see ProcessingAction::globalCounterpart()}.
+     * Rather than reject a mismatched combo on save, we heal it here and let the
+     * caller tell the user what changed. A value the enum doesn't know passes
+     * through untouched.
      *
      * A swap can collide with a policy that was already in its target form, so
      * the result is deduped, keeping first-seen order.
@@ -300,20 +295,14 @@ class Link extends Model
         }
 
         $hasSiteEndpoints = ! empty($this->siteEndpoints);
-        $forSite = self::PROCESSING_SITE_COUNTERPARTS;
-        $toGlobal = array_flip($forSite);
 
         $migrations = [];
         $migrated = [];
 
         foreach ($this->processing as $action) {
-            $to = $action;
-
-            if ($hasSiteEndpoints && isset($forSite[$action])) {
-                $to = $forSite[$action];
-            } elseif (! $hasSiteEndpoints && isset($toGlobal[$action])) {
-                $to = $toGlobal[$action];
-            }
+            $case = ProcessingAction::tryFrom((string) $action);
+            $counterpart = $hasSiteEndpoints ? $case?->siteCounterpart() : $case?->globalCounterpart();
+            $to = $counterpart?->value ?? $action;
 
             if ($to !== $action) {
                 $migrations[] = ['from' => $action, 'to' => $to];

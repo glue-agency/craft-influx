@@ -5,9 +5,6 @@
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
 
-{# Status filter labels, in the display order the controller hands us. #}
-{% set statusLabels = { running: "Running"|t("influx"), ok: "OK"|t("influx"), error: "Failed"|t("influx") } %}
-
 {# Active filters, carried through the pager links so paging keeps the view. #}
 {% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger }|filter(v => v is not null and v != "") %}
 
@@ -59,8 +56,8 @@
         <div class="select">
             <select name="status" data-influx-filter aria-label="{{ 'Filter by status'|t('influx') }}">
                 <option value="">{{ "All statuses"|t("influx") }}</option>
-                {% for status in statuses %}
-                    <option value="{{ status }}"{{ status == selectedStatus ? " selected" }}>{{ statusLabels[status] ?? status }}</option>
+                {% for value, label in statuses %}
+                    <option value="{{ value }}"{{ value == selectedStatus ? " selected" }}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -95,7 +92,7 @@
                             <a href="{{ cpUrl('influx/logs/' ~ log.id) }}">
                                 {{ craft.app.formattingLocale.getFormatter().asDatetime(log.startedAt, "short") }}
                             </a>
-                            {% if log.status in ["running", "pending"] %}
+                            {% if presenter.isLive(log.status) %}
                                 <div class="influx-cell-sub">{{ "running"|t("influx") }}</div>
                             {% else %}
                                 {% set parts = [] %}

@@ -10,8 +10,8 @@ use GlueAgency\Influx\models\Link;
  * What a sync run should do with one remote item, decided by
  * {@see self::decide()}.
  *
- * CREATE/UPDATE intentionally share strings with the corresponding processing
- * flags since they name the same action; the SKIP_* values name the reason a
+ * CREATE/UPDATE intentionally share strings with the corresponding
+ * {@see ProcessingAction} cases since they name the same action; the SKIP_* values name the reason a
  * sync would not touch the element.
  */
 enum SyncDecision: string
@@ -30,7 +30,7 @@ enum SyncDecision: string
      * for the dry-run inspector, so both stay aligned on the rule.
      *
      * Lives here rather than on {@see Link}: it reads the link's
-     * {@see Link::PROCESSING_CREATE}/{@see Link::PROCESSING_UPDATE} flags, but
+     * {@see ProcessingAction::CREATE}/{@see ProcessingAction::UPDATE} flags, but
      * the decision itself is the sync engine's concern, not the model's.
      */
     public static function decide(Link $link, mixed $matchValue, ?ElementInterface $element): self
@@ -40,14 +40,14 @@ enum SyncDecision: string
         }
 
         if ($element === null) {
-            if (in_array(Link::PROCESSING_CREATE, $link->processing, true)) {
+            if (in_array(ProcessingAction::CREATE->value, $link->processing, true)) {
                 return self::CREATE;
             }
 
             return self::SKIP_NO_CREATE;
         }
 
-        if (in_array(Link::PROCESSING_UPDATE, $link->processing, true)) {
+        if (in_array(ProcessingAction::UPDATE->value, $link->processing, true)) {
             return self::UPDATE;
         }
 

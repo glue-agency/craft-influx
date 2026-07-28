@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\Support;
 
 use craft\elements\Entry;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\models\Link;
 
 /**
@@ -20,7 +21,7 @@ final class FakeLink
         $link->endpoint = $overrides['endpoint'] ?? 'https://example.test/articles';
         $link->mappings = $overrides['mappings'] ?? [];
         $link->match = $overrides['match'] ?? ['attribute' => 'importId'];
-        $link->processing = $overrides['processing'] ?? ['create', 'update'];
+        $link->processing = $overrides['processing'] ?? ProcessingAction::defaults();
 
         foreach ($overrides as $k => $v) {
             if (property_exists($link, $k)) {

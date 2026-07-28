@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
@@ -12,6 +13,7 @@ use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\web\ItemRowPresenter;
 use GlueAgency\Influx\web\LogPresenter;
+use GlueAgency\Influx\web\Vocabulary;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -20,16 +22,10 @@ class LogsController extends AbstractController
     public const ITEMS_PER_PAGE = 25;
 
     /**
-     * Statuses the overview's status filter offers, in display order. A
-     * requested status outside this set is ignored (treated as "all").
-     */
-    protected const FILTER_STATUSES = ['running', 'ok', 'error'];
-
-    /**
-     * Every toolbar filter is validated against what currently exists, so a
-     * stale query string falls back to "all". The `handle => id` /
-     * `handle => name` maps the rows read from carry no entry for a link that
-     * has since been deleted.
+     * Every toolbar filter is validated against what currently exists (or, for
+     * status and trigger, against its enum), so a stale query string falls back
+     * to "all". The `handle => id` / `handle => name` maps the rows read from
+     * carry no entry for a link that has since been deleted.
      */
     public function actionIndex(): Response
     {
@@ -50,8 +46,14 @@ class LogsController extends AbstractController
 
         $selectedStatus = $this->stringQueryParam('status');
 
-        if ($selectedStatus !== null && ! in_array($selectedStatus, self::FILTER_STATUSES, true)) {
+        if ($selectedStatus !== null && RunStatus::tryFrom($selectedStatus) === null) {
             $selectedStatus = null;
+        }
+
+        $statuses = [];
+
+        foreach (RunStatus::cases() as $status) {
+            $statuses[$status->value] = $status->label();
         }
 
         $selectedTrigger = $this->stringQueryParam('trigger');
@@ -78,7 +80,7 @@ class LogsController extends AbstractController
             'presenter'       => new LogPresenter(),
             'selectedLink'    => $selectedLink,
             'selectedStatus'  => $selectedStatus,
-            'statuses'        => self::FILTER_STATUSES,
+            'statuses'        => $statuses,
             'selectedTrigger' => $selectedTrigger,
             'triggers'        => $triggers,
             'retentionDays'   => $plugin->getSettings()->logRetentionDays,
@@ -117,7 +119,8 @@ class LogsController extends AbstractController
                 'endpointUrl'     => $endpointUrl,
                 'endpoints'       => $endpoints,
                 'resourceHtml'    => $this->resolveResourceDisplay($log, $link),
-                'isLive'          => in_array($log->status, ['running', 'pending'], true),
+                'isLive'          => LogPresenter::isLive($log->status),
+                'vocabulary'      => Vocabulary::payload(),
             ],
         ]);
     }
@@ -312,7 +315,7 @@ class LogsController extends AbstractController
             'items'    => $items,
             'total'    => $plugin->logs->itemCount($log, $actions, $search),
             'counters' => $presenter->presentCounters($log),
-            'done'     => ! in_array($log->status, ['running', 'pending'], true),
+            'done'     => ! LogPresenter::isLive($log->status),
         ]);
     }
 

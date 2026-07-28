@@ -1,24 +1,12 @@
+import { actionColorMap } from './vocabulary.js';
+
 /**
  * Sync action → Craft status colour (live = green, pending = grey, expired =
- * red). Covers both the dry-run ("would-…") labels the debug inspector shows
- * and the committed labels the run log shows. Shared by DebugItemDetail +
- * LogApp so the colour of an action is defined once.
+ * red), for both the dry-run ("would-…") labels the debug inspector shows and
+ * the committed labels the run log shows. The map itself is the server's
+ * (ItemAction::color(), shipped via lib/vocabulary.js); an action outside it
+ * reads as neutral.
  */
-export const ACTION_COLORS = {
-    'would-create':      'live',
-    'would-update':      'live',
-    'would-skip':        'pending',
-    'created':           'live',
-    'updated':           'live',
-    'unchanged':         'pending',
-    'skipped':           'pending',
-    'disabled':          'expired',
-    'disabled-for-site': 'expired',
-    'deleted':           'expired',
-    'deleted-for-site':  'expired',
-    'error':             'expired',
-};
-
 export function actionColor(action) {
-    return ACTION_COLORS[action] || 'pending';
+    return actionColorMap()[action] || 'pending';
 }

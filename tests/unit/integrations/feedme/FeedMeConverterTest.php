@@ -3,9 +3,9 @@
 namespace GlueAgency\Influx\Tests\unit\integrations\feedme;
 
 use Codeception\Test\Unit;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\integrations\feedme\FeedMeConversion;
 use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
-use GlueAgency\Influx\models\Link;
 
 /**
  * Feed Me → Influx conversion spec.
@@ -27,7 +27,7 @@ class FeedMeConverterTest extends Unit
         $this->assertSame('craft\elements\Entry', $link->elementType);
         $this->assertSame('https://example.test/feed.json', $link->endpoint);
         $this->assertSame(['section' => 'news', 'type' => 'article'], $link->elementCriteria);
-        $this->assertSame([Link::PROCESSING_CREATE, Link::PROCESSING_UPDATE], $link->processing);
+        $this->assertSame([ProcessingAction::CREATE->value, ProcessingAction::UPDATE->value], $link->processing);
         $this->assertTrue($link->backup);
     }
 
@@ -410,10 +410,10 @@ class FeedMeConverterTest extends Unit
 
         $this->assertSame(
             [
-                Link::PROCESSING_CREATE,
-                Link::PROCESSING_UPDATE,
-                Link::PROCESSING_DISABLE,
-                Link::PROCESSING_DELETE,
+                ProcessingAction::CREATE->value,
+                ProcessingAction::UPDATE->value,
+                ProcessingAction::DISABLE->value,
+                ProcessingAction::DELETE->value,
             ],
             $conversion->link->processing,
         );
@@ -474,7 +474,7 @@ class FeedMeConverterTest extends Unit
         ])->link;
 
         $this->assertSame(['section' => 'news', 'type' => 'article'], $link->elementCriteria);
-        $this->assertSame([Link::PROCESSING_CREATE], $link->processing);
+        $this->assertSame([ProcessingAction::CREATE->value], $link->processing);
         $this->assertSame(['node' => 'title'], $link->mappings['title']);
         $this->assertSame(['attribute' => 'title'], $link->match);
     }

@@ -13,20 +13,12 @@
 {% endmacro %}
 
 {# A configured processing action on the Links overview. The raw verb handle is
-   the label (lowercase, e.g. `delete-for-site` verbatim); verb → colour is the
-   configuration palette (create reads as informative here, not as a write):
-   create = blue, update = green, disable = gray, delete = red. #}
+   the label (lowercase, e.g. `delete-for-site` verbatim); the colour comes from
+   the enum that owns the processing vocabulary (ProcessingAction::color()),
+   reached through a Twig function because macros see no template context. #}
 {% macro processingPill(verb) %}
     {% import _self as ui %}
-    {% set colors = {
-        'create':           'blue',
-        'update':           'green',
-        'disable':          'gray',
-        'disable-for-site': 'gray',
-        'delete':           'red',
-        'delete-for-site':  'red',
-    } %}
-    {{ ui.pill(verb, colors[verb] ?? 'gray') }}
+    {{ ui.pill(verb, influxProcessingColor(verb)) }}
 {% endmacro %}
 
 {# The translated noun for a result kind ("created", "seen", …). Shared by the

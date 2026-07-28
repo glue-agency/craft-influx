@@ -1,0 +1,64 @@
+{
+    "actionColors": {
+        "created": "live",
+        "would-create": "live",
+        "updated": "live",
+        "would-update": "live",
+        "unchanged": "pending",
+        "skipped": "pending",
+        "would-skip": "pending",
+        "error": "expired",
+        "disabled": "expired",
+        "would-disable": "expired",
+        "disabled-for-site": "expired",
+        "would-disable-for-site": "expired",
+        "deleted": "expired",
+        "would-delete": "expired",
+        "deleted-for-site": "expired",
+        "would-delete-for-site": "expired"
+    },
+    "counters": [
+        {
+            "key": "itemsSeen",
+            "action": null,
+            "label": "seen",
+            "tone": null
+        },
+        {
+            "key": "itemsCreated",
+            "action": "created",
+            "label": "created",
+            "tone": "good"
+        },
+        {
+            "key": "itemsUpdated",
+            "action": "updated",
+            "label": "updated",
+            "tone": "good"
+        },
+        {
+            "key": "itemsUnchanged",
+            "action": "unchanged",
+            "label": "unchanged",
+            "tone": null
+        },
+        {
+            "key": "itemsSkipped",
+            "action": "skipped",
+            "label": "skipped",
+            "tone": null
+        },
+        {
+            "key": "itemsDisabled",
+            "action": "disabled",
+            "label": "disabled",
+            "tone": "bad"
+        },
+        {
+            "key": "itemsDeleted",
+            "action": "deleted",
+            "label": "deleted",
+            "tone": "bad"
+        }
+    ]
+}

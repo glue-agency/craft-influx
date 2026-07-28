@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
@@ -17,58 +18,58 @@ class LinkProcessingMigrationTest extends Unit
 {
     public function testGlobalDeleteBecomesForSiteWithSiteEndpoints(): void
     {
-        $link = $this->link(true, [Link::PROCESSING_CREATE, Link::PROCESSING_DELETE]);
+        $link = $this->link(true, [ProcessingAction::CREATE->value, ProcessingAction::DELETE->value]);
         $migrations = $link->migrateProcessingForEndpointShape();
 
-        $this->assertSame([Link::PROCESSING_CREATE, Link::PROCESSING_DELETE_FOR_SITE], $link->processing);
+        $this->assertSame([ProcessingAction::CREATE->value, ProcessingAction::DELETE_FOR_SITE->value], $link->processing);
         $this->assertSame(
-            [['from' => Link::PROCESSING_DELETE, 'to' => Link::PROCESSING_DELETE_FOR_SITE]],
+            [['from' => ProcessingAction::DELETE->value, 'to' => ProcessingAction::DELETE_FOR_SITE->value]],
             $migrations,
         );
     }
 
     public function testGlobalDisableBecomesForSiteWithSiteEndpoints(): void
     {
-        $link = $this->link(true, [Link::PROCESSING_DISABLE]);
+        $link = $this->link(true, [ProcessingAction::DISABLE->value]);
         $link->migrateProcessingForEndpointShape();
 
-        $this->assertSame([Link::PROCESSING_DISABLE_FOR_SITE], $link->processing);
+        $this->assertSame([ProcessingAction::DISABLE_FOR_SITE->value], $link->processing);
     }
 
     public function testForSiteBecomesGlobalWithoutSiteEndpoints(): void
     {
-        $link = $this->link(false, [Link::PROCESSING_DELETE_FOR_SITE, Link::PROCESSING_DISABLE_FOR_SITE]);
+        $link = $this->link(false, [ProcessingAction::DELETE_FOR_SITE->value, ProcessingAction::DISABLE_FOR_SITE->value]);
         $link->migrateProcessingForEndpointShape();
 
-        $this->assertSame([Link::PROCESSING_DELETE, Link::PROCESSING_DISABLE], $link->processing);
+        $this->assertSame([ProcessingAction::DELETE->value, ProcessingAction::DISABLE->value], $link->processing);
     }
 
     public function testMatchingShapeIsUnchangedAndReportsNoMigrations(): void
     {
-        $link = $this->link(true, [Link::PROCESSING_CREATE, Link::PROCESSING_DELETE_FOR_SITE]);
+        $link = $this->link(true, [ProcessingAction::CREATE->value, ProcessingAction::DELETE_FOR_SITE->value]);
         $migrations = $link->migrateProcessingForEndpointShape();
 
-        $this->assertSame([Link::PROCESSING_CREATE, Link::PROCESSING_DELETE_FOR_SITE], $link->processing);
+        $this->assertSame([ProcessingAction::CREATE->value, ProcessingAction::DELETE_FOR_SITE->value], $link->processing);
         $this->assertSame([], $migrations);
     }
 
     public function testIsIdempotent(): void
     {
-        $link = $this->link(true, [Link::PROCESSING_DELETE]);
+        $link = $this->link(true, [ProcessingAction::DELETE->value]);
         $link->migrateProcessingForEndpointShape();
         $second = $link->migrateProcessingForEndpointShape();
 
         $this->assertSame([], $second);
-        $this->assertSame([Link::PROCESSING_DELETE_FOR_SITE], $link->processing);
+        $this->assertSame([ProcessingAction::DELETE_FOR_SITE->value], $link->processing);
     }
 
     public function testCollidingGlobalAndForSiteFormsDedupe(): void
     {
         // A config carrying both forms of the same policy collapses to one.
-        $link = $this->link(true, [Link::PROCESSING_DELETE, Link::PROCESSING_DELETE_FOR_SITE]);
+        $link = $this->link(true, [ProcessingAction::DELETE->value, ProcessingAction::DELETE_FOR_SITE->value]);
         $link->migrateProcessingForEndpointShape();
 
-        $this->assertSame([Link::PROCESSING_DELETE_FOR_SITE], $link->processing);
+        $this->assertSame([ProcessingAction::DELETE_FOR_SITE->value], $link->processing);
     }
 
     protected function link(bool $siteEndpoints, array $processing): Link

@@ -59,15 +59,18 @@ class SyncDecisionTest extends Unit
     }
 
     /**
-     * @param list<string> $processing
+     * @param list<string>|null $processing null = the link's own default policy.
      */
-    private function link(array $processing = ['create', 'update']): Link
+    private function link(?array $processing = null): Link
     {
         $link = new Link();
         $link->handle = 'articles';
         $link->name = 'Articles';
         $link->elementType = Entry::class;
-        $link->processing = $processing;
+
+        if ($processing !== null) {
+            $link->processing = $processing;
+        }
 
         return $link;
     }

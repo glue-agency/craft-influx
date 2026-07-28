@@ -9,6 +9,7 @@ use craft\helpers\Db;
 use DateTime;
 use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
@@ -85,7 +86,7 @@ class LogsService extends Component
         $log->siteHandle = $siteHandle;
         $log->offsetHandle = $offsetHandle;
         $log->elementId = $elementId;
-        $log->status = 'running';
+        $log->status = RunStatus::RUNNING->value;
         $startedAt = new DateTime();
         $log->startedAt = Db::prepareDateForDb($startedAt);
 
@@ -211,7 +212,7 @@ class LogsService extends Component
     {
         $this->flush($log);
 
-        $log->status = 'ok';
+        $log->status = RunStatus::OK->value;
         $log->finishedAt = Db::prepareDateForDb(new DateTime());
 
         if ($log->id) {
@@ -222,7 +223,7 @@ class LogsService extends Component
     /**
      * The pending buffer is flushed first so already-processed rows aren't
      * lost, but a throwing flush is caught and only warned about: nothing may
-     * stop `status = 'error'` from landing.
+     * stop the ERROR status from landing.
      */
     public function fail(LogRecord $log, string $error): void
     {
@@ -232,7 +233,7 @@ class LogsService extends Component
             Craft::warning("Influx: flushing log #{$log->id} before fail() threw: {$e->getMessage()}", __METHOD__);
         }
 
-        $log->status = 'error';
+        $log->status = RunStatus::ERROR->value;
         $log->error = $error;
         $log->finishedAt = Db::prepareDateForDb(new DateTime());
 
@@ -261,7 +262,7 @@ class LogsService extends Component
     public function errorLogCount(): int
     {
         return (int) LogRecord::find()
-            ->where(['status' => 'error'])
+            ->where(['status' => RunStatus::ERROR->value])
             ->orWhere(['id' => (new Query())
                 ->select(['logId'])
                 ->from(Table::LOG_ITEMS)

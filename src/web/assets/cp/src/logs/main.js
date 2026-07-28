@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import LogApp from './LogApp.vue';
 import { installT } from '../lib/installT.js';
+import { installVocabulary } from '../lib/vocabulary.js';
 
 /**
  * Boot the run-log viewer. The host template renders a single mount point
@@ -16,6 +17,8 @@ export function mountLog(el) {
     } catch (e) {
         config = {};
     }
+
+    installVocabulary(config.vocabulary);
 
     const app = createApp(LogApp, { config });
     installT(app);

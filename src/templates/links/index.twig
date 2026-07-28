@@ -8,8 +8,8 @@
 
 {# Canonical order for the processing pills (write actions first, then the
    reconciliation actions), so they always read the same regardless of the
-   order they were configured in. #}
-{% set processingOrder = ["create", "update", "disable", "disable-for-site", "delete", "delete-for-site"] %}
+   order they were configured in. Owned by the ProcessingAction enum. #}
+{% set processingOrder = influxProcessingValues() %}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -180,7 +180,7 @@
                                 {% if lastLog %}
                                     <span class="status {{ logPresenter.statusColor(lastLog.status) }}" title="{{ lastLog.status|t('influx') }}"></span>
                                     <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
-                                    {% if lastLog.status == "error" %}
+                                    {% if logPresenter.isFailed(lastLog.status) %}
                                         <div class="influx-cell-sub">
                                             {{- "failed"|t("influx") -}}
                                             {%- if lastLog.error %} — {{ lastLog.error|split("\n")|first }}{% endif -%}

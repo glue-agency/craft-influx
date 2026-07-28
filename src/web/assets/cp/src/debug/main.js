@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import DebugApp from './DebugApp.vue';
 import { installT } from '../lib/installT.js';
+import { installVocabulary } from '../lib/vocabulary.js';
 
 /**
  * Boot the debug inspector. The host template renders a single mount point
@@ -16,6 +17,8 @@ export function mountDebug(el) {
     } catch (e) {
         config = {};
     }
+
+    installVocabulary(config.vocabulary);
 
     const app = createApp(DebugApp, { config });
     installT(app);

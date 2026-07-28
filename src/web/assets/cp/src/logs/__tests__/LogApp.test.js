@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import LogApp from '../LogApp.vue';
+import { installVocabulary } from '../../lib/vocabulary.js';
 
 const $t = (s, p) => (p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m)) : s);
 
@@ -31,6 +32,8 @@ describe('LogApp', () => {
         window.Craft.sendActionRequest = () => Promise.resolve({ data: {} });
         // Filters write to the URL — reset it so it can't leak between tests.
         window.history.replaceState({}, '', '/');
+        // Restore the generated default after a test installs its own payload.
+        installVocabulary(null);
     });
 
     it('renders the counters and the first page of items', () => {
@@ -42,6 +45,23 @@ describe('LogApp', () => {
         expect(counters.length).toBe(7);
         expect(counters[0].text()).toContain('2');
         expect(counters[0].text().toLowerCase()).toContain('seen');
+    });
+
+    it('renders the counter row the server ships, labels and all', () => {
+        installVocabulary({
+            counters: [
+                { key: 'itemsSeen', action: null, label: 'gezien', tone: null },
+                { key: 'itemsCreated', action: 'created', label: 'aangemaakt', tone: 'good' },
+            ],
+        });
+
+        const counters = mountApp().findAll('.influx-counter');
+
+        expect(counters.length).toBe(2);
+        expect(counters[0].text()).toContain('gezien');
+        expect(counters[1].text()).toContain('aangemaakt');
+        // Non-zero + tone 'good' → the green tint; zero would mute it.
+        expect(counters[1].find('.influx-counter-value').classes()).toContain('is-good');
     });
 
     it('filters the list by action when a counter is clicked', async () => {

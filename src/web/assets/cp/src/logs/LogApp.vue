@@ -412,24 +412,7 @@ import DebugItemDetail from '../components/DebugItemDetail.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
 import { requestErrorMessage } from '../lib/requestError.js';
-
-// The counters shown above the item list, in order. Each doubles as a filter:
-// clicking one restricts the list to that action; "seen" clears the filter.
-// `good`/`bad` tint the value when non-zero (green wrote / red destructive).
-const COUNTER_DEFS = [
-    { key: 'itemsSeen',      action: null },
-    { key: 'itemsCreated',   action: 'created',   good: true },
-    { key: 'itemsUpdated',   action: 'updated',   good: true },
-    { key: 'itemsUnchanged', action: 'unchanged' },
-    { key: 'itemsSkipped',   action: 'skipped' },
-    { key: 'itemsDeleted',   action: 'deleted',   bad: true },
-    { key: 'itemsDisabled',  action: 'disabled',  bad: true },
-];
-
-const COUNTER_LABELS = {
-    itemsSeen: 'seen', itemsCreated: 'created', itemsUpdated: 'updated',
-    itemsUnchanged: 'unchanged', itemsSkipped: 'skipped', itemsDeleted: 'deleted', itemsDisabled: 'disabled',
-};
+import { counterDefs } from '../lib/vocabulary.js';
 
 /**
  * The run-log viewer — a split master/detail. The summary card's counters
@@ -498,19 +481,22 @@ export default {
         // The filterable action values (the counters minus "seen"), used to
         // validate a status read back from the URL.
         validActions() {
-            return COUNTER_DEFS.map((d) => d.action).filter(Boolean);
+            return counterDefs().map((d) => d.action).filter(Boolean);
         },
 
+        // The counters shown above the item list, in the order the server ships
+        // them. Each doubles as a filter: clicking one restricts the list to
+        // that action; "seen" (no action) clears the filter. Labels arrive
+        // translated; `tone` tints a non-zero value (wrote / destructive).
         counters() {
-            return COUNTER_DEFS.map((d) => {
+            return counterDefs().map((d) => {
                 const value = this.log[d.key] || 0;
                 let tone = '';
 
                 if (value === 0) tone = 'is-muted';
-                else if (d.good) tone = 'is-good';
-                else if (d.bad) tone = 'is-bad';
+                else if (d.tone) tone = 'is-' + d.tone;
 
-                return { label: this.$t(COUNTER_LABELS[d.key]), value, action: d.action, tone };
+                return { label: d.label, value, action: d.action, tone };
             });
         },
 

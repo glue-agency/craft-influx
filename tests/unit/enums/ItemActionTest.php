@@ -52,4 +52,71 @@ class ItemActionTest extends Unit
         // ERROR has no counter, so it can't group by one — itself only.
         $this->assertSame(['error'], ItemAction::ERROR->filterGroup());
     }
+
+    public function testCountedCasesAreOneBasePerCounterInDisplayOrder(): void
+    {
+        $this->assertSame([
+            'created',
+            'updated',
+            'unchanged',
+            'skipped',
+            'disabled',
+            'deleted',
+        ], array_map(
+            static fn(ItemAction $case): string => $case->value,
+            ItemAction::countedCases(),
+        ));
+    }
+
+    public function testCountedCasesCoverEveryCounterExactlyOnce(): void
+    {
+        $counters = array_map(
+            static fn(ItemAction $case): ?string => $case->counterAttribute(),
+            ItemAction::countedCases(),
+        );
+
+        $this->assertSame($counters, array_unique($counters));
+        $this->assertNotContains(null, $counters);
+
+        // Every counted case is reachable through some case's counter.
+        $all = array_filter(array_map(
+            static fn(ItemAction $case): ?string => $case->counterAttribute(),
+            ItemAction::cases(),
+        ));
+        $this->assertEqualsCanonicalizing(array_values(array_unique($all)), $counters);
+    }
+
+    public function testColorIsTheCraftStatusPalette(): void
+    {
+        $this->assertSame('live', ItemAction::CREATED->color());
+        $this->assertSame('live', ItemAction::UPDATED->color());
+        $this->assertSame('pending', ItemAction::UNCHANGED->color());
+        $this->assertSame('pending', ItemAction::SKIPPED->color());
+        $this->assertSame('expired', ItemAction::ERROR->color());
+        $this->assertSame('expired', ItemAction::DISABLED->color());
+        $this->assertSame('expired', ItemAction::DELETED->color());
+    }
+
+    public function testPerSiteVariantIsColouredLikeItsGlobalSibling(): void
+    {
+        $this->assertSame(ItemAction::DISABLED->color(), ItemAction::DISABLED_FOR_SITE->color());
+        $this->assertSame(ItemAction::DELETED->color(), ItemAction::DELETED_FOR_SITE->color());
+        $this->assertSame(ItemAction::DISABLED->pillColor(), ItemAction::DISABLED_FOR_SITE->pillColor());
+        $this->assertSame(ItemAction::DELETED->pillColor(), ItemAction::DELETED_FOR_SITE->pillColor());
+    }
+
+    public function testPillColorIsTheResultPaletteAndDivergesOnDisabled(): void
+    {
+        $this->assertSame('green', ItemAction::CREATED->pillColor());
+        $this->assertSame('green', ItemAction::UPDATED->pillColor());
+        $this->assertSame('gray', ItemAction::UNCHANGED->pillColor());
+        $this->assertSame('gray', ItemAction::SKIPPED->pillColor());
+        $this->assertSame('red', ItemAction::DELETED->pillColor());
+
+        // The one deliberate divergence between the two palettes: a disabled
+        // element reads as neutral in a run's result summary, but destructive on
+        // the badge of the row that caused it.
+        $this->assertSame('gray', ItemAction::DISABLED->pillColor());
+        $this->assertSame('expired', ItemAction::DISABLED->color());
+    }
 }

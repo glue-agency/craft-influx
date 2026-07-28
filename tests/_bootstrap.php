@@ -19,3 +19,8 @@ date_default_timezone_set('UTC');
 // touches Yii::configure(), so the class has to be in scope even for the
 // pure-PHP unit suite.
 require_once dirname(__DIR__) . '/vendor/yiisoft/yii2/Yii.php';
+
+// Same story for the Craft class (Craft's own bootstrap normally requires it):
+// the enums translate their labels through Craft::t(), which with no booted app
+// falls back to returning the source string — enough to spec them.
+require_once dirname(__DIR__) . '/vendor/craftcms/cms/src/Craft.php';

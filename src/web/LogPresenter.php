@@ -5,6 +5,8 @@ namespace GlueAgency\Influx\web;
 use Craft;
 use craft\base\ElementInterface;
 use craft\helpers\DateTimeHelper;
+use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 
@@ -249,13 +251,12 @@ class LogPresenter
      * Composition core for {@see resultSegments()} — kept on primitives so it's
      * unit-testable without a booted Craft or a real record.
      *
-     * A still-running (or pending) run leads with an informative "N seen"
-     * progress pill; a settled run drops it (the seen total moves to the sub
-     * line). Only actions with a non-zero count appear, each carrying the
-     * result palette's colour (green = wrote, gray = neutral, red =
-     * destructive). The palette map's key order IS the display order, so
-     * reordering it reorders the pills; `seen` is deliberately absent from it,
-     * being the leading progress pill handled separately.
+     * A live run leads with an informative "N seen" progress pill; a settled one
+     * drops it (the seen total moves to the sub line). Only actions with a
+     * non-zero count appear, each carrying its {@see ItemAction::pillColor()}.
+     * {@see ItemAction::countedCases()} supplies both which kinds exist and the
+     * order they render in; `seen` isn't one of them, being the leading progress
+     * pill handled separately.
      *
      * @param array{seen?: int, created?: int, updated?: int, unchanged?: int, skipped?: int, disabled?: int, deleted?: int} $counters
      * @return list<array{count: int, kind: string, color: string}>
@@ -264,24 +265,15 @@ class LogPresenter
     {
         $segments = [];
 
-        if (in_array($status, ['running', 'pending'], true)) {
+        if (self::isLive($status)) {
             $segments[] = ['count' => (int) ($counters['seen'] ?? 0), 'kind' => 'seen', 'color' => 'blue'];
         }
 
-        $palette = [
-            'created'   => 'green',
-            'updated'   => 'green',
-            'unchanged' => 'gray',
-            'skipped'   => 'gray',
-            'disabled'  => 'gray',
-            'deleted'   => 'red',
-        ];
-
-        foreach ($palette as $kind => $color) {
-            $count = (int) ($counters[$kind] ?? 0);
+        foreach (ItemAction::countedCases() as $case) {
+            $count = (int) ($counters[$case->value] ?? 0);
 
             if ($count > 0) {
-                $segments[] = ['count' => $count, 'kind' => $kind, 'color' => $color];
+                $segments[] = ['count' => $count, 'kind' => $case->value, 'color' => $case->pillColor()];
             }
         }
 
@@ -323,17 +315,33 @@ class LogPresenter
     }
 
     /**
-     * Craft status-dot class for a run status: `live` (ok), `expired` (error),
-     * or `pending` (running / anything else). The one place the run
-     * status → dot colour mapping lives, shared by both overviews.
+     * Craft status-dot class for a stored run status, per
+     * {@see RunStatus::color()}; an unrecognised value falls back to `pending`.
      */
     public static function statusColor(string $status): string
     {
-        return match ($status) {
-            'ok'    => 'live',
-            'error' => 'expired',
-            default => 'pending',
-        };
+        return RunStatus::tryFrom($status)?->color() ?? 'pending';
+    }
+
+    /**
+     * Whether a stored run status is still in flight ({@see RunStatus::isLive()})
+     * — the overviews' progress pill, the log viewer's poll switch and its
+     * `done` flag. The string-typed accessor both the templates and the callers
+     * reading the raw column need; an unrecognised value reads as settled.
+     */
+    public static function isLive(?string $status): bool
+    {
+        return RunStatus::tryFrom((string) $status)?->isLive() ?? false;
+    }
+
+    /**
+     * Whether a stored run status is a failure — the Links overview swaps its
+     * result summary for the error message. Companion to {@see isLive()} for
+     * callers holding the raw column value.
+     */
+    public static function isFailed(?string $status): bool
+    {
+        return RunStatus::tryFrom((string) $status) === RunStatus::ERROR;
     }
 
     /**

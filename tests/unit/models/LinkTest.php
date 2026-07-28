@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
 use craft\elements\Entry;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
 
@@ -163,7 +164,7 @@ class LinkTest extends Unit
 
     public function testProcessingDefaultsToCreateAndUpdate(): void
     {
-        $this->assertSame(['create', 'update'], $this->link()->processing);
+        $this->assertSame(ProcessingAction::defaults(), $this->link()->processing);
     }
 
     public function testEnsureUidIsIdempotent(): void
