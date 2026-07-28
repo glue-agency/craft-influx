@@ -20,7 +20,6 @@ use craft\services\UserPermissions;
 use craft\web\UrlManager;
 use craft\web\View;
 use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
-use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\Settings;
 use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\AuthService;
@@ -37,6 +36,7 @@ use GlueAgency\Influx\services\LogsService;
 use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\services\TargetsService;
 use GlueAgency\Influx\web\assets\editor\FieldIndicatorAsset;
+use GlueAgency\Influx\web\SyncButtonPresenter;
 use GlueAgency\Influx\web\twig\InfluxTwigExtension;
 use yii\base\Event;
 
@@ -146,6 +146,11 @@ class Influx extends Plugin
         Craft::$app->getProjectConfig()->remove('influx');
     }
 
+    /**
+     * The error badge runs on every CP request, so its count is cached and
+     * change-invalidated by {@see LogsService::errorLogCount()} rather than
+     * re-queried per nav render.
+     */
     public function getCpNavItem(): ?array
     {
         $parent = parent::getCpNavItem();
@@ -170,7 +175,7 @@ class Influx extends Plugin
             ];
         }
 
-        $errorCount = Influx::getInstance()->logs->errorLogCount();
+        $errorCount = $this->logs->errorLogCount();
 
         if ($errorCount > 0) {
             $parent['badgeCount'] = $errorCount;
@@ -358,26 +363,11 @@ class Influx extends Plugin
 
     /**
      * Add a "Sync from remote" affordance to the edit page of any entry the
-     * plugin targets, offering every link that both structurally targets the
-     * entry AND has a resource (item) endpoint — without one there's no way to
-     * sync a single element, only the full-list sweep. One targeting link
-     * renders a single button; several render a menu, one item per link.
-     *
-     * A link is offered even when the entry can't currently be synced (no
-     * match value, or an active cool-down): those render as a DISABLED button
-     * / menu item with a Craft `.info` icon explaining why, so the action is
-     * discoverable rather than silently absent. Users without
-     * {@see PERMISSION_SYNC} get no button at all.
-     *
-     * Additional buttons render INSIDE the edit page's #main-form, so this
-     * must not output a <form> of its own: forms can't nest, the browser
-     * would close #main-form early and every field input (plus Craft's hidden
-     * action/redirect inputs) would fall outside it — silently breaking entry
-     * saving and drafts. Instead each button uses Craft's `formsubmit` pattern;
-     * `form: false` makes the CP JS post the action through a detached
-     * temporary form (CSRF included) rather than hijacking the closest form.
-     * Markup is built by a CP template (influx/_sync-button) rather than
-     * concatenated here, so the branching and styling live in one readable place.
+     * plugin targets. Users without {@see PERMISSION_SYNC} get no button at all;
+     * everything about WHAT gets offered and why — the resource-endpoint
+     * requirement, the disabled states, the posted params — belongs to
+     * {@see SyncButtonPresenter}, so this is the event wiring plus the
+     * permission gate.
      */
     protected function registerEntrySyncButton(): void
     {
@@ -386,75 +376,10 @@ class Influx extends Plugin
                 return;
             }
 
-            /** @var Entry $element */
+            /** @var ElementInterface $element */
             $element = $event->sender;
 
-            $candidates = [];
-
-            foreach ($this->links->findLinksForElement($element) as $link) {
-                if (! $link->itemEndpoint) {
-                    continue;
-                }
-
-                $candidates[] = $this->syncButtonCandidate($link, $element);
-            }
-
-            if ($candidates === []) {
-                return;
-            }
-
-            $redirect = $element->getCpEditUrl();
-
-            $event->html .= Craft::$app->getView()->renderTemplate('influx/_sync-button', [
-                'candidates'     => $candidates,
-                'hashedRedirect' => $redirect ? Craft::$app->getSecurity()->hashData($redirect) : null,
-            ], View::TEMPLATE_MODE_CP);
+            $event->html .= (new SyncButtonPresenter())->html($element) ?? '';
         });
-    }
-
-    /**
-     * Build one candidate descriptor for the sync button/menu: the link's
-     * display name, whether it's currently syncable, the reason it isn't (for
-     * the disabled state's info HUD), and the `data-params` the formsubmit
-     * posts — carrying the explicit link handle so the action syncs THIS link
-     * ({@see \GlueAgency\Influx\controllers\SynchronizationController::actionElement()}).
-     *
-     * Only a link with per-site endpoints scopes to one site, so `site` is left
-     * off for a single-base-endpoint link — that always syncs the primary site,
-     * so pinning the action to the editor's current site would misrepresent it.
-     *
-     * @return array{name: string, enabled: bool, reason: ?string, params: array<string, mixed>}
-     */
-    protected function syncButtonCandidate(Link $link, Entry $element): array
-    {
-        $enabled = true;
-        $reason = null;
-
-        $matchAttr = $link->matchAttribute();
-
-        if (! $matchAttr || $element->{$matchAttr} === null || $element->{$matchAttr} === '') {
-            $enabled = false;
-            $reason = Craft::t('influx', 'This entry has no value for the match field, so it can’t be synced from remote.');
-        } else {
-            $remaining = $this->cooldown->remaining($link, $element);
-
-            if ($remaining > 0) {
-                $enabled = false;
-                $reason = Craft::t('influx', 'Recently synced');
-            }
-        }
-
-        $params = ['elementId' => $element->id, 'link' => $link->handle];
-
-        if ($link->siteHandles() !== []) {
-            $params['site'] = $element->site->handle;
-        }
-
-        return [
-            'name'    => $link->name,
-            'enabled' => $enabled,
-            'reason'  => $reason,
-            'params'  => $params,
-        ];
     }
 }

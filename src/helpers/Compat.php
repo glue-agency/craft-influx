@@ -11,6 +11,7 @@ use craft\elements\User;
 use craft\helpers\Cp;
 use craft\helpers\Db;
 use craft\helpers\Html;
+use craft\helpers\StringHelper;
 use craft\models\EntryType;
 use craft\models\FieldLayout;
 use craft\models\Section;
@@ -296,6 +297,60 @@ class Compat
         }
 
         return $html;
+    }
+
+    /**
+     * Craft's own `_includes/forms/elementSelect` partial, rendered server-side
+     * for a single-element picker, plus the JS settings that bring it to life.
+     * The LinkBuilder SPA drops the HTML into a ref'd `<div>` and instantiates
+     * `Craft.BaseElementSelectInput(jsSettings)` itself — `registerJs: false`
+     * keeps the partial from emitting its own init into the page-level JS
+     * register, which would never fire on a SPA load anyway.
+     *
+     * Lives here because it is CP rendering pinned to a Craft version on both
+     * halves: the partial's variable set and `BaseElementSelectInput`'s settings
+     * both moved between the majors (`showActionMenu` is a 5.x addition), and
+     * `jsSettings` hand-mirrors what the partial builds for a standard CP field,
+     * so the two have to stay in step. A key the running major doesn't know is
+     * inert either way — Twig ignores an unused variable, and the JS class merges
+     * settings over its own defaults.
+     *
+     * A read-only environment renders the control disabled: chips stay visible,
+     * choose/remove go dead.
+     *
+     * @param string $elementType FQCN of the target element type.
+     * @param ElementInterface[] $elements Currently-selected elements.
+     * @return array{html: string, jsSettings: array}
+     */
+    public static function elementSelectInput(string $elementType, array $elements, bool $readOnly): array
+    {
+        $hostId = 'influx-el-' . StringHelper::randomString(8);
+
+        $shared = [
+            'id'             => $hostId,
+            'name'           => null,
+            'elementType'    => $elementType,
+            'sources'        => '*',
+            'limit'          => 1,
+            'single'         => true,
+            'sortable'       => false,
+            'showActionMenu' => false,
+            'disabled'       => $readOnly,
+        ];
+
+        $html = Craft::$app->getView()->renderTemplate('_includes/forms/elementSelect', $shared + [
+            'elements'   => $elements,
+            'registerJs' => false,
+        ]);
+
+        return [
+            'html'       => $html,
+            'jsSettings' => $shared + [
+                'viewMode'         => 'list',
+                'defaultPlacement' => 'end',
+                'modalSettings'    => (object) [],
+            ],
+        ];
     }
 
     /**

@@ -38,8 +38,12 @@ class DebugService extends Component
      * after the first page; it finishes when that page is exhausted or the limit
      * is reached. Nothing is streamed — the caller buffers every event into a
      * single JSON response — so there is no "done" sentinel.
+     *
+     * The meta envelope is declared ONCE, defaulted to "nothing fetched", and
+     * then either stamped with the failure or filled in from the page — a failed
+     * fetch and a successful one can't describe the feed with different keys.
      */
-    public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): Generator
+    public function inspectSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): Generator
     {
         $plugin = Influx::getInstance();
         $target = $plugin->targets->forLink($link);
@@ -60,7 +64,22 @@ class DebugService extends Component
             return;
         }
 
-        $url = $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle, $queryParams);
+        $meta = [
+            'siteHandle'     => $siteHandle,
+            'url'            => $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle, $queryParams),
+            'itemsOnPage'    => 0,
+            'paginatorNode'  => $link->paginatorNode,
+            'paginatorValue' => null,
+            'totalCount'     => null,
+            'pageCount'      => null,
+            'limit'          => $limit,
+            'matchAttribute' => $matchAttr,
+            'matchNode'      => $matchNode,
+            'offset'         => $offset,
+            'offsetLabel'    => $offsetLabel,
+            'offsetQuery'    => $queryParams,
+            'error'          => null,
+        ];
 
         $firstPage = null;
 
@@ -71,46 +90,21 @@ class DebugService extends Component
                 break;
             }
         } catch (Throwable $e) {
-            yield [
-                'type' => 'meta',
-                'data' => [
-                    'siteHandle'     => $siteHandle,
-                    'url'            => $url,
-                    'itemsOnPage'    => 0,
-                    'paginatorNode'  => $link->paginatorNode,
-                    'paginatorValue' => null,
-                    'limit'          => $limit,
-                    'matchAttribute' => $matchAttr,
-                    'matchNode'      => $matchNode,
-                    'offset'         => $offset,
-                    'offsetLabel'    => $offsetLabel,
-                    'offsetQuery'    => $queryParams,
-                    'error'          => $e->getMessage(),
-                ],
-            ];
+            $meta['error'] = $e->getMessage();
+
+            yield ['type' => 'meta', 'data' => $meta];
 
             return;
         }
 
-        yield [
-            'type' => 'meta',
-            'data' => [
-                'siteHandle'     => $siteHandle,
-                'url'            => $url,
-                'itemsOnPage'    => $firstPage ? count($firstPage->items) : 0,
-                'paginatorNode'  => $link->paginatorNode,
-                'paginatorValue' => $firstPage?->nextUrl,
-                'totalCount'     => $firstPage?->totalCount,
-                'pageCount'      => $firstPage?->pageCount,
-                'limit'          => $limit,
-                'matchAttribute' => $matchAttr,
-                'matchNode'      => $matchNode,
-                'offset'         => $offset,
-                'offsetLabel'    => $offsetLabel,
-                'offsetQuery'    => $queryParams,
-                'error'          => null,
-            ],
-        ];
+        if ($firstPage) {
+            $meta['itemsOnPage'] = count($firstPage->items);
+            $meta['paginatorValue'] = $firstPage->nextUrl;
+            $meta['totalCount'] = $firstPage->totalCount;
+            $meta['pageCount'] = $firstPage->pageCount;
+        }
+
+        yield ['type' => 'meta', 'data' => $meta];
 
         if (! $firstPage) {
             return;
@@ -121,6 +115,7 @@ class DebugService extends Component
         foreach (array_slice($firstPage->items, 0, $limit) as $item) {
             $row = $plugin->inspector->inspectWithTarget($link, $target, $item->raw(), $siteHandle);
             $row['index'] = $index++;
+
             yield ['type' => 'item', 'data' => $row];
         }
     }

@@ -8,12 +8,15 @@ use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\records\Log as LogRecord;
+use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\sync\item\ItemProcessor;
 use GlueAgency\Influx\sync\item\ItemResolution;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\web\ItemRowPresenter;
+use GlueAgency\Influx\web\LogPresenter;
 use Throwable;
 
 /**
@@ -23,9 +26,9 @@ use Throwable;
  * presents the resolved element + per-field mapping results as row arrays.
  *
  * Two consumers share this one engine so the logic exists exactly once: the
- * Links overview "Debug" view ({@see DebugService::streamSite()}, which fans a
+ * Links overview "Debug" view ({@see DebugService::inspectSite()}, which fans a
  * whole first page through {@see inspectWithTarget()}) and the log detail
- * drill-down ({@see inspectItem()}, one historical stored payload).
+ * drill-down ({@see inspectStoredLogItem()}, one historical stored payload).
  */
 class InspectorService extends Component
 {
@@ -42,11 +45,107 @@ class InspectorService extends Component
      */
     protected ItemRowPresenter $rows;
 
+    /**
+     * Owns the stored-vs-recomputed overlays the log drill-down needs
+     * ({@see inspectStoredLogItem()}).
+     */
+    protected LogPresenter $logRows;
+
     public function init(): void
     {
         parent::init();
         $this->itemProcessor = new ItemProcessor();
         $this->rows = new ItemRowPresenter();
+        $this->logRows = new LogPresenter();
+    }
+
+    /**
+     * Drill-down for one stored log item, as the log viewer's detail pane
+     * consumes it: `{row: array}`, or `{row: null, message: …}` when the run's
+     * link has since been deleted and there's nothing to inspect against.
+     *
+     * Re-runs the debug-view inspection against the raw remote payload captured
+     * when the item was synced, so the user can see per-field source/parsed/
+     * current values and which mappings would (re-)apply if synced again. Pins to
+     * the item's own `elementId` rather than re-deriving the element from the
+     * match value — `$log->siteHandle` is null for element-triggered runs, so an
+     * unscoped match-value lookup would be ambiguous whenever the same match
+     * value exists on more than one element across sites.
+     *
+     * The stored run-time field errors and "changed" flags are then overlaid on
+     * top of that fresh inspection, because the stored values are the
+     * authoritative ones: a dry run reads the element's LIVE state, so it can't
+     * reproduce e.g. an asset-upload failure, and an item that was already
+     * updated would falsely read "no change". A null `changedFields` column
+     * resets the rows to the viewer's "?" state.
+     *
+     * An item with no stored payload — swept missing-element rows have none, and
+     * older runs predate payload storage — still returns a real row so the
+     * drill-down renders normally.
+     *
+     * @return array{row: ?array, message?: string}
+     */
+    public function inspectStoredLogItem(LogItemRecord $item, LogRecord $log): array
+    {
+        $link = Influx::getInstance()->links->getLinkByHandle($log->linkHandle);
+
+        if (! $link) {
+            return [
+                'row'     => null,
+                'message' => Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle]),
+            ];
+        }
+
+        $raw = $this->storedPayload($item);
+
+        if ($raw === null) {
+            return [
+                'row' => [
+                    'index'    => (int) $item->id,
+                    'action'   => (string) $item->action,
+                    'message'  => (string) ($item->message ?: Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')),
+                    'mappings' => [],
+                    'raw'      => null,
+                ],
+            ];
+        }
+
+        $row = $this->inspectItem(
+            $link,
+            $raw,
+            $log->siteHandle,
+            $item->elementId !== null ? (int) $item->elementId : null,
+            withParsedHtml: true,
+        );
+        $row['index'] = (int) $item->id;
+        $row['action'] = (string) $item->action;
+
+        if ($item->message) {
+            $row['message'] = (string) $item->message;
+        }
+
+        $mappings = $this->logRows->overlayFieldErrors(
+            $row['mappings'] ?? [],
+            $this->logRows->fieldErrors($item->fieldErrors),
+        );
+        $row['mappings'] = $this->logRows->overlayChangedFlags($mappings, $item->changedFields);
+
+        return ['row' => $row];
+    }
+
+    /**
+     * A log item's stored remote payload, or null when it has none / the stored
+     * JSON isn't an array.
+     */
+    protected function storedPayload(LogItemRecord $item): ?array
+    {
+        if (! $item->payload) {
+            return null;
+        }
+
+        $decoded = json_decode($item->payload, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**

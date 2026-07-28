@@ -4,18 +4,18 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use GlueAgency\Influx\Influx;
-use ReflectionClass;
-use Throwable;
 use yii\base\Action;
 use yii\web\BadRequestHttpException;
-use yii\web\HttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 /**
  * JSON CP routes powering the LinkBuilder Vue SPA. Thin layer over
  * {@see \GlueAgency\Influx\services\LinkBuilderService} — request guards, body
- * parsing, and JSON wrapping; everything else lives in the service so it
- * can be reused from console / queue contexts too.
+ * parsing, HTTP status decisions, and JSON wrapping; everything else lives in
+ * the service so it can be reused from console / queue contexts too. The shared
+ * `{success: false, message, type}` failure envelope every route here answers
+ * with is {@see AbstractController::runAction()}'s.
  *
  * Read-only environments (`allowAdminChanges = false`) get a 403 on any
  * mutating route, consistent with how {@see LinksController} gates writes.
@@ -34,39 +34,9 @@ class LinkBuilderController extends AbstractController
     }
 
     /**
-     * Wrap the standard runAction so any uncaught exception comes back as
-     * a JSON `{success: false, message}` envelope instead of an HTML 500. The
-     * SPA's ApiError normalizes on `message` — every failure path in this
-     * controller must use that key.
-     */
-    public function runAction($id, $params = [])
-    {
-        try {
-            return parent::runAction($id, $params);
-        } catch (HttpException $e) {
-            Craft::$app->getResponse()->setStatusCode($e->statusCode);
-
-            return $this->asJson([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'type'    => (new ReflectionClass($e))->getShortName(),
-            ]);
-        } catch (Throwable $e) {
-            Craft::error($e, __METHOD__);
-            Craft::$app->getResponse()->setStatusCode(500);
-
-            return $this->asJson([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'type'    => (new ReflectionClass($e))->getShortName(),
-            ]);
-        }
-    }
-
-    /**
      * Hydrate the SPA with everything it needs to mount: an existing link
      * (`?id=42`), an unsaved copy of one (`?duplicateOf=42`), or a fresh draft
-     * (neither).
+     * (neither). A link the service can't find is this layer's 404 to make.
      *
      *   GET influx/link-builder/bootstrap?id=42
      */
@@ -80,9 +50,13 @@ class LinkBuilderController extends AbstractController
         $duplicateOf = $request->getQueryParam('duplicateOf');
         $duplicateOf = $duplicateOf !== null && $duplicateOf !== '' ? (int) $duplicateOf : null;
 
-        return $this->asJson(
-            Influx::getInstance()->linkBuilder->bootstrap($id, $duplicateOf, $this->readOnly()),
-        );
+        $payload = Influx::getInstance()->linkBuilder->bootstrap($id, $duplicateOf, $this->readOnly());
+
+        if ($payload === null) {
+            throw new NotFoundHttpException('Link ' . ($duplicateOf ?? $id) . ' not found.');
+        }
+
+        return $this->asJson($payload);
     }
 
     /**
@@ -94,12 +68,9 @@ class LinkBuilderController extends AbstractController
      */
     public function actionSave(): Response
     {
-        $this->requirePostRequest();
-        $this->requireAcceptsJson();
-        $this->assertWriteable();
+        $this->requireJsonWrite();
 
-        $payload = $this->jsonBody();
-        $result = Influx::getInstance()->linkBuilder->save($payload);
+        $result = Influx::getInstance()->linkBuilder->save($this->jsonBody());
 
         if (! ($result['success'] ?? false)) {
             Craft::$app->getResponse()->setStatusCode(400);
@@ -119,16 +90,10 @@ class LinkBuilderController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        $request = Craft::$app->getRequest();
-        $elementType = $request->getQueryParam('elementType');
-        $criteria = $request->getQueryParam('criteria', []);
-
-        if (! $elementType) {
-            throw new BadRequestHttpException('elementType is required.');
-        }
+        $criteria = Craft::$app->getRequest()->getQueryParam('criteria', []);
 
         return $this->asJson(
-            Influx::getInstance()->linkBuilder->mappableFields($elementType, $criteria),
+            Influx::getInstance()->linkBuilder->mappableFields($this->requiredElementType(), $criteria),
         );
     }
 
@@ -147,8 +112,7 @@ class LinkBuilderController extends AbstractController
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $payload = $this->jsonBody();
-        $result = Influx::getInstance()->linkBuilder->fetchSample($payload);
+        $result = Influx::getInstance()->linkBuilder->fetchSample($this->jsonBody());
 
         if (! ($result['success'] ?? false)) {
             Craft::$app->getResponse()->setStatusCode(400);
@@ -170,22 +134,17 @@ class LinkBuilderController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        $request = Craft::$app->getRequest();
-        $elementType = $request->getQueryParam('elementType');
-        $ids = $request->getQueryParam('ids', []);
-
-        if (! $elementType) {
-            throw new BadRequestHttpException('elementType is required.');
-        }
+        $ids = Craft::$app->getRequest()->getQueryParam('ids', []);
 
         return $this->asJson(
-            Influx::getInstance()->linkBuilder->renderElementSelect($elementType, $ids),
+            Influx::getInstance()->linkBuilder->renderElementSelect($this->requiredElementType(), $ids, $this->readOnly()),
         );
     }
 
     /**
      * Resource Endpoint token-picker suggestions for the SPA — same data the
-     * Twig form pre-computes, just reactive when criteria change.
+     * Twig form pre-computes, just reactive when criteria change. Served by the
+     * service that owns the token vocabulary, not proxied through the builder.
      *
      *   GET influx/link-builder/endpoint-token-suggestions?elementType=...&criteria[...]=...
      */
@@ -193,17 +152,27 @@ class LinkBuilderController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        $request = Craft::$app->getRequest();
-        $elementType = $request->getQueryParam('elementType');
-        $criteria = $request->getQueryParam('criteria', []);
+        $criteria = Craft::$app->getRequest()->getQueryParam('criteria', []);
+
+        return $this->asJson([
+            'suggestions' => Influx::getInstance()->endpointTokens->suggestionsFor($this->requiredElementType(), $criteria),
+        ]);
+    }
+
+    /**
+     * The `elementType` query param the three reactive endpoints all key off.
+     *
+     * @throws BadRequestHttpException
+     */
+    protected function requiredElementType(): string
+    {
+        $elementType = Craft::$app->getRequest()->getQueryParam('elementType');
 
         if (! $elementType) {
             throw new BadRequestHttpException('elementType is required.');
         }
 
-        return $this->asJson([
-            'suggestions' => Influx::getInstance()->linkBuilder->endpointTokenSuggestions($elementType, $criteria),
-        ]);
+        return (string) $elementType;
     }
 
     protected function jsonBody(): array

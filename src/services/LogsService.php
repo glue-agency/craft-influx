@@ -43,6 +43,30 @@ use yii\db\Expression;
 class LogsService extends Component
 {
     /**
+     * Rows per page on the Logs overview.
+     */
+    public const LOGS_PER_PAGE = 50;
+
+    /**
+     * Item rows per page in the log detail view — the bootstrap payload's first
+     * page and every {@see itemPage()} the viewer's pager / live poll requests.
+     */
+    public const ITEMS_PER_PAGE = 25;
+
+    /**
+     * Cache key behind {@see errorLogCount()}.
+     */
+    protected const ERROR_COUNT_CACHE_KEY = 'influx:error-log-count';
+
+    /**
+     * Backstop TTL on that cache entry. Every in-plugin write that can change
+     * the count invalidates explicitly ({@see invalidateErrorLogCount()}), so
+     * this only bounds staleness from an out-of-band writer (a hand-run DELETE,
+     * another plugin) — it is not the refresh mechanism.
+     */
+    protected const ERROR_COUNT_CACHE_DURATION = 3600;
+
+    /**
      * Column order the buffered log-item rows are built in — kept in lockstep
      * with the batchInsert() call in {@see flush()}. `id` and the audit
      * columns are added by Craft; these are the ones recordItem() supplies.
@@ -63,6 +87,19 @@ class LogsService extends Component
      * @var array<int, LogItemBuffer>
      */
     protected array $buffers = [];
+
+    /**
+     * Per-request memo for {@see errorLogCount()}; null = not resolved yet.
+     */
+    protected ?int $memoizedErrorLogCount = null;
+
+    /**
+     * Whether a buffered item is an error row that hasn't reached the DB yet —
+     * so {@see flush()} knows the insert it's about to run changes the error-log
+     * count. Reset when that flush lands.
+     */
+    protected bool $bufferedErrorItem = false;
+
     /**
      * Opening a run also stamps it onto the link: a timestamp that outlives the
      * log, plus a pointer to the log (null when logging is off). An
@@ -147,6 +184,10 @@ class LogsService extends Component
 
         $this->bufferFor($log)->add($row, $counterAttr);
 
+        if ($action === ItemAction::ERROR) {
+            $this->bufferedErrorItem = true;
+        }
+
         if ($counterAttr) {
             $log->$counterAttr = (int) $log->$counterAttr + 1;
         }
@@ -206,6 +247,11 @@ class LogsService extends Component
         }
 
         $buffer->clear();
+
+        if ($this->bufferedErrorItem) {
+            $this->bufferedErrorItem = false;
+            $this->invalidateErrorLogCount();
+        }
     }
 
     public function finish(LogRecord $log): void
@@ -217,6 +263,7 @@ class LogsService extends Component
 
         if ($log->id) {
             $log->save(false);
+            $this->invalidateErrorLogCount();
         }
     }
 
@@ -239,6 +286,7 @@ class LogsService extends Component
 
         if ($log->id) {
             $log->save(false);
+            $this->invalidateErrorLogCount();
         }
     }
 
@@ -258,8 +306,46 @@ class LogsService extends Component
      * distinct logs, not error occurrences, so the badge reads as "N logs need
      * a look". Zero while everything's clean; clears as error logs are deleted
      * or age out of retention.
+     *
+     * CACHED, because {@see \GlueAgency\Influx\Influx::getCpNavItem()} asks on
+     * EVERY control-panel request and the answer only changes when a log is
+     * written or removed: a per-request memo in front of a Craft cache entry, so
+     * the COUNT + subquery runs once per change rather than once per nav render.
+     *
+     * INVALIDATED BY (the complete set of writes that can move the number):
+     *   - {@see flush()}, when the rows it inserts include an error item
+     *     (buffered by {@see recordItem()}, so an in-flight run's error only
+     *     counts once it has actually landed);
+     *   - {@see finish()} and {@see fail()} — a run's final status;
+     *   - {@see delete()}, {@see clear()}, {@see deleteOlderThan()} — rows going
+     *     away.
+     *
+     * {@see start()} deliberately doesn't: a freshly opened run is `running`,
+     * which is neither an error status nor an error item.
      */
     public function errorLogCount(): int
+    {
+        if ($this->memoizedErrorLogCount !== null) {
+            return $this->memoizedErrorLogCount;
+        }
+
+        $cache = Craft::$app->getCache();
+        $cached = $cache->get(self::ERROR_COUNT_CACHE_KEY);
+
+        if ($cached !== false) {
+            return $this->memoizedErrorLogCount = (int) $cached;
+        }
+
+        $count = $this->queryErrorLogCount();
+        $cache->set(self::ERROR_COUNT_CACHE_KEY, $count, self::ERROR_COUNT_CACHE_DURATION);
+
+        return $this->memoizedErrorLogCount = $count;
+    }
+
+    /**
+     * The uncached COUNT behind {@see errorLogCount()}.
+     */
+    protected function queryErrorLogCount(): int
     {
         return (int) LogRecord::find()
             ->where(['status' => RunStatus::ERROR->value])
@@ -269,6 +355,50 @@ class LogsService extends Component
                 ->where(['action' => ItemAction::ERROR->value]),
             ])
             ->count();
+    }
+
+    /**
+     * Drop both layers of {@see errorLogCount()}'s cache. Called from every
+     * write listed in that method's docblock — keep the two in step.
+     */
+    protected function invalidateErrorLogCount(): void
+    {
+        $this->memoizedErrorLogCount = null;
+        Craft::$app->getCache()->delete(self::ERROR_COUNT_CACHE_KEY);
+    }
+
+    /**
+     * One log record by id, or null. The controllers' only route to a log — they
+     * never touch the record class themselves (see
+     * {@see \GlueAgency\Influx\controllers\AbstractController::logOr404()}).
+     */
+    public function getLogById(int $id): ?LogRecord
+    {
+        return LogRecord::findOne($id);
+    }
+
+    /**
+     * One log-item record by id, or null.
+     */
+    public function getLogItemById(int $id): ?LogItemRecord
+    {
+        return LogItemRecord::findOne($id);
+    }
+
+    /**
+     * Log records for a set of ids, keyed by id — one query for the Links
+     * overview's per-link last-run lookups.
+     *
+     * @param int[] $ids
+     * @return array<int, LogRecord>
+     */
+    public function logsByIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return LogRecord::find()->where(['id' => $ids])->indexBy('id')->all();
     }
 
     /**
@@ -362,12 +492,14 @@ class LogsService extends Component
     {
         $log->delete();
         Influx::getInstance()->links->forgetDeletedLogs();
+        $this->invalidateErrorLogCount();
     }
 
     public function clear(): int
     {
         $deleted = LogRecord::deleteAll();
         Influx::getInstance()->links->forgetDeletedLogs();
+        $this->invalidateErrorLogCount();
 
         return $deleted;
     }
@@ -390,6 +522,7 @@ class LogsService extends Component
 
         if ($deleted > 0) {
             Influx::getInstance()->links->forgetDeletedLogs();
+            $this->invalidateErrorLogCount();
         }
 
         return $deleted;

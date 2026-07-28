@@ -78,6 +78,23 @@ class LinksService extends Component
         return $row ? $this->linkFromRow($row) : null;
     }
 
+    /**
+     * The link with this handle, falling back to the first link in overview
+     * order — the resolution rule behind the debug screen, which is one
+     * standalone screen scoped by `?link=<handle>` rather than a page per link,
+     * so a bare `influx/debug` (or a stale handle) still opens on something.
+     * Null only when no links exist at all.
+     *
+     * Reads {@see getAllLinks()} rather than querying by handle, so both halves
+     * of the rule come off the one cached, ordered set.
+     */
+    public function getLinkByHandleOrFirst(?string $handle): ?Link
+    {
+        $links = $this->getAllLinks();
+
+        return ($handle !== null ? ($links[$handle] ?? null) : null) ?: (reset($links) ?: null);
+    }
+
     public function getLinkByUid(string $uid): ?Link
     {
         $row = $this->createQuery()->where(['uid' => $uid])->one();

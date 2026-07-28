@@ -194,6 +194,21 @@ class EndpointTokensService extends Component
     }
 
     /**
+     * {@see suggestions()} for an element type / criteria combination rather than
+     * a stored link — what the LinkBuilder SPA asks for when the user changes the
+     * section / entry-type dropdowns. The transient link stub the suggestions are
+     * derived from is built here, by the owner, so callers don't have to know the
+     * shape.
+     */
+    public function suggestionsFor(string $elementType, array $criteria): array
+    {
+        return $this->suggestions(new Link([
+            'elementType'     => $elementType,
+            'elementCriteria' => $criteria,
+        ]));
+    }
+
+    /**
      * The token-safe field-type allow-list, as a seam: the define events fire
      * *after* the field loop, so a listener can't influence which fields get
      * read in the first place. Override in a subclass registered via

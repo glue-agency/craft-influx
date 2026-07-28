@@ -43,17 +43,6 @@ export function configureCsrf({ name, value }) {
 }
 
 /**
- * Resolve an action URL from its Craft action path, so no CP path is ever
- * hard-coded at a call site. `key` names the helper in the failure message —
- * a call site that forgets its action path fails loudly instead of fetching
- * `undefined`.
- */
-function resolve(key, fallbackAction) {
-    if (fallbackAction) return Craft.getActionUrl(fallbackAction);
-    throw new Error(`No action path provided for '${key}'.`);
-}
-
-/**
  * Append a query string to a URL, choosing `?` or `&` based on whether the
  * base URL already has a query. Craft's `Craft.getActionUrl(...)` returns
  * something like `/index.php?p=admin/actions/...&site=nl` so a naive
@@ -100,7 +89,7 @@ async function request(url, init) {
 }
 
 export async function bootstrap(id, duplicateOf = null) {
-    const url = resolve('bootstrap', 'influx/link-builder/bootstrap');
+    const url = Craft.getActionUrl('influx/link-builder/bootstrap');
     const params = new URLSearchParams();
     if (id) params.set('id', id);
     if (duplicateOf) params.set('duplicateOf', duplicateOf);
@@ -108,7 +97,7 @@ export async function bootstrap(id, duplicateOf = null) {
 }
 
 export async function save(payload) {
-    const url = resolve('save', 'influx/link-builder/save');
+    const url = Craft.getActionUrl('influx/link-builder/save');
     return request(url, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -116,7 +105,7 @@ export async function save(payload) {
 }
 
 export async function deleteLink(uid) {
-    const url = resolve('delete', 'influx/links/delete');
+    const url = Craft.getActionUrl('influx/links/delete');
     return request(url, {
         method: 'POST',
         body: JSON.stringify({ uid }),
@@ -124,7 +113,7 @@ export async function deleteLink(uid) {
 }
 
 export async function mappableFields(elementType, criteria) {
-    const url = resolve('mappableFields', 'influx/link-builder/mappable-fields');
+    const url = Craft.getActionUrl('influx/link-builder/mappable-fields');
     const params = new URLSearchParams({ elementType });
     for (const [k, v] of Object.entries(criteria || {})) {
         if (v != null && v !== '') params.set(`criteria[${k}]`, v);
@@ -133,7 +122,7 @@ export async function mappableFields(elementType, criteria) {
 }
 
 export async function fetchSample(payload) {
-    const url = resolve('fetchSample', 'influx/link-builder/fetch-sample');
+    const url = Craft.getActionUrl('influx/link-builder/fetch-sample');
     return request(url, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -141,7 +130,7 @@ export async function fetchSample(payload) {
 }
 
 export async function renderElementSelect(elementType, ids) {
-    const url = resolve('renderElementSelect', 'influx/link-builder/render-element-select');
+    const url = Craft.getActionUrl('influx/link-builder/render-element-select');
     const params = new URLSearchParams({ elementType });
     for (const id of (ids || [])) {
         if (id != null && id !== '') params.append('ids[]', String(id));
@@ -150,7 +139,7 @@ export async function renderElementSelect(elementType, ids) {
 }
 
 export async function endpointTokenSuggestions(elementType, criteria) {
-    const url = resolve('endpointTokenSuggestions', 'influx/link-builder/endpoint-token-suggestions');
+    const url = Craft.getActionUrl('influx/link-builder/endpoint-token-suggestions');
     const params = new URLSearchParams({ elementType });
     for (const [k, v] of Object.entries(criteria || {})) {
         if (v != null && v !== '') params.set(`criteria[${k}]`, v);

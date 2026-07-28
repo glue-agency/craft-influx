@@ -8,29 +8,24 @@ use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\records\Log as LogRecord;
-use GlueAgency\Influx\records\LogItem as LogItemRecord;
-use GlueAgency\Influx\web\ItemRowPresenter;
+use GlueAgency\Influx\services\LogsService;
+use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
 use GlueAgency\Influx\web\Vocabulary;
-use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 class LogsController extends AbstractController
 {
-    public const ITEMS_PER_PAGE = 25;
-
     /**
      * Every toolbar filter is validated against what currently exists (or, for
-     * status and trigger, against its enum), so a stale query string falls back
-     * to "all". The `handle => id` / `handle => name` maps the rows read from
-     * carry no entry for a link that has since been deleted.
+     * status and trigger, against its enum) by {@see oneOfQueryParam()}, so a
+     * stale query string falls back to "all". The `handle => id` /
+     * `handle => name` maps the rows read from carry no entry for a link that has
+     * since been deleted.
      */
     public function actionIndex(): Response
     {
         $page = $this->intQueryParam('page', 1, 1);
-        $perPage = 50;
 
         $plugin = Influx::getInstance();
 
@@ -38,28 +33,10 @@ class LogsController extends AbstractController
         $linkIds = array_map(static fn($link)   => $link->id, $links);
         $linkNames = array_map(static fn($link) => $link->name, $links);
 
-        $selectedLink = $this->stringQueryParam('link');
-
-        if ($selectedLink !== null && ! isset($linkNames[$selectedLink])) {
-            $selectedLink = null;
-        }
-
-        $selectedStatus = $this->stringQueryParam('status');
-
-        if ($selectedStatus !== null && RunStatus::tryFrom($selectedStatus) === null) {
-            $selectedStatus = null;
-        }
-
         $statuses = [];
 
         foreach (RunStatus::cases() as $status) {
             $statuses[$status->value] = $status->label();
-        }
-
-        $selectedTrigger = $this->stringQueryParam('trigger');
-
-        if ($selectedTrigger !== null && SyncTrigger::tryFrom($selectedTrigger) === null) {
-            $selectedTrigger = null;
         }
 
         $triggers = [];
@@ -68,12 +45,22 @@ class LogsController extends AbstractController
             $triggers[$trigger->value] = $trigger->label();
         }
 
-        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate($page, $perPage, $selectedLink, $selectedStatus, $selectedTrigger);
+        $selectedLink = $this->oneOfQueryParam('link', array_keys($linkNames));
+        $selectedStatus = $this->oneOfQueryParam('status', array_keys($statuses));
+        $selectedTrigger = $this->oneOfQueryParam('trigger', array_keys($triggers));
+
+        ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate(
+            $page,
+            LogsService::LOGS_PER_PAGE,
+            $selectedLink,
+            $selectedStatus,
+            $selectedTrigger,
+        );
 
         return $this->renderTemplate('influx/logs/index', [
             'logs'            => $logs,
             'page'            => $page,
-            'perPage'         => $perPage,
+            'perPage'         => LogsService::LOGS_PER_PAGE,
             'total'           => $total,
             'linkIds'         => $linkIds,
             'linkNames'       => $linkNames,
@@ -89,36 +76,40 @@ class LogsController extends AbstractController
 
     /**
      * Only the first page of items ships in the bootstrap; the rest pages in via
-     * {@see actionItems()}.
+     * {@see actionItems()}. The "Endpoint" and "Resource" rows are Link-derived
+     * display, so {@see LinkPresenter} builds them.
      */
     public function actionView(int $id): Response
     {
-        if (! ($log = LogRecord::findOne($id))) {
-            throw new NotFoundHttpException("Log #{$id} not found.");
-        }
+        $log = $this->logOr404($id);
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
+        $links = new LinkPresenter();
 
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
+        $elementId = $log->elementId !== null ? (int) $log->elementId : null;
 
-        $items = $presenter->presentItems($plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE), $link?->elementType);
+        $items = $presenter->presentItems(
+            $plugin->logs->itemPage($log, [], 0, LogsService::ITEMS_PER_PAGE),
+            $link?->elementType,
+        );
 
-        ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $this->resolveEndpointDisplay($log, $link);
+        ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $links->endpointDisplay($link, $elementId, $log->siteHandle);
 
         return $this->renderTemplate('influx/logs/view', [
             'config' => [
                 'log'             => $presenter->presentLog($log),
                 'items'           => $items,
                 'itemTotal'       => $plugin->logs->itemCount($log, []),
-                'perPage'         => self::ITEMS_PER_PAGE,
+                'perPage'         => LogsService::ITEMS_PER_PAGE,
                 'itemsUrl'        => UrlHelper::cpUrl("influx/logs/{$log->id}/items"),
                 'itemUrlTemplate' => UrlHelper::cpUrl('influx/logs/items/__ID__'),
                 'linkId'          => $link?->id,
                 'linkName'        => $link?->name,
                 'endpointUrl'     => $endpointUrl,
                 'endpoints'       => $endpoints,
-                'resourceHtml'    => $this->resolveResourceDisplay($log, $link),
+                'resourceHtml'    => $links->resourceDisplay($link, $elementId),
                 'isLive'          => LogPresenter::isLive($log->status),
                 'vocabulary'      => Vocabulary::payload(),
             ],
@@ -126,154 +117,18 @@ class LogsController extends AbstractController
     }
 
     /**
-     * The "Resource" row for a single-element run: the element chip for the
-     * resource the run was triggered for, or its `#id` when it has since been
-     * deleted. Null for whole-feed runs, which have no single resource.
-     */
-    protected function resolveResourceDisplay(LogRecord $log, ?Link $link): ?string
-    {
-        if ($log->elementId === null) {
-            return null;
-        }
-
-        $element = Craft::$app->getElements()->getElementById((int) $log->elementId, $link?->elementType);
-
-        if (! $element) {
-            return '<span class="light">#' . (int) $log->elementId . '</span>';
-        }
-
-        return (new ItemRowPresenter())->elementChip($element);
-    }
-
-    /**
-     * Work out what to show in the log viewer's "Endpoint" row. Returns exactly
-     * one of two populated shapes (see {@see actionView()} for the four cases):
-     *
-     *   - `endpointUrl` set, `endpoints` null — a single URL (single-element
-     *     run's item-endpoint template, a site-scoped run, or an all-sites run
-     *     on a link with no per-site endpoints);
-     *   - `endpoints` a `[{site, url}]` list, `endpointUrl` null — an all-sites
-     *     run on a link that HAS per-site endpoints (the base is never fetched,
-     *     so no single URL is honest).
-     *
-     * Both null when the link has since been deleted.
-     *
-     * @return array{endpointUrl: ?string, endpoints: ?list<array{site: string, url: string}>}
-     */
-    protected function resolveEndpointDisplay(LogRecord $log, ?Link $link): array
-    {
-        if ($link === null) {
-            return ['endpointUrl' => null, 'endpoints' => null];
-        }
-
-        if ($log->elementId !== null) {
-            return ['endpointUrl' => $link->itemEndpoint, 'endpoints' => null];
-        }
-
-        if ($log->siteHandle !== null) {
-            $url = $link->endpointForSite($log->siteHandle) ?? $link->endpoint;
-
-            return ['endpointUrl' => $url, 'endpoints' => null];
-        }
-
-        $siteHandles = $link->siteHandles();
-
-        if ($siteHandles !== []) {
-            $endpoints = [];
-
-            foreach ($siteHandles as $handle) {
-                $url = $link->endpointForSite($handle) ?? $link->endpoint;
-
-                if ($url !== null) {
-                    $endpoints[] = ['site' => $handle, 'url' => $url];
-                }
-            }
-
-            return ['endpointUrl' => null, 'endpoints' => $endpoints];
-        }
-
-        return ['endpointUrl' => $link->endpoint, 'endpoints' => null];
-    }
-
-    /**
-     * Drill-down for one stored log item. Re-runs the debug-view inspection
-     * against the raw remote payload captured when the item was synced, so
-     * the user can see per-field source/parsed/current values and which
-     * mappings would (re-)apply if synced again. Pins to the item's own
-     * `elementId` rather than re-deriving the element from the match value —
-     * `$log->siteHandle` is null for element-triggered runs, so an unscoped
-     * match-value lookup would be ambiguous whenever the same match value
-     * exists on more than one element across sites.
-     *
-     * The stored run-time field errors and "changed" flags are then overlaid on
-     * top of that fresh inspection, because the stored values are the
-     * authoritative ones: a dry run reads the element's LIVE state, so it can't
-     * reproduce e.g. an asset-upload failure, and an item that was already
-     * updated would falsely read "no change". A null `changedFields` column
-     * resets the rows to the viewer's "?" state.
-     *
-     * An item with no stored payload — swept missing-element rows have none, and
-     * older runs predate payload storage — still returns a real row so the
-     * drill-down renders normally.
+     * Drill-down for one stored log item — the inspection, the stored-value
+     * overlays and the "link is gone" answer all live in
+     * {@see \GlueAgency\Influx\services\InspectorService::inspectStoredLogItem()}.
      */
     public function actionItem(int $id): Response
     {
         $this->requireAcceptsJson();
 
-        if (! ($item = LogItemRecord::findOne($id))) {
-            throw new NotFoundHttpException("Log item #{$id} not found.");
-        }
+        $item = $this->logItemOr404($id);
+        $log = $this->logOr404((int) $item->logId);
 
-        if (! ($log = LogRecord::findOne($item->logId))) {
-            throw new NotFoundHttpException("Log #{$item->logId} not found.");
-        }
-
-        $plugin = Influx::getInstance();
-        $link = $plugin->links->getLinkByHandle($log->linkHandle);
-
-        if (! $link) {
-            return $this->asJson([
-                'row'     => null,
-                'message' => Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle]),
-            ]);
-        }
-
-        $raw = null;
-
-        if ($item->payload) {
-            $decoded = json_decode($item->payload, true);
-
-            if (is_array($decoded)) {
-                $raw = $decoded;
-            }
-        }
-
-        if ($raw === null) {
-            return $this->asJson([
-                'row' => [
-                    'index'    => (int) $item->id,
-                    'action'   => (string) $item->action,
-                    'message'  => (string) ($item->message ?: Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')),
-                    'mappings' => [],
-                    'raw'      => null,
-                ],
-            ]);
-        }
-
-        $row = $plugin->inspector->inspectItem($link, $raw, $log->siteHandle, $item->elementId !== null ? (int) $item->elementId : null, withParsedHtml: true);
-        $row['index'] = (int) $item->id;
-        $row['action'] = (string) $item->action;
-
-        if ($item->message) {
-            $row['message'] = (string) $item->message;
-        }
-
-        $presenter = new LogPresenter();
-        $row['mappings'] = $presenter->overlayFieldErrors($row['mappings'] ?? [], $presenter->fieldErrors($item->fieldErrors));
-
-        $row['mappings'] = $presenter->overlayChangedFlags($row['mappings'], $item->changedFields);
-
-        return $this->asJson(['row' => $row]);
+        return $this->asJson(Influx::getInstance()->inspector->inspectStoredLogItem($item, $log));
     }
 
     /**
@@ -294,9 +149,7 @@ class LogsController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        if (! ($log = LogRecord::findOne($id))) {
-            throw new NotFoundHttpException("Log #{$id} not found.");
-        }
+        $log = $this->logOr404($id);
 
         $page = $this->intQueryParam('page', 1, 1);
         $action = $this->stringQueryParam('status');
@@ -306,10 +159,13 @@ class LogsController extends AbstractController
 
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
-        $offset = ($page - 1) * self::ITEMS_PER_PAGE;
+        $offset = ($page - 1) * LogsService::ITEMS_PER_PAGE;
 
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
-        $items = $presenter->presentItems($plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE, $search), $link?->elementType);
+        $items = $presenter->presentItems(
+            $plugin->logs->itemPage($log, $actions, $offset, LogsService::ITEMS_PER_PAGE, $search),
+            $link?->elementType,
+        );
 
         return $this->asJson([
             'items'    => $items,
@@ -328,11 +184,7 @@ class LogsController extends AbstractController
 
         $id = (int) Craft::$app->getRequest()->getRequiredBodyParam('id');
 
-        if (! ($log = LogRecord::findOne($id))) {
-            throw new NotFoundHttpException("Log #{$id} not found.");
-        }
-
-        Influx::getInstance()->logs->delete($log);
+        Influx::getInstance()->logs->delete($this->logOr404($id));
 
         return $this->asSuccess(Craft::t('influx', 'Log #{id} deleted.', ['id' => $id]));
     }

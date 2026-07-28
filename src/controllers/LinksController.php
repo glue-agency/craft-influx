@@ -9,8 +9,8 @@ use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\DebugService;
+use GlueAgency\Influx\web\LinkBuilderTranslations;
 use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
 use GlueAgency\Influx\web\Vocabulary;
@@ -48,16 +48,14 @@ class LinksController extends AbstractController
      */
     public function actionIndex(): Response
     {
-        $links = Influx::getInstance()->links->getAllLinks();
+        $plugin = Influx::getInstance();
+        $links = $plugin->links->getAllLinks();
 
-        $logIds = array_values(array_filter(array_map(static fn($link) => $link->lastLogId, $links)));
-        $lastLogs = $logIds
-            ? LogRecord::find()->where(['id' => $logIds])->indexBy('id')->all()
-            : [];
+        $logIds = array_values(array_filter(array_map(static fn(Link $link) => $link->lastLogId, $links)));
 
         return $this->renderTemplate('influx/links/index', [
             'links'        => $links,
-            'lastLogs'     => $lastLogs,
+            'lastLogs'     => $plugin->logs->logsByIds($logIds),
             'presenter'    => new LinkPresenter(),
             'logPresenter' => new LogPresenter(),
             'readOnly'     => $this->readOnly(),
@@ -67,52 +65,33 @@ class LinksController extends AbstractController
     /**
      * Dry-run inspector shell. Renders the site / offset / limit selector and a
      * results container the SPA fills from {@see actionDebugInspect}. Writes
-     * nothing. Scoped by `?link=<handle>`, falling back to the first link so a
-     * bare `influx/debug` opens.
+     * nothing. Scoped by `?link=<handle>`, falling back to the first link
+     * ({@see \GlueAgency\Influx\services\LinksService::getLinkByHandleOrFirst()})
+     * so a bare `influx/debug` opens; what there is to choose from comes from
+     * {@see LinkPresenter::debugOptions()}, which of it is selected from the
+     * query string.
      */
     public function actionDebug(): Response
     {
-        $allLinks = Influx::getInstance()->links->getAllLinks();
-        $handle = $this->stringQueryParam('link');
-        $link = ($handle !== null ? ($allLinks[$handle] ?? null) : null) ?: (reset($allLinks) ?: null);
+        $plugin = Influx::getInstance();
+        $allLinks = $plugin->links->getAllLinks();
+        $link = $plugin->links->getLinkByHandleOrFirst($this->stringQueryParam('link'));
 
         if (! $link) {
             throw new NotFoundHttpException('No links available to debug.');
         }
 
-        $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);
-
-        $siteHandles = $link->siteHandles();
-        $requestedSite = $this->stringQueryParam('site');
-        $selectedSite = $requestedSite !== null && in_array($requestedSite, $siteHandles, true)
-            ? $requestedSite
-            : ($siteHandles[0] ?? null);
-
-        $sites = array_map(static fn(string $handle): array => [
-            'handle' => $handle,
-            'name'   => Craft::$app->getSites()->getSiteByHandle($handle)?->name ?? $handle,
-        ], $siteHandles);
-
-        $offsetHandles = array_keys($link->offset ?? []);
-        $requestedOffset = $this->stringQueryParam('offset');
-        $selectedOffset = $requestedOffset !== null && in_array($requestedOffset, $offsetHandles, true)
-            ? $requestedOffset
-            : null;
-
-        $linkOptions = array_values(array_map(static fn(Link $l): array => [
-            'handle' => $l->handle,
-            'name'   => $l->name,
-            'url'    => UrlHelper::cpUrl('influx/debug', ['link' => $l->handle]),
-        ], $allLinks));
+        $options = (new LinkPresenter())->debugOptions($link, $allLinks);
+        $siteHandles = array_column($options['sites'], 'handle');
 
         return $this->renderTemplate('influx/links/debug', [
             'link'           => $link,
-            'limit'          => $limit,
-            'sites'          => $sites,
-            'selectedSite'   => $selectedSite,
-            'offsetHandles'  => $offsetHandles,
-            'selectedOffset' => $selectedOffset,
-            'links'          => $linkOptions,
+            'limit'          => $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500),
+            'sites'          => $options['sites'],
+            'selectedSite'   => $this->oneOfQueryParam('site', $siteHandles, $siteHandles[0] ?? null),
+            'offsetHandles'  => $options['offsetHandles'],
+            'selectedOffset' => $this->oneOfQueryParam('offset', $options['offsetHandles']),
+            'links'          => $options['links'],
             'linkHandle'     => $link->handle,
             'inspectUrl'     => UrlHelper::cpUrl('influx/debug/inspect', ['link' => $link->handle]),
             'vocabulary'     => Vocabulary::payload(),
@@ -133,30 +112,16 @@ class LinksController extends AbstractController
     {
         $this->requireAcceptsJson();
 
-        $handle = $this->stringQueryParam('link');
-
-        if ($handle === null || ! ($link = Influx::getInstance()->links->getLinkByHandle($handle))) {
-            throw new NotFoundHttpException('Link not found.');
-        }
+        $link = $this->linkOr404($this->stringQueryParam('link'));
 
         $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);
-
-        $siteHandle = $this->stringQueryParam('site');
-
-        if ($siteHandle !== null && ! in_array($siteHandle, $link->siteHandles(), true)) {
-            $siteHandle = null;
-        }
-
-        $offset = $this->stringQueryParam('offset');
-
-        if ($offset !== null && ! isset($link->offset[$offset])) {
-            $offset = null;
-        }
+        $siteHandle = $this->oneOfQueryParam('site', $link->siteHandles());
+        $offset = $this->oneOfQueryParam('offset', array_keys($link->offset ?? []));
 
         $meta = null;
         $items = [];
 
-        foreach (Influx::getInstance()->debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
+        foreach (Influx::getInstance()->debug->inspectSite($link, $siteHandle, $limit, $offset) as $event) {
             if ($event['type'] === 'meta') {
                 $meta = $event['data'];
             } elseif ($event['type'] === 'item') {
@@ -175,14 +140,8 @@ class LinksController extends AbstractController
             $this->assertWriteable();
         }
 
-        $plugin = Influx::getInstance();
-
         if ($id !== null) {
-            if ($link === null) {
-                if (! ($link = $plugin->links->getLinkById($id))) {
-                    throw new NotFoundHttpException("Link {$id} not found.");
-                }
-            }
+            $link = $link ?? $this->linkOr404($id);
             $title = trim($link->name) ?: Craft::t('influx', 'Edit link');
         } else {
             $link = $link ?? new Link([
@@ -210,9 +169,7 @@ class LinksController extends AbstractController
      */
     public function actionDuplicate(int $id): Response
     {
-        if (! Influx::getInstance()->links->getLinkById($id)) {
-            throw new NotFoundHttpException("Link {$id} not found.");
-        }
+        $this->linkOr404($id);
 
         return $this->builderScreen(Craft::t('influx', 'New link'), new Link(), $id);
     }
@@ -237,9 +194,8 @@ class LinksController extends AbstractController
      */
     protected function builderScreen(string $title, Link $link, ?int $duplicateOf = null): Response
     {
-        $plugin = Influx::getInstance();
         $view = Craft::$app->getView();
-        $view->registerTranslations('influx', $plugin->linkBuilder->translatableStrings());
+        $view->registerTranslations('influx', LinkBuilderTranslations::strings());
 
         $response = $this->asCpScreen()
             ->title($title)
@@ -289,9 +245,7 @@ class LinksController extends AbstractController
      */
     public function actionReorder(): Response
     {
-        $this->requirePostRequest();
-        $this->requireAcceptsJson();
-        $this->assertWriteable();
+        $this->requireJsonWrite();
 
         $uids = Craft::$app->getRequest()->getRequiredBodyParam('uids');
 
