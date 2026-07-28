@@ -88,6 +88,65 @@ class FieldMapping
     }
 
     /**
+     * The producing counterpart of {@see fromConfig()} — build a mapping from
+     * resolved parts instead of parsing one. For writers that derive a mapping
+     * from somewhere other than stored config (the Feed Me import), so the
+     * config shape is emitted by {@see toConfig()} in one place rather than
+     * hand-assembled per writer.
+     *
+     * Sub-mapping channels stay plain config arrays, exactly as the stored shape
+     * nests them (see {@see subMappings()} / {@see blockMappings()}).
+     */
+    public static function make(
+        string $handle,
+        ?string $node = null,
+        mixed $default = null,
+        bool $useDefault = false,
+        array $options = [],
+        array $fields = [],
+        array $nativeFields = [],
+        array $blocks = [],
+    ): self {
+        return new self(
+            handle: $handle,
+            node: $node,
+            default: $default,
+            useDefault: $useDefault,
+            options: $options,
+            fields: $fields,
+            nativeFields: $nativeFields,
+            blocks: $blocks,
+        );
+    }
+
+    /**
+     * This mapping as its stored config shape — the inverse of
+     * {@see fromConfig()}, and THE producer of the
+     * `{node, default, useDefault, options, fields, nativeFields, blocks}` shape
+     * every writer used to hand-assemble.
+     *
+     * A slot carrying nothing is omitted, by the one stored-config empty rule
+     * ({@see Link::isEmptyConfigValue()}): no node, an empty default, an off
+     * `useDefault`, an empty sub-map. Key order is fixed — source first, then the
+     * default it falls back to, then options, then the sub-mapping channels — so
+     * two writers producing the same mapping produce the same YAML.
+     */
+    public function toConfig(): array
+    {
+        $config = [
+            'node'         => $this->node,
+            'useDefault'   => $this->useDefault,
+            'default'      => $this->default,
+            'options'      => $this->options,
+            'fields'       => $this->fields,
+            'nativeFields' => $this->nativeFields,
+            'blocks'       => $this->blocks,
+        ];
+
+        return array_filter($config, static fn(mixed $value): bool => ! Link::isEmptyConfigValue($value));
+    }
+
+    /**
      * Resolve the value this mapping yields for one remote item:
      *
      *   - node mapped:    read it, falling back to `default` when the node

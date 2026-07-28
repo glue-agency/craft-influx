@@ -7,13 +7,13 @@ use craft\base\Component;
 use craft\base\ElementInterface;
 use craft\db\Query;
 use craft\events\ConfigEvent;
-use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use DateTime;
 use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\events\LinkEvent;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * Reads and writes Influx links.
@@ -107,11 +107,10 @@ class LinksService extends Component
      */
     public function findLinksForElement(ElementInterface $element): array
     {
-        $targets = Influx::getInstance()->targets;
         $links = [];
 
         foreach ($this->getAllLinks() as $link) {
-            $target = $targets->forLink($link);
+            $target = $this->targetForLink($link);
 
             if ($target && $target->targetsElement($link, $element)) {
                 $links[] = $link;
@@ -119,6 +118,16 @@ class LinksService extends Component
         }
 
         return $links;
+    }
+
+    /**
+     * The element target registered for a link, via the plugin singleton — the
+     * one place this service resolves one, and the seam the unit suite stubs
+     * (the pure suite never bootstraps the plugin, so the lookup yields null).
+     */
+    protected function targetForLink(Link $link): ?ElementTargetInterface
+    {
+        return Influx::getInstance()?->targets?->forLink($link);
     }
 
     /**
@@ -232,10 +241,22 @@ class LinksService extends Component
 
     /**
      * Drop mapping entries whose handle the target doesn't report as
-     * mappable — stale natives after a rename, or custom fields removed from
-     * the entry type's layout. Pruning at save time keeps the stored config
-     * (Project Config YAML + DB row) in lockstep with the target's field
-     * surface; re-adding a field simply makes its handle mappable again.
+     * mappable — stale natives after a rename, custom fields removed from the
+     * entry type's layout, or natives the entry type now hides
+     * ({@see \GlueAgency\Influx\targets\EntryTarget::nativeFieldDefinitions()}).
+     * Pruning at save time keeps the stored config (Project Config YAML + DB row)
+     * in lockstep with the target's field surface; re-adding a field simply makes
+     * its handle mappable again.
+     *
+     * WHERE THIS RUNS: only from {@see saveLink()} — i.e. a builder save
+     * ({@see LinkBuilderService::save()}) or a Feed Me import
+     * ({@see \GlueAgency\Influx\integrations\feedme\services\FeedMeService}).
+     * NOT on `project-config/apply`: {@see handleChangedLink()} writes the row
+     * straight from the PC payload. So a mapping that became unmappable survives
+     * — and keeps syncing — until the link is next saved, by design: hygiene
+     * belongs to the edit, not to the deploy. Log rows written for a since-pruned
+     * handle label by raw handle, since {@see \GlueAgency\Influx\web\ItemRowPresenter::fieldLabels()}
+     * reads the same reported surface.
      *
      * Only applied when the target's field surface includes custom fields:
      * a natives-only list means the link's criteria didn't resolve (no
@@ -244,7 +265,7 @@ class LinksService extends Component
      */
     protected function pruneUnknownMappings(Link $link): void
     {
-        $target = Influx::getInstance()->targets->forLink($link);
+        $target = $this->targetForLink($link);
 
         if (! $target) {
             return;
@@ -260,9 +281,9 @@ class LinksService extends Component
         $hasCustomFields = false;
 
         foreach ($mappable as $field) {
-            $known[$field['handle']] = true;
+            $known[$field->handle] = true;
 
-            if (empty($field['native'])) {
+            if (! $field->native) {
                 $hasCustomFields = true;
             }
         }
@@ -487,31 +508,24 @@ class LinksService extends Component
     }
 
     /**
-     * Map a Project Config link payload to DB column values. Used by both the
-     * PC change handler and the install/upgrade migrations (for seeding the
-     * table from PC entries that pre-date the schema bump).
+     * Map a Project Config link payload to DB column values — one column per
+     * {@see Link::CONFIG_FIELDS} entry, nothing more: array-shaped fields
+     * ({@see Link::JSON_FIELDS}) are JSON-encoded, the rest coerced per
+     * {@see Link::COLUMN_CASTS}. Driving both off those declarations is what
+     * keeps a new config field from needing an edit here too.
      *
-     * Array-shaped fields are JSON-encoded; scalars and nullables pass through
-     * with explicit type coercion so callers don't have to think about it.
+     * A field the payload omits writes NULL for a JSON column (the empty-shape
+     * contract on {@see Link::CONFIG_FIELDS}) and its cast's zero value
+     * otherwise.
      */
     public static function columnValuesFromConfig(array $config): array
     {
-        $columns = [
-            'name'           => (string) ($config['name'] ?? ''),
-            'handle'         => (string) ($config['handle'] ?? ''),
-            'elementType'    => (string) ($config['elementType'] ?? ''),
-            'endpoint'       => $config['endpoint'] ?? null,
-            'itemEndpoint'   => $config['itemEndpoint'] ?? null,
-            'rootNode'       => $config['rootNode'] ?? null,
-            'paginatorNode'  => $config['paginatorNode'] ?? null,
-            'totalCountNode' => $config['totalCountNode'] ?? null,
-            'pageCountNode'  => $config['pageCountNode'] ?? null,
-            'backup'         => ! empty($config['backup']),
-            'sortOrder'      => isset($config['sortOrder']) ? (int) $config['sortOrder'] : null,
-        ];
+        $columns = [];
 
-        foreach (Link::JSON_FIELDS as $key) {
-            $columns[$key] = isset($config[$key]) ? json_encode($config[$key]) : null;
+        foreach (Link::CONFIG_FIELDS as $field) {
+            $columns[$field] = in_array($field, Link::JSON_FIELDS, true)
+                ? (isset($config[$field]) ? json_encode($config[$field]) : null)
+                : Link::castColumnValue($field, $config[$field] ?? null);
         }
 
         return $columns;
@@ -541,9 +555,12 @@ class LinksService extends Component
     }
 
     /**
-     * Some drivers hand boolean / int columns back as strings, so those are
-     * coerced explicitly. Columns `Link` doesn't declare are dropped before
-     * construction — the Model base warns on unknown attributes.
+     * The inverse of {@see columnValuesFromConfig()}: JSON columns decode (a
+     * missing or unreadable one reads back as `[]`, per the empty-shape
+     * contract), every other column coerces per its {@see Link::COLUMN_CASTS}
+     * declaration — the same map the write side uses, so the two can't drift.
+     * Columns `Link` doesn't declare are dropped before construction — the Model
+     * base warns on unknown attributes.
      */
     protected function linkFromRow(array $row): Link
     {
@@ -558,12 +575,11 @@ class LinksService extends Component
             }
         }
 
-        $row['backup'] = ! empty($row['backup']);
-        $row['id'] = (int) $row['id'];
-        $row['sortOrder'] = isset($row['sortOrder']) ? (int) $row['sortOrder'] : null;
-
-        $row['lastRunAt'] = ! empty($row['lastRunAt']) ? (DateTimeHelper::toDateTime($row['lastRunAt']) ?: null) : null;
-        $row['lastLogId'] = isset($row['lastLogId']) && $row['lastLogId'] !== null ? (int) $row['lastLogId'] : null;
+        foreach (array_keys(Link::COLUMN_CASTS) as $column) {
+            if (array_key_exists($column, $row)) {
+                $row[$column] = Link::castColumnValue($column, $row[$column]);
+            }
+        }
 
         unset($row['dateCreated'], $row['dateUpdated']);
 

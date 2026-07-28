@@ -7,8 +7,8 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 use craft\fields\Assets as CraftAssetsField;
 use craft\models\Volume;
-use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use Throwable;
 

@@ -5,7 +5,7 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\BaseOptionsField;
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**

@@ -141,9 +141,7 @@ class ItemRowPresenter
             $labels = [];
 
             foreach ($target->getMappableFields($link) as $field) {
-                if (isset($field['handle'])) {
-                    $labels[$field['handle']] = $field['name'] ?? $field['handle'];
-                }
+                $labels[$field->handle] = $field->name ?: $field->handle;
             }
             $this->fieldLabelCache[$key] = $labels;
         }

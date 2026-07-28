@@ -11,12 +11,13 @@ use craft\elements\User;
 use craft\fieldlayoutelements\entries\EntryTitleField;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
+use craft\models\EntryType;
 use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
-use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\support\EntryTypeResolver;
@@ -192,7 +193,7 @@ class EntryTarget extends AbstractElementTarget
             $attributes[] = ['value' => 'slug', 'label' => Craft::t('influx', 'Slug (slug)')];
         }
 
-        if ($entryType->hasTitleField) {
+        if (Compat::entryTypeShowsTitleField($entryType)) {
             $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
                 EntryTitleField::class,
             );
@@ -206,23 +207,25 @@ class EntryTarget extends AbstractElementTarget
     /**
      * Custom fields come from the resolved entry type's own field layout, so
      * they keep their entry-editor grouping; an unresolvable section/type leaves
-     * the natives alone.
+     * the natives alone — and un-gated, since there's no type yet whose
+     * visibility settings could hide any of them.
      */
     public function getMappableFields(Link $link): array
     {
-        $fields = $this->nativeFieldDefinitions()->toArray();
-
         $resolved = (new EntryTypeResolver())->tryResolve($link);
 
         if (! $resolved) {
-            return $fields;
+            return $this->nativeFieldDefinitions()->toArray();
         }
         [, $entryType] = $resolved;
 
-        return array_merge($fields, $this->customFieldDescriptors(
-            $entryType->getFieldLayout(),
-            Craft::t('influx', 'Content'),
-        ));
+        return array_merge(
+            $this->nativeFieldDefinitions($entryType)->toArray(),
+            $this->customFieldDescriptors(
+                $entryType->getFieldLayout(),
+                Craft::t('influx', 'Content'),
+            ),
+        );
     }
 
     /**
@@ -373,29 +376,54 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
-     * The Entry-native mappable attributes — the fixed part of
-     * {@see getMappableFields()}, independent of any section/type criteria.
+     * The Entry-native mappable attributes. Title / slug / enabled are declared
+     * only when the resolved entry type actually shows them — Craft lets a type
+     * hide each in the entry editor (`hasTitleField`, `showSlugField`,
+     * `showStatusField`, feature-detected through {@see Compat} since the last
+     * two postdate Craft 4.0) — so a hidden native never becomes a descriptor,
+     * exactly like a custom field removed from the layout. Null $entryType
+     * (unresolved criteria) declares everything: there's no type yet whose
+     * settings could hide any of them.
+     *
+     * Consequences of leaving one out, all deliberate:
+     *  - a link's stored mapping for that handle is dropped the next time the
+     *    link is saved ({@see \GlueAgency\Influx\services\LinksService::pruneUnknownMappings()});
+     *  - until that save the stale mapping still syncs. For `title` on a
+     *    `hasTitleField = false` type that's a no-op with churn: Craft's own
+     *    `Entry::beforeSave()` calls `updateTitle()`, which overwrites the mapped
+     *    title with the type's `titleFormat` (or nulls it when there is none),
+     *    while Influx still counts the write as a change and re-saves the element
+     *    every run. Hidden slug / status mappings do still land until pruned.
      */
-    protected function nativeFieldDefinitions(): SchemaBuilder
+    protected function nativeFieldDefinitions(?EntryType $entryType = null): SchemaBuilder
     {
         return SchemaBuilder::make()
             ->group(Craft::t('influx', 'Native'), fn(SchemaBuilder $group) => $group
-                ->text([
-                    'handle' => 'title',
-                    'name'   => Craft::t('app', 'Title'),
-                ])
-                ->text([
-                    'handle' => 'slug',
-                    'name'   => Craft::t('app', 'Slug'),
-                ])
-                ->select([
-                    'handle'  => 'enabled',
-                    'name'    => Craft::t('app', 'Enabled'),
-                    'options' => [
-                        'true'  => Craft::t('app', 'Enabled'),
-                        'false' => Craft::t('app', 'Disabled'),
-                    ],
-                ])
+                ->when(
+                    $entryType === null || Compat::entryTypeShowsTitleField($entryType),
+                    fn(SchemaBuilder $builder) => $builder->text([
+                        'handle' => 'title',
+                        'name'   => Craft::t('app', 'Title'),
+                    ]),
+                )
+                ->when(
+                    $entryType === null || Compat::entryTypeShowsSlugField($entryType),
+                    fn(SchemaBuilder $builder) => $builder->text([
+                        'handle' => 'slug',
+                        'name'   => Craft::t('app', 'Slug'),
+                    ]),
+                )
+                ->when(
+                    $entryType === null || Compat::entryTypeShowsStatusField($entryType),
+                    fn(SchemaBuilder $builder) => $builder->select([
+                        'handle'  => 'enabled',
+                        'name'    => Craft::t('app', 'Enabled'),
+                        'options' => [
+                            'true'  => Craft::t('app', 'Enabled'),
+                            'false' => Craft::t('app', 'Disabled'),
+                        ],
+                    ]),
+                )
                 ->text([
                     'handle' => 'postDate',
                     'name'   => Craft::t('app', 'Post Date'),

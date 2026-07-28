@@ -9,9 +9,9 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Matrix as CraftMatrixField;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
-use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\RemoteItem;
 

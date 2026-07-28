@@ -1,0 +1,71 @@
+{
+    "matchAttribute": "importId",
+    "matchNode": "id",
+    "matchValue": "42",
+    "element": {
+        "id": 128,
+        "title": "Werfkelder",
+        "cpEditUrl": "https://example.test/admin/entries/news/128",
+        "siteId": 1,
+        "chipHtml": "<a class=\"chip small\" href=\"https://example.test/admin/entries/news/128\">Werfkelder</a>"
+    },
+    "isNew": false,
+    "action": "would-update",
+    "message": null,
+    "raw": {
+        "id": "42",
+        "title": "Werfkelder",
+        "building_type": { "id": "7" }
+    },
+    "mappings": [
+        {
+            "handle": "importId",
+            "label": "Import ID",
+            "node": "id",
+            "default": null,
+            "native": false,
+            "rawValue": "42",
+            "parsedValue": "42",
+            "parsedHtml": null,
+            "currentValue": "42",
+            "changed": false,
+            "unaddressed": false,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": null
+        },
+        {
+            "handle": "title",
+            "label": "Title",
+            "node": "title",
+            "default": null,
+            "native": true,
+            "rawValue": "Werfkelder",
+            "parsedValue": "Werfkelder",
+            "parsedHtml": null,
+            "currentValue": "Kelder",
+            "changed": true,
+            "unaddressed": false,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": null
+        },
+        {
+            "handle": "building_type",
+            "label": "Building type",
+            "node": "building_type.id",
+            "default": "7",
+            "native": false,
+            "rawValue": null,
+            "parsedValue": null,
+            "parsedHtml": null,
+            "currentValue": "Kelder (#43)",
+            "changed": false,
+            "unaddressed": true,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": "Relation lookup failed: no element matches '7'."
+        }
+    ],
+    "error": null
+}

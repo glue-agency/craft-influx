@@ -74,21 +74,44 @@ class InspectorService extends Component
         $target = Influx::getInstance()->targets->forLink($link);
 
         if (! $target) {
-            return [
+            return self::itemRow([
                 'matchAttribute' => $link->matchAttribute(),
-                'matchNode'      => null,
-                'matchValue'     => null,
-                'element'        => null,
-                'isNew'          => false,
                 'action'         => 'error',
-                'message'        => null,
                 'raw'            => $item,
-                'mappings'       => [],
                 'error'          => "No element target registered for '{$link->elementType}'.",
-            ];
+            ]);
         }
 
         return $this->inspectWithTarget($link, $target, $item, $siteHandle, $pinnedElementId, $withParsedHtml);
+    }
+
+    /**
+     * THE inspector-row shape — one item as both drill-downs render it
+     * (DebugItemDetail.vue on the Vue side), with $values overriding whichever
+     * slots the caller resolved. Declared once here rather than repeated per
+     * build path, and pinned from both languages against
+     * `src/web/assets/cp/tests/fixtures/inspector-row.json`
+     * ({@see \GlueAgency\Influx\Tests\unit\services\InspectorRowPayloadTest} plus
+     * the SPA's `components/__tests__/inspector-row.contract.test.js`).
+     *
+     * The defaults describe an item nothing has resolved yet: no element, no
+     * mapping rows, and the dry-run skip action a run that decides nothing lands
+     * on.
+     */
+    public static function itemRow(array $values = []): array
+    {
+        return array_merge([
+            'matchAttribute' => null,
+            'matchNode'      => null,
+            'matchValue'     => null,
+            'element'        => null,
+            'isNew'          => false,
+            'action'         => 'would-skip',
+            'message'        => null,
+            'raw'            => [],
+            'mappings'       => [],
+            'error'          => null,
+        ], $values);
     }
 
     /**
@@ -130,18 +153,11 @@ class InspectorService extends Component
         $remoteItem = new RemoteItem($item);
 
         $matchAttr = $link->matchAttribute();
-        $row = [
+        $row = self::itemRow([
             'matchAttribute' => $matchAttr,
             'matchNode'      => $matchAttr ? ($link->getMappingCollection()->get($matchAttr)?->node) : null,
-            'matchValue'     => null,
-            'element'        => null,
-            'isNew'          => false,
-            'action'         => 'would-skip',
-            'message'        => null,
             'raw'            => $item,
-            'mappings'       => [],
-            'error'          => null,
-        ];
+        ]);
 
         try {
             $resolution = $pinnedElementId !== null

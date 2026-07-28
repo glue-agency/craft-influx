@@ -13,6 +13,7 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappableField;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 
@@ -282,7 +283,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * and in what an unnamed tab falls back to — a missing layout yields nothing
      * so a target with unresolved criteria still reports its natives.
      *
-     * @return list<array{handle: string, name: string, native: bool, group: string, defaultType: string, fieldClass: string, fieldMeta: array}>
+     * @return list<MappableField>
      */
     protected function customFieldDescriptors(?FieldLayout $layout, string $fallbackTab): array
     {
@@ -304,15 +305,13 @@ abstract class AbstractElementTarget implements ElementTargetInterface
                 if (! $field) {
                     continue;
                 }
-                $fields[] = [
-                    'handle'      => $field->handle,
-                    'name'        => $field->name,
-                    'native'      => false,
-                    'group'       => $tabName,
-                    'defaultType' => 'text',
-                    'fieldClass'  => $field::class,
-                    'fieldMeta'   => Influx::getInstance()->fields->metaFor($field),
-                ];
+                $fields[] = MappableField::custom(
+                    handle: $field->handle,
+                    name: $field->name,
+                    group: $tabName,
+                    fieldClass: $field::class,
+                    fieldMeta: Influx::getInstance()->fields->metaFor($field),
+                );
             }
         }
 

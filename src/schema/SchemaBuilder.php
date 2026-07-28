@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\helpers;
+namespace GlueAgency\Influx\schema;
 
 use Craft;
 use GlueAgency\Influx\fields\Field;
@@ -32,6 +32,10 @@ use GlueAgency\Influx\fields\Field;
  * `instructions` (HTML), `placeholder`, `default`, `options` (select — flat
  * [{value,label}] or grouped [{label, options}]), `showIf`.
  *
+ * This namespace is the form-declaration vocabulary: the builder plus the
+ * {@see MappableField} descriptor {@see group()} emits — one contract, kept
+ * together (helpers/ stays for stateless utilities).
+ *
  * Loosely modeled on Formie's SchemaHelper, deliberately tiny.
  */
 class SchemaBuilder
@@ -50,7 +54,13 @@ class SchemaBuilder
     public const NOTE = 'note';
     public const ELEMENT = 'element';
 
-    /** @var list<array> Accumulated fields (nodes or descriptors), in call order. */
+    /**
+     * Accumulated fields in call order: form nodes from the field methods, or
+     * {@see MappableField} descriptors from {@see group()} — a builder only ever
+     * collects one of the two.
+     *
+     * @var list<array|MappableField>
+     */
     protected array $fields = [];
 
     public function __construct()
@@ -181,17 +191,21 @@ class SchemaBuilder
      * Native mappable-field descriptors for an element target's
      * {@see \GlueAgency\Influx\targets\ElementTargetInterface::getMappableFields()},
      * declared with the same fluent field methods as any other schema and
-     * grouped under $label. Each field the callback pushes becomes a descriptor:
-     * its method ({@see text()} / {@see select()} / {@see element()}) sets
-     * `defaultType`, and any `extras` / `meta` in its config are wrapped through
-     * {@see Field::meta()} into the `fieldMeta` envelope. Every descriptor is
-     * stamped `native => true` + `group => $label`.
+     * grouped under $label. Each field the callback pushes becomes a
+     * {@see MappableField}: its method ({@see text()} / {@see select()} /
+     * {@see element()}) sets `defaultType`, and any `extras` / `meta` in its
+     * config are wrapped through {@see Field::meta()} into the `fieldMeta`
+     * envelope. Every descriptor is a native one, grouped under $label.
      *
      *   ->group('Native', fn (SchemaBuilder $g) => $g
      *       ->text(['handle' => 'title', 'name' => 'Title'])
      *       ->select(['handle' => 'enabled', 'name' => 'Enabled', 'options' => ['true' => 'Enabled', ...]])
      *       ->element(['handle' => 'author', 'name' => 'Author', 'elementType' => User::class,
      *           'extras' => fn (SchemaBuilder $b) => $b->matchBy([...])]))
+     *
+     * A native the element type hides is left out by not declaring it — see
+     * {@see when()}, and {@see \GlueAgency\Influx\targets\EntryTarget::nativeFieldDefinitions()}
+     * for the visibility rules that use it.
      *
      * @param callable(self): mixed $fields Pushes the group's fields onto the given builder.
      */
@@ -201,21 +215,7 @@ class SchemaBuilder
         $fields($group);
 
         foreach ($group->toArray() as $field) {
-            $descriptor = [
-                'handle'      => $field['handle'],
-                'name'        => $field['name'],
-                'native'      => true,
-                'group'       => $label,
-                'defaultType' => $field['type'] ?? self::TEXT,
-            ];
-
-            if (isset($field['options'])) {
-                $descriptor['options'] = $field['options'];
-            }
-
-            if (isset($field['elementType'])) {
-                $descriptor['elementType'] = $field['elementType'];
-            }
+            $fieldMeta = null;
 
             if (isset($field['extras']) || isset($field['meta'])) {
                 $extras = self::make();
@@ -223,10 +223,18 @@ class SchemaBuilder
                 if (isset($field['extras'])) {
                     ($field['extras'])($extras);
                 }
-                $descriptor['fieldMeta'] = Field::meta($extras->toArray(), $field['meta'] ?? []);
+                $fieldMeta = Field::meta($extras->toArray(), $field['meta'] ?? []);
             }
 
-            $this->push($descriptor);
+            $this->push(MappableField::native(
+                handle: $field['handle'],
+                name: $field['name'],
+                group: $label,
+                defaultType: $field['type'] ?? self::TEXT,
+                options: $field['options'] ?? null,
+                elementType: $field['elementType'] ?? null,
+                fieldMeta: $fieldMeta,
+            ));
         }
 
         return $this;
@@ -252,13 +260,13 @@ class SchemaBuilder
         return $this->fields === [];
     }
 
-    /** @return list<array> The accumulated fields. */
+    /** @return list<array|MappableField> The accumulated fields. */
     public function toArray(): array
     {
         return $this->fields;
     }
 
-    protected function push(array $config): self
+    protected function push(array|MappableField $config): self
     {
         $this->fields[] = $config;
 

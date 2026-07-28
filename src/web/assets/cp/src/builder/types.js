@@ -5,7 +5,7 @@
  *   @param {import('./types.js').LinkPayload} link
  *
  * PHP is the authority for these shapes: LinkBuilderSerializer::serialize()
- * (LinkPayload), the target's getMappableFields() (MappableField), and
+ * (LinkPayload), schema\MappableField::toArray() (MappableField), and
  * DataService::inspect() (SampleReport). Change them there first.
  */
 
@@ -53,7 +53,9 @@
  */
 
 /**
- * One mappable field reported by the element target.
+ * One mappable field reported by the element target. Pinned against
+ * `tests/fixtures/mappable-field.json` from both sides (see
+ * `__tests__/mappable-field.contract.test.js`).
  *
  * @typedef {Object} MappableField
  * @property {string} handle

@@ -160,6 +160,25 @@ class Compat
     }
 
     /**
+     * EntryType::$hasTitleField exists in both majors; feature-detected anyway
+     * so a type model without it (a stub, a future rename) reads as "shown"
+     * rather than throwing.
+     */
+    public static function entryTypeShowsTitleField(EntryType $entryType): bool
+    {
+        return ! property_exists($entryType, 'hasTitleField') || $entryType->hasTitleField;
+    }
+
+    /**
+     * EntryType::$showStatusField is @since 4.5 — earlier Craft 4 entry types
+     * always expose the status (enabled) control.
+     */
+    public static function entryTypeShowsStatusField(EntryType $entryType): bool
+    {
+        return ! property_exists($entryType, 'showStatusField') || $entryType->showStatusField;
+    }
+
+    /**
      * Craft 5 entries are multi-author (setAuthorIds() @since 5.0); Craft 4
      * entries take a single author ID. A null id clears the author.
      */

@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\auth;
 
 use Craft;
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
  * HTTP Basic authentication (RFC 7617). The inherited {@see $token} property

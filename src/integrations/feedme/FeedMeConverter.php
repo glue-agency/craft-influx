@@ -6,7 +6,9 @@ use Craft;
 use craft\helpers\StringHelper;
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\models\MappingCollection;
 
 /**
  * Converts a craftcms/feed-me feed (a row from the `feedme_feeds` table) into
@@ -317,6 +319,10 @@ class FeedMeConverter
      * feed actually mapped a value there, and a Matrix field whose block types
      * mapped nothing is skipped without a warning.
      *
+     * The converted mappings are assembled as {@see FieldMapping}s and emitted
+     * through {@see MappingCollection::toConfig()}, so the stored shape (and its
+     * empty-slot rule) is owned by the value objects rather than restated here.
+     *
      * @param array $fieldMapping decoded Feed Me fieldMapping
      * @param bool $topLevel whether these handles are element-level (native
      * attribute renames only apply there, not on related-element sub-fields)
@@ -345,7 +351,7 @@ class FeedMeConverter
                 $blocks = $this->convertMatrixBlocks((string) $handle, $info['blocks']);
 
                 if ($blocks !== []) {
-                    $mappings[$handle] = ['blocks' => $blocks];
+                    $mappings[$handle] = FieldMapping::make((string) $handle, blocks: $blocks);
                 }
 
                 continue;
@@ -358,7 +364,7 @@ class FeedMeConverter
             }
         }
 
-        return $mappings;
+        return MappingCollection::of($mappings)->toConfig();
     }
 
     /**
@@ -391,7 +397,7 @@ class FeedMeConverter
             $this->warnUnsupportedBlockKeys($handle, $typeHandle, $typeInfo);
 
             if ($fields !== []) {
-                $converted[$typeHandle] = ['fields' => $fields];
+                $converted[$typeHandle] = FieldMapping::make($typeHandle, fields: $fields)->toConfig();
             }
         }
 
@@ -443,35 +449,29 @@ class FeedMeConverter
     }
 
     /**
-     * Convert one fieldMapping entry to Influx's mapping config shape, or
-     * null when the entry carries nothing to import ("don't import", or a
-     * default-only mapping with an empty default). A related element's
-     * sub-field map recurses through {@see convertMappings()} into Influx's
-     * `fields` channel.
+     * Convert one fieldMapping entry to a {@see FieldMapping}, or null when the
+     * entry carries nothing to import ("don't import", or a default-only mapping
+     * with an empty default). A related element's sub-field map recurses through
+     * {@see convertMappings()} into Influx's `fields` channel.
+     *
+     * Which slots survive into stored config is the value object's call
+     * ({@see FieldMapping::toConfig()}); this only decides what the Feed Me row
+     * translates to.
      */
-    protected function convertMapping(string $handle, array $info): ?array
+    protected function convertMapping(string $handle, array $info): ?FieldMapping
     {
         $node = $info['node'] ?? null;
         $node = is_string($node) && $node !== '' ? $node : null;
         $default = $this->normalizeDefault($info['default'] ?? null);
 
-        $mapping = [];
-
         if ($node === self::NODE_NO_IMPORT || $node === null) {
             return null;
         }
 
-        if ($node === self::NODE_USE_DEFAULT) {
-            if ($default === null) {
-                return null;
-            }
-            $mapping['useDefault'] = true;
-        } else {
-            $mapping['node'] = $this->nodeToDotPath($node);
-        }
+        $useDefault = $node === self::NODE_USE_DEFAULT;
 
-        if ($default !== null) {
-            $mapping['default'] = $default;
+        if ($useDefault && $default === null) {
+            return null;
         }
 
         $options = is_array($info['options'] ?? null) ? $this->cleanOptions($info['options']) : [];
@@ -484,19 +484,14 @@ class FeedMeConverter
             $options = $this->translateCreateGroup($handle, $options);
         }
 
-        if (! empty($options)) {
-            $mapping['options'] = $options;
-        }
-
-        if (is_array($info['fields'] ?? null)) {
-            $subMappings = $this->convertMappings($info['fields'], false);
-
-            if (! empty($subMappings)) {
-                $mapping['fields'] = $subMappings;
-            }
-        }
-
-        return $mapping;
+        return FieldMapping::make(
+            handle: $handle,
+            node: $useDefault ? null : $this->nodeToDotPath($node),
+            default: $default,
+            useDefault: $useDefault,
+            options: $options,
+            fields: is_array($info['fields'] ?? null) ? $this->convertMappings($info['fields'], false) : [],
+        );
     }
 
     /**
@@ -636,8 +631,7 @@ class FeedMeConverter
 
         $upload = ! empty($options['upload']);
 
-        if ($match === 'id' && ! $upload) {
-        } else {
+        if ($match !== 'id' || $upload) {
             $options['mode'] = 'url';
 
             if ($match === 'id') {

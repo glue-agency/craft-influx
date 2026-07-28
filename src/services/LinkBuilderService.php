@@ -11,6 +11,7 @@ use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappableField;
 use GlueAgency\Influx\web\LinkBuilderSerializer;
 use Throwable;
 use yii\web\NotFoundHttpException;
@@ -237,6 +238,11 @@ class LinkBuilderService extends Component
      * reactive update when the user changes the section or entry-type
      * dropdowns in the SPA.
      *
+     * The wire boundary for {@see MappableField}: the target reports typed
+     * descriptors, and they're serialized here (flat and per group). Whatever the
+     * target doesn't report — a custom field removed from the layout, a native
+     * the entry type hides — simply isn't in the tree.
+     *
      * `matchOptions` comes back in the order the SPA's SearchableSelect expects
      * it: clear sentinel first, then the matchable natives, then custom fields.
      *
@@ -257,13 +263,13 @@ class LinkBuilderService extends Component
         $nativeOptions = $target ? $target->matchableNativeAttributes($stub) : [];
         $fieldOptions = [];
 
-        foreach ($fields as $f) {
-            if (! empty($f['native'])) {
+        foreach ($fields as $field) {
+            if ($field->native) {
                 continue;
             }
             $fieldOptions[] = [
-                'value' => $f['handle'],
-                'label' => "{$f['name']} ({$f['handle']})",
+                'value' => $field->handle,
+                'label' => "{$field->name} ({$field->handle})",
             ];
         }
 
@@ -291,7 +297,11 @@ class LinkBuilderService extends Component
             ];
         }
 
-        return ['fields' => $fields, 'groups' => $groups, 'matchOptions' => $matchOptions];
+        return [
+            'fields'       => MappableField::toArrays($fields),
+            'groups'       => $groups,
+            'matchOptions' => $matchOptions,
+        ];
     }
 
     /**
@@ -681,7 +691,7 @@ class LinkBuilderService extends Component
 
     /**
      * Per-strategy form schemas consumed by the SPA's Authentication tab.
-     * Strategies declare {@see \GlueAgency\Influx\helpers\SchemaBuilder} nodes
+     * Strategies declare {@see \GlueAgency\Influx\schema\SchemaBuilder} nodes
      * natively via {@see \GlueAgency\Influx\auth\AuthStrategyInterface::schema()}
      * — the same vocabulary the mapping extras use — so this is pure
      * aggregation. Strategies with no extra fields (empty schema) are
@@ -706,18 +716,24 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-    /** Group flat mappable fields by their `group` label. */
+    /**
+     * Group flat mappable fields by their `group` label, serializing each into
+     * its wire shape — the grouped tree the Mapping tab renders from.
+     *
+     * @param list<MappableField> $fields
+     * @return list<array{label: string, fields: list<array>}>
+     */
     protected function groupMappableFields(array $fields): array
     {
         $byLabel = [];
 
         foreach ($fields as $field) {
-            $label = $field['group'] ?? Craft::t('influx', 'Other');
+            $label = $field->group ?: Craft::t('influx', 'Other');
 
             if (! isset($byLabel[$label])) {
                 $byLabel[$label] = ['label' => $label, 'fields' => []];
             }
-            $byLabel[$label]['fields'][] = $field;
+            $byLabel[$label]['fields'][] = $field->toArray();
         }
 
         return array_values($byLabel);

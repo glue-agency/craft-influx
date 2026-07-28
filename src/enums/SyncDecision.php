@@ -40,14 +40,14 @@ enum SyncDecision: string
         }
 
         if ($element === null) {
-            if (in_array(ProcessingAction::CREATE->value, $link->processing, true)) {
+            if ($link->allows(ProcessingAction::CREATE)) {
                 return self::CREATE;
             }
 
             return self::SKIP_NO_CREATE;
         }
 
-        if (in_array(ProcessingAction::UPDATE->value, $link->processing, true)) {
+        if ($link->allows(ProcessingAction::UPDATE)) {
             return self::UPDATE;
         }
 

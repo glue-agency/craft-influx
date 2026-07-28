@@ -39,6 +39,40 @@ class MappingCollection implements IteratorAggregate, Countable
         return new self($built);
     }
 
+    /**
+     * A collection over already-built mappings — for writers that produce
+     * {@see FieldMapping}s (the Feed Me import) rather than parse them.
+     *
+     * @param array<string, FieldMapping> $mappings
+     */
+    public static function of(array $mappings): self
+    {
+        return new self($mappings);
+    }
+
+    /**
+     * The whole map as stored config: handle => {@see FieldMapping::toConfig()},
+     * in insertion order. A mapping that emits nothing is dropped — an empty
+     * config array is exactly the "this handle isn't mapped" state, and the
+     * stored shape carries no such entry.
+     *
+     * @return array<string, array>
+     */
+    public function toConfig(): array
+    {
+        $config = [];
+
+        foreach ($this->mappings as $handle => $mapping) {
+            $mappingConfig = $mapping->toConfig();
+
+            if ($mappingConfig !== []) {
+                $config[$handle] = $mappingConfig;
+            }
+        }
+
+        return $config;
+    }
+
     public function get(string $handle): ?FieldMapping
     {
         return $this->mappings[$handle] ?? null;

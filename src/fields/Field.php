@@ -4,7 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\helpers\Comparable;
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use Throwable;
 

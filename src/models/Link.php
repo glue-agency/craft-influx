@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\models;
 
 use craft\base\Model;
 use craft\elements\Entry;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\StringHelper;
 use DateTime;
 use GlueAgency\Influx\enums\ProcessingAction;
@@ -80,6 +81,43 @@ class Link extends Model
         'mappings',
         'processing',
         'offset',
+    ];
+
+    public const CAST_STRING = 'string';
+    public const CAST_NULLABLE_STRING = '?string';
+    public const CAST_BOOL = 'bool';
+    public const CAST_INT = 'int';
+    public const CAST_NULLABLE_INT = '?int';
+    public const CAST_NULLABLE_DATETIME = '?datetime';
+
+    /**
+     * How each non-JSON `influx_links` column coerces — every
+     * {@see CONFIG_FIELDS} entry that isn't in {@see JSON_FIELDS}, plus the
+     * runtime-only columns. The single declaration BOTH directions read
+     * ({@see \GlueAgency\Influx\services\LinksService::columnValuesFromConfig()}
+     * writing, {@see \GlueAgency\Influx\services\LinksService::linkFromRow()}
+     * hydrating), so adding a scalar config field is a change to this file alone
+     * — plus the migration — rather than to a hand-written list per direction.
+     *
+     * Some drivers hand boolean / int columns back as strings, which is why the
+     * read side coerces at all; the write side coerces so callers (PC payloads,
+     * hand-written YAML) don't have to.
+     */
+    public const COLUMN_CASTS = [
+        'handle'         => self::CAST_STRING,
+        'name'           => self::CAST_STRING,
+        'elementType'    => self::CAST_STRING,
+        'endpoint'       => self::CAST_NULLABLE_STRING,
+        'itemEndpoint'   => self::CAST_NULLABLE_STRING,
+        'rootNode'       => self::CAST_NULLABLE_STRING,
+        'paginatorNode'  => self::CAST_NULLABLE_STRING,
+        'totalCountNode' => self::CAST_NULLABLE_STRING,
+        'pageCountNode'  => self::CAST_NULLABLE_STRING,
+        'backup'         => self::CAST_BOOL,
+        'sortOrder'      => self::CAST_NULLABLE_INT,
+        'id'             => self::CAST_INT,
+        'lastRunAt'      => self::CAST_NULLABLE_DATETIME,
+        'lastLogId'      => self::CAST_NULLABLE_INT,
     ];
 
     public ?int $id = null;
@@ -270,6 +308,17 @@ class Link extends Model
     }
 
     /**
+     * Whether this link's processing policy permits an action — the one reader
+     * of {@see $processing} the sync engine asks, so no caller repeats the
+     * `in_array($action->value, ..., true)` membership test. Sugar over the same
+     * stored list: neither the wire nor the stored shape changes.
+     */
+    public function allows(ProcessingAction $action): bool
+    {
+        return in_array($action->value, $this->processing, true);
+    }
+
+    /**
      * Swap the missing-element policies to match the link's endpoint shape,
      * returning the migrations performed as `[['from' => …, 'to' => …], …]`
      * (empty when nothing changed). Idempotent, so calling it twice is safe.
@@ -408,17 +457,43 @@ class Link extends Model
             $config[$field] = $this->{$field};
         }
 
-        return array_filter($config, function($value) {
-            if ($value === null || $value === '' || $value === false) {
-                return false;
-            }
+        return array_filter($config, static fn(mixed $value): bool => ! self::isEmptyConfigValue($value));
+    }
 
-            if (is_array($value) && empty($value)) {
-                return false;
-            }
-
+    /**
+     * THE empty-shape rule for stored config: a null, an empty string, a false
+     * flag or an empty array carries nothing, so it's left out of Project Config
+     * (and stored as NULL in the DB column) rather than written as noise.
+     *
+     * {@see getConfig()} is the final gate that applies it to a link's own
+     * fields; {@see FieldMapping::toConfig()} applies the same rule one level
+     * down, per mapping slot, so a mapping converges on the same shape before it
+     * ever reaches the gate.
+     */
+    public static function isEmptyConfigValue(mixed $value): bool
+    {
+        if ($value === null || $value === '' || $value === false) {
             return true;
-        });
+        }
+
+        return is_array($value) && $value === [];
+    }
+
+    /**
+     * Coerce one column value per its {@see COLUMN_CASTS} declaration. An
+     * undeclared column passes through untouched (`uid` needs no coercion).
+     */
+    public static function castColumnValue(string $column, mixed $value): mixed
+    {
+        return match (self::COLUMN_CASTS[$column] ?? null) {
+            self::CAST_STRING            => (string) ($value ?? ''),
+            self::CAST_NULLABLE_STRING   => $value === null ? null : (string) $value,
+            self::CAST_BOOL              => ! empty($value),
+            self::CAST_INT               => (int) $value,
+            self::CAST_NULLABLE_INT      => $value === null ? null : (int) $value,
+            self::CAST_NULLABLE_DATETIME => empty($value) ? null : (DateTimeHelper::toDateTime($value) ?: null),
+            default                      => $value,
+        };
     }
 
     /**

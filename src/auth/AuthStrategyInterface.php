@@ -2,7 +2,7 @@
 
 namespace GlueAgency\Influx\auth;
 
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
  * Per-auth-type strategy. One concrete class per shape currently stored under

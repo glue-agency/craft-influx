@@ -1,0 +1,73 @@
+[
+    {
+        "handle": "title",
+        "name": "Title",
+        "native": true,
+        "group": "Native",
+        "defaultType": "text"
+    },
+    {
+        "handle": "enabled",
+        "name": "Enabled",
+        "native": true,
+        "group": "Native",
+        "defaultType": "select",
+        "options": {
+            "true": "Enabled",
+            "false": "Disabled"
+        }
+    },
+    {
+        "handle": "author",
+        "name": "Author",
+        "native": true,
+        "group": "Native",
+        "defaultType": "element",
+        "elementType": "craft\\elements\\User",
+        "fieldMeta": {
+            "schema": [
+                {
+                    "type": "select",
+                    "options": [
+                        { "value": "id", "label": "ID" },
+                        { "value": "email", "label": "Email" }
+                    ],
+                    "handle": "match",
+                    "label": "Match by",
+                    "default": "id"
+                }
+            ]
+        }
+    },
+    {
+        "handle": "importId",
+        "name": "Import ID",
+        "native": false,
+        "group": "Content",
+        "defaultType": "text",
+        "fieldClass": "craft\\fields\\PlainText",
+        "fieldMeta": {
+            "schema": []
+        }
+    },
+    {
+        "handle": "contentBlocks",
+        "name": "Content blocks",
+        "native": false,
+        "group": "Content",
+        "defaultType": "text",
+        "fieldClass": "craft\\fields\\Matrix",
+        "fieldMeta": {
+            "schema": [
+                {
+                    "type": "matrixFields",
+                    "handle": "blocks",
+                    "label": "Text",
+                    "blockType": "text",
+                    "subFields": []
+                }
+            ],
+            "subfieldsOnly": true
+        }
+    }
+]

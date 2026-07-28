@@ -4,7 +4,7 @@ namespace GlueAgency\Influx\auth;
 
 use craft\base\Model;
 use craft\helpers\App;
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
  * Base for auth strategies. Strategies are real Craft/Yii models so per-type

@@ -160,19 +160,19 @@ class MissingElementsSweeper
      */
     public function policyFor(Link $link): ?ItemAction
     {
-        if (in_array(ProcessingAction::DELETE->value, $link->processing, true)) {
+        if ($link->allows(ProcessingAction::DELETE)) {
             return ItemAction::DELETED;
         }
 
-        if (in_array(ProcessingAction::DELETE_FOR_SITE->value, $link->processing, true)) {
+        if ($link->allows(ProcessingAction::DELETE_FOR_SITE)) {
             return ItemAction::DELETED_FOR_SITE;
         }
 
-        if (in_array(ProcessingAction::DISABLE->value, $link->processing, true)) {
+        if ($link->allows(ProcessingAction::DISABLE)) {
             return ItemAction::DISABLED;
         }
 
-        if (in_array(ProcessingAction::DISABLE_FOR_SITE->value, $link->processing, true)) {
+        if ($link->allows(ProcessingAction::DISABLE_FOR_SITE)) {
             return ItemAction::DISABLED_FOR_SITE;
         }
 

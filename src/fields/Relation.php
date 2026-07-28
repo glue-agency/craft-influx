@@ -9,7 +9,7 @@ use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
 use craft\helpers\Db;
 use craft\models\FieldLayout;
-use GlueAgency\Influx\helpers\SchemaBuilder;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**

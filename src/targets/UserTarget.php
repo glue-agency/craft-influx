@@ -5,8 +5,8 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
-use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\SyncContext;
 
 /**

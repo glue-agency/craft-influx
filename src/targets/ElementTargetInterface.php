@@ -6,6 +6,7 @@ use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappableField;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 
@@ -209,31 +210,16 @@ interface ElementTargetInterface
 
     /**
      * Fields the link can map to. Drives the per-field mapping UI on the
-     * CP edit screen. Each field is reported as:
-     *
-     *   [
-     *     'handle' => 'title',
-     *     'name'   => 'Title',
-     *     'native' => true,
-     *     'group'  => 'Native' | 'Content' | ... // matches the field-layout
-     *                                            // tab name for custom fields
-     *     'defaultType' => 'text' | 'select' | 'element',
-     *     // For 'select': map of value => label.
-     *     'options' => ['live' => 'Live', 'disabled' => 'Disabled'],
-     *     // For 'element': FQCN of the element type to pick from.
-     *     'elementType' => craft\elements\User::class,
-     *     // Optional: FQCN of the custom-field class (for typed-mapping
-     *     // dispatch; null/absent for native fields).
-     *     'fieldClass' => 'craft\\fields\\Assets',
-     *     // Optional: opaque map of per-field-type meta the typed-mapping
-     *     // UI / runtime needs (sources, sub-fields, dropdown options...).
-     *     'fieldMeta' => [],
-     *   ]
+     * CP edit screen. Each field is a {@see MappableField} — that value object
+     * owns the descriptor's shape and its JSON serialization; natives are
+     * declared through {@see \GlueAgency\Influx\schema\SchemaBuilder::group()}
+     * and a field layout's custom fields through
+     * {@see AbstractElementTarget::customFieldDescriptors()}.
      *
      * Targets that don't have a meaningful field surface for a given link
      * (e.g. the link is missing a section/type) may return an empty list.
      *
-     * @return list<array{handle: string, name: string, native: bool, group: string, defaultType: string, options?: array<string,string>, elementType?: class-string, fieldClass?: ?string, fieldMeta?: array}>
+     * @return list<MappableField>
      */
     public function getMappableFields(Link $link): array;
 }

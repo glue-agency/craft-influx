@@ -167,6 +167,26 @@ class LinkTest extends Unit
         $this->assertSame(ProcessingAction::defaults(), $this->link()->processing);
     }
 
+    public function testAllowsReadsTheProcessingPolicy(): void
+    {
+        // The one membership test over `processing` — the sync engine asks this
+        // instead of re-implementing an in_array() per call site.
+        $link = $this->link(['processing' => [ProcessingAction::CREATE->value]]);
+
+        $this->assertTrue($link->allows(ProcessingAction::CREATE));
+        $this->assertFalse($link->allows(ProcessingAction::UPDATE));
+        $this->assertFalse($link->allows(ProcessingAction::DELETE_FOR_SITE));
+    }
+
+    public function testAllowsIsFalseForAnEmptyPolicy(): void
+    {
+        $link = $this->link(['processing' => []]);
+
+        foreach (ProcessingAction::cases() as $action) {
+            $this->assertFalse($link->allows($action));
+        }
+    }
+
     public function testEnsureUidIsIdempotent(): void
     {
         $link = $this->link();
