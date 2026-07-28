@@ -3,9 +3,9 @@
 namespace GlueAgency\Influx\fields;
 
 use craft\base\FieldInterface as CraftFieldInterface;
+use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
-use Stringable;
 use Throwable;
 
 /**
@@ -154,8 +154,10 @@ abstract class Field
      * Compare the element's current field value against the incoming one.
      * Called by {@see hasChanged()} with the already-read current value, so
      * the read-failure guard lives in one place. Default: normalise both
-     * sides and compare — subclasses override for type-specific semantics
-     * (id-set comparison, timestamp comparison, HTML-serialisation, ...).
+     * sides and compare — which already covers scalars, bools, dates and
+     * elements ({@see normalize()}); subclasses override only for semantics no
+     * per-value normalisation can express (id-set comparison, HTML
+     * serialisation, per-block fingerprints).
      */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
@@ -163,25 +165,14 @@ abstract class Field
     }
 
     /**
-     * Project-config-friendly representation used to compare values for change
-     * detection. Two semantically-equal values should produce the same string.
+     * The field layer's seam onto {@see Comparable::of()} — the one comparison
+     * normaliser, shared with the targets' native-attribute path so a bool, a
+     * date or a related element compares the same either side. Subclasses reach
+     * for it when they build their own comparison (e.g. {@see Matrix}'s
+     * per-block fingerprint) instead of re-normalising leaves themselves.
      */
     protected function normalize(mixed $value): mixed
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if (is_scalar($value)) {
-            return (string) $value;
-        }
-
-        if ($value instanceof Stringable) {
-            $str = (string) $value;
-
-            return $str === '' ? null : $str;
-        }
-
-        return json_encode($value);
+        return Comparable::of($value);
     }
 }

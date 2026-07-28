@@ -135,11 +135,11 @@ interface ElementTargetInterface
     /**
      * Does the target own this mapping handle internally? Returning true
      * tells the sync engine to skip its generic native/custom dispatch — the
-     * target has already handled this attribute during {@see buildNew()}.
+     * target handles this attribute itself.
      *
-     * Example: Entry's `author` is read from the mapping's `default` and
-     * assigned at construction time, so the engine must not try to also
-     * assign it as a string value.
+     * Example: User's `groups` is config-only (its value lives in the mapping's
+     * extras) and an element save doesn't persist group membership, so the engine
+     * must not try to assign it; {@see afterCommit()} reconciles it instead.
      */
     public function ownsAttribute(Link $link, string $handle): bool;
 

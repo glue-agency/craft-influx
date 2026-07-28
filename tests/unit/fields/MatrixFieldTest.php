@@ -7,9 +7,13 @@ use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\models\FieldLayout;
+use DateTime;
+use DateTimeZone;
 use GlueAgency\Influx\exceptions\MappingDepthException;
 use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\Field;
+use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
@@ -343,6 +347,71 @@ class MatrixFieldTest extends Unit
         $this->assertTrue($strategy->exposedValueDiffers($context, $current, $incoming));
     }
 
+    public function testBoolLeafFingerprintsSymmetrically(): void
+    {
+        // A Lightswitch child yields a real bool on the incoming side and Craft
+        // serializes the stored one as a bool too, so both fingerprint sides run
+        // through the shared normaliser's bool case: false is a value, not
+        // emptiness, so a re-applied flag must not trigger a rebuild.
+        $strategy = $this->strategy(
+            ['season' => ['featured']],
+            ['featured' => static fn(mixed $raw): bool => Lightswitch::coerce($raw)],
+        );
+        $context = $this->context(new RemoteItem(['seasons' => [['on' => 'yes'], ['on' => 'no']]]), [
+            'season' => ['fields' => ['featured' => ['node' => 'seasons.on']]],
+        ]);
+
+        $incoming = $strategy->parse($context);
+        $this->assertSame([true, false], [$incoming['new1']['fields']['featured'], $incoming['new2']['fields']['featured']]);
+
+        $same = $this->fakeQuery([
+            $this->fakeBlock('season', ['featured' => true]),
+            $this->fakeBlock('season', ['featured' => false]),
+        ]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $same, $incoming));
+
+        $storedAsInt = $this->fakeQuery([
+            $this->fakeBlock('season', ['featured' => 1]),
+            $this->fakeBlock('season', ['featured' => 0]),
+        ]);
+        $this->assertFalse(
+            $strategy->exposedValueDiffers($context, $storedAsInt, $incoming),
+            'A stored 0/1 is the same flag as an incoming false/true — no needless rebuild.',
+        );
+
+        $flipped = $this->fakeQuery([
+            $this->fakeBlock('season', ['featured' => true]),
+            $this->fakeBlock('season', ['featured' => true]),
+        ]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $flipped, $incoming));
+    }
+
+    public function testDateLeafFingerprintsByInstant(): void
+    {
+        // A Date child yields a DateTime; the shared normaliser reduces both
+        // sides to a timestamp, so the same instant in another timezone is not a
+        // change while a second's shift is.
+        $strategy = $this->strategy(
+            ['season' => ['published']],
+            ['published' => static fn(mixed $raw): ?DateTime => Date::tryParse($raw, 'Y-m-d H:i:s')],
+        );
+        $context = $this->context(new RemoteItem(['seasons' => [['at' => '2024-03-02 10:00:00']]]), [
+            'season' => ['fields' => ['published' => ['node' => 'seasons.at']]],
+        ]);
+
+        $incoming = $strategy->parse($context);
+
+        $sameInstant = $this->fakeQuery([$this->fakeBlock('season', [
+            'published' => new DateTime('2024-03-02 11:00:00', new DateTimeZone('Europe/Brussels')),
+        ])]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $sameInstant, $incoming));
+
+        $shifted = $this->fakeQuery([$this->fakeBlock('season', [
+            'published' => new DateTime('2024-03-02 10:00:01', new DateTimeZone('UTC')),
+        ])]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $shifted, $incoming));
+    }
+
     public function testValueDiffersFallsBackToParentForNonQueryCurrent(): void
     {
         $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
@@ -389,23 +458,30 @@ class MatrixFieldTest extends Unit
      *
      * @param array<string, list<string>> $typeLayouts block-type handle (in
      * declared order) → the handles that type's fake layout exposes
+     * @param array<string, callable> $childValues per-handle coercion, for leaves
+     * whose real strategy yields a typed value (a bool, a date) rather than a
+     * string — the default marker coercion can't stand in for those.
      */
-    protected function strategy(array $typeLayouts): Matrix
+    protected function strategy(array $typeLayouts, array $childValues = []): Matrix
     {
         $test = $this;
 
-        return new class($typeLayouts, $test) extends Matrix {
+        return new class($typeLayouts, $childValues, $test) extends Matrix {
             /** @var array<string, list<string>> */
             public array $typeLayouts = [];
+
+            /** @var array<string, callable> */
+            public array $childValues = [];
 
             public MatrixFieldTest $test;
 
             /** @var array<string, list<FieldContext>> */
             public array $recordedContexts = [];
 
-            public function __construct(array $typeLayouts, MatrixFieldTest $test)
+            public function __construct(array $typeLayouts, array $childValues, MatrixFieldTest $test)
             {
                 $this->typeLayouts = $typeLayouts;
+                $this->childValues = $childValues;
                 $this->test = $test;
             }
 
@@ -439,8 +515,10 @@ class MatrixFieldTest extends Unit
                     public function parse(FieldContext $context): mixed
                     {
                         $this->owner->recordedContexts[$context->handle][] = $context;
+                        $raw = $context->mapping->resolve($context->item);
+                        $coerce = $this->owner->childValues[$context->handle] ?? null;
 
-                        return 'coerced:' . $context->mapping->resolve($context->item);
+                        return $coerce ? $coerce($raw) : 'coerced:' . $raw;
                     }
                 };
             }

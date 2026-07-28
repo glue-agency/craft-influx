@@ -5,13 +5,16 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
-use DateTimeInterface;
+use craft\fieldlayoutelements\CustomField;
+use craft\models\FieldLayout;
+use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
-use Stringable;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {
@@ -30,6 +33,30 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function targetsElement(Link $link, ElementInterface $element): bool
     {
         return $this->handles($link) && is_a($element, static::elementType());
+    }
+
+    /**
+     * The claim rule for every target: structurally targeted PLUS a non-empty
+     * value for the link's match attribute — the gap {@see targetsElement()}
+     * deliberately leaves (an in-scope element with no match value still
+     * targets, so the "Sync from remote" button can surface disabled). Both
+     * halves are already per-target / per-link abstractions
+     * ({@see targetsElement()}, {@see Link::matchAttribute()}), so no target has
+     * ever needed its own version.
+     */
+    public function claimsElement(Link $link, ElementInterface $element): bool
+    {
+        if (! $this->targetsElement($link, $element)) {
+            return false;
+        }
+
+        $matchAttr = $link->matchAttribute();
+
+        if (! $matchAttr) {
+            return false;
+        }
+
+        return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
     }
 
     /**
@@ -72,10 +99,11 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     /**
      * Default native-attribute apply: resolve the remote value (`node` then
      * `default`) and assign it via setAttribute, falling back to setFieldValue
-     * for attrs Craft exposes that way. Subclasses dispatch to `parseFoo`
-     * methods first to translate values that aren't directly assignable (e.g.
-     * coercing Entry's `enabled` to a bool) — see the convention documented
-     * on {@see ElementTargetInterface::applyNativeAttribute()}. The run's
+     * for attrs Craft exposes that way. A `parseFoo` method wins when one
+     * exists, translating values that aren't directly assignable — declared here
+     * for the universal `enabled` flag ({@see parseEnabled()}) and on the target
+     * for its own natives; see the convention documented on
+     * {@see ElementTargetInterface::applyNativeAttribute()}. The run's
      * {@see SyncContext} is passed to those parsers (first argument) so they
      * can reach the run's element-lookup cache.
      *
@@ -116,47 +144,53 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Coerce the mapped value into the `enabled` flag — shared by every target,
+     * since `enabled` is the one status flag every element type carries. (Craft
+     * derives an entry's `status` from enabled + postDate + expiryDate and a
+     * user's from enabled + its account state, so neither can be set directly:
+     * that's why the native mappable is `enabled`.) Truthy spellings come from
+     * {@see Lightswitch::coerce()}, so an addressed-but-empty value coerces to
+     * false, i.e. disabled.
+     *
+     * Dispatched by handle from {@see applyNativeAttribute()}, whose
+     * `method_exists()` lookup sees inherited parsers like this one.
+     */
+    protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    {
+        $new = Lightswitch::coerce($mapping->resolve($item));
+
+        $changed = (bool) $element->enabled !== $new;
+        $element->enabled = $new;
+
+        return $changed;
+    }
+
+    /**
      * Whether two native values differ, compared on a stable, type-aware
-     * representation: a boolean false is a real value (not "empty"), dates
-     * compare by timestamp, and related elements by id — so re-applying the
-     * same author/date/flag isn't mistaken for a change.
+     * representation — so re-applying the same author/date/flag isn't mistaken
+     * for a change.
      */
     protected function nativeValueChanged(mixed $before, mixed $after): bool
     {
         return $this->comparable($before) !== $this->comparable($after);
     }
 
+    /**
+     * The target layer's seam onto {@see Comparable::of()} — the one comparison
+     * normaliser, shared with the custom-field strategies
+     * ({@see \GlueAgency\Influx\fields\Field::normalize()}).
+     */
     protected function comparable(mixed $value): mixed
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if (is_bool($value)) {
-            return $value ? '1' : '0';
-        }
-
-        if ($value instanceof DateTimeInterface) {
-            return $value->getTimestamp();
-        }
-
-        if ($value instanceof ElementInterface) {
-            return (int) $value->id;
-        }
-
-        if (is_scalar($value) || $value instanceof Stringable) {
-            $str = (string) $value;
-
-            return $str === '' ? null : $str;
-        }
-
-        return json_encode($value);
+        return Comparable::of($value);
     }
 
     /**
-     * Default: nothing is owned. Targets override when buildNew() already
-     * assigned an attribute that would otherwise be re-applied by the
-     * generic mapping loop.
+     * Default: nothing is owned — every mapped handle goes through the generic
+     * native/custom dispatch. Targets override only for a handle the engine must
+     * not write itself: one the target already assigned, or one no element save
+     * can persist (see {@see \GlueAgency\Influx\targets\UserTarget::ownsAttribute()},
+     * whose `groups` is reconciled in afterCommit() instead).
      */
     public function ownsAttribute(Link $link, string $handle): bool
     {
@@ -239,6 +273,50 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public function getMappableFields(Link $link): array
     {
         return [];
+    }
+
+    /**
+     * Mapping descriptors for the custom fields on a field layout, walked tab by
+     * tab so they keep the element editor's own grouping. Targets differ only in
+     * how they reach the layout (per entry type, the global user layout, ...)
+     * and in what an unnamed tab falls back to — a missing layout yields nothing
+     * so a target with unresolved criteria still reports its natives.
+     *
+     * @return list<array{handle: string, name: string, native: bool, group: string, defaultType: string, fieldClass: string, fieldMeta: array}>
+     */
+    protected function customFieldDescriptors(?FieldLayout $layout, string $fallbackTab): array
+    {
+        if (! $layout) {
+            return [];
+        }
+
+        $fields = [];
+
+        foreach ($layout->getTabs() as $tab) {
+            $tabName = $tab->name ?: $fallbackTab;
+
+            foreach ($tab->getElements() as $layoutElement) {
+                if (! ($layoutElement instanceof CustomField)) {
+                    continue;
+                }
+                $field = $layoutElement->getField();
+
+                if (! $field) {
+                    continue;
+                }
+                $fields[] = [
+                    'handle'      => $field->handle,
+                    'name'        => $field->name,
+                    'native'      => false,
+                    'group'       => $tabName,
+                    'defaultType' => 'text',
+                    'fieldClass'  => $field::class,
+                    'fieldMeta'   => Influx::getInstance()->fields->metaFor($field),
+                ];
+            }
+        }
+
+        return $fields;
     }
 
     /**

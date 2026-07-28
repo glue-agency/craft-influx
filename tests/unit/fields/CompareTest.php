@@ -20,7 +20,9 @@ use RuntimeException;
  *
  * Default semantics (Field base):
  *   - getFieldValue throws -> assume changed (safer default)
- *   - normalise both sides, compare as strings
+ *   - normalise both sides through the shared comparison normaliser
+ *     ({@see \GlueAgency\Influx\helpers\Comparable::of()}) and compare: scalars
+ *     as strings, bools as '1'/'0', dates by instant, elements by id
  *   - null === '' (both round-trip to null)
  *
  * Strategies that handle list-valued fields (Assets, Relation) override
@@ -71,8 +73,9 @@ class CompareTest extends Unit
 
     public function testLightswitchReadsTheBooleanSemantically(): void
     {
-        // Lightswitch inherits the base hasChanged; both sides normalise to
-        // a string. true -> "1", false -> "" (empty -> null).
+        // Lightswitch inherits the base hasChanged; the shared normaliser keeps
+        // a bool a real value on both sides (true -> "1", false -> "0"), so a
+        // flag flip is a change and a re-applied flag isn't.
         $strategy = new Lightswitch();
         $context = $this->context($this->elementReturning(true), handle: 'featured');
         $this->assertFalse($strategy->hasChanged($context, true));

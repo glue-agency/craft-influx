@@ -3,27 +3,20 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
-use craft\base\ElementInterface;
 use craft\db\Table as CraftTable;
 use craft\elements\Category as CraftCategoryElement;
-use craft\elements\db\ElementQueryInterface;
-use craft\fields\BaseRelationField;
 use craft\fields\Categories as CraftCategoriesField;
-use GlueAgency\Influx\sync\FieldContext;
+use craft\models\FieldLayout;
 
 /**
- * Relation strategy for the Categories field. Categories are group-scoped
- * (`group:UID` sources, the `categorygroups` table): the field points at a
- * single category group, so lookups scope to that group's id and any created
- * category is placed in it.
+ * Relation strategy for the Categories field: `group:UID` sources resolving
+ * against the `categorygroups` table, with {@see GroupScopedRelation} doing the
+ * group scoping and creation.
  *
  * Creation stays opt-in (no {@see shouldCreate()} override) — categories are
- * usually curated, unlike {@see Tags}, which auto-creates. The group-scoping
- * hooks below mirror {@see Tags}; the two are kept as independent subclasses
- * of {@see Relation} rather than sharing a base — the shared surface is only a
- * few lines and Tags is on its way out of Craft.
+ * usually curated, unlike {@see Tags}, which auto-creates.
  */
-class Categories extends Relation
+class Categories extends GroupScopedRelation
 {
     public static function craftFieldClass(): ?string
     {
@@ -35,49 +28,18 @@ class Categories extends Relation
         return CraftCategoryElement::class;
     }
 
-    protected function sourceFieldLayouts(BaseRelationField $field): iterable
+    protected function sourcePrefix(): string
     {
-        $uid = $this->sourceUid($field->source ?? null, 'group:');
-
-        if ($uid === null) {
-            return;
-        }
-
-        $layout = Craft::$app->getCategories()->getGroupByUid($uid)?->getFieldLayout();
-
-        if ($layout) {
-            yield $layout;
-        }
+        return 'group:';
     }
 
-    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
+    protected function groupTable(): string
     {
-        $groupId = $this->sourceGroupId($context->craftField?->source ?? null);
-
-        if ($groupId !== null) {
-            /** @phpstan-ignore-next-line — category queries expose groupId */
-            $query->groupId($groupId);
-        }
+        return CraftTable::CATEGORYGROUPS;
     }
 
-    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
+    protected function groupFieldLayout(string $uid): ?FieldLayout
     {
-        $groupId = $this->sourceGroupId($context->craftField?->source ?? null);
-
-        if ($groupId === null) {
-            return null;
-        }
-
-        $category = new CraftCategoryElement();
-        $category->groupId = $groupId;
-        $category->title = (string) $value;
-
-        return Craft::$app->getElements()->saveElement($category, true) ? $category : null;
-    }
-
-    /** Category-group id (this environment) from a `group:UID` source key, or null. */
-    protected function sourceGroupId(mixed $source): ?int
-    {
-        return $this->sourceIdByUid($source, 'group:', CraftTable::CATEGORYGROUPS);
+        return Craft::$app->getCategories()->getGroupByUid($uid)?->getFieldLayout();
     }
 }

@@ -5,17 +5,20 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
-use craft\fieldlayoutelements\CustomField;
-use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\SchemaBuilder;
-use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 
 /**
  * Target for craft\elements\User.
+ *
+ * Users have no sub-partition to scope on, so the base's structural targeting
+ * ("an in-handle User") and its claim rule are inherited unchanged, as is
+ * {@see AbstractElementTarget::parseEnabled()} — a disabled user reads as
+ * "disabled" from {@see User::getStatus()}, making that flag the feed-driven
+ * active/inactive toggle. The remaining natives (username / email / fullName /
+ * firstName / lastName) are plain strings the base assignment path handles, so
+ * this target declares no parsers of its own.
  *
  * Users aren't localizable — one canonical row, no per-site content — so this
  * target reports {@see supportsMultiSite()} = false: a user link always runs
@@ -62,27 +65,6 @@ class UserTarget extends AbstractElementTarget
     public static function supportsMultiSite(): bool
     {
         return false;
-    }
-
-    /**
-     * Users have no sub-partition to scope on, so structural targeting is just
-     * "an in-handle User" — exactly {@see AbstractElementTarget::targetsElement()},
-     * which this target inherits unchanged. {@see claimsElement()} layers the
-     * match-value check on top.
-     */
-    public function claimsElement(Link $link, ElementInterface $element): bool
-    {
-        if (! $this->targetsElement($link, $element)) {
-            return false;
-        }
-
-        $matchAttr = $link->matchAttribute();
-
-        if (! $matchAttr) {
-            return false;
-        }
-
-        return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
     }
 
     /**
@@ -141,74 +123,18 @@ class UserTarget extends AbstractElementTarget
     }
 
     /**
-     * Custom fields are collected by walking the global User field layout's
-     * tabs, so they keep their user-editor grouping (mirrors
-     * {@see EntryTarget::getMappableFields()}).
+     * Custom fields come from the global User field layout, so they keep their
+     * user-editor grouping.
      */
     public function getMappableFields(Link $link): array
     {
-        $fields = $this->nativeFieldDefinitions()->toArray();
-
-        $layout = Craft::$app->getFields()->getLayoutByType(User::class);
-
-        if (! $layout) {
-            return $fields;
-        }
-
-        $fallbackTab = Craft::t('influx', 'Profile');
-
-        foreach ($layout->getTabs() as $tab) {
-            $tabName = $tab->name ?: $fallbackTab;
-
-            foreach ($tab->getElements() as $element) {
-                if (! ($element instanceof CustomField)) {
-                    continue;
-                }
-                $field = $element->getField();
-
-                if (! $field) {
-                    continue;
-                }
-                $fields[] = [
-                    'handle'      => $field->handle,
-                    'name'        => $field->name,
-                    'native'      => false,
-                    'group'       => $tabName,
-                    'defaultType' => 'text',
-                    'fieldClass'  => $field::class,
-                    'fieldMeta'   => Influx::getInstance()->fields->metaFor($field),
-                ];
-            }
-        }
-
-        return $fields;
-    }
-
-    /**
-     * Coerce the mapped value into the element `enabled` flag. A disabled user
-     * reads as "disabled" from {@see User::getStatus()}, so this is the feed-
-     * driven active/inactive toggle. Truthy spellings follow the Lightswitch
-     * field strategy; an addressed-but-empty value coerces to false, i.e.
-     * disabled. (username/email/fullName/firstName/lastName are plain string
-     * attributes handled by the base assignment path.)
-     *
-     * Native-attribute parsers like this one are dispatched by handle from
-     * {@see AbstractElementTarget::applyNativeAttribute()}.
-     */
-    protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
-    {
-        $value = $mapping->resolve($item);
-
-        $new = match (true) {
-            $value === null => false,
-            is_bool($value) => $value,
-            default         => in_array(strtolower(trim((string) $value)), Lightswitch::TRUTHY_VALUES, true),
-        };
-
-        $changed = (bool) $element->enabled !== $new;
-        $element->enabled = $new;
-
-        return $changed;
+        return array_merge(
+            $this->nativeFieldDefinitions()->toArray(),
+            $this->customFieldDescriptors(
+                Craft::$app->getFields()->getLayoutByType(User::class),
+                Craft::t('influx', 'Profile'),
+            ),
+        );
     }
 
     /**

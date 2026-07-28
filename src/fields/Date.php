@@ -15,6 +15,12 @@ use GlueAgency\Influx\helpers\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use yii\base\Event;
 
+/**
+ * Date/time mapping strategy. Change detection needs no override of its own: the
+ * shared normaliser ({@see \GlueAgency\Influx\helpers\Comparable::of()}) already
+ * reduces a date to its timestamp, so two values for the same instant compare
+ * equal and anything non-date compares as changed.
+ */
 class Date extends Field
 {
     /**
@@ -69,6 +75,37 @@ class Date extends Field
     }
 
     /**
+     * THE date-parsing rule, shared with the native date attributes
+     * ({@see \GlueAgency\Influx\targets\EntryTarget::assignDate()} applies the
+     * same mapping option to postDate / expiryDate). An explicit `format`
+     * option wins over the auto-detector — feeds that ship ambiguous strings
+     * (e.g. `02/03/2024`) need to disambiguate manually — and `timestamp` is a UI
+     * sentinel for Unix seconds, translated to the PHP `U` token here so the Vue
+     * side stays human-readable. The source timezone defaults to UTC, but
+     * `createFromFormat()`'s third argument is only a fallback: a format carrying
+     * its own tz token still wins. A non-scalar value can't be format-parsed, so
+     * it goes to the auto-detector, which understands Craft's array date shapes.
+     *
+     * Returns null when the value can't be parsed — what to DO about that is the
+     * caller's policy, and the two callers differ deliberately.
+     */
+    public static function tryParse(mixed $raw, mixed $format = null): ?DateTime
+    {
+        if ($raw instanceof DateTimeInterface) {
+            return $raw instanceof DateTime ? $raw : DateTime::createFromInterface($raw);
+        }
+
+        if (is_string($format) && $format !== '' && is_scalar($raw)) {
+            $phpFormat = $format === 'timestamp' ? 'U' : $format;
+            $parsed = DateTime::createFromFormat($phpFormat, (string) $raw, new DateTimeZone('UTC'));
+
+            return $parsed === false ? null : $parsed;
+        }
+
+        return DateTimeHelper::toDateTime($raw) ?: null;
+    }
+
+    /**
      * `resolve()` already normalises empty to null, so no extra empty guard is
      * needed.
      *
@@ -84,50 +121,14 @@ class Date extends Field
             return null;
         }
 
-        $parsed = $this->parseValue($raw, $context->mapping->option('format'));
+        $parsed = self::tryParse($raw, $context->mapping->option('format'));
 
-        if ($parsed === false) {
+        if ($parsed === null) {
             $display = is_scalar($raw) ? (string) $raw : gettype($raw);
 
             throw new MappingValueException("Unparseable date value '{$display}'.");
         }
 
         return $parsed;
-    }
-
-    /**
-     * An explicit `format` option wins over the auto-detector — feeds that
-     * ship ambiguous strings (e.g. `02/03/2024`) need to disambiguate
-     * manually. `timestamp` is a UI sentinel for Unix seconds (translated to
-     * the PHP `U` token here so the Vue side stays human-readable). Mirrors
-     * {@see \GlueAgency\Influx\targets\EntryTarget::parseDateValue()}, which
-     * applies the same mapping option to the native date attributes.
-     *
-     * The source timezone defaults to UTC, but `createFromFormat()`'s third
-     * argument is only a fallback — a format carrying its own tz token still
-     * wins.
-     */
-    protected function parseValue(mixed $raw, mixed $format): DateTimeInterface|false
-    {
-        if (is_string($format) && $format !== '' && is_scalar($raw)) {
-            $phpFormat = $format === 'timestamp' ? 'U' : $format;
-
-            return DateTime::createFromFormat($phpFormat, (string) $raw, new DateTimeZone('UTC'));
-        }
-
-        return DateTimeHelper::toDateTime($raw);
-    }
-
-    protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
-    {
-        if (! $incoming instanceof DateTimeInterface) {
-            return parent::valueDiffers($context, $current, $incoming);
-        }
-
-        if (! $current instanceof DateTimeInterface) {
-            return true;
-        }
-
-        return $current->getTimestamp() !== $incoming->getTimestamp();
     }
 }

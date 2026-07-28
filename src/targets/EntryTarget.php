@@ -5,21 +5,16 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
+use craft\elements\db\EntryQuery;
 use craft\elements\Entry;
 use craft\elements\User;
-use craft\fieldlayoutelements\CustomField;
 use craft\fieldlayoutelements\entries\EntryTitleField;
-use craft\helpers\DateTimeHelper;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
-use DateTime;
 use DateTimeInterface;
-use DateTimeZone;
 use GlueAgency\Influx\fields\Date;
-use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\helpers\SchemaBuilder;
-use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
@@ -84,31 +79,6 @@ class EntryTarget extends AbstractElementTarget
         return true;
     }
 
-    public function claimsElement(Link $link, ElementInterface $element): bool
-    {
-        if (! $this->targetsElement($link, $element)) {
-            return false;
-        }
-
-        $matchAttr = $link->matchAttribute();
-
-        if (! $matchAttr) {
-            return false;
-        }
-
-        return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
-    }
-
-    /**
-     * No native author short-circuit anymore — {@see parseAuthor()} resolves
-     * the value (node, falling back to `default`) through the configured
-     * match strategy and sets `authorIds` itself.
-     */
-    public function ownsAttribute(Link $link, string $handle): bool
-    {
-        return false;
-    }
-
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?Entry
     {
         $matchAttr = $link->matchAttribute();
@@ -121,6 +91,18 @@ class EntryTarget extends AbstractElementTarget
             ->status(null)
             ->{$matchAttr}($matchValue);
 
+        return $this->scopeToLink($query, $link, $siteId)->one();
+    }
+
+    /**
+     * The link's ownership scope as query criteria: its section/type criteria
+     * (each only when set) plus the site scope — one site for a site-scoped run,
+     * otherwise one row per canonical entry across sites. THE definition of
+     * "which entries this link owns", so {@see findByMatchValue()} and
+     * {@see missingElementsQuery()} can't drift apart.
+     */
+    protected function scopeToLink(EntryQuery $query, Link $link, ?int $siteId): EntryQuery
+    {
         if (isset($link->elementCriteria['section'])) {
             $query->section($link->elementCriteria['section']);
         }
@@ -135,14 +117,15 @@ class EntryTarget extends AbstractElementTarget
             $query->siteId('*')->unique();
         }
 
-        return $query->one();
+        return $query;
     }
 
     /**
      * Candidate set for the missing-elements sweep: every entry this link owns
-     * (same section/type scoping as {@see findByMatchValue()}), minus the ids
-     * the run just saw. Returns null only when the link has no match attribute
-     * at all — such a link can't sync, so there's nothing to sweep.
+     * (the same {@see scopeToLink()} scoping {@see findByMatchValue()} uses),
+     * minus the ids the run just saw. Returns null only when the link has no
+     * match attribute at all — such a link can't sync, so there's nothing to
+     * sweep.
      *
      * Feed-authoritative scope: the link's element criteria (section/type) ARE
      * the ownership boundary — every entry inside that scope is managed by this
@@ -163,21 +146,7 @@ class EntryTarget extends AbstractElementTarget
             return null;
         }
 
-        $query = Entry::find();
-
-        if (isset($link->elementCriteria['section'])) {
-            $query->section($link->elementCriteria['section']);
-        }
-
-        if (isset($link->elementCriteria['type'])) {
-            $query->type($link->elementCriteria['type']);
-        }
-
-        if ($siteId) {
-            $query->siteId($siteId);
-        } else {
-            $query->siteId('*')->unique();
-        }
+        $query = $this->scopeToLink(Entry::find(), $link, $siteId);
 
         if ($seenIds !== []) {
             $query->id(array_merge(['not'], $seenIds));
@@ -235,8 +204,9 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
-     * Custom fields are collected by walking the resolved entry type's
-     * field-layout tabs, so they keep their entry-editor grouping.
+     * Custom fields come from the resolved entry type's own field layout, so
+     * they keep their entry-editor grouping; an unresolvable section/type leaves
+     * the natives alone.
      */
     public function getMappableFields(Link $link): array
     {
@@ -249,39 +219,10 @@ class EntryTarget extends AbstractElementTarget
         }
         [, $entryType] = $resolved;
 
-        $layout = $entryType->getFieldLayout();
-
-        if (! $layout) {
-            return $fields;
-        }
-
-        $fallbackTab = Craft::t('influx', 'Content');
-
-        foreach ($layout->getTabs() as $tab) {
-            $tabName = $tab->name ?: $fallbackTab;
-
-            foreach ($tab->getElements() as $element) {
-                if (! ($element instanceof CustomField)) {
-                    continue;
-                }
-                $field = $element->getField();
-
-                if (! $field) {
-                    continue;
-                }
-                $fields[] = [
-                    'handle'      => $field->handle,
-                    'name'        => $field->name,
-                    'native'      => false,
-                    'group'       => $tabName,
-                    'defaultType' => 'text',
-                    'fieldClass'  => $field::class,
-                    'fieldMeta'   => Influx::getInstance()->fields->metaFor($field),
-                ];
-            }
-        }
-
-        return $fields;
+        return array_merge($fields, $this->customFieldDescriptors(
+            $entryType->getFieldLayout(),
+            Craft::t('influx', 'Content'),
+        ));
     }
 
     /**
@@ -379,32 +320,11 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
-     * Coerce the mapped value into the `enabled` flag. (`status` itself is
-     * derived by Craft from enabled + postDate + expiryDate and can't be set
-     * directly — that's why the native mappable is `enabled`, not `status`.)
-     * Truthy spellings follow the Lightswitch field strategy; an
-     * addressed-but-empty value coerces to false, i.e. disabled.
-     */
-    protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
-    {
-        $value = $mapping->resolve($item);
-
-        $new = match (true) {
-            $value === null => false,
-            is_bool($value) => $value,
-            default         => in_array(strtolower(trim((string) $value)), Lightswitch::TRUTHY_VALUES, true),
-        };
-
-        $changed = (bool) $element->enabled !== $new;
-        $element->enabled = $new;
-
-        return $changed;
-    }
-
-    /**
-     * An empty value clears the date — the feed is authoritative. An
-     * unparseable value is a no-op instead: malformed feed data must not wipe a
-     * stored date.
+     * An empty value clears the date — the feed is authoritative. Parsing is
+     * {@see Date::tryParse()}, the same rule the custom Date field uses; the
+     * policy for its null differs on purpose: an unparseable value is a no-op
+     * here, because malformed feed data must not wipe a stored native date (the
+     * field strategy throws instead, surfacing an error row).
      */
     protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
     {
@@ -417,7 +337,7 @@ class EntryTarget extends AbstractElementTarget
             return $before !== null;
         }
 
-        $parsed = $this->parseDateValue($value, $mapping);
+        $parsed = Date::tryParse($value, $mapping->option('format'));
 
         if ($parsed === null) {
             return false;
@@ -426,33 +346,6 @@ class EntryTarget extends AbstractElementTarget
         $element->{$attr} = $parsed;
 
         return ! ($before instanceof DateTimeInterface) || $before->getTimestamp() !== $parsed->getTimestamp();
-    }
-
-    /**
-     * Parse a resolved feed value into a DateTime, or null when it can't be
-     * parsed. An explicit `format` option wins over the auto-detector — feeds
-     * that ship ambiguous strings (e.g. `02/03/2024`) need to disambiguate
-     * manually. `timestamp` is a UI sentinel for Unix seconds (translated to
-     * the PHP `U` token here so the Vue side stays human-readable). The
-     * fallback timezone is UTC (as in {@see Date::parseValue()}); a tz token in
-     * the format itself still wins.
-     */
-    protected function parseDateValue(mixed $value, FieldMapping $mapping): ?DateTime
-    {
-        if ($value instanceof DateTimeInterface) {
-            return $value instanceof DateTime ? $value : DateTime::createFromInterface($value);
-        }
-
-        $format = $mapping->option('format');
-
-        if (is_string($format) && $format !== '') {
-            $phpFormat = $format === 'timestamp' ? 'U' : $format;
-            $parsed = DateTime::createFromFormat($phpFormat, (string) $value, new DateTimeZone('UTC'));
-
-            return $parsed === false ? null : $parsed;
-        }
-
-        return DateTimeHelper::toDateTime($value) ?: null;
     }
 
     /**

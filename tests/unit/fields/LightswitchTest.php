@@ -12,10 +12,12 @@ use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
- * Behaviour spec for the Lightswitch field strategy. Coercion is automatic
- * — booleans pass through, the common truthy spellings ('true', '1', 'yes',
- * 'on', any casing) resolve to TRUE, and anything else (null, empty string,
- * "no", numbers other than 1, ...) is FALSE. No per-mapping configuration.
+ * Behaviour spec for the Lightswitch field strategy and the truthy coercion it
+ * owns for the whole plugin ({@see Lightswitch::coerce()}, shared with the
+ * targets' native `enabled` flag). Coercion is automatic — booleans pass
+ * through, the common truthy spellings ('true', '1', 'yes', 'on', any casing)
+ * resolve to TRUE, and anything else (null, empty string, "no", numbers other
+ * than 1, ...) is FALSE. No per-mapping configuration.
  */
 class LightswitchTest extends Unit
 {
@@ -80,6 +82,23 @@ class LightswitchTest extends Unit
         // an empty boolean is false — distinct from "not mapped" above.
         $context = $this->context(feed: ['featured' => ''], mapping: ['node' => 'featured']);
         $this->assertFalse((new Lightswitch())->parse($context));
+    }
+
+    public function testCoerceOwnsTheTruthyTable(): void
+    {
+        foreach ([true, 1, '1', 'true', 'TRUE', 'yes', 'Yes', ' on ', 'ON'] as $truthy) {
+            $this->assertTrue(
+                Lightswitch::coerce($truthy),
+                'Expected ' . var_export($truthy, true) . ' to coerce to true.',
+            );
+        }
+
+        foreach ([false, null, '', ' ', 0, '0', 2, 'no', 'false', 'off', 'maybe', 'yess'] as $falsey) {
+            $this->assertFalse(
+                Lightswitch::coerce($falsey),
+                'Expected ' . var_export($falsey, true) . ' to coerce to false.',
+            );
+        }
     }
 
     public function testCraftFieldClassIsLightswitch(): void

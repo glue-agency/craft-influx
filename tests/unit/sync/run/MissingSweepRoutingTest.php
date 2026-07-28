@@ -238,11 +238,6 @@ class MissingSweepRoutingTest extends Unit
                 return ElementInterface::class;
             }
 
-            public function claimsElement(Link $link, ElementInterface $element): bool
-            {
-                return false;
-            }
-
             public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface
             {
                 return null;

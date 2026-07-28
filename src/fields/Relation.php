@@ -21,7 +21,9 @@ use GlueAgency\Influx\sync\FieldContext;
  *                  (persisted via RelationalField::persistSubElement)
  *
  * Subclasses just declare the Craft field class they cover and (optionally)
- * override `createMissing()` to create elements when no match is found.
+ * override `createMissing()` to create elements when no match is found — or
+ * extend {@see GroupScopedRelation}, which already does both for the
+ * single-group flavours (Categories / Tags).
  *
  * Mirrors FeedMe's craft\feedme\fields\Entries split into a shared base so
  * Users/Categories/Tags don't have to repeat the lookup loop. Deliberately
@@ -325,9 +327,10 @@ abstract class Relation extends RelationalField
 
     /**
      * Constrain the lookup query to the sources configured on the Craft field
-     * (sectionIds for Entries, groupIds for Users/Tags/Categories). A no-op by
-     * default; strategies needing source scoping override it ({@see Entries}),
-     * as may subclasses whose sources don't map onto a single id list.
+     * (sectionIds for Entries, groupIds for Tags/Categories). A no-op by
+     * default; strategies needing source scoping override it ({@see Entries},
+     * {@see GroupScopedRelation}), as may subclasses whose sources don't map
+     * onto a single id list.
      */
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {

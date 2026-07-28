@@ -3,25 +3,21 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
-use craft\base\ElementInterface;
 use craft\db\Table as CraftTable;
-use craft\elements\db\ElementQueryInterface;
 use craft\elements\Tag as CraftTagElement;
-use craft\fields\BaseRelationField;
 use craft\fields\Tags as CraftTagsField;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
- * Relation strategy for the Tags field. Tags are group-scoped
- * (`taggroup:UID` sources, the `taggroups` table): the field points at a
- * single tag group, so lookups scope to that group's id and created tags are
- * placed in it. Tags are cheap/uncurated, so creation defaults ON.
+ * Relation strategy for the Tags field: `taggroup:UID` sources resolving
+ * against the `taggroups` table, with {@see GroupScopedRelation} doing the group
+ * scoping and creation.
  *
- * Mirrors {@see Categories}' group-scoping hooks; the two are kept as
- * independent subclasses of {@see Relation} rather than sharing a base — the
- * shared surface is only a few lines and Tags is on its way out of Craft.
+ * Tags are cheap and uncurated, so this flavour flips creation ON by default —
+ * the one behavioural difference from {@see Categories}.
  */
-class Tags extends Relation
+class Tags extends GroupScopedRelation
 {
     public static function craftFieldClass(): ?string
     {
@@ -33,58 +29,27 @@ class Tags extends Relation
         return CraftTagElement::class;
     }
 
-    protected function sourceFieldLayouts(BaseRelationField $field): iterable
+    protected function sourcePrefix(): string
     {
-        $uid = $this->sourceUid($field->source ?? null, 'taggroup:');
-
-        if ($uid === null) {
-            return;
-        }
-
-        $layout = Craft::$app->getTags()->getTagGroupByUid($uid)?->getFieldLayout();
-
-        if ($layout) {
-            yield $layout;
-        }
+        return 'taggroup:';
     }
 
-    protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
+    protected function groupTable(): string
     {
-        $groupId = $this->sourceGroupId($context->craftField?->source ?? null);
-
-        if ($groupId !== null) {
-            /** @phpstan-ignore-next-line — tag queries expose groupId */
-            $query->groupId($groupId);
-        }
+        return CraftTable::TAGGROUPS;
     }
 
-    protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
+    protected function groupFieldLayout(string $uid): ?FieldLayout
     {
-        $groupId = $this->sourceGroupId($context->craftField?->source ?? null);
-
-        if ($groupId === null) {
-            return null;
-        }
-
-        $tag = new CraftTagElement();
-        $tag->groupId = $groupId;
-        $tag->title = (string) $value;
-
-        return Craft::$app->getElements()->saveElement($tag, true) ? $tag : null;
+        return Craft::$app->getTags()->getTagGroupByUid($uid)?->getFieldLayout();
     }
 
     /**
-     * Tags are cheap to create — auto-create when not found, in the field's
-     * configured group. Mirrors how most Craft sites use Tags fields.
+     * Auto-create when not found, in the field's configured group. Mirrors how
+     * most Craft sites use Tags fields.
      */
     protected function shouldCreate(FieldContext $context): bool
     {
         return (bool) $context->mapping->option('create', true);
-    }
-
-    /** Tag-group id (this environment) from a `taggroup:UID` source key, or null. */
-    protected function sourceGroupId(mixed $source): ?int
-    {
-        return $this->sourceIdByUid($source, 'taggroup:', CraftTable::TAGGROUPS);
     }
 }
