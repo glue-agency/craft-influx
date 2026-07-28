@@ -144,6 +144,12 @@ import TokenizedInput from '../TokenizedInput.vue';
  * Dispatches purely on node *type* — it knows nothing about field kinds,
  * which is exactly what keeps "add a mapping kind" a single-PHP-file change.
  *
+ * The type dispatch is open-ended by design: a type this renderer doesn't
+ * know (a third-party kind pushed through SchemaBuilder::node()) lands on
+ * the text-input branch, so it still renders labeled and still reads/writes
+ * its handle — degrading instead of vanishing. Only `elementSubFields` and
+ * `matrixFields` are routed away from that branch.
+ *
  * Stateless: values come from the `options` / `nativeFields` / `blocks`
  * props, edits emit fully-merged replacements upward. The parent owns the
  * models.

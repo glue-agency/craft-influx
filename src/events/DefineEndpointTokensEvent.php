@@ -14,13 +14,13 @@ use yii\base\Event;
  *
  *   Event::on(
  *       EndpointTokensService::class,
- *       EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKENS,
- *       function (RegisterEndpointTokensEvent $event) {
+ *       EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKENS,
+ *       function (DefineEndpointTokensEvent $event) {
  *           $event->tokens['authorEmail'] = $event->element->getAuthor()?->email ?? '';
  *       }
  *   );
  */
-class RegisterEndpointTokensEvent extends Event
+class DefineEndpointTokensEvent extends Event
 {
     public Link $link;
 

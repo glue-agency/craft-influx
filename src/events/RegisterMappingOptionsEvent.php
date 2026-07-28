@@ -15,6 +15,10 @@ use yii\base\Event;
  * dropdowns are deliberately closed, since each value maps to a fixed parse()
  * branch.
  *
+ * Fired off the strategy class, not a service instance, and the resolved list is
+ * memoized per request — so attach the listener from your plugin's `init()`,
+ * before anything asks for the options.
+ *
  *   Event::on(
  *       \GlueAgency\Influx\fields\Date::class,
  *       \GlueAgency\Influx\fields\Date::EVENT_REGISTER_FORMAT_OPTIONS,

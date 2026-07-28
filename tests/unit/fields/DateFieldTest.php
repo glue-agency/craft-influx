@@ -8,12 +8,15 @@ use craft\fields\Date as CraftDateField;
 use DateTime;
 use DateTimeInterface;
 use DateTimeZone;
+use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
+use ReflectionProperty;
+use yii\base\Event;
 
 /**
  * Behaviour spec for the Date field strategy's explicit-format path: an
@@ -106,6 +109,42 @@ class DateFieldTest extends Unit
     public function testCraftFieldClassIsDate(): void
     {
         $this->assertSame(CraftDateField::class, Date::craftFieldClass());
+    }
+
+    /**
+     * A builder bootstrap asks for the format options several times over (this
+     * strategy's schema plus every native date attribute), so the option event
+     * must fire once per request, not once per read. The memo is reset around
+     * the assertion so the spec is order-independent and leaves no residue for
+     * the other tests.
+     */
+    public function testFormatOptionsFireTheirEventOnlyOnce(): void
+    {
+        $memo = new ReflectionProperty(Date::class, 'formatOptions');
+        $memo->setAccessible(true);
+        $memo->setValue(null, null);
+
+        $fired = 0;
+        Event::on(
+            Date::class,
+            Date::EVENT_REGISTER_FORMAT_OPTIONS,
+            function(RegisterMappingOptionsEvent $event) use (&$fired) {
+                $fired++;
+                $event->options[] = ['value' => 'd.m.Y', 'label' => 'DE date'];
+            },
+        );
+
+        try {
+            $first = Date::formatOptions();
+            $second = Date::formatOptions();
+
+            $this->assertSame(1, $fired);
+            $this->assertSame($first, $second);
+            $this->assertContains(['value' => 'd.m.Y', 'label' => 'DE date'], $first);
+        } finally {
+            Event::off(Date::class, Date::EVENT_REGISTER_FORMAT_OPTIONS);
+            $memo->setValue(null, null);
+        }
     }
 
     private function context(array $feed, array $mapping, mixed $current = null): FieldContext

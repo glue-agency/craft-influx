@@ -14,6 +14,7 @@ use craft\fields\PlainText;
 use craft\fields\RadioButtons;
 use craft\fields\Tags as CraftTagsField;
 use craft\fields\Users as CraftUsersField;
+use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\fields\Assets;
 use GlueAgency\Influx\fields\Categories;
 use GlueAgency\Influx\fields\DefaultField;
@@ -25,13 +26,15 @@ use GlueAgency\Influx\fields\Users;
 use GlueAgency\Influx\services\FieldsService;
 
 /**
- * Registry behaviour spec.
+ * What this registry adds on top of the shared base (specced in
+ * {@see \GlueAgency\Influx\Tests\unit\services\AbstractRegistryTest}):
  *
  *   - Lookup walks parent class chain so concrete Craft Dropdown / Radio /
  *     Checkboxes / MultiSelect all resolve to the BaseOptionsField strategy.
  *   - Unknown Craft field types fall through to DefaultField.
- *   - registerClass(Class) replaces an existing entry for the same FQCN —
- *     this is the hook third parties use to override built-ins.
+ *   - register(Class) replaces an existing entry for the same FQCN — the hook
+ *     third parties use to override built-ins — and a strategy declaring no
+ *     Craft field class can't be filed, so it throws.
  */
 class FieldsServiceTest extends Unit
 {
@@ -93,16 +96,40 @@ class FieldsServiceTest extends Unit
         );
     }
 
-    public function testRegisterClassReplacesExistingStrategy(): void
+    public function testRegisterReplacesExistingStrategy(): void
     {
         $service = new FieldsService();
         $service->init();
 
         // Replace the built-in Lightswitch handler.
-        $service->registerClass(LightswitchOverride::class);
+        $service->register(LightswitchOverride::class);
 
         $field = $this->createMock(CraftLightswitchField::class);
         $this->assertInstanceOf(LightswitchOverride::class, $service->forCraftField($field));
+    }
+
+    public function testMatchesAStrategyDeclaringALeadingBackslashFqcn(): void
+    {
+        $service = new FieldsService();
+        $service->init();
+
+        $service->register(BackslashedLightswitch::class);
+
+        $field = $this->createMock(CraftLightswitchField::class);
+        $this->assertInstanceOf(
+            BackslashedLightswitch::class,
+            $service->forCraftField($field),
+            "'\\craft\\fields\\Lightswitch' names the same class as 'craft\\fields\\Lightswitch'.",
+        );
+    }
+
+    public function testRejectsAStrategyWithoutACraftFieldClass(): void
+    {
+        $service = new FieldsService();
+        $service->init();
+
+        $this->expectException(InfluxException::class);
+        $service->register(KeylessStrategy::class);
     }
 }
 
@@ -112,5 +139,23 @@ class LightswitchOverride extends Lightswitch
     public static function craftFieldClass(): ?string
     {
         return CraftLightswitchField::class;
+    }
+}
+
+/** @internal Declares its Craft field class with a leading backslash. */
+class BackslashedLightswitch extends Lightswitch
+{
+    public static function craftFieldClass(): ?string
+    {
+        return '\craft\fields\Lightswitch';
+    }
+}
+
+/** @internal Registerable-looking strategy that declares no Craft field class. */
+class KeylessStrategy extends Lightswitch
+{
+    public static function craftFieldClass(): ?string
+    {
+        return null;
     }
 }

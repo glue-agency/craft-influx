@@ -2,8 +2,6 @@
 
 namespace GlueAgency\Influx\events;
 
-use yii\base\Event;
-
 /**
  * Fired once, lazily, when the field-strategy registry is first asked for
  * its registered classes. Listeners can append, override, or filter
@@ -21,8 +19,18 @@ use yii\base\Event;
  *       }
  *   );
  */
-class RegisterFieldsEvent extends Event
+class RegisterFieldsEvent extends RegisterEvent
 {
     /** @var class-string<\GlueAgency\Influx\fields\Field>[] */
     public array $fields = [];
+
+    public function seed(array $classes): void
+    {
+        $this->fields = $classes;
+    }
+
+    public function registered(): array
+    {
+        return $this->fields;
+    }
 }

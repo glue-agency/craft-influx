@@ -682,8 +682,8 @@ class LinkBuilderService extends Component
     {
         $out = [['value' => '', 'label' => Craft::t('influx', '— none —')]];
 
-        foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
-            $out[] = ['value' => $type, 'label' => Craft::t('influx', $class::label())];
+        foreach (Influx::getInstance()->auth->all() as $type => $strategy) {
+            $out[] = ['value' => $type, 'label' => Craft::t('influx', $strategy::label())];
         }
 
         return $out;
@@ -694,9 +694,9 @@ class LinkBuilderService extends Component
      * Strategies declare {@see \GlueAgency\Influx\schema\SchemaBuilder} nodes
      * natively via {@see \GlueAgency\Influx\auth\AuthStrategyInterface::schema()}
      * — the same vocabulary the mapping extras use — so this is pure
-     * aggregation. Strategies with no extra fields (empty schema) are
-     * skipped; the SPA falls back to "no schema" messaging if a stored
-     * link is using an auth type that's not registered.
+     * aggregation off the registry's prototypes. Strategies with no extra
+     * fields (empty schema) are skipped; the SPA falls back to "no schema"
+     * messaging if a stored link is using an auth type that's not registered.
      *
      * @return list<array{type: string, schema: list<array>}>
      */
@@ -704,8 +704,8 @@ class LinkBuilderService extends Component
     {
         $out = [];
 
-        foreach (Influx::getInstance()->auth->strategies() as $type => $class) {
-            $schema = $class::schema();
+        foreach (Influx::getInstance()->auth->all() as $type => $strategy) {
+            $schema = $strategy::schema();
 
             if ($schema->isEmpty()) {
                 continue;

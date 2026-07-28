@@ -30,7 +30,8 @@ use GlueAgency\Influx\fields\Field;
  * The Vue side ({@see SchemaForm.vue}) renders generically by node `type`, so
  * adding a kind is a PHP-only change. Recognised config keys: `handle`, `label`,
  * `instructions` (HTML), `placeholder`, `default`, `options` (select — flat
- * [{value,label}] or grouped [{label, options}]), `showIf`.
+ * [{value,label}] or grouped [{label, options}]), `showIf`. A type outside the
+ * consts below goes through {@see node()} and renders as a labeled text input.
  *
  * This namespace is the form-declaration vocabulary: the builder plus the
  * {@see MappableField} descriptor {@see group()} emits — one contract, kept
@@ -71,6 +72,21 @@ class SchemaBuilder
     public static function make(): self
     {
         return new self();
+    }
+
+    /**
+     * Escape hatch for a node type this builder doesn't ship — the seam for a
+     * third-party kind, since the type consts above are a closed set the SPA
+     * dispatches on. Same `(array $config = [])` convention as the built-in
+     * field methods; `$type` is fixed, everything else comes from `$config`.
+     *
+     * SchemaForm renders a type it doesn't know as a labeled text input on the
+     * node's `handle` (honouring `default`), so a node declared this way
+     * degrades gracefully instead of vanishing.
+     */
+    public function node(string $type, array $config = []): self
+    {
+        return $this->push(['type' => $type] + $config);
     }
 
     public function text(array $config = []): self

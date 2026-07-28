@@ -2,8 +2,6 @@
 
 namespace GlueAgency\Influx\events;
 
-use yii\base\Event;
-
 /**
  * Fired once, lazily, when the targets registry is first asked for its
  * registered targets. Listeners can append new {@see \GlueAgency\Influx\targets\ElementTargetInterface}
@@ -18,8 +16,18 @@ use yii\base\Event;
  *       }
  *   );
  */
-class RegisterTargetsEvent extends Event
+class RegisterTargetsEvent extends RegisterEvent
 {
     /** @var class-string<\GlueAgency\Influx\targets\ElementTargetInterface>[] */
     public array $targets = [];
+
+    public function seed(array $classes): void
+    {
+        $this->targets = $classes;
+    }
+
+    public function registered(): array
+    {
+        return $this->targets;
+    }
 }

@@ -30,6 +30,18 @@ class Date extends Field
      */
     public const EVENT_REGISTER_FORMAT_OPTIONS = 'registerFormatOptions';
 
+    /**
+     * Resolved option list, memoized for the rest of the request. Every builder
+     * bootstrap asks for it several times over (this strategy's schema plus each
+     * native date attribute a target declares), and re-firing the event each
+     * time would run third-party listeners — which may query — for an answer
+     * that can't have changed: the listener set is fixed once a request is
+     * under way, and a request renders in one language.
+     *
+     * @var list<array{value: string, label: string}>|null
+     */
+    protected static ?array $formatOptions = null;
+
     public static function craftFieldClass(): ?string
     {
         return CraftDateField::class;
@@ -43,12 +55,17 @@ class Date extends Field
      *
      * Shared by every code path that builds `kind: date` field meta — the
      * native postDate/expiryDate entries on {@see EntryTarget} and the
-     * custom Date field strategy itself — so the list lives in one place.
+     * custom Date field strategy itself — so the list lives in one place, and
+     * {@see $formatOptions} resolves it once per request.
      *
      * @return list<array{value: string, label: string}>
      */
     public static function formatOptions(): array
     {
+        if (static::$formatOptions !== null) {
+            return static::$formatOptions;
+        }
+
         $event = new RegisterMappingOptionsEvent([
             'options' => [
                 ['value' => '',               'label' => Craft::t('influx', 'Auto-detect')],
@@ -65,7 +82,7 @@ class Date extends Field
         ]);
         Event::trigger(self::class, self::EVENT_REGISTER_FORMAT_OPTIONS, $event);
 
-        return $event->options;
+        return static::$formatOptions = $event->options;
     }
 
     public function schema(CraftFieldInterface $field): SchemaBuilder

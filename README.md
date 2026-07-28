@@ -60,16 +60,13 @@ Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical 
 
 ## Concepts
 
-### Targets
+### Registries
 
-A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`).
-
-> **Note:** `UserTarget` is under active development — treat it as experimental. Its mapping options (group membership, user-specific attributes) and behaviour may still change before release.
-
-Third-party plugins register their own:
+Three things are pluggable — element **targets**, mapping **field strategies** and **auth strategies** — and all three work the same way. Write a class implementing the extension point's contract, then hand it to the registry either by listening to its registration event (from your plugin's `init()`):
 
 ```php
 use GlueAgency\Influx\services\TargetsService;
+use yii\base\Event;
 
 Event::on(
     TargetsService::class,
@@ -77,6 +74,26 @@ Event::on(
     fn($event) => $event->targets[] = MyCalendarTarget::class,
 );
 ```
+
+…or imperatively:
+
+```php
+use GlueAgency\Influx\Influx;
+
+Influx::getInstance()->targets->register(MyCalendarTarget::class);
+```
+
+The event payload arrives pre-seeded with the built-ins, so a listener can append to the list, **replace** a built-in (register a class declaring the same key — element type / Craft field class / auth `type`) or **remove** one by filtering the array. Registration resolves lazily, once, on first use.
+
+Each registry hands out one shared prototype instance per registered class, built through `Craft::createObject()` — so your class may declare constructor dependencies the container can resolve. `Influx::getInstance()->targets->all()` (likewise `->fields->all()`, `->auth->all()`) returns them keyed by their declared key.
+
+### Targets
+
+A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`).
+
+> **Note:** `UserTarget` is under active development — treat it as experimental. Its mapping options (group membership, user-specific attributes) and behaviour may still change before release.
+
+Third-party plugins register their own through `TargetsService::EVENT_REGISTER_TARGETS` or `->targets->register()` (see [Registries](#registries)); targets are keyed by the `elementType()` they declare.
 
 A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable/delete/delete-for-site.
 
@@ -98,7 +115,9 @@ Built-in strategies, keyed by Craft field class and registered via `FieldsServic
 - **`RichText`** — CKEditor/Redactor-style fields.
 - **`Matrix`** — maps a remote sub-array to blocks, one child-mapping tree per block type. Every sync fully replaces the field's blocks from the feed (no per-block merge or reordering yet).
 
-Add more by extending `GlueAgency\Influx\fields\Field` and registering the class via `FieldsService::EVENT_REGISTER_FIELDS`.
+Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft field class it handles via `craftFieldClass()` (a base class such as `BaseOptionsField` covers a whole family — lookups walk the parent chain), and registering it as any other extension point (see [Registries](#registries)).
+
+A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuilder`, and the CP renders it generically — no Vue changes needed to add a control. For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
 
 ### Match
 
@@ -118,7 +137,9 @@ A link can be flagged to take a full database backup (via Craft's own `db/backup
 
 ### Auth
 
-Built-in strategies: Basic, Bearer, Custom Header, Query String. Secrets are stored as written (e.g. `$API_KEY`) and resolved from `.env` at request time, never persisted in plain text in Project Config. Third-party strategies register via `AuthService::EVENT_REGISTER_AUTH_TYPES`.
+Built-in strategies: Basic, Bearer, Custom Header, Query String. Secrets are stored as written (e.g. `$API_KEY`) and resolved from `.env` at request time, never persisted in plain text in Project Config. Third-party strategies register via `AuthService::EVENT_REGISTER_AUTH_TYPES` or `->auth->register()` (see [Registries](#registries)).
+
+A strategy implements `AuthStrategyInterface`: three static descriptors of the class — `type()` (the stored discriminator and registry key), `label()` (CP dropdown) and `schema()` (the form the CP renders for it, a `SchemaBuilder`) — plus an instance `apply()` returning the headers / query params for one request. Extending `AbstractAuthStrategy` makes it a Craft model, so per-type validation goes in `defineRules()`. Per request, the link's stored `auth` slice is handed to the constructor as its last argument.
 
 ### Events
 
@@ -130,12 +151,12 @@ Hook into any stage:
 - `SynchronizationService::EVENT_BEFORE_ITEM` — set `$event->skip = true` or swap `$event->element` to redirect
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
 - `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `skipped` / `error`
-- `EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKENS` — mutate `$event->tokens` to add / override / remove tokens substituted into the link's Resource Endpoint URL
-- `EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Append token" picker
-- `TargetsService::EVENT_REGISTER_TARGETS`
-- `FieldsService::EVENT_REGISTER_FIELDS`
-- `AuthService::EVENT_REGISTER_AUTH_TYPES` — add auth strategies alongside the built-in Basic / Bearer / Custom Header / Query String
-- `Date::EVENT_REGISTER_FORMAT_OPTIONS` — append feed-specific date formats to (or replace) the presets offered in the mapping UI's format picker
+- `EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKENS` — mutate `$event->tokens` to add / override / remove tokens substituted into the link's Resource Endpoint URL
+- `EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Append token" picker
+- `TargetsService::EVENT_REGISTER_TARGETS` — mutate `$event->targets` (see [Registries](#registries))
+- `FieldsService::EVENT_REGISTER_FIELDS` — mutate `$event->fields`
+- `AuthService::EVENT_REGISTER_AUTH_TYPES` — mutate `$event->authTypes` to add auth strategies alongside the built-in Basic / Bearer / Custom Header / Query String
+- `Date::EVENT_REGISTER_FORMAT_OPTIONS` — append feed-specific date formats to (or replace) the presets offered in the mapping UI's format picker. Fired off the `Date` class (not a service) and memoized per request, so attach it from your plugin's `init()`
 
 ### Integrations
 

@@ -2,7 +2,7 @@
 
 namespace GlueAgency\Influx\services;
 
-use craft\base\Component;
+use Craft;
 use GlueAgency\Influx\auth\AuthStrategyInterface;
 use GlueAgency\Influx\auth\BasicAuth;
 use GlueAgency\Influx\auth\BearerAuth;
@@ -13,10 +13,10 @@ use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
 
 /**
- * Registry of auth strategies. Mirrors the shape of {@see TargetsService} and
- * {@see FieldsService} — built-ins are seeded into the registration event
- * payload before triggering, so listeners can append, override, or remove
- * strategies, not just append.
+ * Registry of auth strategies, keyed by the `type` discriminator each one
+ * declares. Built-ins are seeded into the registration event payload before
+ * triggering, so listeners can append, override, or remove strategies — see
+ * {@see AbstractRegistry} for the shared mechanics.
  *
  *   Event::on(
  *       AuthService::class,
@@ -26,64 +26,22 @@ use GlueAgency\Influx\models\Link;
  *       }
  *   );
  *
- * Strategies are keyed by their {@see AuthStrategyInterface::type()}; a new
- * registration under the same key replaces whatever was there.
+ * {@see all()} hands out the registry's prototypes: enough to enumerate the
+ * types with their `label()` and `schema()` for the CP, while a per-request
+ * instance carrying a link's credentials comes from {@see fromConfig()}.
  */
-class AuthService extends Component
+class AuthService extends AbstractRegistry
 {
     public const EVENT_REGISTER_AUTH_TYPES = 'registerAuthTypes';
 
-    /** @var array<string, class-string<AuthStrategyInterface>> Strategy class by type. */
-    protected array $strategies = [];
-
-    protected bool $initialized = false;
-
     /**
-     * Built-ins shipped with the plugin. Exposed as a method so tests and
-     * subclasses can override the default set.
+     * The registered discriminators, for reporting an unresolvable one.
      *
-     * @return list<class-string<AuthStrategyInterface>>
-     */
-    protected function defaultStrategies(): array
-    {
-        return [
-            BasicAuth::class,
-            BearerAuth::class,
-            CustomHeaderAuth::class,
-            QueryStringAuth::class,
-        ];
-    }
-
-    protected function registerOne(string $class): void
-    {
-        if (! is_subclass_of($class, AuthStrategyInterface::class)) {
-            throw new InfluxException("'{$class}' must implement " . AuthStrategyInterface::class . '.');
-        }
-        $this->strategies[$class::type()] = $class;
-    }
-
-    /**
      * @return list<string>
      */
     public function knownTypes(): array
     {
-        $this->ensureLoaded();
-
-        return array_keys($this->strategies);
-    }
-
-    /**
-     * Registered strategies keyed by type. Used by the link edit screen to
-     * derive the dropdown options and the per-type form partials from the
-     * same source of truth — no hardcoded list in the controller.
-     *
-     * @return array<string, class-string<AuthStrategyInterface>>
-     */
-    public function strategies(): array
-    {
-        $this->ensureLoaded();
-
-        return $this->strategies;
+        return array_keys($this->all());
     }
 
     /**
@@ -120,40 +78,61 @@ class AuthService extends Component
     }
 
     /**
-     * Build a strategy for the link's auth config, or null when no auth is
-     * configured. Returns null for an unknown `type` too — validation on the
-     * Link model is what reports that as an error.
+     * Build a strategy configured for the link's auth slice, or null when no
+     * auth is configured. Returns null for an unknown `type` too — validation
+     * on the Link model is what reports that as an error.
+     *
+     * The registry's prototype only supplies the class; the instance itself is
+     * built through the container with the config as its last constructor
+     * argument, so a third-party strategy may declare service dependencies
+     * ahead of it.
      */
     public function fromConfig(array $config): ?AuthStrategyInterface
     {
-        $this->ensureLoaded();
-
         $type = $config['type'] ?? null;
 
         if (! is_string($type) || $type === '') {
             return null;
         }
-        $class = $this->strategies[$type] ?? null;
+        $prototype = $this->item($type);
 
-        if (! $class) {
+        if (! $prototype) {
             return null;
         }
 
-        return new $class($config);
+        return Craft::createObject(['class' => $prototype::class] + $config);
     }
 
-    protected function ensureLoaded(): void
+    /**
+     * @return list<class-string<AuthStrategyInterface>>
+     */
+    protected function defaults(): array
     {
-        if ($this->initialized) {
-            return;
-        }
-        $this->initialized = true;
+        return [
+            BasicAuth::class,
+            BearerAuth::class,
+            CustomHeaderAuth::class,
+            QueryStringAuth::class,
+        ];
+    }
 
-        $event = new RegisterAuthTypesEvent(['authTypes' => $this->defaultStrategies()]);
-        $this->trigger(self::EVENT_REGISTER_AUTH_TYPES, $event);
+    protected function itemType(): string
+    {
+        return AuthStrategyInterface::class;
+    }
 
-        foreach ($event->authTypes as $class) {
-            $this->registerOne($class);
-        }
+    protected function keyFor(object $item): string
+    {
+        return $item::type();
+    }
+
+    protected function eventName(): string
+    {
+        return self::EVENT_REGISTER_AUTH_TYPES;
+    }
+
+    protected function eventClass(): string
+    {
+        return RegisterAuthTypesEvent::class;
     }
 }

@@ -2,20 +2,18 @@
 
 namespace GlueAgency\Influx\services;
 
-use Craft;
-use craft\base\Component;
 use GlueAgency\Influx\events\RegisterTargetsEvent;
-use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\targets\EntryTarget;
 use GlueAgency\Influx\targets\UserTarget;
 
 /**
- * Registry of element-target adapters. Built-ins are seeded into the
- * registration event payload before triggering, so listeners can append new
- * targets, override built-ins (by re-adding under the same element type), or
- * remove them entirely.
+ * Registry of element-target adapters, keyed by the element-type FQCN each one
+ * declares. Built-ins are seeded into the registration event payload before
+ * triggering, so listeners can append new targets, override built-ins (by
+ * re-adding under the same element type), or remove them entirely — see
+ * {@see AbstractRegistry} for the shared mechanics.
  *
  *   Event::on(
  *       TargetsService::class,
@@ -24,57 +22,14 @@ use GlueAgency\Influx\targets\UserTarget;
  *           $event->targets[] = MyCalendarEventTarget::class;
  *       }
  *   );
- *
- * Targets are keyed by their {@see ElementTargetInterface::elementType()};
- * a new registration under the same key replaces whatever was there.
  */
-class TargetsService extends Component
+class TargetsService extends AbstractRegistry
 {
     public const EVENT_REGISTER_TARGETS = 'registerTargets';
 
-    /** @var ElementTargetInterface[] keyed by elementType FQCN */
-    protected array $targets = [];
-
-    protected bool $initialized = false;
-
-    /**
-     * Built-ins shipped with the plugin. Exposed as a method so tests and
-     * subclasses can override the default set.
-     *
-     * @return list<class-string<ElementTargetInterface>>
-     */
-    protected function defaultTargets(): array
-    {
-        return [
-            EntryTarget::class,
-            UserTarget::class,
-        ];
-    }
-
-    protected function registerOne(string $class): void
-    {
-        if (! is_subclass_of($class, ElementTargetInterface::class)) {
-            throw new InfluxException("'{$class}' must implement " . ElementTargetInterface::class . '.');
-        }
-        $target = Craft::createObject($class);
-        $this->targets[ltrim($class::elementType(), '\\')] = $target;
-    }
-
-    /**
-     * @return ElementTargetInterface[]
-     */
-    public function all(): array
-    {
-        $this->ensureLoaded();
-
-        return $this->targets;
-    }
-
     public function forLink(Link $link): ?ElementTargetInterface
     {
-        $this->ensureLoaded();
-
-        return $this->targets[ltrim($link->elementType, '\\')] ?? null;
+        return $this->item($link->elementType);
     }
 
     /**
@@ -83,29 +38,44 @@ class TargetsService extends Component
      */
     public function friendlyNameFor(string $elementType): string
     {
-        $this->ensureLoaded();
-        $key = ltrim($elementType, '\\');
+        $target = $this->item($elementType);
 
-        if (isset($this->targets[$key])) {
-            return $this->targets[$key]::friendlyName();
+        if ($target) {
+            return $target::friendlyName();
         }
-        $parts = explode('\\', $key);
+        $parts = explode('\\', $this->normalizeKey($elementType));
 
         return end($parts) ?: $elementType;
     }
 
-    protected function ensureLoaded(): void
+    /**
+     * @return list<class-string<ElementTargetInterface>>
+     */
+    protected function defaults(): array
     {
-        if ($this->initialized) {
-            return;
-        }
-        $this->initialized = true;
+        return [
+            EntryTarget::class,
+            UserTarget::class,
+        ];
+    }
 
-        $event = new RegisterTargetsEvent(['targets' => $this->defaultTargets()]);
-        $this->trigger(self::EVENT_REGISTER_TARGETS, $event);
+    protected function itemType(): string
+    {
+        return ElementTargetInterface::class;
+    }
 
-        foreach ($event->targets as $class) {
-            $this->registerOne($class);
-        }
+    protected function keyFor(object $item): string
+    {
+        return $item::elementType();
+    }
+
+    protected function eventName(): string
+    {
+        return self::EVENT_REGISTER_TARGETS;
+    }
+
+    protected function eventClass(): string
+    {
+        return RegisterTargetsEvent::class;
     }
 }

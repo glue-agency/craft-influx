@@ -13,8 +13,8 @@ use yii\base\Event;
  *
  *   Event::on(
  *       EndpointTokensService::class,
- *       EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS,
- *       function (RegisterEndpointTokenSuggestionsEvent $event) {
+ *       EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS,
+ *       function (DefineEndpointTokenSuggestionsEvent $event) {
  *           $event->suggestions[] = [
  *               'kind'  => 'authors',
  *               'label' => 'Authors',
@@ -25,7 +25,7 @@ use yii\base\Event;
  *       }
  *   );
  */
-class RegisterEndpointTokenSuggestionsEvent extends Event
+class DefineEndpointTokenSuggestionsEvent extends Event
 {
     public Link $link;
 

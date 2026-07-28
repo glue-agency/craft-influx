@@ -13,6 +13,11 @@ use GlueAgency\Influx\schema\SchemaBuilder;
  *
  * Strategies are stateful value objects: they're constructed with the
  * config slice from a Link and used once per HTTP call.
+ *
+ * The three descriptors below are static on purpose: they describe the class,
+ * not a configured instance, which lets the registry answer the CP's "what auth
+ * types exist" questions off a config-less prototype — the same shape as an
+ * element target's {@see \GlueAgency\Influx\targets\ElementTargetInterface::friendlyName()}.
  */
 interface AuthStrategyInterface
 {

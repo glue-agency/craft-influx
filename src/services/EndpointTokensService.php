@@ -10,8 +10,8 @@ use craft\fields\Email;
 use craft\fields\Number;
 use craft\fields\PlainText;
 use craft\fields\RadioButtons;
-use GlueAgency\Influx\events\RegisterEndpointTokensEvent;
-use GlueAgency\Influx\events\RegisterEndpointTokenSuggestionsEvent;
+use GlueAgency\Influx\events\DefineEndpointTokensEvent;
+use GlueAgency\Influx\events\DefineEndpointTokenSuggestionsEvent;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\targets\support\EntryTypeResolver;
 
@@ -22,26 +22,30 @@ use GlueAgency\Influx\targets\support\EntryTypeResolver;
  *
  * Extracted from {@see SynchronizationService} — this is CP/URL-template
  * machinery, not sync-pipeline logic.
+ *
+ * Not a registry: both events here are per-call "here's the payload, mutate it"
+ * hooks, hence Craft's EVENT_DEFINE_* naming rather than the registries'
+ * EVENT_REGISTER_*.
  */
 class EndpointTokensService extends Component
 {
     /**
      * Fires while building the runtime token map for one element, so plugins
-     * can contribute extra tokens. Receives a {@see RegisterEndpointTokensEvent}.
+     * can contribute extra tokens. Receives a {@see DefineEndpointTokensEvent}.
      */
-    public const EVENT_REGISTER_ENDPOINT_TOKENS = 'registerEndpointTokens';
+    public const EVENT_DEFINE_ENDPOINT_TOKENS = 'defineEndpointTokens';
 
     /**
      * Fires while building the edit-screen "Insert token" picker payload.
-     * Receives a {@see RegisterEndpointTokenSuggestionsEvent}.
+     * Receives a {@see DefineEndpointTokenSuggestionsEvent}.
      */
-    public const EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS = 'registerEndpointTokenSuggestions';
+    public const EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS = 'defineEndpointTokenSuggestions';
 
     /**
      * Custom field classes whose value is a single printable scalar and
-     * therefore safe to expose as a Resource Endpoint URL token. Shared by
-     * {@see self::tokensForElement()} (runtime value) and
-     * {@see self::suggestions()} (edit-screen picker).
+     * therefore safe to expose as a Resource Endpoint URL token. Read through
+     * {@see tokenFieldTypes()} by both {@see self::tokensForElement()} (runtime
+     * value) and {@see self::suggestions()} (edit-screen picker).
      */
     protected const TOKEN_FIELD_TYPES = [
         Dropdown::class,
@@ -62,7 +66,8 @@ class EndpointTokensService extends Component
      *
      * Anything else (relations, assets, matrices, dates, lightswitches, ...)
      * is intentionally not exposed — they don't have an obvious URL form.
-     * Plugins can contribute more tokens via {@see self::EVENT_REGISTER_ENDPOINT_TOKENS}.
+     * Plugins can contribute more tokens via {@see self::EVENT_DEFINE_ENDPOINT_TOKENS},
+     * or widen the allow-list itself via {@see tokenFieldTypes()}.
      *
      * @return array<string, string>
      */
@@ -93,7 +98,7 @@ class EndpointTokensService extends Component
 
             if ($layout) {
                 foreach ($layout->getCustomFields() as $field) {
-                    if (! in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
+                    if (! in_array($field::class, $this->tokenFieldTypes(), true)) {
                         continue;
                     }
                     $handle = $field->handle;
@@ -110,14 +115,14 @@ class EndpointTokensService extends Component
             }
         }
 
-        if ($this->hasEventHandlers(self::EVENT_REGISTER_ENDPOINT_TOKENS)) {
-            $event = new RegisterEndpointTokensEvent([
+        if ($this->hasEventHandlers(self::EVENT_DEFINE_ENDPOINT_TOKENS)) {
+            $event = new DefineEndpointTokensEvent([
                 'link'       => $link,
                 'element'    => $element,
                 'siteHandle' => $siteHandle,
                 'tokens'     => $tokens,
             ]);
-            $this->trigger(self::EVENT_REGISTER_ENDPOINT_TOKENS, $event);
+            $this->trigger(self::EVENT_DEFINE_ENDPOINT_TOKENS, $event);
             $tokens = $event->tokens;
         }
 
@@ -129,7 +134,7 @@ class EndpointTokensService extends Component
      * picker on the Resource Endpoint input. Mirrors {@see self::tokensForElement()}
      * so what the picker advertises matches what's actually substituted at
      * sync-time. Plugins can append more via
-     * {@see self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS}.
+     * {@see self::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS}.
      *
      * @return list<array{label: string, data: list<array{name: string, hint?: string}>}>
      */
@@ -159,7 +164,7 @@ class EndpointTokensService extends Component
         $fieldItems = [];
 
         foreach ($this->customFieldsForLink($link) as $field) {
-            if (! in_array($field::class, self::TOKEN_FIELD_TYPES, true)) {
+            if (! in_array($field::class, $this->tokenFieldTypes(), true)) {
                 continue;
             }
             $fieldItems[] = [
@@ -176,16 +181,30 @@ class EndpointTokensService extends Component
             ];
         }
 
-        if ($this->hasEventHandlers(self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS)) {
-            $event = new RegisterEndpointTokenSuggestionsEvent([
+        if ($this->hasEventHandlers(self::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS)) {
+            $event = new DefineEndpointTokenSuggestionsEvent([
                 'link'        => $link,
                 'suggestions' => $suggestions,
             ]);
-            $this->trigger(self::EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS, $event);
+            $this->trigger(self::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS, $event);
             $suggestions = $event->suggestions;
         }
 
         return $suggestions;
+    }
+
+    /**
+     * The token-safe field-type allow-list, as a seam: the define events fire
+     * *after* the field loop, so a listener can't influence which fields get
+     * read in the first place. Override in a subclass registered via
+     * `Craft::$container->set(EndpointTokensService::class, ...)` — or just
+     * redeclare {@see TOKEN_FIELD_TYPES} — to widen or narrow it.
+     *
+     * @return list<class-string<\craft\base\FieldInterface>>
+     */
+    protected function tokenFieldTypes(): array
+    {
+        return static::TOKEN_FIELD_TYPES;
     }
 
     /**

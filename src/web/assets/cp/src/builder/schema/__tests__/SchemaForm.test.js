@@ -76,6 +76,35 @@ describe('SchemaForm', () => {
         expect(wrapper.emitted('update:options').at(-1)).toEqual([{ mode: 'url', upload: true }]);
     });
 
+    // A third-party node type (SchemaBuilder::node()) must not vanish: the
+    // type dispatch falls through to the text input, so the control stays
+    // labeled and keeps reading/writing its own handle.
+    it('renders an unknown node type as a labeled text input', async () => {
+        const wrapper = mountForm({
+            schema: [{ type: 'colorPicker', handle: 'accent', label: 'Accent', default: '#f00' }],
+            options: {},
+        });
+
+        expect(wrapper.find('.option label').text()).toBe('Accent');
+        const input = wrapper.find('input[type="text"]');
+        expect(input.element.value).toBe('#f00');
+        expect(wrapper.emitted('update:options')).toBeUndefined();
+
+        await input.setValue('#0f0');
+        expect(wrapper.emitted('update:options').at(-1)).toEqual([{ accent: '#0f0' }]);
+    });
+
+    it('renders an unknown node type in the stacked layout too', () => {
+        const wrapper = mountForm({
+            schema: [{ type: 'colorPicker', handle: 'accent', label: 'Accent', default: '#f00' }],
+            options: {},
+            layout: 'stacked',
+        });
+
+        expect(wrapper.find('.field .heading label').text()).toBe('Accent');
+        expect(wrapper.find('input[type="text"]').element.value).toBe('#f00');
+    });
+
     it('routes sub-field rows through the nativeFields channel', async () => {
         const wrapper = mountForm();
         // The sub-field source-node control is a SearchableSelect now.

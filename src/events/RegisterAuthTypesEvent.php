@@ -2,8 +2,6 @@
 
 namespace GlueAgency\Influx\events;
 
-use yii\base\Event;
-
 /**
  * Fired once, lazily, when the auth registry is first asked to resolve a
  * link's auth config. Listeners can append, override, or filter
@@ -20,8 +18,18 @@ use yii\base\Event;
  *       }
  *   );
  */
-class RegisterAuthTypesEvent extends Event
+class RegisterAuthTypesEvent extends RegisterEvent
 {
     /** @var class-string<\GlueAgency\Influx\auth\AuthStrategyInterface>[] */
     public array $authTypes = [];
+
+    public function seed(array $classes): void
+    {
+        $this->authTypes = $classes;
+    }
+
+    public function registered(): array
+    {
+        return $this->authTypes;
+    }
 }

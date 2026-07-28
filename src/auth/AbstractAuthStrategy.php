@@ -11,9 +11,12 @@ use GlueAgency\Influx\schema\SchemaBuilder;
  * validation can live in `defineRules()` and reuse the framework's standard
  * validators instead of a hand-rolled closure-based protocol.
  *
- * The {@see \GlueAgency\Influx\services\AuthService} builds a strategy via
- * `new $class($config)`, where `$config` is the link's `auth` slice — the
- * `type` key is stripped here so it doesn't get assigned as a property.
+ * The {@see \GlueAgency\Influx\services\AuthService} holds one prototype per
+ * registered type (built with no config) and builds a configured instance per
+ * call through `Craft::createObject()`, which hands the link's `auth` slice to
+ * this constructor as its last argument — the Yii convention, so a subclass may
+ * declare service dependencies ahead of it. The slice's `type` key is stripped
+ * here so it doesn't get assigned as a property.
  */
 abstract class AbstractAuthStrategy extends Model implements AuthStrategyInterface
 {

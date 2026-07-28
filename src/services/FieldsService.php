@@ -2,7 +2,7 @@
 
 namespace GlueAgency\Influx\services;
 
-use craft\base\Component;
+use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\events\RegisterFieldsEvent;
 use GlueAgency\Influx\exceptions\InfluxException;
@@ -20,10 +20,11 @@ use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Users;
 
 /**
- * Registry of per-Craft-field-type mapping strategies. Built-ins are seeded
- * into the registration event payload before triggering, so listeners can
- * append new strategies, override built-ins (by re-adding under the same
- * Craft field class), or remove them entirely.
+ * Registry of per-Craft-field-type mapping strategies, keyed by the Craft field
+ * FQCN each one declares. Built-ins are seeded into the registration event
+ * payload before triggering, so listeners can append new strategies, override
+ * built-ins (by re-adding under the same Craft field class), or remove them
+ * entirely — see {@see AbstractRegistry} for the shared mechanics.
  *
  *   Event::on(
  *       FieldsService::class,
@@ -38,57 +39,21 @@ use GlueAgency\Influx\fields\Users;
  * (BaseOptionsField, BaseRelationField). Unknown field types fall through to
  * {@see DefaultField}.
  */
-class FieldsService extends Component
+class FieldsService extends AbstractRegistry
 {
     public const EVENT_REGISTER_FIELDS = 'registerFields';
 
-    /** Concrete Field strategy instances, keyed by Craft field FQCN. */
-    protected array $byCraftFqcn = [];
-
+    /**
+     * Fallback strategy for Craft field types no registered strategy claims.
+     * Not a registered item: it declares no Craft field class, so there's no
+     * key to file it under.
+     */
     protected ?Field $default = null;
-
-    protected bool $initialized = false;
 
     public function init(): void
     {
         parent::init();
-        $this->default = new DefaultField();
-    }
-
-    /**
-     * Built-ins shipped with the plugin. Exposed as a method so tests and
-     * subclasses can override the default set.
-     *
-     * @return list<class-string<Field>>
-     */
-    protected function defaultFields(): array
-    {
-        return [
-            Assets::class,
-            Date::class,
-            Lightswitch::class,
-            Dropdown::class,
-            Entries::class,
-            RichText::class,
-            Users::class,
-            Categories::class,
-            Tags::class,
-            Matrix::class,
-        ];
-    }
-
-    /**
-     * Direct registration. Forces the registration event to fire first
-     * (seeding built-ins) so callers can rely on overriding built-ins by
-     * simply re-registering them — the explicit call always wins over the
-     * defaults regardless of timing.
-     *
-     * @param class-string<Field> $class
-     */
-    public function registerClass(string $class): void
-    {
-        $this->ensureLoaded();
-        $this->registerOne($class);
+        $this->default = Craft::createObject(DefaultField::class);
     }
 
     /**
@@ -98,11 +63,11 @@ class FieldsService extends Component
      */
     public function forCraftField(CraftFieldInterface $field): Field
     {
-        $this->ensureLoaded();
-
         for ($class = $field::class; $class; $class = get_parent_class($class)) {
-            if (isset($this->byCraftFqcn[$class])) {
-                return $this->byCraftFqcn[$class];
+            $strategy = $this->item($class);
+
+            if ($strategy) {
+                return $strategy;
             }
         }
 
@@ -125,44 +90,48 @@ class FieldsService extends Component
         return Field::meta($strategy->schema($field)->toArray(), $strategy->fieldMeta($field));
     }
 
-    /** @return array<class-string, Field> */
-    public function all(): array
+    /**
+     * @return list<class-string<Field>>
+     */
+    protected function defaults(): array
     {
-        $this->ensureLoaded();
+        return [
+            Assets::class,
+            Date::class,
+            Lightswitch::class,
+            Dropdown::class,
+            Entries::class,
+            RichText::class,
+            Users::class,
+            Categories::class,
+            Tags::class,
+            Matrix::class,
+        ];
+    }
 
-        return $this->byCraftFqcn;
+    protected function itemType(): string
+    {
+        return Field::class;
     }
 
     /**
-     * A strategy that declares no Craft field class is skipped silently rather
-     * than treated as an error — it can't be keyed, but it isn't worth breaking
-     * registration over.
+     * @throws InfluxException when the strategy declares no Craft field class:
+     * only the {@see DefaultField} fallback may do that, and it's held apart
+     * rather than registered.
      */
-    protected function registerOne(string $class): void
+    protected function keyFor(object $item): string
     {
-        if (! is_subclass_of($class, Field::class)) {
-            throw new InfluxException("'{$class}' must extend " . Field::class . '.');
-        }
-        $fqcn = $class::craftFieldClass();
-
-        if (! $fqcn) {
-            return;
-        }
-        $this->byCraftFqcn[$fqcn] = new $class();
+        return $item::craftFieldClass()
+            ?? throw new InfluxException($item::class . ' must declare a craftFieldClass() to be registered.');
     }
 
-    protected function ensureLoaded(): void
+    protected function eventName(): string
     {
-        if ($this->initialized) {
-            return;
-        }
-        $this->initialized = true;
+        return self::EVENT_REGISTER_FIELDS;
+    }
 
-        $event = new RegisterFieldsEvent(['fields' => $this->defaultFields()]);
-        $this->trigger(self::EVENT_REGISTER_FIELDS, $event);
-
-        foreach ($event->fields as $class) {
-            $this->registerOne($class);
-        }
+    protected function eventClass(): string
+    {
+        return RegisterFieldsEvent::class;
     }
 }
