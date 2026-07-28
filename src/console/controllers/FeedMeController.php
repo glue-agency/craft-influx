@@ -74,7 +74,6 @@ class FeedMeController extends Controller
             return ExitCode::OK;
         }
 
-        // No selection: list what's available instead of importing everything.
         if (! $this->all && $feedIds === '') {
             $this->listFeeds($feeds);
 

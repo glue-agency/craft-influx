@@ -81,6 +81,11 @@ class Matrix extends Field
         return CraftMatrixField::class;
     }
 
+    /**
+     * One always-visible card per block type, each reading and writing its own
+     * `blocks.<handle>.fields` slice; a block type with no custom fields still
+     * gets a card.
+     */
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         $blockTypes = Compat::matrixBlockTypes($field);
@@ -92,8 +97,6 @@ class Matrix extends Field
 
         $builder = SchemaBuilder::make();
 
-        // One always-visible card per block type, each reading/writing its own
-        // blocks.<handle>.fields slice; types without custom fields still get a card
         foreach ($blockTypes as $blockType) {
             $subFields = SchemaBuilder::make();
             $layout = $blockType['layout'];
@@ -152,7 +155,10 @@ class Matrix extends Field
      * Build the flat serialized Matrix value from the mapping's per-block-type
      * sub-mapping trees. Block types are walked in the field's declared order;
      * types with no configured entry are skipped, so output blocks are grouped
-     * by type in field order with a continuous `newN` counter.
+     * by type in field order with a continuous `newN` counter. An empty result
+     * is still returned as an explicit clear rather than null: {@see addressed()}
+     * was true, so the feed is authoritative even when every child resolved to
+     * null.
      *
      * @throws MappingValueException when a configured block-type handle is
      * unknown for the field, or a throwaway block can't be built
@@ -162,7 +168,6 @@ class Matrix extends Field
     {
         $configured = $context->mapping->blockMappings();
 
-        // Reject unknown configured block-type handles up front (config error, so throw)
         $fieldHandles = $this->blockTypeHandles($context);
 
         foreach (array_keys($configured) as $typeHandle) {
@@ -176,7 +181,6 @@ class Matrix extends Field
         $blocks = [];
         $index = 0;
 
-        // Walk types in field-declared order (deterministic); skip unconfigured ones
         foreach ($fieldHandles as $typeHandle) {
             if (! isset($configured[$typeHandle])) {
                 continue;
@@ -185,8 +189,6 @@ class Matrix extends Field
             $index = $this->appendTypeBlocks($context, $typeHandle, $configured[$typeHandle], $blocks, $index);
         }
 
-        // addressed() was true but every child resolved to null: return the
-        // (possibly empty) blocks as an explicit clear — the feed is authoritative
         return $blocks;
     }
 
@@ -194,6 +196,9 @@ class Matrix extends Field
      * Zip one block type's active children into blocks, appending them to
      * `$blocks` with sequential `new{N}` keys continued from `$index`. Returns
      * the updated index so the caller keeps the counter continuous across types.
+     *
+     * A child resolving to null contributes no per-block values, and a child
+     * handle that isn't on the block type's own layout is skipped silently.
      *
      * @param array<string, mixed> $blocks accumulator, mutated in place
      * @throws MappingValueException when the throwaway block can't be built
@@ -206,8 +211,6 @@ class Matrix extends Field
         array &$blocks,
         int $index,
     ): int {
-        // Collect each active child's per-block value list (keyed by handle,
-        // split native/custom); a child resolving to null is skipped
         $customLists = [];
         $customSubs = [];
 
@@ -269,7 +272,6 @@ class Matrix extends Field
 
                 $childCraftField = $layout?->getFieldByHandle($handle);
 
-                // Handle not on this block type's layout — skip silently
                 if ($childCraftField === null) {
                     continue;
                 }
@@ -312,7 +314,6 @@ class Matrix extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        // Per-type mapped handle sets, resolved once for the whole comparison.
         $customByType = [];
         $nativeByType = [];
 
@@ -339,8 +340,6 @@ class Matrix extends Field
         foreach ($current->all() as $block) {
             $type = $block->getType()->handle;
 
-            // A block of an unconfigured type fingerprints on its type alone, so it
-            // never matches an incoming block and reads as a difference (dropped)
             $currentPrint[] = $this->currentFingerprint(
                 $block,
                 $customByType[$type] ?? [],
@@ -350,8 +349,6 @@ class Matrix extends Field
 
         return json_encode($currentPrint) !== json_encode($incomingPrint);
     }
-
-    // -- fingerprint helpers --------------------------------------------------
 
     /**
      * Fingerprint one parsed incoming block row: type, native values, then the
@@ -419,8 +416,6 @@ class Matrix extends Field
         return $print;
     }
 
-    // -- child resolution -----------------------------------------------------
-
     /**
      * Coerce one block's raw child value through the child field's own strategy
      * so per-type options (match, truthy, format, …) apply. The
@@ -445,8 +440,6 @@ class Matrix extends Field
 
         return $this->childStrategy($childCraftField)->parse($childContext);
     }
-
-    // -- introspection seams (overridable in tests) ---------------------------
 
     /**
      * The block-type handles declared on the Matrix field, in declared order.
@@ -480,8 +473,6 @@ class Matrix extends Field
     {
         return Influx::getInstance()->fields->forCraftField($childCraftField);
     }
-
-    // -- shared helpers -------------------------------------------------------
 
     /**
      * Every active child (custom + native) of one block type's sub-mapping

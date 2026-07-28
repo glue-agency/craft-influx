@@ -25,10 +25,14 @@ class m260714_120000_widen_log_match_value_and_index_status extends Migration
         return true;
     }
 
+    /**
+     * The `influx_logs.status` index is deliberately left in place: its
+     * generated name isn't reliably reconstructable across Craft 4/5, so
+     * dropping it can't be done safely.
+     */
     public function safeDown(): bool
     {
         $this->alterColumn(Table::LOG_ITEMS, 'matchValue', $this->string(255)->null());
-        // Leave the status index on down — its name isn't reliably reconstructable across Craft 4/5
 
         return true;
     }

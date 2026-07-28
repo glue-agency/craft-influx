@@ -54,7 +54,7 @@ Existing [Feed Me](https://github.com/craftcms/feed-me) feeds can be converted t
 ./craft influx/feed-me 1 --force    # save even when the link doesn't validate
 ```
 
-The conversion is best-effort: everything that can't be carried over (Matrix block mappings, parent entries, non-JSON feed types, ...) is reported as a warning so you can finish the link in the builder.
+The conversion is best-effort: everything that can't be carried over (parent entries, non-JSON feed types, ...) is reported as a warning so you can finish the link in the builder. Matrix block mappings do convert, but only their custom fields — Feed Me's per-block-type keys other than `fields` are warned about and dropped.
 
 Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical across those majors except for a few renamed handles (e.g. `authorId` → `authorIds`), which the importer accepts interchangeably since rows of different vintages coexist after upgrades.
 

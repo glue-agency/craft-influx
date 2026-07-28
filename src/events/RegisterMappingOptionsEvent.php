@@ -5,10 +5,15 @@ namespace GlueAgency\Influx\events;
 use yii\base\Event;
 
 /**
- * Fired by every static method on a {@see \GlueAgency\Influx\fields\Field} strategy
- * that exposes a UI-facing option list — the date-format presets, the asset
- * mode / conflict dropdowns, etc. Listeners receive the default set and may
- * append, replace, or filter it before it reaches the mapping editor.
+ * Carries a UI-facing option list from a {@see \GlueAgency\Influx\fields\Field}
+ * strategy to its listeners, which may append, replace, or filter the default
+ * set before it reaches the mapping editor.
+ *
+ * Currently the date-format presets ({@see \GlueAgency\Influx\fields\Date::formatOptions()})
+ * are the only producer; other strategies may adopt it. Not every option list
+ * is extensible — {@see \GlueAgency\Influx\fields\Assets}' mode / conflict
+ * dropdowns are deliberately closed, since each value maps to a fixed parse()
+ * branch.
  *
  *   Event::on(
  *       \GlueAgency\Influx\fields\Date::class,

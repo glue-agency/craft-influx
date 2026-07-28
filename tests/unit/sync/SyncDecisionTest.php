@@ -11,8 +11,8 @@ use GlueAgency\Influx\models\Link;
 /**
  * Decision-matrix spec for {@see SyncDecision::decide()} — the rule that maps
  * (match value, found element, link processing flags) onto what a sync run
- * does with one remote item. Moved here from Link::decideAction(); both the
- * real run and the debug dry-run hang on it, so the matrix is locked in.
+ * does with one remote item. Both the real run and the debug dry-run hang on
+ * it, so the matrix is locked in.
  *
  * No Craft boot: decide() only reads the link's `processing` array and tests
  * the element for null (never calling a method on it), so a plain Link and a

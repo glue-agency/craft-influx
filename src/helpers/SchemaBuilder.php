@@ -63,8 +63,6 @@ class SchemaBuilder
         return new self();
     }
 
-    // -- base fields -------------------------------------------------------
-
     public function text(array $config = []): self
     {
         return $this->push(['type' => self::TEXT] + $config);
@@ -139,8 +137,6 @@ class SchemaBuilder
         return $this->push(['type' => self::MATRIX_FIELDS, 'handle' => 'blocks'] + $config);
     }
 
-    // -- shorthands (reused fields) ----------------------------------------
-
     /**
      * The reused "Match by" control: a select on the mapping's `match` option.
      * Pass `options` (and optionally override `handle` / `label` / `default`).
@@ -180,8 +176,6 @@ class SchemaBuilder
             'label'  => Craft::t('influx', 'Create when not found'),
         ]);
     }
-
-    // -- element-target mappable fields ------------------------------------
 
     /**
      * Native mappable-field descriptors for an element target's
@@ -237,8 +231,6 @@ class SchemaBuilder
 
         return $this;
     }
-
-    // -- assembly ----------------------------------------------------------
 
     /**
      * Run $callback (passed $this) only when $condition is truthy — for the

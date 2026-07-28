@@ -142,7 +142,9 @@ abstract class Relation extends RelationalField
      * only when a source layout actually includes it — entry types can
      * auto-generate the title (titleFormat) or hide the slug, category groups
      * vary too. The union across sources is offered; an unsupported attr that
-     * slips through is inert at apply time anyway.
+     * slips through is inert at apply time anyway. The `$seen` set is keyed by
+     * handle so each native field is contributed at most once — the first source
+     * layout that includes it wins.
      *
      * @return list<array>
      */
@@ -156,8 +158,6 @@ abstract class Relation extends RelationalField
                 continue;
             }
 
-            // Keyed by handle so multiple source layouts contribute each native
-            // field at most once — the first layout that includes it wins
             if (! isset($seen['title']) && $layout->isFieldIncluded('title')) {
                 $seen['title'] = true;
                 $builder->text(['handle' => 'title', 'label' => $layout->getField('title')->label() ?: Craft::t('app', 'Title')]);
@@ -172,11 +172,18 @@ abstract class Relation extends RelationalField
         return $builder->toArray();
     }
 
+    /**
+     * `resolve()` normalises empty to null and {@see RelationalField::referenceValues()}
+     * drops empty list entries, so no extra empty guards are needed here.
+     *
+     * A freshly created element is written back into the run's lookup cache to
+     * flip the cached miss to a hit — otherwise later items carrying the same
+     * reference re-create it and produce duplicates.
+     */
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
 
-        // resolve() normalises empty to null; referenceValues() drops empty list entries
         if ($raw === null) {
             return null;
         }
@@ -191,7 +198,6 @@ abstract class Relation extends RelationalField
             if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
 
-                // Flip the cached miss to a hit, else later items re-create it (dupes)
                 $context->lookups?->put($this->elementType(), $match, $this->lookupScope($context), $value, $element);
             }
 
@@ -275,6 +281,10 @@ abstract class Relation extends RelationalField
     /**
      * Look up an element by the configured match strategy. Returns the first
      * hit (relation fields are unordered by default).
+     *
+     * A site-scoped lookup matches within the SYNCED element's site: localized
+     * fields are per-site, so Craft's ambient "current site" would mis-match or
+     * miss entirely.
      */
     protected function findOne(FieldContext $context, string $match, mixed $value): ?ElementInterface
     {
@@ -290,8 +300,6 @@ abstract class Relation extends RelationalField
         };
 
         if ($this->scopesBySite()) {
-            // Match within the synced element's site — localized fields are per-site,
-            // so Craft's ambient "current site" would mis-match or miss
             $siteId = $context->element->siteId ?? null;
             $query->siteId($siteId ?: '*');
 
@@ -317,12 +325,12 @@ abstract class Relation extends RelationalField
 
     /**
      * Constrain the lookup query to the sources configured on the Craft field
-     * (sectionIds for Entries, groupIds for Users/Tags/Categories). Subclasses
-     * may override when their sources don't map onto a single id list.
+     * (sectionIds for Entries, groupIds for Users/Tags/Categories). A no-op by
+     * default; strategies needing source scoping override it ({@see Entries}),
+     * as may subclasses whose sources don't map onto a single id list.
      */
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
     {
-        // No-op by default; strategies needing source scoping override (e.g. Entries)
     }
 
     /**

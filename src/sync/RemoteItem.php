@@ -84,7 +84,9 @@ class RemoteItem
 
     /**
      * Recursive dot-path walk implementing the collapsed-list semantics
-     * documented on {@see get()}.
+     * documented on {@see get()}. A collapsed hop fans the remaining path over
+     * every element and drops nulls, so the result is dense — it is NOT
+     * positionally aligned to the source list.
      */
     protected function resolve(mixed $data, array $segments): mixed
     {
@@ -97,15 +99,12 @@ class RemoteItem
         }
 
         if (array_is_list($data)) {
-            // An explicit index wins when given.
             if (ctype_digit($segments[0])) {
                 $index = (int) array_shift($segments);
 
                 return $this->resolve($data[$index] ?? null, $segments);
             }
 
-            // Collapsed hop: fan the remaining path over every element, dropping
-            // nulls — the result is dense, not positionally aligned to the source
             $values = [];
 
             foreach ($data as $element) {

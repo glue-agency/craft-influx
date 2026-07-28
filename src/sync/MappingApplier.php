@@ -57,6 +57,10 @@ class MappingApplier
      * debug view only flags rows that actually receive a differing value. The
      * caller folds these flags into the item's save decision.
      *
+     * A handle with no field on the element's layout is a native attribute
+     * (title/slug/enabled/...), handed to the target, which maps it to whatever
+     * Craft accepts.
+     *
      * @return list<MappingResult>
      */
     public function apply(
@@ -87,7 +91,6 @@ class MappingApplier
             $craftField = $layout?->getFieldByHandle($handle);
 
             if ($craftField === null) {
-                // Native attribute (title/slug/status/...) — the target maps it to what Craft accepts.
                 $result = $this->applyNativeAttribute($syncContext, $element, $handle, $mapping, $item);
             } else {
                 $context = new FieldContext(
@@ -122,6 +125,11 @@ class MappingApplier
      * Recursion (a sub-field that is itself a relation with its own sub-fields)
      * flows through {@see FieldContext::descend()}, which enforces the depth cap.
      *
+     * A sub-handle that isn't on the related element's layout is skipped
+     * silently. Sub-mappings are deliberately not wrapped in a try/catch: a
+     * throwing sub-strategy propagates to the parent relation's row, the only
+     * row it has.
+     *
      * @return bool Whether any sub-mapping wrote a differing value — the signal
      * the caller uses to decide whether the related element is worth saving.
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException on runaway recursion
@@ -144,11 +152,9 @@ class MappingApplier
             $craftField = $element->getFieldLayout()?->getFieldByHandle($sub->handle);
 
             if (! $craftField) {
-                // Handle not on the related element's layout — skipped silently.
                 continue;
             }
 
-            // No try/catch: a throwing sub-strategy propagates to the parent relation's row.
             if ($this->mapCustomField($parentContext->descend($element, $sub, $craftField))->changed === true) {
                 $changed = true;
             }
@@ -157,11 +163,10 @@ class MappingApplier
         return $changed;
     }
 
-    // -- native attributes ----------------------------------------------------
-
     /**
-     * Apply one native-attribute mapping at the top level. Unmapped attributes
-     * are left untouched; everything else is handed to the target, which both
+     * Apply one native-attribute mapping at the top level. An attribute the
+     * item doesn't address — no node value and no `default` — is left
+     * untouched; everything else is handed to the target, which both
      * writes the value (clearing the attribute when the feed value is empty)
      * and reports whether it actually changed. Change detection lives in the
      * target because only it knows each attribute's semantics — e.g. that
@@ -179,7 +184,6 @@ class MappingApplier
         $currentValue = $this->safeAttribute($element, $handle);
 
         if (! $mapping->addressedBy($item)) {
-            // Node absent (and no default) — leave the attribute untouched.
             return new MappingResult(
                 handle: $handle,
                 node: $mapping->node,
@@ -222,7 +226,9 @@ class MappingApplier
      * Apply one native-attribute sub-mapping (title/slug on a related element).
      * Honours the same empty/active policy and change detection as the top
      * level, but writes the value directly — the related element type's own
-     * value hygiene isn't reachable from here.
+     * value hygiene isn't reachable from here. Native sub-fields are always
+     * title/slug strings, so a null-aware string compare suffices for change
+     * detection.
      *
      * @return bool Whether the attribute's value actually changed.
      */
@@ -232,21 +238,16 @@ class MappingApplier
             return false;
         }
 
-        // Node absent (and no default) — leave it untouched.
         if (! $sub->addressedBy($item)) {
             return false;
         }
 
         $before = $this->safeAttribute($element, $sub->handle);
-        // An active-but-empty sub-mapping clears the attribute — the feed is authoritative.
         $element->{$sub->handle} = $sub->resolve($item);
         $after = $this->safeAttribute($element, $sub->handle);
 
-        // Native sub-fields are always title/slug strings, so a null-aware string compare suffices.
         return (string) ($before ?? '') !== (string) ($after ?? '');
     }
-
-    // -- custom fields --------------------------------------------------------
 
     /**
      * Top-level custom-field row: {@see mapCustomField()} with strategy errors
@@ -279,6 +280,13 @@ class MappingApplier
      * still run. Strategy errors are not caught here: the caller decides whether
      * to capture (top level) or let them propagate to a parent relation row
      * (sub-mappings).
+     *
+     * The feed only touches a field it addresses — one it provides a node value
+     * for, or carries a `default` for; an absent node leaves the field
+     * untouched. An addressed-but-empty value clears the field, because the feed
+     * is authoritative, and the row counts as changed only when the written
+     * value differs from what's already there — so clearing an already-empty
+     * field is not a change (a new element still saves regardless).
      */
     protected function mapCustomField(FieldContext $context): MappingResult
     {
@@ -286,9 +294,6 @@ class MappingApplier
         $currentValue = $this->safeFieldValue($context->element, $context->handle);
         $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
 
-        // The feed only touches a field it addresses (a node it provides a value
-        // for, or a default); an absent node is left untouched. The strategy owns
-        // the gate so a node-less Matrix parent is addressed via its sub-mappings.
         if (! $strategy->addressed($context)) {
             return new MappingResult(
                 handle: $context->handle,
@@ -302,9 +307,6 @@ class MappingApplier
             );
         }
 
-        // An addressed-but-empty value clears the field — the feed is authoritative.
-        // The row is "changed" only when the value differs from what's already there,
-        // so clearing an already-empty field isn't a change (the new element still saves).
         $value = $strategy->parse($context);
         $rowChanged = $strategy->hasChanged($context, $value);
 
@@ -322,8 +324,6 @@ class MappingApplier
             usedDefault: $context->mapping->usesDefault($context->item),
         );
     }
-
-    // -- shared helpers -------------------------------------------------------
 
     protected function safeAttribute(ElementInterface $element, string $handle): mixed
     {

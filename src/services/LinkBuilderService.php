@@ -48,6 +48,9 @@ class LinkBuilderService extends Component
      * options. Heavier per-tab data is fetched lazily via dedicated endpoints
      * so this stays light.
      *
+     * `meta.uid` is handed over because deletes key on UID — the Project
+     * Config key — not on the numeric id.
+     *
      * @return array{
      *   link: array,
      *   options: array,
@@ -59,7 +62,6 @@ class LinkBuilderService extends Component
         $plugin = Influx::getInstance();
 
         if ($duplicateOf !== null) {
-            // Duplicate: prefill from the source as an unsaved NEW link.
             $source = $plugin->links->getLinkById($duplicateOf);
 
             if (! $source) {
@@ -94,14 +96,12 @@ class LinkBuilderService extends Component
                 'authStrategies'    => $this->authStrategyDefinitions(),
             ],
             'meta' => [
-                'isNew'    => $isNew,
-                'readOnly' => $readOnly,
-                'handle'   => $link->handle ?: null,
-                // Delete keys on UID — the Project Config key
-                'uid'           => $link->uid ?: null,
-                'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
-                'csrfToken'     => Craft::$app->getRequest()->getCsrfToken(),
-                // Env-var / alias suggestions inserted as literal text ($NAME / @alias), not chips
+                'isNew'          => $isNew,
+                'readOnly'       => $readOnly,
+                'handle'         => $link->handle ?: null,
+                'uid'            => $link->uid ?: null,
+                'csrfTokenName'  => Craft::$app->getRequest()->csrfParam,
+                'csrfToken'      => Craft::$app->getRequest()->getCsrfToken(),
                 'envSuggestions' => $this->envAndAliasSuggestions(),
             ],
         ];
@@ -112,6 +112,10 @@ class LinkBuilderService extends Component
      * serialized state on success, or the unified failure envelope
      * (`{success: false, message, errors}`) on validation failure — never throws
      * for validation; the controller turns the envelope into a 400.
+     *
+     * The processing policy is healed to the endpoint shape here — rather than
+     * left to {@see LinksService::saveLink()}, which repeats it idempotently —
+     * so the response can report what changed.
      *
      * @param array $payload Raw JSON body posted by the SPA.
      * @return array{success: true, link: array}|array{success: false, message: string, errors: array<string, string[]>}
@@ -127,7 +131,6 @@ class LinkBuilderService extends Component
 
         $this->serializer->apply($link, $payload);
 
-        // Heal the processing policy to fit the endpoint shape before saving, so we can report what changed
         $migrations = $link->migrateProcessingForEndpointShape();
 
         if (! $plugin->links->saveLink($link)) {
@@ -161,6 +164,9 @@ class LinkBuilderService extends Component
      * flagging. Only meaningful once the saved link itself has a resource
      * mapping; returns null (no warning) otherwise. Saving still succeeds — the
      * builder surfaces this alongside the success, it doesn't block it.
+     *
+     * {@see LinksService::getAllLinks()} includes the just-saved link, so it's
+     * skipped by UID.
      */
     protected function overlapWarning(Link $link): ?string
     {
@@ -171,7 +177,6 @@ class LinkBuilderService extends Component
         $others = [];
 
         foreach (Influx::getInstance()->links->getAllLinks() as $other) {
-            // Skip the saved link itself (getAllLinks() now includes it).
             if ($other->uid === $link->uid) {
                 continue;
             }
@@ -231,6 +236,9 @@ class LinkBuilderService extends Component
      * reactive update when the user changes the section or entry-type
      * dropdowns in the SPA.
      *
+     * `matchOptions` comes back in the order the SPA's SearchableSelect expects
+     * it: clear sentinel first, then the matchable natives, then custom fields.
+     *
      * @return array{
      *   fields: list<array>,
      *   groups: list<array>,
@@ -245,7 +253,6 @@ class LinkBuilderService extends Component
         $fields = $target ? $target->getMappableFields($stub) : [];
         $groups = $this->groupMappableFields($fields);
 
-        // Grouped match options for the SPA's SearchableSelect: clear sentinel, matchable natives, then custom fields
         $nativeOptions = $target ? $target->matchableNativeAttributes($stub) : [];
         $fieldOptions = [];
 
@@ -356,6 +363,10 @@ class LinkBuilderService extends Component
      * keeps the partial from emitting its own init into the page-level
      * JS register, which would never fire in a SPA load anyway.
      *
+     * `jsSettings` mirrors what the Twig template builds for a standard CP
+     * field, so the two have to stay in step. Read-only environments render the
+     * control disabled — chips stay visible, choose/remove go dead.
+     *
      * @param string $elementType FQCN of the target element type.
      * @param int[]  $ids         Currently-selected element ids.
      * @return array{html: string, jsSettings: array}
@@ -374,7 +385,6 @@ class LinkBuilderService extends Component
 
         $hostId = 'influx-el-' . StringHelper::randomString(8);
 
-        // Read-only environments render the control disabled — chips stay visible, choose/remove dead
         $readOnly = ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
 
         $renderArgs = [
@@ -396,7 +406,6 @@ class LinkBuilderService extends Component
             $renderArgs,
         );
 
-        // Mirror the jsSettings the Twig template builds, matching the standard CP fields
         $jsSettings = [
             'id'               => $hostId,
             'name'             => null,
@@ -426,17 +435,22 @@ class LinkBuilderService extends Component
      * label built by {@see self::elementTypeOptions()}), it's already
      * routed through `Craft::t()` and doesn't need to be listed here.
      *
+     * The list is grouped in the order the SPA's components consume it:
+     * LinkBuilder.vue, HeaderActions.vue, GeneralTab.vue, PaginationTab.vue,
+     * MappingTab.vue, MappingGroup.vue, MappingRow.vue, the shared sub-field
+     * rows (MatrixFields.vue / ElementSubFields.vue), AuthTab.vue,
+     * SettingsTab.vue, OffsetPresetsTable.vue, SiteEndpointsTable.vue,
+     * TokenizedInput.vue.
+     *
      * @return string[]
      */
     public function translatableStrings(): array
     {
         return [
-            // LinkBuilder.vue
             'Loading…',
             'Couldn’t load this link:',
             'Check the Craft logs for the full stack trace, or reload to retry.',
 
-            // HeaderActions.vue
             'Save', 'Saving…', 'More save options', 'Save and continue editing',
             'Delete link',
             'Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.',
@@ -447,7 +461,6 @@ class LinkBuilderService extends Component
             'Last fetched from {url}',
             'Hit the configured endpoint and inspect the response',
 
-            // GeneralTab.vue
             'Name', 'What this link will be called in the control panel.',
             'Handle', 'Identifier used in console commands and event keys.',
             'Element', 'Element type', 'Section', 'Entry type',
@@ -464,7 +477,6 @@ class LinkBuilderService extends Component
             'The link runs once per listed site and writes localized data to the same canonical element.',
             'Processing actions',
 
-            // PaginationTab.vue
             'Use the <strong>Fetch sample</strong> action in the page header to call your configured endpoint and populate the dropdowns below from the discovered JSON nodes.',
             'Sample failed:',
             'Root node',
@@ -475,7 +487,6 @@ class LinkBuilderService extends Component
             '— no paginator —',
             'Sample item', 'First item under',
 
-            // MappingTab.vue
             'For each destination field, pick the JSON node it should read from. Add a default value to fall back to when the node is missing or empty. Use the “Fetch sample” button on the Pagination tab to populate the dropdowns with discovered JSON nodes.',
             'Couldn’t load mappable fields:',
             'Loading mappable fields…',
@@ -485,18 +496,15 @@ class LinkBuilderService extends Component
             'Match attribute',
             'The element field whose value uniquely identifies a record across syncs. Typically a custom plain-text field like <code>importId</code>.',
 
-            // MappingGroup.vue
             'Fields with an active source node', 'mapped',
             'Fields whose saved source node is no longer in the fetched sample', 'missing',
             'Total fields in this group',
             'Field', 'Source node', 'Default value',
 
-            // MappingRow.vue
             'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
             'missing mapping', '— no mapping —',
             'Configure', 'Hide options',
 
-            // MatrixFields.vue / ElementSubFields.vue (shared sub-field rows)
             'Sub-fields with an active source node',
             'Sub-fields whose saved source node is no longer in the fetched sample',
             'Total sub-fields in this group',
@@ -505,16 +513,13 @@ class LinkBuilderService extends Component
             'Run “Fetch sample” to discover nodes.',
             'This block type has no mappable sub-fields.',
 
-            // AuthTab.vue
             'Authentication type',
             'How Influx should authenticate against the remote API.',
             'No SPA-side schema is registered for auth type',
 
-            // SettingsTab.vue
             'Take a DB backup before every run',
             'Off by default. Mainly useful for destructive processing actions.',
 
-            // OffsetPresetsTable.vue
             'Handle', 'Since', 'Query param', 'Date format',
             'Anything <code>DateTime::modify</code> accepts.',
             'Anything <code>DateTime::format</code> accepts.',
@@ -522,10 +527,8 @@ class LinkBuilderService extends Component
             'Delete row {idx}',
             'Add a preset',
 
-            // SiteEndpointsTable.vue
             'Site', 'Endpoint URL', '— select a site —', 'Add a site endpoint',
 
-            // TokenizedInput.vue
             'Remove {name}', 'Filter tokens…', 'No matches for',
         ];
     }
@@ -536,7 +539,9 @@ class LinkBuilderService extends Component
      * the TokenizedInput inserts them as literal string segments (e.g.
      * `$API_BASE`, `@webroot`) instead of as chips. Env vars get
      * `kind: 'env'`, aliases `kind: 'alias'` — distinct accent colors in
-     * the picker preview help users tell them apart at a glance.
+     * the picker preview help users tell them apart at a glance. Which is which
+     * is read off the item's `@` prefix rather than the group label, since that
+     * label is translated.
      *
      * @return list<array{kind: string, label: string, data: list<array{name: string, hint?: string, type: string}>}>
      */
@@ -567,7 +572,6 @@ class LinkBuilderService extends Component
                 continue;
             }
 
-            // Detect env vs alias from the item's prefix — more reliable than the translated label
             $kind = str_starts_with($items[0]['name'], '@') ? 'alias' : 'env';
             $out[] = [
                 'kind'  => $kind,
@@ -579,20 +583,20 @@ class LinkBuilderService extends Component
         return $out;
     }
 
-
-    // ------------------------------------------------------------------
-    //  Option builders — internal; output reaches the SPA via bootstrap()
-    // ------------------------------------------------------------------
-
+    /**
+     * First of the internal option builders; their output reaches the SPA via
+     * {@see bootstrap()}. `criteria` and `multiSite` are capability flags the
+     * General tab reacts to — which criteria dropdowns to render, and whether
+     * multi-site support is offered.
+     */
     protected function elementTypeOptions(): array
     {
         $out = [];
 
         foreach (Influx::getInstance()->targets->all() as $target) {
             $out[] = [
-                'value' => $target::elementType(),
-                'label' => $target::friendlyName(),
-                // Capability flags the General tab reacts to: criteria dropdowns and multi-site support
+                'value'     => $target::elementType(),
+                'label'     => $target::friendlyName(),
                 'criteria'  => $target::criteriaKeys(),
                 'multiSite' => $target::supportsMultiSite(),
             ];

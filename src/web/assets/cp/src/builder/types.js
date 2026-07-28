@@ -4,7 +4,7 @@
  *
  *   @param {import('./types.js').LinkPayload} link
  *
- * PHP is the authority for these shapes: LinkBuilderService::serializeLink()
+ * PHP is the authority for these shapes: LinkBuilderSerializer::serialize()
  * (LinkPayload), the target's getMappableFields() (MappableField), and
  * DataService::inspect() (SampleReport). Change them there first.
  */
@@ -24,6 +24,7 @@
  * @property {Object<string, *>} [options] Per-field-type options (match, mode, ...).
  * @property {Object<string, Mapping>} [fields] Recursive sub-mappings for a related element's custom fields.
  * @property {Object<string, Mapping>} [nativeFields] Recursive sub-mappings for a related element's native attrs.
+ * @property {Object<string, {fields?: Object<string, Mapping>, nativeFields?: Object<string, Mapping>}>} [blocks] Per-block-type sub-mapping trees for a Matrix field, keyed by block-type handle (see FieldMapping::$blocks).
  */
 
 /**
@@ -46,7 +47,7 @@
  * @property {?string} pageCountNode response path to the total page count, if the feed reports one.
  * @property {{attribute?: string}} match
  * @property {Object<string, Mapping>} mappings field handle → mapping.
- * @property {string[]} processing Subset of create/update/disable/delete/delete-for-site.
+ * @property {string[]} processing Subset of create/update/disable/disable-for-site/delete/delete-for-site.
  * @property {Object<string, {since: string, queryParam: string, format?: string}>} offset
  * @property {boolean} backup
  */
@@ -86,7 +87,7 @@
  * @typedef {Object} BootstrapResponse
  * @property {LinkPayload} link
  * @property {Object} options elementTypes, sections, sectionEntryTypes, sites, processingActions, authTypes, authStrategies.
- * @property {Object} meta isNew, readOnly, handle, csrfTokenName, csrfToken, actionUrls, envSuggestions.
+ * @property {Object} meta isNew, readOnly, handle, uid, csrfTokenName, csrfToken, envSuggestions.
  */
 
 export {};

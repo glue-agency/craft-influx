@@ -36,6 +36,9 @@ use GlueAgency\Influx\db\Table;
  * @property ?string $processing       JSON
  * @property ?string $offset           JSON
  * @property bool    $backup
+ * @property ?int    $sortOrder
+ * @property ?string $lastRunAt        Runtime last-run tracking, not Project Config
+ * @property ?int    $lastLogId        Soft pointer; nulled when its log is deleted
  * @property string  $dateCreated
  * @property string  $dateUpdated
  * @property string  $uid

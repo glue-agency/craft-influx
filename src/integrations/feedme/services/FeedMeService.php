@@ -68,6 +68,10 @@ class FeedMeService extends Component
     /**
      * Convert and (unless `$dryRun`) save each feed as an Influx link.
      *
+     * The handles of already-saved links are reserved up front so a generated
+     * handle can't collide with them, or with one generated earlier in this
+     * batch.
+     *
      * @return list<FeedMeImportResult>
      */
     public function importFeeds(array $feeds, bool $dryRun = false, bool $force = false): array
@@ -75,7 +79,6 @@ class FeedMeService extends Component
         $plugin = Influx::getInstance();
         $converter = new FeedMeConverter();
 
-        // Reserve existing handles so generated ones can't collide (saved links or this batch)
         $takenHandles = array_keys($plugin->links->getAllLinks());
 
         $results = [];

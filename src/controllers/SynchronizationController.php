@@ -33,6 +33,13 @@ class SynchronizationController extends AbstractController
         $this->requirePermission(Influx::PERMISSION_SYNC);
     }
 
+    /**
+     * The requested site is validated up front, for immediate feedback instead
+     * of a later queue failure. Queueing itself returns immediately
+     * ({@see \GlueAgency\Influx\services\SynchronizationService::queueSync()}),
+     * so a pre-run backup failure lands as a failed log rather than blocking the
+     * request.
+     */
     public function actionLink(): ?Response
     {
         $this->requirePostRequest();
@@ -48,15 +55,10 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
-        // Validate the requested site up front for immediate feedback instead of a later queue failure
         if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        // Queue the sync: when the link wants a pre-run backup, a BackupJob takes
-        // it (and fans out afterwards); otherwise the per-site sync jobs are
-        // enqueued directly. Returns immediately; a backup failure lands as a
-        // failed log rather than blocking the request.
         $plugin->synchronization->queueSync($link, $offset, $site, SyncTrigger::CP);
 
         $siteHandles = $link->siteHandles();
@@ -70,13 +72,22 @@ class SynchronizationController extends AbstractController
         return $this->asSuccess($message);
     }
 
+    /**
+     * The element is loaded in the site the sync was triggered from, so a link
+     * with per-site endpoints syncs only that site.
+     *
+     * Even with {@see Influx::PERMISSION_SYNC}, remote data is never pushed into
+     * an element the user couldn't edit by hand. An explicit link handle (always
+     * sent) pins the sync to THAT link and still requires it to target the
+     * element, so a caller can't sync an unrelated one; without a handle, the
+     * first link targeting the element is used.
+     */
     public function actionElement(): ?Response
     {
         $this->requirePostRequest();
 
         $elementId = (int) Craft::$app->getRequest()->getRequiredBodyParam('elementId');
 
-        // Load the element in the site the sync was triggered from, so a per-site-endpoints link syncs only that site
         $siteHandle = Craft::$app->getRequest()->getBodyParam('site');
         $siteId = $siteHandle ? Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id : null;
         $element = Craft::$app->getElements()->getElementById($elementId, null, $siteId);
@@ -85,16 +96,12 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Element #{$elementId} not found.");
         }
 
-        // Even with the sync permission, never push remote data into an element the user couldn't edit by hand
         if (! Compat::canSaveElement($element)) {
             throw new ForbiddenHttpException("You don’t have permission to save element #{$elementId}.");
         }
 
         $plugin = Influx::getInstance();
 
-        // An explicit link handle (always sent) pins the sync to THAT link, still requiring it to
-        // target the element so a caller can't sync an unrelated one. Without a handle, fall back
-        // to the first link that targets the element
         $linkHandle = Craft::$app->getRequest()->getBodyParam('link');
 
         if ($linkHandle !== null && $linkHandle !== '') {

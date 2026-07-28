@@ -45,6 +45,7 @@ use yii\base\Event;
  *
  * @method static Influx getInstance()
  * @method Settings getSettings()
+ * @property LinkBuilderService $linkBuilder
  * @property LinksService $links
  * @property DataService $data
  * @property SynchronizationService $synchronization
@@ -169,7 +170,6 @@ class Influx extends Plugin
             ];
         }
 
-        // Badge the section and its Logs subitem when any log has errors.
         $errorCount = Influx::getInstance()->logs->errorLogCount();
 
         if ($errorCount > 0) {
@@ -191,6 +191,14 @@ class Influx extends Plugin
         $this->controllerNamespace = 'GlueAgency\\Influx\\controllers';
     }
 
+    /**
+     * A few rules aren't one screen per route: viewing an existing link reuses
+     * the builder with its fields disabled rather than a separate detail view;
+     * the inspector is one standalone screen scoped by `?link=<handle>` instead
+     * of a page per link; and the `influx/link-builder/*` rules are the JSON
+     * routes the LinkBuilder SPA talks to
+     * ({@see \GlueAgency\Influx\controllers\LinkBuilderController}).
+     */
     protected function registerCpRoutes(): void
     {
         Event::on(
@@ -201,15 +209,12 @@ class Influx extends Plugin
                 $event->rules['influx/links'] = 'influx/links/index';
                 $event->rules['influx/links/new'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/duplicate'] = 'influx/links/duplicate';
-                // Same editor in read-only — the builder loads the config with fields disabled; no separate detail view.
                 $event->rules['influx/links/<id:\d+>'] = 'influx/links/edit';
                 $event->rules['influx/links/<id:\d+>/edit'] = 'influx/links/edit';
 
-                // Standalone inspector scoped by link handle (?link=<handle>), not a per-link page.
                 $event->rules['influx/debug'] = 'influx/links/debug';
                 $event->rules['influx/debug/inspect'] = 'influx/links/debug-inspect';
 
-                // LinkBuilder SPA — JSON CP routes
                 $event->rules['influx/link-builder/bootstrap'] = 'influx/link-builder/bootstrap';
                 $event->rules['influx/link-builder/save'] = 'influx/link-builder/save';
                 $event->rules['influx/link-builder/fetch-sample'] = 'influx/link-builder/fetch-sample';
@@ -354,13 +359,15 @@ class Influx extends Plugin
     /**
      * Add a "Sync from remote" affordance to the edit page of any entry the
      * plugin targets, offering every link that both structurally targets the
-     * entry AND has a resource (item) endpoint. One targeting link renders a
-     * single button; several render a menu, one item per link.
+     * entry AND has a resource (item) endpoint — without one there's no way to
+     * sync a single element, only the full-list sweep. One targeting link
+     * renders a single button; several render a menu, one item per link.
      *
      * A link is offered even when the entry can't currently be synced (no
      * match value, or an active cool-down): those render as a DISABLED button
      * / menu item with a Craft `.info` icon explaining why, so the action is
-     * discoverable rather than silently absent.
+     * discoverable rather than silently absent. Users without
+     * {@see PERMISSION_SYNC} get no button at all.
      *
      * Additional buttons render INSIDE the edit page's #main-form, so this
      * must not output a <form> of its own: forms can't nest, the browser
@@ -375,7 +382,6 @@ class Influx extends Plugin
     protected function registerEntrySyncButton(): void
     {
         Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
-            // Hidden entirely for users without the sync permission.
             if (! Craft::$app->getUser()->checkPermission(self::PERMISSION_SYNC)) {
                 return;
             }
@@ -386,7 +392,6 @@ class Influx extends Plugin
             $candidates = [];
 
             foreach ($this->links->findLinksForElement($element) as $link) {
-                // A resource mapping is required to sync a single element; without one, only the full-list sweep.
                 if (! $link->itemEndpoint) {
                     continue;
                 }
@@ -414,6 +419,10 @@ class Influx extends Plugin
      * posts — carrying the explicit link handle so the action syncs THIS link
      * ({@see \GlueAgency\Influx\controllers\SynchronizationController::actionElement()}).
      *
+     * Only a link with per-site endpoints scopes to one site, so `site` is left
+     * off for a single-base-endpoint link — that always syncs the primary site,
+     * so pinning the action to the editor's current site would misrepresent it.
+     *
      * @return array{name: string, enabled: bool, reason: ?string, params: array<string, mixed>}
      */
     protected function syncButtonCandidate(Link $link, Entry $element): array
@@ -435,9 +444,6 @@ class Influx extends Plugin
             }
         }
 
-        // Only a per-site-endpoints link scopes to one site; a single-base-endpoint
-        // link always syncs the primary site, so don't pin the action to the
-        // editor's current site there.
         $params = ['elementId' => $element->id, 'link' => $link->handle];
 
         if ($link->siteHandles() !== []) {

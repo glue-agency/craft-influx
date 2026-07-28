@@ -22,12 +22,15 @@ class Lightswitch extends Field
         return CraftLightswitchField::class;
     }
 
+    /**
+     * An unmapped row (no node, no default) yields null so the walker leaves
+     * the field untouched rather than forcing false; a mapped-but-empty value
+     * still coerces.
+     */
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
 
-        // Unmapped (no node, no default): yield null so the walker leaves it
-        // untouched rather than forcing false (a mapped-but-empty value still coerces below)
         if ($raw === null && ! $context->mapping->isActive()) {
             return null;
         }

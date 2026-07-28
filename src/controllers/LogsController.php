@@ -25,6 +25,12 @@ class LogsController extends AbstractController
      */
     protected const FILTER_STATUSES = ['running', 'ok', 'error'];
 
+    /**
+     * Every toolbar filter is validated against what currently exists, so a
+     * stale query string falls back to "all". The `handle => id` /
+     * `handle => name` maps the rows read from carry no entry for a link that
+     * has since been deleted.
+     */
     public function actionIndex(): Response
     {
         $page = $this->intQueryParam('page', 1, 1);
@@ -32,12 +38,10 @@ class LogsController extends AbstractController
 
         $plugin = Influx::getInstance();
 
-        // handle => id and handle => name maps for each row's link and name; a deleted link is absent from both
         $links = $plugin->links->getAllLinks();
         $linkIds = array_map(static fn($link)   => $link->id, $links);
         $linkNames = array_map(static fn($link) => $link->name, $links);
 
-        // Toolbar filters, validated against what exists so a stale query string falls back to "all"
         $selectedLink = $this->stringQueryParam('link');
 
         if ($selectedLink !== null && ! isset($linkNames[$selectedLink])) {
@@ -56,7 +60,6 @@ class LogsController extends AbstractController
             $selectedTrigger = null;
         }
 
-        // value => label for the trigger filter, in enum declaration order.
         $triggers = [];
 
         foreach (SyncTrigger::cases() as $trigger) {
@@ -82,6 +85,10 @@ class LogsController extends AbstractController
         ]);
     }
 
+    /**
+     * Only the first page of items ships in the bootstrap; the rest pages in via
+     * {@see actionItems()}.
+     */
     public function actionView(int $id): Response
     {
         if (! ($log = LogRecord::findOne($id))) {
@@ -91,15 +98,10 @@ class LogsController extends AbstractController
         $plugin = Influx::getInstance();
         $presenter = new LogPresenter();
 
-        // The link this log belongs to (null if since deleted); its id + name feed the
-        // "back to link" cross-link, its element type batch-loads the page's elements
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
 
-        // Only the first page ships in the bootstrap; the rest pages in via actionItems()
         $items = $presenter->presentItems($plugin->logs->itemPage($log, [], 0, self::ITEMS_PER_PAGE), $link?->elementType);
 
-        // The endpoint(s) this run fetched from — see resolveEndpointDisplay() for the
-        // four cases. A deleted link ($link === null) has neither.
         ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $this->resolveEndpointDisplay($log, $link);
 
         return $this->renderTemplate('influx/logs/view', [
@@ -161,12 +163,10 @@ class LogsController extends AbstractController
             return ['endpointUrl' => null, 'endpoints' => null];
         }
 
-        // Single-element run fetched the item endpoint, not the feed — show its unresolved template
         if ($log->elementId !== null) {
             return ['endpointUrl' => $link->itemEndpoint, 'endpoints' => null];
         }
 
-        // Site-scoped run: the one endpoint that site used (base as fallback).
         if ($log->siteHandle !== null) {
             $url = $link->endpointForSite($log->siteHandle) ?? $link->endpoint;
 
@@ -175,7 +175,6 @@ class LogsController extends AbstractController
 
         $siteHandles = $link->siteHandles();
 
-        // Per-site endpoints: list every one — the base was never fetched, so a single URL would misrepresent the run
         if ($siteHandles !== []) {
             $endpoints = [];
 
@@ -190,7 +189,6 @@ class LogsController extends AbstractController
             return ['endpointUrl' => null, 'endpoints' => $endpoints];
         }
 
-        // All-sites run with no per-site endpoints: the base endpoint.
         return ['endpointUrl' => $link->endpoint, 'endpoints' => null];
     }
 
@@ -203,6 +201,17 @@ class LogsController extends AbstractController
      * `$log->siteHandle` is null for element-triggered runs, so an unscoped
      * match-value lookup would be ambiguous whenever the same match value
      * exists on more than one element across sites.
+     *
+     * The stored run-time field errors and "changed" flags are then overlaid on
+     * top of that fresh inspection, because the stored values are the
+     * authoritative ones: a dry run reads the element's LIVE state, so it can't
+     * reproduce e.g. an asset-upload failure, and an item that was already
+     * updated would falsely read "no change". A null `changedFields` column
+     * resets the rows to the viewer's "?" state.
+     *
+     * An item with no stored payload — swept missing-element rows have none, and
+     * older runs predate payload storage — still returns a real row so the
+     * drill-down renders normally.
      */
     public function actionItem(int $id): Response
     {
@@ -237,8 +246,6 @@ class LogsController extends AbstractController
         }
 
         if ($raw === null) {
-            // No payload to re-inspect (swept missing-element rows have none; older runs predate
-            // payload storage). Still return a real row so the drill-down renders normally
             return $this->asJson([
                 'row' => [
                     'index'    => (int) $item->id,
@@ -258,14 +265,9 @@ class LogsController extends AbstractController
             $row['message'] = (string) $item->message;
         }
 
-        // Overlay the run-time field errors onto their mapping rows — the stored error is
-        // authoritative (a dry-run re-inspection can't reproduce e.g. an asset-upload failure)
         $presenter = new LogPresenter();
         $row['mappings'] = $presenter->overlayFieldErrors($row['mappings'] ?? [], $presenter->fieldErrors($item->fieldErrors));
 
-        // Overlay the run-time "changed" flags, likewise authoritative: the dry-run inspection above
-        // reads the element's LIVE state, so an updated item would falsely read "no change".
-        // A null column resets the rows to the viewer's "?" state
         $row['mappings'] = $presenter->overlayChangedFlags($row['mappings'], $item->changedFields);
 
         return $this->asJson(['row' => $row]);
@@ -279,6 +281,11 @@ class LogsController extends AbstractController
      * (the client re-requests the page in view on an interval while running —
      * Craft's queue-runner pattern — rather than holding an SSE connection
      * and the PHP session lock open for the whole run).
+     *
+     * The single-select action filter arrives as `status`, not `action` — Craft
+     * reserves `action` for routing. A known action expands to its filter group,
+     * so a per-site variant is served alongside its base and the list matches
+     * the grouped counter.
      */
     public function actionItems(int $id): Response
     {
@@ -289,9 +296,6 @@ class LogsController extends AbstractController
         }
 
         $page = $this->intQueryParam('page', 1, 1);
-        // Single-select action filter (empty = all) plus a free-text search. The param is `status`
-        // not `action` — Craft reserves `action` for routing. A known action expands to its filter
-        // group so a per-site variant is served alongside its base, matching the grouped counter
         $action = $this->stringQueryParam('status');
         $case = $action !== null ? ItemAction::tryFrom($action) : null;
         $actions = $case !== null ? $case->filterGroup() : ($action !== null ? [$action] : []);
@@ -301,7 +305,6 @@ class LogsController extends AbstractController
         $presenter = new LogPresenter();
         $offset = ($page - 1) * self::ITEMS_PER_PAGE;
 
-        // The owning link's element type batch-loads this page's elements (null when the link's been deleted)
         $link = $plugin->links->getLinkByHandle($log->linkHandle);
         $items = $presenter->presentItems($plugin->logs->itemPage($log, $actions, $offset, self::ITEMS_PER_PAGE, $search), $link?->elementType);
 

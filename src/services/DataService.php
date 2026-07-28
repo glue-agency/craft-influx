@@ -93,11 +93,13 @@ class DataService extends Component
      * screen; the shape-walking heuristics live in the inspector, this just
      * owns the fetch.
      *
+     * A sample fetch isn't site-tied, so a link without its own endpoint falls
+     * back to the first site endpoint; real syncs stay strict about the site.
+     *
      * @return array see {@see FeedInspector::report()}
      */
     public function inspect(Link $link): array
     {
-        // Sample fetches aren't site-tied; fall back to the first site endpoint (real syncs stay strict)
         $siteHandle = null;
 
         if (! $link->endpoint) {
@@ -149,13 +151,21 @@ class DataService extends Component
         return $this->endpoints;
     }
 
+    /**
+     * Our params (query-string auth, offset presets) are merged onto the URL's
+     * existing query by hand because Guzzle's `query` option REPLACES the query
+     * string rather than adding to it — passing only ours would strip the
+     * endpoint's / cursor's own params. Ours win on collision.
+     *
+     * Guzzle's raw exception message is never surfaced: it embeds the effective
+     * URI, credentials and all (`…?api_key=SECRET…`). The thrown
+     * {@see FeedFetchException} reports the query-less URL plus the status and
+     * chains the original.
+     */
     protected function get(string $url, array $headers = [], array $query = []): array
     {
         $options = ['headers' => $headers];
 
-        // Merge our params (query-string auth, offset presets) onto the URL's
-        // existing query — Guzzle's `query` option REPLACES it, so passing only
-        // ours would strip the endpoint's / cursor's params. Ours win on collision.
         if ($query !== []) {
             [$base, $existing] = array_pad(explode('?', $url, 2), 2, '');
             parse_str($existing, $urlParams);
@@ -166,8 +176,6 @@ class DataService extends Component
         try {
             $response = $this->client->get($url, $options);
         } catch (GuzzleException $e) {
-            // Never surface Guzzle's raw message — it embeds the effective URI
-            // (…?api_key=SECRET…). Report query-less URL + status; chain the original.
             $status = $e instanceof RequestException && $e->getResponse()
                 ? ' (HTTP ' . $e->getResponse()->getStatusCode() . ')'
                 : '';

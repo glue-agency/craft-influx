@@ -36,16 +36,19 @@ class Assets extends RelationalField
         return CraftAssetsField::class;
     }
 
+    /**
+     * The `mode` and `conflict` values each map to a fixed {@see parse()}
+     * branch, so both lists are intentionally closed — deliberately NOT routed
+     * through {@see \GlueAgency\Influx\events\RegisterMappingOptionsEvent}.
+     * `mode` is grouped so it renders via the shared SearchableSelect like the
+     * relation "Match by"; its handle stays `mode` so saved configs round-trip.
+     */
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
 
-        // mode / conflict values each map to a fixed parse() branch — intentionally
-        // closed, no event registry
         return SchemaBuilder::make()
-            // Grouped so it renders via the shared SearchableSelect like the
-            // relation "Match by"; handle stays `mode` so saved configs round-trip
             ->select([
                 'handle'  => 'mode',
                 'label'   => Craft::t('influx', 'Match by'),
@@ -85,9 +88,14 @@ class Assets extends RelationalField
             ]);
     }
 
+    /**
+     * `resolve()` already normalises empty to null, so no extra empty guard is
+     * needed. A source node may carry many values (a list of URLs or ids); each
+     * is resolved to an asset, the way a relation field maps a list of
+     * references.
+     */
     public function parse(FieldContext $context): mixed
     {
-        // resolve() already normalises empty to null.
         $raw = $context->mapping->resolve($context->item);
 
         if ($raw === null) {
@@ -96,8 +104,6 @@ class Assets extends RelationalField
 
         $mode = $context->mapping->option('mode', 'id');
 
-        // A source node may carry many values (array of URLs/ids); resolve each
-        // to an asset, like a relation field maps a list of references
         $ids = [];
 
         foreach ($this->referenceValues($raw) as $value) {
@@ -128,16 +134,18 @@ class Assets extends RelationalField
 
     /**
      * Resolve a remote URL to a Craft Asset, optionally downloading it when
-     * no existing asset matches. The destination isn't a mapping option —
-     * the Assets field already declares where its files live, so the upload
-     * goes to the field's own configured location (see uploadLocation()).
+     * no existing asset matches. An existing asset is matched first so a
+     * re-sync doesn't needlessly re-upload the same file. The destination isn't
+     * a mapping option — the Assets field already declares where its files
+     * live, so the upload goes to the field's own configured location (see
+     * uploadLocation()). Under dry-run nothing is downloaded or saved, so the
+     * URL reports as "no asset".
      *
      *   options.upload:   bool — turn on download/upload behaviour
      *   options.conflict: replace|index (default: index)
      */
     protected function resolveByUrl(FieldContext $context, string $url): ?Asset
     {
-        // Try matching an existing asset by url() first — avoids needless re-uploads
         $existing = $this->matchExistingByUrl($context, $url);
 
         if ($existing) {
@@ -149,7 +157,6 @@ class Assets extends RelationalField
         }
 
         if ($context->dryRun) {
-            // Dry-runs must not download/save — report "no asset" instead
             return null;
         }
 
@@ -173,6 +180,10 @@ class Assets extends RelationalField
      * default upload location otherwise. Mirrors where a CP user's manual
      * upload through this field would land.
      *
+     * Subpaths may be object templates, so they're rendered against the synced
+     * element; a subpath that fails to render falls back to the volume root
+     * rather than killing the sync.
+     *
      * @return array{0: ?Volume, 1: string} Volume (null when the field has no
      * resolvable volume source) and rendered subpath.
      */
@@ -193,10 +204,8 @@ class Assets extends RelationalField
 
         if ($subpath !== '') {
             try {
-                // Subpaths may be object templates, rendered against the synced element
                 $subpath = Craft::$app->getView()->renderObjectTemplate($subpath, $context->element);
             } catch (Throwable) {
-                // A failing subpath shouldn't kill the sync — fall back to the volume root
                 $subpath = '';
             }
         }
@@ -221,9 +230,15 @@ class Assets extends RelationalField
         return Craft::$app->getVolumes()->getVolumeByUid($uid);
     }
 
+    /**
+     * Match an existing asset for a remote URL. Filename first — much faster
+     * than enumerating volumes — then preferring the asset whose `getUrl()`
+     * matches exactly. A volume may not expose URLs at all, in which case the
+     * same-filename hit stands as a best-effort match (possibly a different
+     * host).
+     */
     protected function matchExistingByUrl(FieldContext $context, string $url): ?Asset
     {
-        // Match by filename first — much faster than enumerating volumes.
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
 
         if ($name === '' || $name === false) {
@@ -240,11 +255,10 @@ class Assets extends RelationalField
                     return $asset;
                 }
             } catch (Throwable) {
-                // Volume might not expose URLs — fall through.
             }
         }
 
-        return $asset; // best-effort: same filename, possibly different host
+        return $asset;
     }
 
     /**
@@ -283,7 +297,6 @@ class Assets extends RelationalField
         $sources = $field->sources ?? '*';
 
         if (! is_array($sources)) {
-            // '*' (any volume) or null — no constraint.
             return null;
         }
 

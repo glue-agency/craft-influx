@@ -95,12 +95,15 @@ class Entries extends Relation
         }
     }
 
+    /**
+     * Without an explicit, resolvable create target nothing is created — bailing
+     * beats guessing a section.
+     */
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
         [$sectionId, $typeId] = $this->createTarget($context);
 
         if (! $sectionId || ! $typeId) {
-            // No explicit target — bail rather than guess a section
             return null;
         }
 

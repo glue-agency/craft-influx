@@ -10,11 +10,13 @@ use GlueAgency\Influx\records\LogItem as LogItemRecord;
 
 /**
  * Shapes log records into the JSON the Vue log viewer (LogApp) renders.
- * Shared by {@see \GlueAgency\Influx\controllers\LogsController}'s
- * initial page payload and its live SSE frames, so the header, counters, and
- * row shapes can't drift between the first paint and live updates — dates are
- * formatted the same in both, which a previous inline-in-controller version
- * got wrong (formatted on load, raw over the stream).
+ * Shared by {@see \GlueAgency\Influx\controllers\LogsController}'s initial page
+ * payload and the JSON its poll endpoints return — a running log is followed by
+ * re-requesting the page in view on an interval, not over a persistent
+ * connection — so the header, counters, and row shapes can't drift between the
+ * first paint and a refresh; dates are formatted the same in both, which a
+ * previous inline-in-controller version got wrong (formatted on load, raw on
+ * refresh).
  *
  * It also backs the server-rendered overviews: {@see resultSegments()},
  * {@see durationLabel()}, and {@see statusColor()} turn a run into the pill
@@ -85,19 +87,23 @@ class LogPresenter
     }
 
     /**
-     * One log-item row. The element chip is rendered server-side (Craft markup)
-     * as a ready-to-inject HTML string; a removed element degrades to its
-     * `#id` reference.
+     * One log-item row. The row carries a plain-text title and no per-row
+     * element chip, falling back in a fixed order: the element's UI label, else
+     * the item's match value, else the row's own `#id`. A removed element
+     * degrades to its `#id` reference.
      *
      * When `$elementMap` is supplied (batch path), the element is read from it —
      * an absent id is a since-deleted element and degrades the same way. When
      * null (single-item path), the element is loaded on demand.
      *
+     * `errorCount` is the number of stored per-field errors
+     * ({@see fieldErrors()}) — a non-zero count flags an item that committed
+     * despite a field failure.
+     *
      * @param array<int, ElementInterface>|null $elementMap id => element
      */
     public function presentItem(LogItemRecord $item, ?array $elementMap = null): array
     {
-        // Plain title only (UI label, else match value, else row id) — no per-row chip
         $title = null;
 
         if ($item->elementId) {
@@ -112,7 +118,6 @@ class LogPresenter
         $matchValue = (string) ($item->matchValue ?? '');
         $title = $title ?? ($matchValue !== '' ? $matchValue : '#' . $item->id);
 
-        // Field-error count — flags an item that committed despite a field failure
         $errorCount = count($this->fieldErrors($item->fieldErrors));
 
         return [
@@ -220,9 +225,6 @@ class LogPresenter
         return $mappings;
     }
 
-    // Overview presentation
-    // =========================================================================
-
     /**
      * The run's outcome as an ordered list of pill segments — one per action
      * that actually happened — for the Logs overview's "Result" column and the
@@ -249,9 +251,11 @@ class LogPresenter
      *
      * A still-running (or pending) run leads with an informative "N seen"
      * progress pill; a settled run drops it (the seen total moves to the sub
-     * line). Only actions with a non-zero count appear, in a fixed order, each
-     * carrying the result palette's colour (green = wrote, gray = neutral,
-     * red = destructive).
+     * line). Only actions with a non-zero count appear, each carrying the
+     * result palette's colour (green = wrote, gray = neutral, red =
+     * destructive). The palette map's key order IS the display order, so
+     * reordering it reorders the pills; `seen` is deliberately absent from it,
+     * being the leading progress pill handled separately.
      *
      * @param array{seen?: int, created?: int, updated?: int, unchanged?: int, skipped?: int, disabled?: int, deleted?: int} $counters
      * @return list<array{count: int, kind: string, color: string}>
@@ -264,7 +268,6 @@ class LogPresenter
             $segments[] = ['count' => (int) ($counters['seen'] ?? 0), 'kind' => 'seen', 'color' => 'blue'];
         }
 
-        // Fixed display order → result-palette colour ('seen' handled above)
         $palette = [
             'created'   => 'green',
             'updated'   => 'green',

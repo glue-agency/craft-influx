@@ -49,15 +49,20 @@ class ItemRowPresenter
      * Render {@see MappingResult}s into the Twig/JS-facing row shape —
      * values described (stringified, truncated), parsed values run through
      * the Craft field's normalizeValue for display parity with the editor.
+     * That normalization is a display-only nicety, so a field whose
+     * normalizeValue throws falls back to the raw parse rather than failing
+     * the row.
      *
      * When `$withParsedHtml` is true, a parsed value with a richer display than
      * plain text also fills the row's `parsedHtml` key with server-rendered
-     * markup: relation queries become Craft element chips (the
-     * {@see elementChip()} seam, hyperlinked like the header chip) and booleans
-     * become a display-only Craft lightswitch ({@see lightswitchHtml()}). The
-     * flag defaults to false so the debug stream — which builds many rows per
-     * run — never pays for the extra rendering; on every other row the key is
-     * present but null, so the emitted shape stays uniform.
+     * markup: relation queries become Craft element chips
+     * ({@see describeElementChips()}, drawn from the {@see elementChip()} seam
+     * and hyperlinked like the header chip) and booleans become a display-only
+     * Craft lightswitch ({@see lightswitchHtml()}). Only the log drill-down
+     * asks for that; the flag defaults to false so the debug stream — which
+     * builds many rows per run — never pays for the extra rendering. Every
+     * other value keeps its plain string and a null `parsedHtml`, so the
+     * emitted shape stays uniform.
      *
      * @param list<\GlueAgency\Influx\sync\MappingResult> $results
      * @param array<string, string> $labels handle => friendly field name
@@ -83,14 +88,10 @@ class ItemRowPresenter
                     try {
                         $parsedValue = $craftField->normalizeValue($parsedValue, $element);
                     } catch (Throwable) {
-                        // Display-only nicety; fall back to the raw parse.
                     }
                 }
             }
 
-            // Log context only: render rich values server-side too — relations as
-            // element chips (see describeElementChips()), booleans as a lightswitch;
-            // everything else keeps the plain string and a null html key.
             $parsedHtml = null;
 
             if ($withParsedHtml && $parsedValue instanceof ElementQueryInterface) {
@@ -179,9 +180,12 @@ class ItemRowPresenter
      * inert when the viewer injects it via v-html with no Craft JS init; its
      * on/off visual is pure CSS, carried by the `on` class.
      *
-     * Cp::lightswitchHtml() is @since 4.0.0, so no Compat seam is needed.
-     * Returns null when rendering fails (e.g. no booted app), degrading the
-     * cell to the text fallback rather than breaking the row.
+     * `Cp::lightswitchHtml()` needs no Craft 4/5 Compat seam — it is available
+     * since Craft 4.0, ahead of the supported range. The `try`/`catch` guards
+     * something else: rendering can still fail for reasons unrelated to the
+     * API existing (no booted app, no CP request context — as in the unit
+     * suite), and returning null then degrades that cell to its plain text
+     * fallback rather than breaking the whole row.
      */
     protected function lightswitchHtml(bool $on): ?string
     {

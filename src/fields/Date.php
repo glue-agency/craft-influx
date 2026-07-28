@@ -69,13 +69,15 @@ class Date extends Field
     }
 
     /**
+     * `resolve()` already normalises empty to null, so no extra empty guard is
+     * needed.
+     *
      * @throws MappingValueException when a present value can't be parsed as
      * a date — malformed data must surface as an error row, not silently
      * leave the field untouched.
      */
     public function parse(FieldContext $context): mixed
     {
-        // resolve() already normalises empty to null.
         $raw = $context->mapping->resolve($context->item);
 
         if ($raw === null) {
@@ -100,14 +102,16 @@ class Date extends Field
      * the PHP `U` token here so the Vue side stays human-readable). Mirrors
      * {@see \GlueAgency\Influx\targets\EntryTarget::parseDateValue()}, which
      * applies the same mapping option to the native date attributes.
+     *
+     * The source timezone defaults to UTC, but `createFromFormat()`'s third
+     * argument is only a fallback — a format carrying its own tz token still
+     * wins.
      */
     protected function parseValue(mixed $raw, mixed $format): DateTimeInterface|false
     {
         if (is_string($format) && $format !== '' && is_scalar($raw)) {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
 
-            // Default the source timezone to UTC (the 3rd arg is only a fallback);
-            // formats carrying their own tz token still win
             return DateTime::createFromFormat($phpFormat, (string) $raw, new DateTimeZone('UTC'));
         }
 

@@ -96,20 +96,20 @@ class PagedFeed implements IteratorAggregate
      * configured endpoint + query params), or the page at a carried next-page
      * URL otherwise. The unit a resumable, page-per-step sync run advances one
      * at a time; {@see getIterator()} chains these for a synchronous walk.
+     *
+     * Security: the link's auth is re-applied to a cursor URL only while that
+     * URL stays on the SAME ORIGIN as the configured endpoint (the normal case
+     * — the cursor points back at the same protected API). A cursor on a
+     * DIFFERENT host is fetched with no credentials, so the link's token is
+     * never leaked to a third party the feed happened to link to. Auth rides
+     * the request headers / query, never the stored cursor URL; and since the
+     * cursor already encodes the continuation, no offset params are re-added.
      */
     public function page(?string $cursorUrl, int $number = 1): FeedPage
     {
         if ($cursorUrl === null) {
             $response = $this->data->fetch($this->link, $this->siteHandle, $this->queryParams);
         } else {
-            // Re-apply the link's auth when the next-page URL stays on the same
-            // origin as the configured endpoint (the normal case — the cursor
-            // points back at the same protected API). If a feed's cursor points
-            // at a DIFFERENT host, withhold credentials rather than leak the
-            // link's token to a third party the feed happened to link to. Auth
-            // rides the request headers / query, never the stored cursor URL;
-            // the cursor already encodes the continuation, so no offset params
-            // are re-added.
             $response = $this->sameOriginAsEndpoint($cursorUrl)
                 ? $this->data->fetchForLink($this->link, $cursorUrl)
                 : $this->data->fetchUrl($cursorUrl);
@@ -170,7 +170,8 @@ class PagedFeed implements IteratorAggregate
      * Make a paginator value fetchable: resolve Craft aliases, give
      * protocol-relative URLs a scheme, and resolve root-relative paths
      * ('/items?page=2') against the endpoint's host — APIs that return
-     * paths instead of absolute URLs are common.
+     * paths instead of absolute URLs are common. An unparsable base is left
+     * alone: the raw value goes to the fetch layer, which reports the failure.
      */
     protected function normalizeUrl(string $url): string
     {
@@ -191,7 +192,6 @@ class PagedFeed implements IteratorAggregate
                 try {
                     return rtrim(UrlHelper::hostInfo($base), '/') . $url;
                 } catch (Throwable) {
-                    // Base wasn't parsable — hand the raw value to the fetch layer to report
                 }
             }
         }

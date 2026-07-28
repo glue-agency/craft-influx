@@ -48,7 +48,6 @@ class SyncLinkJob extends BaseJob
     public ?string $site = null;
     public string $trigger = 'queue';
 
-    // Run state carried across steps; defaults start a fresh run
     public ?int $logId = null;
     public ?string $cursorUrl = null;
     public int $page = 1;
@@ -69,9 +68,16 @@ class SyncLinkJob extends BaseJob
      */
     public int $unattributedErrors = 0;
 
+    /**
+     * Runs one step of this scope's walk. The trigger is resolved with
+     * `tryFrom()` so an unexpected value degrades to {@see SyncTrigger::QUEUE}
+     * instead of throwing. Progress is a real percentage when the feed reports
+     * a total (via the link's count nodes) and otherwise eases toward 1 as
+     * items arrive, with the live count carried in the label. While pages
+     * remain, the next step is re-queued on the same log.
+     */
     public function execute($queue): void
     {
-        // tryFrom so an unexpected trigger degrades to QUEUE instead of throwing
         $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
 
         $state = Influx::getInstance()->synchronization->batchStep(
@@ -88,14 +94,12 @@ class SyncLinkJob extends BaseJob
             ],
             function(int $seen, ?int $total) use ($queue): void {
                 if ($total !== null && $total > 0) {
-                    // The feed reported a total (via the count nodes) — a real %.
                     $progress = min(1.0, $seen / $total);
                     $label = Craft::t('influx', '{count} of {total} items synced', [
                         'count' => $seen,
                         'total' => $total,
                     ]);
                 } else {
-                    // No total: ease the bar toward 1 as items arrive; label carries the live count
                     $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
                     $label = Craft::t('influx', '{count} items synced', ['count' => $seen]);
                 }
@@ -105,7 +109,6 @@ class SyncLinkJob extends BaseJob
         );
 
         if (empty($state['done'])) {
-            // More pages — re-queue the next step on the same log
             Craft::$app->getQueue()->push(new self([
                 'linkHandle'         => $this->linkHandle,
                 'offset'             => $this->offset,

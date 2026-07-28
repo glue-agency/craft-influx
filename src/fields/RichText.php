@@ -30,14 +30,17 @@ class RichText extends Field
         return $context->mapping->resolve($context->item);
     }
 
+    /**
+     * `getRawContent()` / `serializeValue()` run the field's purifier and can
+     * throw on bad HTML; on failure fall back to the base normalize()
+     * comparison rather than assuming changed.
+     */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
         if ($context->craftField === null) {
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        // getRawContent()/serializeValue() run the purifier and can throw on bad
-        // HTML; on failure fall back to base normalize() rather than assume-changed
         try {
             $currentRaw = is_a($current, 'craft\htmlfield\HtmlFieldData')
                 ? $current->getRawContent()

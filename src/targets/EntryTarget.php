@@ -153,6 +153,9 @@ class EntryTarget extends AbstractElementTarget
      * match value meant "not ours" — is dropped: the criteria scope already
      * answers "is this ours", and blank-keyed orphans are exactly what the
      * sweep is meant to clear.)
+     *
+     * The ids the run just touched are excluded with the query's `not` prefix;
+     * an empty seen-set therefore leaves the whole owned set as candidates.
      */
     public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface
     {
@@ -176,7 +179,6 @@ class EntryTarget extends AbstractElementTarget
             $query->siteId('*')->unique();
         }
 
-        // Exclude the ids the run just touched ('not' prefix); an empty seen-set leaves the whole owned set as candidates
         if ($seenIds !== []) {
             $query->id(array_merge(['not'], $seenIds));
         }
@@ -203,7 +205,8 @@ class EntryTarget extends AbstractElementTarget
      * Adds slug/title on top of the base `id` — but only when the link's
      * resolved entry type actually enables them (title fields can be
      * generated via titleFormat, slug fields hidden per type). Unresolved
-     * criteria fall back to id-only.
+     * criteria fall back to id-only. The title option is labelled from the
+     * field layout, so it reads as what the editor actually sees.
      */
     public function matchableNativeAttributes(Link $link): array
     {
@@ -221,7 +224,6 @@ class EntryTarget extends AbstractElementTarget
         }
 
         if ($entryType->hasTitleField) {
-            // Use the field layout's title label — what the editor actually sees
             $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
                 EntryTitleField::class,
             );
@@ -232,6 +234,10 @@ class EntryTarget extends AbstractElementTarget
         return $attributes;
     }
 
+    /**
+     * Custom fields are collected by walking the resolved entry type's
+     * field-layout tabs, so they keep their entry-editor grouping.
+     */
     public function getMappableFields(Link $link): array
     {
         $fields = $this->nativeFieldDefinitions()->toArray();
@@ -249,7 +255,6 @@ class EntryTarget extends AbstractElementTarget
             return $fields;
         }
 
-        // Walk the field-layout tabs so custom fields keep their entry-editor grouping
         $fallbackTab = Craft::t('influx', 'Content');
 
         foreach ($layout->getTabs() as $tab) {
@@ -279,18 +284,20 @@ class EntryTarget extends AbstractElementTarget
         return $fields;
     }
 
-    // -- native attribute parsers (dispatched by handle) ---------------------
-
     /**
      * Feed titles routinely overflow Craft's 255-char title column —
      * truncate safely instead of letting the save fail. Mirrors feed-me's
-     * title hygiene.
+     * title hygiene. An empty value clears the title: the feed is
+     * authoritative, and the sync's validation-off saves let a blank one
+     * persist.
+     *
+     * Like the other `parse{Handle}()` methods below, this is dispatched by
+     * handle from {@see AbstractElementTarget::applyNativeAttribute()}.
      */
     protected function parseTitle(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
-        // Empty clears the title — the feed is authoritative, and validation-off saves let it persist
         $new = $value === null ? null : StringHelper::safeTruncate((string) $value, 255);
         $changed = (string) ($element->title ?? '') !== (string) ($new ?? '');
         $element->title = $new;
@@ -301,13 +308,13 @@ class EntryTarget extends AbstractElementTarget
     /**
      * Slugs straight from a feed are rarely slug-safe — normalize the same
      * way Craft does when auto-generating (respects limitAutoSlugsToAscii
-     * and allowUppercaseInSlug).
+     * and allowUppercaseInSlug). An empty value clears the slug, which Craft
+     * then regenerates from the title on save.
      */
     protected function parseSlug(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
-        // Empty clears the slug — Craft regenerates it from the title on save.
         $new = $value === null ? null : ElementHelper::normalizeSlug((string) $value);
         $changed = (string) ($element->slug ?? '') !== (string) ($new ?? '');
         $element->slug = $new;
@@ -320,12 +327,15 @@ class EntryTarget extends AbstractElementTarget
      * relational Users field uses (id / username / email / custom field),
      * then assign as `authorIds`. Falls back to the mapping's `default` (a
      * user-id picked via elementSelect) when no node value is present.
+     *
+     * Change detection compares the element's current author ids against the
+     * intended id computed here — reading the author back off an unsaved
+     * element is unreliable. An empty value, or one matching nobody, clears the
+     * author.
      */
     protected function parseAuthor(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         /** @var Entry $element */
-        // Compare current author id(s) against the intended id computed here —
-        // reading it back off an unsaved element is unreliable; empty/no-match clears
         $before = Compat::entryAuthorIds($element);
         $newId = $this->resolveAuthorId($context, $item, $mapping);
 
@@ -372,13 +382,13 @@ class EntryTarget extends AbstractElementTarget
      * Coerce the mapped value into the `enabled` flag. (`status` itself is
      * derived by Craft from enabled + postDate + expiryDate and can't be set
      * directly — that's why the native mappable is `enabled`, not `status`.)
-     * Truthy spellings follow the Lightswitch field strategy.
+     * Truthy spellings follow the Lightswitch field strategy; an
+     * addressed-but-empty value coerces to false, i.e. disabled.
      */
     protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
-        // Empty clears to disabled — an empty boolean is false.
         $new = match (true) {
             $value === null => false,
             is_bool($value) => $value,
@@ -391,12 +401,16 @@ class EntryTarget extends AbstractElementTarget
         return $changed;
     }
 
+    /**
+     * An empty value clears the date — the feed is authoritative. An
+     * unparseable value is a no-op instead: malformed feed data must not wipe a
+     * stored date.
+     */
     protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
         $before = $element->{$attr};
 
-        // Empty clears the date (the feed is authoritative).
         if ($value === null || $value === '') {
             $element->{$attr} = null;
 
@@ -405,7 +419,6 @@ class EntryTarget extends AbstractElementTarget
 
         $parsed = $this->parseDateValue($value, $mapping);
 
-        // Unparseable value is a no-op — malformed feed data shouldn't wipe a stored date
         if ($parsed === null) {
             return false;
         }
@@ -420,7 +433,9 @@ class EntryTarget extends AbstractElementTarget
      * parsed. An explicit `format` option wins over the auto-detector — feeds
      * that ship ambiguous strings (e.g. `02/03/2024`) need to disambiguate
      * manually. `timestamp` is a UI sentinel for Unix seconds (translated to
-     * the PHP `U` token here so the Vue side stays human-readable).
+     * the PHP `U` token here so the Vue side stays human-readable). The
+     * fallback timezone is UTC (as in {@see Date::parseValue()}); a tz token in
+     * the format itself still wins.
      */
     protected function parseDateValue(mixed $value, FieldMapping $mapping): ?DateTime
     {
@@ -432,7 +447,6 @@ class EntryTarget extends AbstractElementTarget
 
         if (is_string($format) && $format !== '') {
             $phpFormat = $format === 'timestamp' ? 'U' : $format;
-            // UTC fallback timezone (see Date::parseValue()); a format's own tz token still wins
             $parsed = DateTime::createFromFormat($phpFormat, (string) $value, new DateTimeZone('UTC'));
 
             return $parsed === false ? null : $parsed;
@@ -464,8 +478,6 @@ class EntryTarget extends AbstractElementTarget
 
         return $element instanceof User ? $element : null;
     }
-
-    // -- mappable-field metadata ----------------------------------------------
 
     /**
      * The Entry-native mappable attributes — the fixed part of

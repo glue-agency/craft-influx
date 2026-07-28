@@ -53,16 +53,16 @@ class InspectorService extends Component
      * Inspect an already-fetched remote item against a link, resolving the
      * link's element target first. Used by the log detail drill-down to reuse
      * the inspection machinery against a historical row's stored payload;
-     * callers that already hold the target (the debug stream) skip the lookup
-     * and call {@see inspectWithTarget()} directly.
+     * callers that already hold the target (the debug inspector) skip the
+     * lookup and call {@see inspectWithTarget()} directly.
      *
      * $pinnedElementId, when given, resolves straight to that element instead
      * of re-deriving one from the match value — see {@see inspectWithTarget()}.
      *
      * $withParsedHtml is threaded down to the presenter so the log drill-down
      * can render rich parsed values server-side (element chips for relations,
-     * a lightswitch for booleans); it defaults to false, leaving the streaming
-     * debug path untouched.
+     * a lightswitch for booleans); it defaults to false, leaving the debug
+     * path untouched.
      */
     public function inspectItem(
         Link $link,
@@ -96,7 +96,7 @@ class InspectorService extends Component
      * `dryRun: true` — resolve and populate run for real (in memory),
      * commit is never called. This method only presents the result; the
      * logic is the exact code the sync run executes. The target is passed in
-     * pre-resolved so the debug stream resolves it once for a whole page.
+     * pre-resolved so the debug inspector resolves it once for a whole page.
      *
      * $pinnedElementId short-circuits the match-value lookup and resolves
      * straight to that element. Without it, `resolve()` re-derives the element
@@ -111,7 +111,12 @@ class InspectorService extends Component
      *
      * $withParsedHtml is passed straight through to the presenter's mapping
      * rendering (both call sites below) so a rich parsed value can render
-     * server-side (chips, lightswitch); false on the streaming debug path.
+     * server-side (chips, lightswitch); false on the debug path.
+     *
+     * `populate()` can only throw out of `buildNew()` — mapping errors are
+     * captured per row — hence the `buildNew:` prefix on that error. An item
+     * that is skipped but already exists additionally previews a forced Update,
+     * so the user sees what enabling `update` would do.
      */
     public function inspectWithTarget(
         Link $link,
@@ -157,7 +162,6 @@ class InspectorService extends Component
         try {
             $result = $this->itemProcessor->populate($context, $remoteItem, $resolution);
         } catch (Throwable $e) {
-            // populate() only throws from buildNew(); mapping errors are captured per-row
             $row['isNew'] = $resolution->decision === SyncDecision::CREATE;
             $row['action'] = $row['isNew'] ? ItemAction::CREATED->dryRunLabel() : ItemAction::UPDATED->dryRunLabel();
             $row['error'] = 'buildNew: ' . $e->getMessage();
@@ -171,7 +175,6 @@ class InspectorService extends Component
             $row['action'] = ItemAction::SKIPPED->dryRunLabel();
             $row['message'] = $result->message;
 
-            // Skipped-but-existing: preview a forced Update so the user sees what 'update' would do
             if ($result->decision === SyncDecision::SKIP_NO_UPDATE && $resolution->element !== null) {
                 try {
                     $preview = $this->itemProcessor->populate(

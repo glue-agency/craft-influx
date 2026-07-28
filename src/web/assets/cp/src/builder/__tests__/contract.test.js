@@ -3,7 +3,7 @@ import fixture from '../../../tests/fixtures/link-payload.json';
 
 /**
  * The JS half of the wire-contract test. PHP is the authority
- * (Link::toBuilderArray() — asserted against the same fixture by
+ * (LinkBuilderSerializer::serialize() — asserted against the same fixture by
  * LinkBuilderPayloadTest); this side pins the key set and value shapes
  * the store and types.js LinkPayload typedef assume. Drift on either
  * side fails one of the two suites.

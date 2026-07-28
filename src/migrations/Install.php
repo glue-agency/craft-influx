@@ -7,6 +7,29 @@ use GlueAgency\Influx\db\Table;
 
 class Install extends Migration
 {
+    /**
+     * Column value domains that live nowhere else in schema form:
+     *
+     *   - links.lastRunAt / links.lastLogId — runtime last-run tracking, NOT
+     *     Project Config; lastLogId is a soft pointer, nulled when its log is
+     *     deleted.
+     *   - logs.trigger — console | cp | element | queue.
+     *   - logs.offsetHandle — the sliding-window preset the run used.
+     *   - logs.elementId — the resource a single-element run was triggered for.
+     *   - logs.status — running | ok | error.
+     *   - logItems.action — created | updated | unchanged | skipped | disabled |
+     *     deleted | deleted-for-site | error.
+     *   - logItems.fieldErrors — {handle: message} for fields whose strategy threw.
+     *   - logItems.changedFields — JSON list of mapping handles that changed in
+     *     this run.
+     *   - logItems.payload — raw remote item JSON (optional).
+     *
+     * Two of the indexes aren't obvious: logs.status is indexed because
+     * {@see \GlueAgency\Influx\services\LogsService::errorLogCount()} — the CP
+     * nav badge — filters on it on every page load, and the composite
+     * [logId, action] on log items also serves logId-only lookups through its
+     * leftmost prefix.
+     */
     public function safeUp(): bool
     {
         $this->dropTableIfExists(Table::LOG_ITEMS);
@@ -33,13 +56,11 @@ class Install extends Migration
             'offset'          => $this->text()->null(),
             'backup'          => $this->boolean()->notNull()->defaultValue(false),
             'sortOrder'       => $this->integer(),
-            // Runtime last-run tracking, not Project Config; lastLogId is a soft
-            // pointer, nulled when its log is deleted
-            'lastRunAt'   => $this->dateTime()->null(),
-            'lastLogId'   => $this->integer()->null(),
-            'dateCreated' => $this->dateTime()->notNull(),
-            'dateUpdated' => $this->dateTime()->notNull(),
-            'uid'         => $this->uid(),
+            'lastRunAt'       => $this->dateTime()->null(),
+            'lastLogId'       => $this->integer()->null(),
+            'dateCreated'     => $this->dateTime()->notNull(),
+            'dateUpdated'     => $this->dateTime()->notNull(),
+            'uid'             => $this->uid(),
         ]);
 
         $this->createIndex(null, Table::LINKS, ['handle'], true);
@@ -49,11 +70,11 @@ class Install extends Migration
         $this->createTable(Table::LOGS, [
             'id'             => $this->primaryKey(),
             'linkHandle'     => $this->string(100)->notNull(),
-            'trigger'        => $this->string(30)->notNull(),    // console | cp | element | queue
+            'trigger'        => $this->string(30)->notNull(),
             'siteHandle'     => $this->string(100)->null(),
-            'offsetHandle'   => $this->string(100)->null(),      // sliding-window preset the run used
-            'elementId'      => $this->integer()->null(),        // resource a single-element run was triggered for
-            'status'         => $this->string(20)->notNull(),    // running | ok | error
+            'offsetHandle'   => $this->string(100)->null(),
+            'elementId'      => $this->integer()->null(),
+            'status'         => $this->string(20)->notNull(),
             'itemsSeen'      => $this->integer()->defaultValue(0),
             'itemsCreated'   => $this->integer()->defaultValue(0),
             'itemsUpdated'   => $this->integer()->defaultValue(0),
@@ -71,7 +92,6 @@ class Install extends Migration
 
         $this->createIndex(null, Table::LOGS, ['linkHandle']);
         $this->createIndex(null, Table::LOGS, ['startedAt']);
-        // errorLogCount() (the CP nav badge) filters on status every page load.
         $this->createIndex(null, Table::LOGS, ['status']);
 
         $this->createTable(Table::LOG_ITEMS, [
@@ -79,17 +99,16 @@ class Install extends Migration
             'logId'         => $this->integer()->notNull(),
             'elementId'     => $this->integer()->null(),
             'matchValue'    => $this->text()->null(),
-            'action'        => $this->string(30)->notNull(), // created|updated|unchanged|skipped|disabled|deleted|deleted-for-site|error
+            'action'        => $this->string(30)->notNull(),
             'message'       => $this->text()->null(),
-            'fieldErrors'   => $this->text()->null(),        // {handle: message} for fields whose strategy threw
-            'changedFields' => $this->text()->null(),        // JSON list of mapping handles that changed in this run
-            'payload'       => $this->longText()->null(),    // raw remote item JSON (optional)
+            'fieldErrors'   => $this->text()->null(),
+            'changedFields' => $this->text()->null(),
+            'payload'       => $this->longText()->null(),
             'dateCreated'   => $this->dateTime()->notNull(),
             'dateUpdated'   => $this->dateTime()->notNull(),
             'uid'           => $this->uid(),
         ]);
 
-        // Composite: leftmost prefix covers logId-only lookups, plus per-action filters
         $this->createIndex(null, Table::LOG_ITEMS, ['logId', 'action']);
         $this->createIndex(null, Table::LOG_ITEMS, ['elementId']);
         $this->createIndex(null, Table::LOG_ITEMS, ['action']);

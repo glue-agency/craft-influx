@@ -38,13 +38,16 @@ class LinksController extends AbstractController
         $this->requireAdmin(! in_array($action->id, $viewActions, true));
     }
 
+    /**
+     * A link's `lastLogId` is nulled when that log is deleted, so a set one
+     * always resolves and the per-link last-run logs — behind each row's status
+     * dot and quick link — can be batch-loaded in one query keyed by id. The
+     * persistent "when" is `link.lastRunAt`.
+     */
     public function actionIndex(): Response
     {
         $links = Influx::getInstance()->links->getAllLinks();
 
-        // The last-run log per link, for the status dot + quick link. A set
-        // `lastLogId` always resolves (nulled on delete), so batch-load them in one
-        // query keyed by id; the persistent "when" is `link.lastRunAt`.
         $logIds = array_values(array_filter(array_map(static fn($link) => $link->lastLogId, $links)));
         $lastLogs = $logIds
             ? LogRecord::find()->where(['id' => $logIds])->indexBy('id')->all()
@@ -62,11 +65,11 @@ class LinksController extends AbstractController
     /**
      * Dry-run inspector shell. Renders the site / offset / limit selector and a
      * results container the SPA fills from {@see actionDebugInspect}. Writes
-     * nothing.
+     * nothing. Scoped by `?link=<handle>`, falling back to the first link so a
+     * bare `influx/debug` opens.
      */
     public function actionDebug(): Response
     {
-        // Link chosen by handle (?link=<handle>), falling back to the first so a bare influx/debug opens.
         $allLinks = Influx::getInstance()->links->getAllLinks();
         $handle = $this->stringQueryParam('link');
         $link = ($handle !== null ? ($allLinks[$handle] ?? null) : null) ?: (reset($allLinks) ?: null);
@@ -83,7 +86,6 @@ class LinksController extends AbstractController
             ? $requestedSite
             : ($siteHandles[0] ?? null);
 
-        // Friendly names for the dropdown labels; the option value stays the handle.
         $sites = array_map(static fn(string $handle): array => [
             'handle' => $handle,
             'name'   => Craft::$app->getSites()->getSiteByHandle($handle)?->name ?? $handle,
@@ -95,7 +97,6 @@ class LinksController extends AbstractController
             ? $requestedOffset
             : null;
 
-        // Every link, for the toolbar's switcher — navigates to that link's inspector.
         $linkOptions = array_values(array_map(static fn(Link $l): array => [
             'handle' => $l->handle,
             'name'   => $l->name,
@@ -120,6 +121,10 @@ class LinksController extends AbstractController
      * selected site/offset/limit and returns the feed meta plus one row per
      * processed item in a single response. Strictly read-only — the inspector
      * only ever reads the first page, so there's nothing to stream.
+     *
+     * Rows come out JSON-serializable, so they pass straight through to the Vue
+     * `DebugApp`; an `error` event (no target registered for the link) is
+     * surfaced as a meta-level error instead.
      */
     public function actionDebugInspect(): Response
     {
@@ -148,14 +153,12 @@ class LinksController extends AbstractController
         $meta = null;
         $items = [];
 
-        // Each row is already JSON-serializable (the Vue DebugApp renders it).
         foreach (Influx::getInstance()->debug->streamSite($link, $siteHandle, $limit, $offset) as $event) {
             if ($event['type'] === 'meta') {
                 $meta = $event['data'];
             } elseif ($event['type'] === 'item') {
                 $items[] = $event['data'];
             } elseif ($event['type'] === 'error') {
-                // No target registered — surface as a meta-level error.
                 $meta = ['error' => $event['data']['message'] ?? Craft::t('influx', 'Inspection failed.')];
             }
         }
@@ -196,15 +199,18 @@ class LinksController extends AbstractController
      * does the prefill from the `duplicateOf` query param the host template
      * carries). Nothing is written until the user hits Save, so they can rename
      * / adjust first. Reached from the overview's Duplicate action.
+     *
+     * It only renders a create form, but is gated as a mutating action
+     * ({@see requireAccess()}), so it needs no read-only guard of its own. The
+     * host link is passed blank to keep `data-id` off the mount — the SPA
+     * bootstraps from `data-duplicate-of` instead.
      */
     public function actionDuplicate(int $id): Response
     {
-        // A create form, gated as a mutating action — no read-only guard needed.
         if (! Influx::getInstance()->links->getLinkById($id)) {
             throw new NotFoundHttpException("Link {$id} not found.");
         }
 
-        // Blank host link keeps `data-id` off the mount; the SPA bootstraps from `data-duplicate-of`.
         return $this->builderScreen(Craft::t('influx', 'New link'), new Link(), $id);
     }
 
@@ -215,9 +221,16 @@ class LinksController extends AbstractController
      * (`data-id`) or the source id to duplicate (`data-duplicate-of`); a new
      * link carries neither.
      *
+     * The tabs render into Craft's `#content-header` and Tabs.js toggles
+     * `.hidden` on the element whose id matches the tab, so the Vue panes carry
+     * those ids — see `_builder.twig`.
+     *
      * The empty additional-buttons HTML ensures cpScreen renders its
      * `#action-buttons` header slot so the SPA can teleport its top-right
      * buttons (Fetch sample, Save) into it.
+     *
+     * Project-Config-backed config can't be saved in a read-only environment,
+     * so Craft's standard read-only notice is shown there.
      */
     protected function builderScreen(string $title, Link $link, ?int $duplicateOf = null): Response
     {
@@ -229,9 +242,6 @@ class LinksController extends AbstractController
             ->title($title)
             ->addCrumb(Craft::t('influx', 'Influx'), 'influx')
             ->addCrumb(Craft::t('influx', 'Links'), 'influx/links')
-            // Tabs render into Craft's #content-header; Tabs.js toggles `.hidden` on
-            // the element whose id matches the tab. Our Vue panes carry those ids —
-            // see _builder.twig.
             ->tabs([
                 'general'        => ['label' => Craft::t('influx', 'General'),        'url' => '#general'],
                 'pagination'     => ['label' => Craft::t('influx', 'Pagination'),     'url' => '#pagination'],
@@ -243,7 +253,6 @@ class LinksController extends AbstractController
 
         Compat::additionalButtonsHtml($response, '<div data-influx-actions-slot></div>');
 
-        // Project-Config-backed config can't be saved in a read-only environment — show Craft's standard notice.
         if ($this->readOnly()) {
             Compat::noticeHtml($response, Compat::readOnlyNoticeHtml());
         }

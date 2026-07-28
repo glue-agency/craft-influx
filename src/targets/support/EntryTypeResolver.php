@@ -21,6 +21,10 @@ class EntryTypeResolver
      * Strict resolution for write paths (building new entries): every
      * misconfiguration throws with a message naming the offending handle.
      *
+     * Entry types are global in Craft 5, so a configured type handle is only
+     * accepted when it is actually attached to the resolved section — never
+     * looked up globally.
+     *
      * @return array{0: Section, 1: EntryType}
      * @throws InfluxException when the section criteria is missing, the
      * section doesn't exist, a configured type isn't attached to it, or
@@ -40,7 +44,6 @@ class EntryTypeResolver
 
         $typeHandle = $link->elementCriteria['type'] ?? null;
 
-        // Entry types are global in Craft 5; ensure the resolved type is attached to the section
         $sectionEntryTypes = $section->getEntryTypes();
         $entryType = null;
 

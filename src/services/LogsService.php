@@ -60,6 +60,11 @@ class LogsService extends Component
      */
     protected array $buffers = [];
     /**
+     * Opening a run also stamps it onto the link: a timestamp that outlives the
+     * log, plus a pointer to the log (null when logging is off). An
+     * element-triggered resync doesn't count as the link's "last run", so it
+     * stamps nothing.
+     *
      * @param string|null $siteHandle Site the run is scoped to (null = all).
      * @param string|null $offsetHandle Sliding-window preset the run applied.
      * @param int|null $elementId Resource a single-element run was triggered for.
@@ -85,8 +90,6 @@ class LogsService extends Component
             $log->save(false);
         }
 
-        // Stamp the run onto the link — a timestamp that outlives the log, plus a pointer to it
-        // (null when logging is off). Element-triggered resyncs don't count as the link's "last run"
         if ($trigger !== SyncTrigger::ELEMENT) {
             Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
         }
@@ -95,6 +98,12 @@ class LogsService extends Component
     }
 
     /**
+     * The row is built in {@see ITEM_COLUMNS} order — the batch insert in
+     * {@see flush()} relies on that alignment. The record's live counters are
+     * advanced immediately, because progress callbacks and after-run events
+     * read them off the in-memory record rather than the DB; the DB catches up
+     * on the next flush.
+     *
      * @param array<string, string> $fieldErrors {handle: message} for fields
      * whose strategy threw — stored so the drill-down can show each on its own
      * field row even when re-inspection can't reproduce it.
@@ -121,8 +130,6 @@ class LogsService extends Component
 
         $counterAttr = $action->counterAttribute();
 
-        // Row values in ITEM_COLUMNS order — the batch insert in flush() relies on this alignment.
-        // changedFields keeps an empty array as `[]` (not null): "nothing changed" differs from "unknown"
         $row = [
             $log->id,
             $elementId,
@@ -136,8 +143,6 @@ class LogsService extends Component
 
         $this->bufferFor($log)->add($row, $counterAttr);
 
-        // Advance the record's live counters immediately: progress callbacks and after-run events
-        // read them off the in-memory record, not the DB. The DB catches up on the next flush()
         if ($counterAttr) {
             $log->$counterAttr = (int) $log->$counterAttr + 1;
         }
@@ -157,7 +162,14 @@ class LogsService extends Component
      * so a record reloaded between steps (see SynchronizationService::batchStep)
      * still lands the right totals. finish()/fail() then reconcile the absolute
      * counters from the in-memory record. Steps for one log run strictly
-     * sequentially, so there are never concurrent writers to race with.
+     * sequentially, so there are never concurrent writers to race with. The
+     * deltas are ints this class built itself, so interpolating them into the
+     * `Expression` is safe.
+     *
+     * The batch insert is deliberately 3-arg, without Craft 4's fourth
+     * `$includeAuditColumns`: both majors add `dateCreated`/`dateUpdated`/`uid`
+     * themselves, and Craft 5 dropped the parameter, so passing it would be
+     * dead weight.
      */
     public function flush(LogRecord $log): void
     {
@@ -173,7 +185,6 @@ class LogsService extends Component
 
         $db = Craft::$app->getDb();
 
-        // 3-arg batchInsert (no audit columns) — Craft 4 and 5 both add dateCreated/dateUpdated/uid themselves
         $db->createCommand()
             ->batchInsert(Table::LOG_ITEMS, self::ITEM_COLUMNS, $buffer->rows())
             ->execute();
@@ -181,7 +192,6 @@ class LogsService extends Component
         $updates = [];
 
         foreach ($buffer->counterDeltas() as $column => $delta) {
-            // Deltas are known ints built by us — safe to interpolate.
             $updates[$column] = new Expression("[[{$column}]] + {$delta}");
         }
 
@@ -206,9 +216,13 @@ class LogsService extends Component
         }
     }
 
+    /**
+     * The pending buffer is flushed first so already-processed rows aren't
+     * lost, but a throwing flush is caught and only warned about: nothing may
+     * stop `status = 'error'` from landing.
+     */
     public function fail(LogRecord $log, string $error): void
     {
-        // Flush first so already-processed rows aren't lost, but never let a flush failure prevent status='error' from landing
         try {
             $this->flush($log);
         } catch (Throwable $e) {

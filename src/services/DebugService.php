@@ -10,26 +10,34 @@ use GlueAgency\Influx\models\OffsetPreset;
 use Throwable;
 
 /**
- * The Links overview "Debug" view: a live, strict dry-run of a link's first
- * page of remote items, streamed as Server-Sent Events. It fetches and paginates
- * exactly like the real sync (stopping after the first page), then hands each
- * item to {@see InspectorService} for the per-item inspection both this view and
- * the log drill-down share. Writes nothing — no logs, no element saves, no
+ * The Links overview "Debug" view: a strict dry-run of a link's first page of
+ * remote items. It walks the same paginated iterator the real sync walks —
+ * stopping after the first page — then hands each item to
+ * {@see InspectorService} for the per-item inspection both this view and the
+ * log drill-down share. Writes nothing — no logs, no element saves, no
  * cooldown marks.
+ *
+ * The dry-run is exposed as a generator, but nothing is streamed: the sole
+ * caller, {@see \GlueAgency\Influx\controllers\LinksController::actionDebugInspect()},
+ * buffers every yielded event and answers with one JSON response.
  */
 class DebugService extends Component
 {
     public const DEFAULT_LIMIT = 10;
 
     /**
-     * Per-site dry-run, yielding events suitable for Server-Sent Events:
+     * Per-site dry-run, yielding typed event arrays:
      *
-     *   ['type' => 'meta',  'data' => [...]]   — site metadata, once at start
+     *   ['type' => 'error', 'data' => [...]]   — no element target registered;
+     *                                            nothing else follows
+     *   ['type' => 'meta',  'data' => [...]]   — feed metadata, once; a failed
+     *                                            fetch rides in its `error` key
      *   ['type' => 'item',  'data' => [...]]   — one per processed item
-     *   ['type' => 'error', 'data' => [...]]   — non-recoverable fetch/setup error
      *
-     * The generator finishes naturally when the first page is exhausted or the
-     * limit is reached; callers should send their own "done" sentinel.
+     * A generator, so it can walk the sync's own paginated iterator and stop
+     * after the first page; it finishes when that page is exhausted or the limit
+     * is reached. Nothing is streamed — the caller buffers every event into a
+     * single JSON response — so there is no "done" sentinel.
      */
     public function streamSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): Generator
     {
@@ -54,7 +62,6 @@ class DebugService extends Component
 
         $url = $plugin->data->endpoints()->listUrlForDisplay($link, $siteHandle, $queryParams);
 
-        // Same iterator the sync run walks — but stop after the first page
         $firstPage = null;
 
         try {

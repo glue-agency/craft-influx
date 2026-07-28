@@ -138,7 +138,7 @@ class Link extends Model
     /**
      * Endpoint pattern for syncing a single remote resource. Used by the
      * per-element "Sync from remote" button. Tokens substituted at sync-time
-     * are built by {@see \GlueAgency\Influx\services\SynchronizationService::tokensForElement()}:
+     * are built by {@see \GlueAgency\Influx\services\EndpointTokensService::tokensForElement()}:
      * `{id}`, `{status}`, `{slug}`, `{site.id}`, `{site.handle}`,
      * `{site.locale}`, plus any Dropdown/Email/Number/PlainText/RadioButtons
      * custom field referenced by its handle.
@@ -288,6 +288,9 @@ class Link extends Model
      * swapped back to global. Rather than reject a mismatched combo on save,
      * we heal it here and let the caller tell the user what changed.
      *
+     * A swap can collide with a policy that was already in its target form, so
+     * the result is deduped, keeping first-seen order.
+     *
      * @return list<array{from: string, to: string}>
      */
     public function migrateProcessingForEndpointShape(): array
@@ -319,7 +322,6 @@ class Link extends Model
             $migrated[] = $to;
         }
 
-        // Dedupe collided global/-for-site forms, keeping first-seen order
         $this->processing = array_values(array_unique($migrated));
 
         return $migrations;
@@ -345,6 +347,11 @@ class Link extends Model
         }
     }
 
+    /**
+     * The match value is always read from the matched field's mapping node, so
+     * the attribute needs an active mapping with a source node — hence the
+     * second check.
+     */
     public function validateMatch(string $attribute): void
     {
         $value = $this->$attribute;
@@ -355,7 +362,6 @@ class Link extends Model
             return;
         }
 
-        // Match value comes from the mapped field's node, so it needs an active mapping
         $mappedNode = $this->getMappingCollection()->get($value['attribute'])?->node;
 
         if (! $mappedNode) {

@@ -140,6 +140,11 @@ class UserTarget extends AbstractElementTarget
         return $attributes;
     }
 
+    /**
+     * Custom fields are collected by walking the global User field layout's
+     * tabs, so they keep their user-editor grouping (mirrors
+     * {@see EntryTarget::getMappableFields()}).
+     */
     public function getMappableFields(Link $link): array
     {
         $fields = $this->nativeFieldDefinitions()->toArray();
@@ -150,7 +155,6 @@ class UserTarget extends AbstractElementTarget
             return $fields;
         }
 
-        // Walk the field-layout tabs so custom fields keep their user-editor grouping (mirrors EntryTarget)
         $fallbackTab = Craft::t('influx', 'Profile');
 
         foreach ($layout->getTabs() as $tab) {
@@ -180,20 +184,21 @@ class UserTarget extends AbstractElementTarget
         return $fields;
     }
 
-    // -- native attribute parsers (dispatched by handle) ---------------------
-
     /**
      * Coerce the mapped value into the element `enabled` flag. A disabled user
      * reads as "disabled" from {@see User::getStatus()}, so this is the feed-
      * driven active/inactive toggle. Truthy spellings follow the Lightswitch
-     * field strategy. (username/email/fullName/firstName/lastName are plain
-     * string attributes handled by the base assignment path.)
+     * field strategy; an addressed-but-empty value coerces to false, i.e.
+     * disabled. (username/email/fullName/firstName/lastName are plain string
+     * attributes handled by the base assignment path.)
+     *
+     * Native-attribute parsers like this one are dispatched by handle from
+     * {@see AbstractElementTarget::applyNativeAttribute()}.
      */
     protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $value = $mapping->resolve($item);
 
-        // Empty clears to disabled — an empty boolean is false.
         $new = match (true) {
             $value === null => false,
             is_bool($value) => $value,
@@ -206,8 +211,6 @@ class UserTarget extends AbstractElementTarget
         return $changed;
     }
 
-    // -- user groups ----------------------------------------------------------
-
     /**
      * Reconcile the synced user's group membership from the `groups` mapping's
      * extras — group membership isn't written by an element save, so it's done
@@ -218,6 +221,12 @@ class UserTarget extends AbstractElementTarget
      * authoritative (any other group is dropped), otherwise the selected groups
      * are added to whatever the user already has. Nothing selected is treated as
      * "not configured" — never a strip-all.
+     *
+     * The selection is read from the extras toggles whose handle matches a real
+     * group; `groupsUpdate` / `groupsRemove` are reserved behaviour handles and
+     * never count as group selections. The write is skipped when the resulting
+     * membership already equals the user's current groups, sparing the query and
+     * its events.
      */
     public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void
     {
@@ -235,14 +244,12 @@ class UserTarget extends AbstractElementTarget
         $update = ! empty($options['groupsUpdate']);
         $remove = ! empty($options['groupsRemove']);
 
-        // Existing users are reconciled only when the link opts in; new users always are
         if (! $isNew && ! $update) {
             return;
         }
 
         $byHandle = $this->groupIdMap();
 
-        // Selected groups: truthy toggles matching a real group handle; the behaviour flags are reserved
         $selectedIds = [];
 
         foreach ($options as $handle => $on) {
@@ -255,7 +262,6 @@ class UserTarget extends AbstractElementTarget
             }
         }
 
-        // No groups picked — treat as unconfigured rather than a strip-all.
         if (! $selectedIds) {
             return;
         }
@@ -266,7 +272,6 @@ class UserTarget extends AbstractElementTarget
             ? $selectedIds
             : array_values(array_unique(array_merge($currentIds, $selectedIds)));
 
-        // Skip the write when membership already matches — avoids the query + events
         $current = $currentIds;
         $target = $targetIds;
         sort($current);
@@ -297,15 +302,16 @@ class UserTarget extends AbstractElementTarget
         return $this->groupIdMap;
     }
 
-    // -- mappable-field metadata ----------------------------------------------
-
     /**
      * The User-native mappable attributes — the fixed part of
      * {@see getMappableFields()}. `username` is dropped when the site uses the
      * email as the username (Craft manages it from the email then, so mapping it
      * would fight that); fullName / firstName / lastName are all offered — a
      * feed may carry either the combined name or the split parts. The `groups`
-     * field is appended when this install has user groups.
+     * field is appended when this install has user groups (a Pro-edition
+     * feature); `groupsUpdate` / `groupsRemove` are reserved handles among its
+     * extras — {@see afterCommit()} reads them as behaviour flags, never as
+     * group selections.
      */
     protected function nativeFieldDefinitions(): SchemaBuilder
     {
@@ -344,7 +350,6 @@ class UserTarget extends AbstractElementTarget
                         ],
                     ]);
 
-                // User groups (Pro edition)
                 $userGroups = Craft::$app->getUserGroups()->getAllGroups();
 
                 if ($userGroups) {
@@ -357,7 +362,6 @@ class UserTarget extends AbstractElementTarget
                                 $builder->lightswitch(['handle' => $userGroup->handle, 'label' => $userGroup->name]);
                             }
 
-                            // Reserved behaviour handles read as flags by afterCommit(), never as group selections
                             $builder
                                 ->lightswitch([
                                     'handle'       => 'groupsUpdate',

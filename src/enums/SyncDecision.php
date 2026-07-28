@@ -29,7 +29,7 @@ enum SyncDecision: string
      * the real run and {@see \GlueAgency\Influx\services\InspectorService::inspectWithTarget()}
      * for the dry-run inspector, so both stay aligned on the rule.
      *
-     * Moved here from {@see Link::decideAction()} — it reads the link's
+     * Lives here rather than on {@see Link}: it reads the link's
      * {@see Link::PROCESSING_CREATE}/{@see Link::PROCESSING_UPDATE} flags, but
      * the decision itself is the sync engine's concern, not the model's.
      */

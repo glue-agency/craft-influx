@@ -25,6 +25,11 @@ use yii\web\Response;
  * point releases that backport a method automatically take the native path.
  *
  * Supported range: Craft 4.0 – 5.x.
+ *
+ * Not the only compat seam in the plugin: the console-output version fallbacks
+ * live in a trait of their own.
+ *
+ * @see \GlueAgency\Influx\console\ConsoleOutputCompatTrait
  */
 class Compat
 {
@@ -36,9 +41,6 @@ class Compat
     {
         return ! class_exists(Sections::class);
     }
-
-    // -- Section / entry-type lookups ----------------------------------------
-    // Craft 4: Craft::$app->getSections() — Craft 5: Craft::$app->getEntries()
 
     /**
      * @return Section[]
@@ -69,6 +71,10 @@ class Compat
     }
 
     /**
+     * The service every section / entry-type lookup above goes through: Craft 4
+     * keeps them on `Craft::$app->getSections()`, Craft 5 moved them to
+     * `Craft::$app->getEntries()`.
+     *
      * @return \craft\services\Entries|Sections
      */
     protected static function sectionsService(): object
@@ -78,16 +84,12 @@ class Compat
             : Craft::$app->getSections();
     }
 
-    // -- Matrix block types ----------------------------------------------------
-    // Craft 5 renamed Matrix block types to nested entry types: discovery moved
-    // from getBlockTypes() to getEntryTypes(), and blocks from MatrixBlock to
-    // Entry. Both divergences (discovery + block construction) live here.
-
     /**
-     * Normalized block-type descriptors for a Matrix field. Feature-detects the
-     * Craft 5 nested-entry-type API (getEntryTypes()) and falls back to the
-     * Craft 4 getBlockTypes() path. The returned layout is what a caller reads
-     * to resolve a block's child fields by handle.
+     * Normalized block-type descriptors for a Matrix field. Craft 5 renamed
+     * Matrix block types to nested entry types, so discovery moved from
+     * getBlockTypes() to getEntryTypes(); this feature-detects the Craft 5 API
+     * and falls back to the Craft 4 one. The returned layout is what a caller
+     * reads to resolve a block's child fields by handle.
      *
      * @return list<array{handle: string, name: string, layout: ?FieldLayout}>
      */
@@ -119,7 +121,8 @@ class Compat
      * Craft 5: a new craft\elements\Entry bound to the matching EntryType.
      * Craft 4: a craft\elements\MatrixBlock — instantiated through a string
      * class name so this file never hard-references a symbol absent from the
-     * Craft 5 vendor tree.
+     * Craft 5 vendor tree. {@see matrixBlockTypes()} covers the discovery half
+     * of the same divergence.
      */
     public static function newMatrixBlock(CraftFieldInterface $field, string $typeHandle): ?ElementInterface
     {
@@ -146,8 +149,6 @@ class Compat
 
         return null;
     }
-
-    // -- Model / element differences ------------------------------------------
 
     /**
      * EntryType::$showSlugField is @since 5.0 — Craft 4 entry types always
@@ -196,7 +197,8 @@ class Compat
      * the element is reloaded in the target site first. The 4.0–4.3 fallback
      * replicates the core method's essentials: a full delete when the target
      * site is the element's only site, otherwise dropping the site row and
-     * invalidating caches.
+     * invalidating caches. An element that isn't present in the target site at
+     * all is a no-op.
      */
     public static function deleteElementForSite(ElementInterface $element, int $siteId): void
     {
@@ -206,7 +208,6 @@ class Compat
             $element = $elements->getElementById($element->id, get_class($element), $siteId);
 
             if (! $element) {
-                // Not present in the target site — nothing to delete.
                 return;
             }
         }
@@ -253,8 +254,6 @@ class Compat
 
         return true;
     }
-
-    // -- CP chrome -------------------------------------------------------------
 
     /**
      * Element chip HTML. Craft 5: Cp::elementChipHtml(); Craft 4:

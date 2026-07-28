@@ -45,7 +45,8 @@ class AssetUploadService extends Component
      * @param string $volumeHandle The Craft volume to upload into.
      * @param string $url          Fully-qualified URL to download.
      * @param string $folderPath   Optional sub-folder path (no leading slash).
-     * @param string $conflict     'replace' | 'index' (default).
+     * @param string $conflict     'replace' | 'index' (default — reuse a
+     *                             matching filename already in the folder).
      *
      * @throws AssetUploadException with the actual cause — misconfigured
      * volume, failed download, or element validation errors. Callers must
@@ -70,7 +71,6 @@ class AssetUploadService extends Component
 
         $filename = $this->filenameFor($url);
 
-        // 'index' mode — reuse the existing asset if its filename already matches in the folder
         if ($conflict === 'index') {
             $existing = Asset::find()
                 ->folderId($folder->id)
@@ -124,12 +124,15 @@ class AssetUploadService extends Component
     }
 
     /**
+     * The URL is feed-controlled, so only http(s) schemes are accepted —
+     * anything else (`file://`, …) would turn a feed value into a local-file
+     * read / SSRF vector.
+     *
      * @throws AssetUploadException when the download fails or the server
      * answers with a non-2xx status.
      */
     protected function downloadToTemp(string $url): string
     {
-        // Feed-controlled URL: allow only http(s) to block file://, etc. (local-file read / SSRF)
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
 
         if (! in_array($scheme, ['http', 'https'], true)) {

@@ -150,8 +150,6 @@ abstract class Field
         return $context->mapping->addressedBy($context->item);
     }
 
-    // -- shared helpers ----------------------------------------------------
-
     /**
      * Compare the element's current field value against the incoming one.
      * Called by {@see hasChanged()} with the already-read current value, so

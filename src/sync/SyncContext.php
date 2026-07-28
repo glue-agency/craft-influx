@@ -82,6 +82,10 @@ class SyncContext
      * sync run, the per-element sync, and the debug inspector all build their
      * contexts through here instead of repeating the lookup. A null handle
      * means the primary site (id stays null, which Craft reads as "default").
+     *
+     * A configured handle that no longer resolves throws instead: it must NOT
+     * fall back to `siteId = null`, which downstream reads as a cross-site
+     * sweep.
      */
     public static function forSite(
         Link $link,
@@ -96,8 +100,6 @@ class SyncContext
         if ($siteHandle !== null) {
             $siteId = Craft::$app->getSites()->getSiteByHandle($siteHandle)?->id;
 
-            // A missing configured site must NOT fall back to siteId=null —
-            // downstream that reads as a cross-site sweep
             if ($siteId === null) {
                 throw new InfluxException("Link '{$link->handle}' is configured for site '{$siteHandle}', which no longer exists — refusing to run a per-site sync that would degrade into a cross-site sweep.");
             }

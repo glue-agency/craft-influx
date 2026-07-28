@@ -35,13 +35,16 @@ class BackupJob extends BaseJob
 
     public string $trigger = 'cp';
 
+    /**
+     * The link can be deleted between queueing and running, hence the
+     * missing-link guard.
+     */
     public function execute($queue): void
     {
         $plugin = Influx::getInstance();
         $link = $plugin->links->getLinkByHandle($this->linkHandle);
 
         if (! $link) {
-            // Link removed between queueing and running — nothing to do.
             return;
         }
 
@@ -50,8 +53,6 @@ class BackupJob extends BaseJob
         try {
             $plugin->backup->backupForLink($link);
         } catch (Throwable $e) {
-            // Backup failed — record a failed log, enqueue nothing; not rethrown
-            // so the queue won't retry the failing backup
             $log = $plugin->logs->start($link, $trigger, $this->site, $this->offset);
             $plugin->logs->fail($log, $e->getMessage());
             Craft::error($e, __METHOD__);
@@ -59,7 +60,6 @@ class BackupJob extends BaseJob
             return;
         }
 
-        // Backup done — fan out the per-site sync jobs (each skips its own backup).
         $plugin->synchronization->queueSyncJobs($link, $this->offset, $this->site, $trigger);
     }
 

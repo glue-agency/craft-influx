@@ -37,6 +37,13 @@ class SyncController extends Controller
         return array_merge(parent::optionAliases(), ['a' => 'all']);
     }
 
+    /**
+     * One backup covers the whole run, taken once up front if any targeted link
+     * asks for it. The links themselves sync synchronously and their per-site
+     * logs are viewable in the CP, so `syncLink()`'s return is ignored — a
+     * site's own feed-fetch failure stays in that site's log, and only a
+     * non-fetch throw propagates here and exits with `SOFTWARE`.
+     */
     public function actionIndex(string $handles = ''): int
     {
         $plugin = Influx::getInstance();
@@ -67,7 +74,6 @@ class SyncController extends Controller
             }
         }
 
-        // One backup for the whole run, taken once if any targeted link needs it
         try {
             $plugin->backup->backupForLinks($links);
         } catch (Throwable $e) {
@@ -81,9 +87,6 @@ class SyncController extends Controller
             $this->stdout("→ Syncing '{$link->handle}'\n");
 
             try {
-                // Runs synchronously; per-site logs are viewable in the CP, so the
-                // return is ignored. A site's own feed-fetch failure stays in its
-                // log; only a non-fetch throw propagates here and returns SOFTWARE
                 $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE, $this->site);
                 $this->success('done.');
             } catch (Throwable $e) {

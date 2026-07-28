@@ -50,6 +50,9 @@ class LinksService extends Component
     protected ?array $links = null;
 
     /**
+     * The query's (sortOrder, name) ordering carries into the handle-keyed
+     * array, so it iterates in overview display order.
+     *
      * @return Link[] indexed by handle
      */
     public function getAllLinks(): array
@@ -60,7 +63,6 @@ class LinksService extends Component
 
         $this->links = [];
 
-        // Query order (sortOrder, name) carries through, so the handle-keyed array reads in display order
         foreach ($this->createQuery()->all() as $row) {
             $link = $this->linkFromRow($row);
             $this->links[$link->handle] = $link;
@@ -162,16 +164,20 @@ class LinksService extends Component
      *
      * Writes to Project Config — the PC change handler {@see handleChangedLink}
      * then upserts the DB row. Mirrors craft-remote-entries' SourcesService::save.
+     *
+     * Unmappable mapping handles are pruned and the missing-element policies
+     * healed to the endpoint shape before validation — hygiene rather than
+     * validation, so both run on forced saves too and stored config never keeps
+     * a handle the target can't write; both steps are idempotent. The link's
+     * `id` is back-filled only after the PC write, since the row doesn't exist
+     * until the change handler has run.
      */
     public function saveLink(Link $link, bool $runValidation = true): bool
     {
         $isNew = ! $link->id;
 
-        // Hygiene, not validation — runs on forced saves too, so stored config never carries unmappable handles
         $this->pruneUnknownMappings($link);
 
-        // Keep missing-element policies in step with the endpoint shape (global
-        // <-> per-site variants); idempotent
         $link->migrateProcessingForEndpointShape();
 
         if ($runValidation && ! $link->validate()) {
@@ -183,7 +189,6 @@ class LinksService extends Component
             return false;
         }
 
-        // Reject handle collisions when creating or renaming.
         foreach ($this->getAllLinks() as $other) {
             if ($other->handle === $link->handle && $other->id !== $link->id) {
                 $link->addError('handle', "A link with handle '{$link->handle}' already exists.");
@@ -192,7 +197,6 @@ class LinksService extends Component
             }
         }
 
-        // New (or otherwise unordered) links land at the end of the overview.
         if ($link->sortOrder === null) {
             $link->sortOrder = $this->nextSortOrder();
         }
@@ -212,7 +216,6 @@ class LinksService extends Component
             "Save influx link “{$link->handle}”",
         );
 
-        // PC handler has now upserted the DB row; back-fill the id.
         if (! $link->id) {
             $link->id = Db::idByUid(Table::LINKS, $link->uid) ?: null;
         }
@@ -321,8 +324,8 @@ class LinksService extends Component
         $copy = clone $source;
         $copy->id = null;
         $copy->uid = null;
-        $copy->sortOrder = null;   // Fresh position — a saved duplicate lands at the end.
-        $copy->lastRunAt = null;   // Runtime state belongs to the original, not the copy.
+        $copy->sortOrder = null;
+        $copy->lastRunAt = null;
         $copy->lastLogId = null;
         $copy->handle = $this->uniqueHandle($source->handle . 'Copy');
         $copy->name = $source->name . ' (copy)';
@@ -392,8 +395,6 @@ class LinksService extends Component
         $this->links = null;
     }
 
-    // -- Project Config listeners --------------------------------------------
-
     /**
      * Project Config add/update handler — fires when a link is saved through
      * the service or applied from YAML. Upserts the matching row in
@@ -436,13 +437,13 @@ class LinksService extends Component
         $this->links = null;
     }
 
-    // -- runtime last-run tracking -------------------------------------------
-
     /**
      * Stamp a link's last run onto its own row — runtime state that outlives
      * the run's log. A direct column write (NOT Project Config, so it never
      * touches YAML or `dateUpdated`); `lastLogId` is null when the run wasn't
-     * logged (logging disabled). Called by {@see LogsService::start()}.
+     * logged (logging disabled). Called by {@see LogsService::start()}. The
+     * passed model is updated and the in-memory cache dropped as well, so an
+     * already-loaded link stays coherent for the rest of the request.
      */
     public function recordRun(Link $link, ?int $logId, DateTime $when): void
     {
@@ -457,7 +458,6 @@ class LinksService extends Component
             ], ['id' => $link->id])
             ->execute();
 
-        // Keep an already-loaded model + the cache coherent for this request.
         $link->lastRunAt = $when;
         $link->lastLogId = $logId;
         $this->links = null;
@@ -485,8 +485,6 @@ class LinksService extends Component
 
         $this->links = null;
     }
-
-    // -- helpers -------------------------------------------------------------
 
     /**
      * Map a Project Config link payload to DB column values. Used by both the
@@ -542,6 +540,11 @@ class LinksService extends Component
             ->orderBy(['sortOrder' => SORT_ASC, 'name' => SORT_ASC]);
     }
 
+    /**
+     * Some drivers hand boolean / int columns back as strings, so those are
+     * coerced explicitly. Columns `Link` doesn't declare are dropped before
+     * construction — the Model base warns on unknown attributes.
+     */
     protected function linkFromRow(array $row): Link
     {
         foreach (Link::JSON_FIELDS as $key) {
@@ -555,7 +558,6 @@ class LinksService extends Component
             }
         }
 
-        // Boolean / int columns come back as strings on some drivers.
         $row['backup'] = ! empty($row['backup']);
         $row['id'] = (int) $row['id'];
         $row['sortOrder'] = isset($row['sortOrder']) ? (int) $row['sortOrder'] : null;
@@ -563,7 +565,6 @@ class LinksService extends Component
         $row['lastRunAt'] = ! empty($row['lastRunAt']) ? (DateTimeHelper::toDateTime($row['lastRunAt']) ?: null) : null;
         $row['lastLogId'] = isset($row['lastLogId']) && $row['lastLogId'] !== null ? (int) $row['lastLogId'] : null;
 
-        // Drop columns Link doesn't know about; the Model base would warn.
         unset($row['dateCreated'], $row['dateUpdated']);
 
         return new Link($row);

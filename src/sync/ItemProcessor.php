@@ -58,6 +58,12 @@ class ItemProcessor
      * create decisions build the element via the target. The element is
      * only ever mutated in memory — persisting is {@see commit()}'s job.
      *
+     * The item's `changed` flag is seeded from `$isNew` (a new element always
+     * saves) and then folded from the per-mapping rows; a mapping that threw
+     * never counts as a change. An item whose only mapping failed would
+     * otherwise log as "unchanged" and hide the failure, so it is reported as
+     * {@see ItemAction::ERROR} instead.
+     *
      * @throws \Throwable target buildNew() failures propagate (missing
      * section, unknown entry type); per-mapping failures do NOT — the
      * applier captures those as {@see MappingResult::$error} rows.
@@ -90,8 +96,6 @@ class ItemProcessor
 
         $results = $this->applier->apply($context, $element, $item);
 
-        // Seed "changed" from $isNew (new elements always save), then fold in each
-        // row; a field that threw never counts as a change
         $changed = $isNew;
         $hasFieldErrors = false;
 
@@ -104,8 +108,6 @@ class ItemProcessor
             ? ($isNew ? ItemAction::CREATED : ItemAction::UPDATED)
             : ItemAction::UNCHANGED;
 
-        // An item whose only mapping failed would log as "unchanged" and hide the
-        // failure — surface it as an error instead
         if ($action === ItemAction::UNCHANGED && $hasFieldErrors) {
             $action = ItemAction::ERROR;
         }

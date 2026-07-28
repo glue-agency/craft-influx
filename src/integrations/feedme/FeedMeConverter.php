@@ -312,6 +312,10 @@ class FeedMeConverter
      * per block type via {@see convertMatrixBlocks()} (Influx's `blocks`
      * channel mirrors Feed Me's stored shape).
      *
+     * No-ops drop silently: an unsupported native attribute only warns when the
+     * feed actually mapped a value there, and a Matrix field whose block types
+     * mapped nothing is skipped without a warning.
+     *
      * @param array $fieldMapping decoded Feed Me fieldMapping
      * @param bool $topLevel whether these handles are element-level (native
      * attribute renames only apply there, not on related-element sub-fields)
@@ -327,7 +331,6 @@ class FeedMeConverter
 
             if ($topLevel && ! empty($info['attribute'])) {
                 if (in_array($handle, self::UNSUPPORTED_NATIVE_HANDLES, true)) {
-                    // Only warn when the feed actually mapped a value here (no-op mappings drop silently)
                     if ($this->mapsAValue($info)) {
                         $this->warn("Native attribute mapping '{$handle}' has no Influx counterpart and was dropped.");
                     }
@@ -340,7 +343,6 @@ class FeedMeConverter
             if (is_array($info['blocks'] ?? null)) {
                 $blocks = $this->convertMatrixBlocks((string) $handle, $info['blocks']);
 
-                // Nothing mapped in any block type → skip silently
                 if ($blocks !== []) {
                     $mappings[$handle] = ['blocks' => $blocks];
                 }
@@ -442,7 +444,9 @@ class FeedMeConverter
     /**
      * Convert one fieldMapping entry to Influx's mapping config shape, or
      * null when the entry carries nothing to import ("don't import", or a
-     * default-only mapping with an empty default).
+     * default-only mapping with an empty default). A related element's
+     * sub-field map recurses through {@see convertMappings()} into Influx's
+     * `fields` channel.
      */
     protected function convertMapping(string $handle, array $info): ?array
     {
@@ -483,7 +487,6 @@ class FeedMeConverter
             $mapping['options'] = $options;
         }
 
-        // Related-element sub-fields: same conversion one level down (Influx's `fields`)
         if (is_array($info['fields'] ?? null)) {
             $subMappings = $this->convertMappings($info['fields'], false);
 
@@ -621,6 +624,9 @@ class FeedMeConverter
      * `upload` itself carries over untouched (same key, same meaning).
      * Influx only honors it in url mode; Feed Me likewise treated uploads
      * as URL-data, even when matching by id, so upload forces url mode.
+     *
+     * Matching by id without uploads writes no `mode` at all — Influx's
+     * default mode is already 'id'.
      */
     protected function translateAssetOptions(string $handle, array $options): array
     {
@@ -630,7 +636,6 @@ class FeedMeConverter
         $upload = ! empty($options['upload']);
 
         if ($match === 'id' && ! $upload) {
-            // Influx's default mode is already 'id' — nothing to write.
         } else {
             $options['mode'] = 'url';
 
@@ -804,9 +809,10 @@ class FeedMeConverter
         $this->warnings[] = $message;
     }
 
-    // Craft lookups — isolated so the no-boot unit suite can stub them
-    // (toHandle counts too, via Craft::$app->language).
-
+    /**
+     * One of the stubbable Craft lookups despite appearances:
+     * `StringHelper::toHandle()` reads `Craft::$app->language`.
+     */
     protected function handleFromName(string $name): string
     {
         return StringHelper::toHandle($name);

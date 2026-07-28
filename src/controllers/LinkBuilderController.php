@@ -44,7 +44,6 @@ class LinkBuilderController extends AbstractController
         try {
             return parent::runAction($id, $params);
         } catch (HttpException $e) {
-            // HTTP-shaped errors (404, 403, …) keep their status code.
             Craft::$app->getResponse()->setStatusCode($e->statusCode);
 
             return $this->asJson([

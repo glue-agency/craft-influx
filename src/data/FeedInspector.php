@@ -23,6 +23,12 @@ class FeedInspector
     /**
      * Build the sample report for a link from an already-fetched response.
      *
+     * The root node is never auto-guessed: the link must have one configured,
+     * or the response itself must be the list of items — anything else errors
+     * out rather than picking a candidate on the user's behalf.
+     * `countNodeCandidates` holds the response-level scalar leaves, offered as
+     * total-count / page-count nodes.
+     *
      * @param string $url The display URL the sample was fetched from.
      * @return array{
      *   url: string,
@@ -30,6 +36,7 @@ class FeedInspector
      *   rootNodeCandidates: string[],
      *   paginatorNode: ?string,
      *   paginatorNodeCandidates: string[],
+     *   countNodeCandidates: string[],
      *   sampleItem: ?array,
      *   mappingSuggestions: list<array{field: string, type: string, node: string}>,
      *   flatNodes: list<array{value: string, label: string}>,
@@ -41,7 +48,6 @@ class FeedInspector
         $rootCandidates = $this->findArrayPaths($response, '', 3);
         $paginatorCandidates = $this->findPaginatorPaths($response);
 
-        // Don't auto-guess the root node; require it (or a top-level list) or error out
         $rootNode = $link->rootNode;
         $paginatorNode = $link->paginatorNode;
 
@@ -91,7 +97,6 @@ class FeedInspector
             }
         }
 
-        // Response-level scalar leaves — total-count / page-count node candidates
         $countCandidates = array_values(array_filter(
             $this->stringLeafPaths($response, []),
             static fn(string $path): bool => $path !== '',
@@ -116,6 +121,10 @@ class FeedInspector
      * dropdowns preview real feed data next to each node. The SPA renders
      * labels as escaped text, so the angle brackets are safe. Null/empty
      * values get no suffix.
+     *
+     * The value is resolved through {@see \GlueAgency\Influx\sync\RemoteItem::get()}
+     * — the same read the sync pipeline performs — so the preview matches what
+     * a mapping on that node would actually see.
      */
     protected function nodeDataSuffix(array $sampleItem, string $path): string
     {
@@ -123,7 +132,6 @@ class FeedInspector
             return '';
         }
 
-        // Resolve like the sync pipeline so the preview matches what a mapping reads
         $value = (new RemoteItem($sampleItem))->get($path);
 
         if ($value === null) {
@@ -211,7 +219,6 @@ class FeedInspector
             }
             $childPrefix = array_merge($prefix, [$key]);
 
-            // Nested object: only its leaves are nodes.
             if (is_array($child) && ! empty($child) && ! array_is_list($child)) {
                 foreach ($this->flattenLeafPaths($child, $childPrefix) as $p) {
                     $paths[] = $p;
@@ -223,8 +230,6 @@ class FeedInspector
             $paths[] = implode('.', $childPrefix);
 
             if (is_array($child) && $this->looksLikeListOfObjects($child)) {
-                // List-of-objects: expose the first element's leaves under the
-                // parent key with the index collapsed; RemoteItem fans out at sync
                 foreach ($this->flattenLeafPaths($child[0], $childPrefix) as $p) {
                     $paths[] = $p;
                 }
@@ -284,9 +289,11 @@ class FeedInspector
     /**
      * Best-effort list of paginator-node candidates. Starts with a heuristic
      * ordering for the most common shapes (so the first hit is sensibly
-     * pre-selected), then unions with every leaf-path on the response whose
-     * value is a non-empty string — that way an unconventional shape can
-     * still be picked from the dropdown after a sample fetch.
+     * pre-selected), then unions with every scalar leaf-path on the response
+     * — including null/empty ones, since a key that's null on this response
+     * may carry a real URL on the next ({@see stringLeafPaths()}) — so an
+     * unconventional shape can still be picked from the dropdown after a
+     * sample fetch.
      *
      * @return string[]
      */
@@ -312,7 +319,6 @@ class FeedInspector
             }
         }
 
-        // Add any string leaves from the whole response (root list skipped by findArrayPaths)
         foreach ($this->stringLeafPaths($response, []) as $path) {
             if ($path === '' || isset($seen[$path])) {
                 continue;

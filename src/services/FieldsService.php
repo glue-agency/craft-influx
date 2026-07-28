@@ -133,6 +133,11 @@ class FieldsService extends Component
         return $this->byCraftFqcn;
     }
 
+    /**
+     * A strategy that declares no Craft field class is skipped silently rather
+     * than treated as an error — it can't be keyed, but it isn't worth breaking
+     * registration over.
+     */
     protected function registerOne(string $class): void
     {
         if (! is_subclass_of($class, Field::class)) {
@@ -141,7 +146,6 @@ class FieldsService extends Component
         $fqcn = $class::craftFieldClass();
 
         if (! $fqcn) {
-            // No Craft field declared — can't register, but not worth breaking init
             return;
         }
         $this->byCraftFqcn[$fqcn] = new $class();
