@@ -1,6 +1,6 @@
 # Influx
 
-Connect Craft elements to external JSON APIs. A lighter, Project-Config-backed alternative to FeedMe that **hydrates existing element types** (Entries, Calendar Events, Commerce Products, …) instead of owning its own element type.
+Connect Craft elements to external JSON APIs. A lighter, Project-Config-backed alternative to FeedMe that **hydrates existing element types** (Entries and Users today, any element type through a target adapter) instead of owning its own element type.
 
 ## Why another sync plugin
 
@@ -30,7 +30,7 @@ composer require glue-agency/craft-influx
 1. Open `Influx → Links` in the CP and click **New link** (requires `allowAdminChanges`).
 2. Fill in the form. The shape mirrors Craft's own Sections / Entry Types editors.
 3. Save. The link is written to Project Config; commit the resulting YAML in `config/project/`.
-4. Trigger a sync from the link page, the entry edit page, or the CLI:
+4. Trigger a sync from the Links overview, the entry edit page, or the CLI:
 
 ```bash
 ./craft influx/sync news                # one link by handle
@@ -40,7 +40,7 @@ composer require glue-agency/craft-influx
 ./craft influx/sync news --site=fr      # only the "fr" site-specific endpoint
 ```
 
-Runs also trigger from the CP — the link's own page, the "Sync from remote" action on a synced element, or **Influx → Links**. CP-triggered runs are queued (one job per site, one feed page per step, so large feeds don't time out a request); console runs are synchronous. Every run produces a log under **Influx → Logs** with a per-item drill-down, and the link's **Debug** tab dry-runs the feed against the current mapping without writing anything, for building/troubleshooting a link before it goes live.
+Runs also trigger from the CP — the sync action on a link's row under **Influx → Links**, or the "Sync from remote" action on a synced element. Link-level CP runs are queued (one job per site, one feed page per step, so large feeds don't time out a request); single-element runs and console runs are synchronous. Unless logging is switched off in the plugin settings, every run produces a log under **Influx → Logs** with a per-item drill-down. The **Debug** screen, reachable from a link's row, dry-runs the feed against the current mapping without writing anything — for building/troubleshooting a link before it goes live.
 
 ### Migrating from Feed Me
 
@@ -95,7 +95,7 @@ A `target` is an adapter for one element type. The plugin ships `EntryTarget` (f
 
 Third-party plugins register their own through `TargetsService::EVENT_REGISTER_TARGETS` or `->targets->register()` (see [Registries](#registries)); targets are keyed by the `elementType()` they declare.
 
-A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable/delete/delete-for-site.
+A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable / disable-for-site / delete / delete-for-site.
 
 Two static capabilities let a target describe its element type to the builder and the sync engine:
 
@@ -108,12 +108,13 @@ A `mapping` reads one field worth of data off a remote item and applies it to an
 
 Built-in strategies, keyed by Craft field class and registered via `FieldsService::EVENT_REGISTER_FIELDS`:
 
-- **`DefaultField`** — fallback for plain-value fields (Plain Text, Number, Email, URL, …) and any Craft field type without a dedicated strategy: a direct `setFieldValue()`.
 - **`Lightswitch`**, **`Date`**, **`Dropdown`** (covers option fields generally, e.g. Radio Buttons, Checkboxes) — truthy/falsy coercion, configurable date-format parsing, match-by-label-or-value.
 - **`Entries`**, **`Categories`**, **`Tags`**, **`Users`** — relation fields with a match-by strategy (id, title, slug, or any unique attribute), with optional create-on-the-fly when nothing matches.
 - **`Assets`** — matches by id or by URL/filename, with best-effort fallback when a CDN host changes, and optional download-on-import when nothing matches. Sub-fields (alt, title, …) write back onto the matched asset.
 - **`RichText`** — CKEditor/Redactor-style fields.
 - **`Matrix`** — maps a remote sub-array to blocks, one child-mapping tree per block type. Every sync fully replaces the field's blocks from the feed (no per-block merge or reordering yet).
+
+`DefaultField` catches everything no strategy claims — plain-value fields (Plain Text, Number, Email, URL, …) and any Craft field type without a dedicated strategy: a direct `setFieldValue()`. It declares no Craft field class, so it isn't a registered strategy; the registry holds it apart as the fallback, and it never shows up in `->fields->all()`.
 
 Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft field class it handles via `craftFieldClass()` (a base class such as `BaseOptionsField` covers a whole family — lookups walk the parent chain), and registering it as any other extension point (see [Registries](#registries)).
 
@@ -133,7 +134,7 @@ A link can declare named sliding-window presets (`offset: { hour: { since: '-1 h
 
 ### Backup
 
-A link can be flagged to take a full database backup (via Craft's own `db/backup`) immediately before it runs — cheap insurance for a first sync or a link with delete permissions enabled.
+A link can be flagged to take a full database backup (through Craft's own database-backup API) immediately before it runs — cheap insurance for a first sync or a link with delete permissions enabled.
 
 ### Auth
 
@@ -150,9 +151,9 @@ Hook into any stage:
 - `SynchronizationService::EVENT_BEFORE_SYNC_LINK` / `EVENT_AFTER_SYNC_LINK`
 - `SynchronizationService::EVENT_BEFORE_ITEM` — set `$event->skip = true` or swap `$event->element` to redirect
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
-- `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `skipped` / `error`
+- `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `error`. Skipped items return before this fires, and the missing-elements sweep's outcomes (`disabled`, `deleted`, …) are log rows only, never event payloads
 - `EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKENS` — mutate `$event->tokens` to add / override / remove tokens substituted into the link's Resource Endpoint URL
-- `EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Append token" picker
+- `EndpointTokensService::EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS` — append entries to `$event->suggestions` so plugin-contributed tokens show up in the edit-screen "Insert token" picker
 - `TargetsService::EVENT_REGISTER_TARGETS` — mutate `$event->targets` (see [Registries](#registries))
 - `FieldsService::EVENT_REGISTER_FIELDS` — mutate `$event->fields`
 - `AuthService::EVENT_REGISTER_AUTH_TYPES` — mutate `$event->authTypes` to add auth strategies alongside the built-in Basic / Bearer / Custom Header / Query String
@@ -176,7 +177,7 @@ Anything in there treats the other plugin as optional: integrations read its tab
 
 ## Roadmap
 
-Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / delete / delete-for-site, gated by endpoint shape), and mapping strategies for relations, options, dates, assets, rich text, and Matrix.
+Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for relations, options, dates, assets, rich text, and Matrix.
 
 Still open:
 
@@ -186,7 +187,7 @@ Still open:
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
-- [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks) and multiple block types in a single mapping row.
+- [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks).
 
 ## Acknowledgements
 

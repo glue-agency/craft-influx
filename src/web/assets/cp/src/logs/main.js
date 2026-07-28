@@ -7,7 +7,7 @@ import { installVocabulary } from '../lib/vocabulary.js';
  * Boot the run-log viewer. The host template renders a single mount point
  * carrying its bootstrap config as JSON:
  *
- *   <div data-influx-log='{"log":{…},"items":[…],"pollUrl":"…",…}'></div>
+ *   <div data-influx-log='{"log":{…},"items":[…],"itemsUrl":"…","vocabulary":{…},…}'></div>
  */
 export function mountLog(el) {
     let config = {};

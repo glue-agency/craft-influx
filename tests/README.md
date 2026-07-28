@@ -9,19 +9,33 @@ composer test           # codecept run unit
 
 ## What's covered
 
-Lives in `tests/unit/`. Tests build a Field strategy or service by hand, pass
-it a small in-memory feed payload + mapping config, and assert on the parsed
-value. They run in ~150ms with no external state.
+Lives in `tests/unit/`, in directories mirroring the `src/` namespaces. Tests
+build a strategy, model or collaborator by hand, pass it a small in-memory feed
+payload + mapping config, and assert on the result. They run in well under a
+second with no external state. Each test class carries a docblock stating the
+behaviour it pins — read those first.
 
-- `fields/LightswitchTest.php` — `options.truthy`, falsey coercion, boolean pass-through
-- `fields/DropdownTest.php` — `options.valueMap`, pass-through, default fallback
-- `fields/DefaultFieldTest.php` — `Hash::get` node resolution, default fallback
-- `fields/CompareTest.php` — `Field::hasChanged` semantics
-- `fields/FieldsServiceTest.php` — registry resolution + parent-chain walk
-- `models/LinkTest.php` — `matchValue`, `matchAttribute`, `siteHandles`, `getConfig`
+- `fields/` — the mapping strategies: truthy coercion, option match-by-label,
+  date formats, the fallback strategy, relation lookup + caching, the
+  group-scoped relation base, Matrix block trees, `hasChanged()` semantics, and
+  strategy resolution (parent-chain walk to the option-field base, fallback to
+  `DefaultField`)
+- `targets/` — the shared `AbstractElementTarget` behaviour, `EntryTarget`'s
+  query scoping and native-field visibility, and mapping pruning
+- `sync/item/` and `sync/run/` — the per-item pipeline (result aggregation,
+  remote-item decoding, the sync decision, the element lookup cache) and per-run
+  orchestration (batch state, the log-item buffer, the missing-elements sweep's
+  plan/act split, the progress denominator, queued site fan-out)
+- `models/`, `schema/` — Link config round-trips, claim scoping, the builder
+  payload, mapping config, and the `MappableField` descriptor + `SchemaBuilder`
+- `services/`, `web/`, `enums/`, `auth/`, `data/`, `helpers/` — the registry
+  base, presenters and their wire shapes, the enum-derived UI vocabulary, auth
+  strategies, feed paging, and the comparison normaliser
+- `integrations/feedme/` — the Feed Me feed → Influx link conversion
 
-Strategies that talk to `Element::find()` (Relation, Assets) aren't covered
-here — testing them at unit level would mean mocking half of Craft.
+Anything needing a booted Craft (a real `Element::find()`, a `saveElement()`) is
+either stubbed at a seam or left out — testing it at unit level would mean
+mocking half of Craft.
 
 ## Why there's no feature suite
 

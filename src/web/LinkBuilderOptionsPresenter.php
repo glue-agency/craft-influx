@@ -188,7 +188,7 @@ class LinkBuilderOptionsPresenter
      * is read off the item's `@` prefix rather than the group label, since that
      * label is translated.
      *
-     * @return list<array{kind: string, label: string, data: list<array{name: string, hint?: string, type: string}>}>
+     * @return list<array{kind: string, label: string, data: list<array{name: string, hint: string, type: string}>}>
      */
     public function envAndAliasSuggestions(): array
     {

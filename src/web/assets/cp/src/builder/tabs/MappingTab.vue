@@ -52,8 +52,8 @@ import { mergeNodeOptions } from '../lib/mappings.js';
  * each group into a MappingGroup component, and renders the Match-key
  * dropdown beneath the list.
  *
- * The source-node candidates come from the latest Fetch sample (run on
- * the Pagination tab). Without a sample, the dropdowns are empty except
+ * The source-node candidates come from the latest Fetch sample (the header
+ * action). Without a sample, the dropdowns are empty except
  * for any previously-saved value the user could clear back to.
  */
 export default {

@@ -7,7 +7,7 @@ import { installVocabulary } from '../lib/vocabulary.js';
  * Boot the debug inspector. The host template renders a single mount point
  * carrying its bootstrap config as JSON:
  *
- *   <div data-influx-debug='{"inspectUrl":"…","siteHandles":[…],…}'></div>
+ *   <div data-influx-debug='{"inspectUrl":"…","sites":[{"handle":…,"name":…}],"vocabulary":{…},…}'></div>
  */
 export function mountDebug(el) {
     let config = {};

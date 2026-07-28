@@ -150,7 +150,7 @@ class ItemRowPresenter
     }
 
     /**
-     * @return list<array>
+     * @return array{id: ?int, title: string, cpEditUrl: ?string, siteId: ?int, chipHtml: string}
      */
     public function presentElement(ElementInterface $element): array
     {

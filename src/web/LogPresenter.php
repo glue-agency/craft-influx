@@ -68,10 +68,10 @@ class LogPresenter
 
     /**
      * Present a whole page of log-item rows with their elements pre-loaded in a
-     * single query — the per-item {@see getElementById()} the naive path runs
-     * is an N+1 across a 25-row page. `$elementType` is the owning link's
-     * element class (null when the link has since been deleted, which falls
-     * back to deduplicated per-id loads).
+     * single query — the per-item {@see \craft\services\Elements::getElementById()}
+     * the naive path runs is an N+1 across a 25-row page. `$elementType` is the
+     * owning link's element class (null when the link has since been deleted,
+     * which falls back to deduplicated per-id loads).
      *
      * @param LogItemRecord[] $items
      * @return list<array>

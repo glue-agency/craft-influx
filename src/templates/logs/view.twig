@@ -16,6 +16,7 @@
 
 {% block content %}
     {# Mount point for the Vue run-log viewer (LogApp). Bootstrap config
-       (summary, counters, items, poll URL) rides along as JSON. #}
+       (the run summary with its counters, the first page of items, the poll
+       endpoint and the action vocabulary) rides along as JSON. #}
     <div data-influx-log="{{ config|json_encode }}"></div>
 {% endblock %}

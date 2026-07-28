@@ -196,6 +196,11 @@ class InspectorService extends Component
      * The defaults describe an item nothing has resolved yet: no element, no
      * mapping rows, and the dry-run skip action a run that decides nothing lands
      * on.
+     *
+     * {@see inspectStoredLogItem()} deviates twice: it stamps the log-item id on
+     * as `index`, and an item saved before drill-down existed has no payload to
+     * inspect, so it answers with a five-key subset (index / action / message /
+     * mappings / raw) that the Vue side guards for.
      */
     public static function itemRow(array $values = []): array
     {

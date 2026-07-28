@@ -383,7 +383,7 @@ import ActionBadge from './ActionBadge.vue';
  * The right pane of the split debug inspector: the drill-down for one selected
  * item. Header (element chip or match-value title + action tag + Parsed /
  * Raw JSON switch) over either the field-comparison table or the raw payload.
- * Renders the same `row` shape DebugService::debugItem() produces, so it's
+ * Renders the same `row` shape InspectorService::itemRow() produces, so it's
  * shared by both split inspectors — the live debug dry-run (DebugApp) and the
  * run-log drill-down (LogApp).
  *

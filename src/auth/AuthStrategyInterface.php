@@ -22,7 +22,8 @@ use GlueAgency\Influx\schema\SchemaBuilder;
 interface AuthStrategyInterface
 {
     /**
-     * Key under which {@see Link::$auth['type']} stores this strategy.
+     * Key under which {@see \GlueAgency\Influx\models\Link::$auth} stores this
+     * strategy, in its `type` slot.
      */
     public static function type(): string;
 

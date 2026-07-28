@@ -436,8 +436,9 @@ class Link extends Model
     }
 
     /**
-     * Make sure every link has a UID. Called by LinksService::save() before
-     * writing to Project Config.
+     * Make sure every link has a UID. Called by
+     * {@see \GlueAgency\Influx\services\LinksService::saveLink()} before writing
+     * to Project Config.
      */
     public function ensureUid(): void
     {

@@ -10,9 +10,10 @@
  */
 
 /**
- * The single failure type every api.* helper throws. Normalizes the
- * server's `{success: false, message, errors?}` envelope and raw transport
- * failures into one shape:
+ * The single failure type every api.* helper throws. Normalizes the server's
+ * error envelope (`{success: false, message}` plus either `type` for an uncaught
+ * exception or `errors` for a validation failure — see types.js's ErrorEnvelope)
+ * and raw transport failures into one shape:
  *
  *   e.message — human-readable summary (server message when available)
  *   e.errors  — attribute → message[] validation errors (empty when none)

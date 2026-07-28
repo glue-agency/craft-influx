@@ -6,7 +6,8 @@
  *
  * PHP is the authority for these shapes: LinkBuilderSerializer::serialize()
  * (LinkPayload), schema\MappableField::toArray() (MappableField), and
- * DataService::inspect() (SampleReport). Change them there first.
+ * FeedInspector::report() (SampleReport — DataService::inspect() only delegates
+ * to it). Change them there first.
  */
 
 /** @typedef {{value: string, label: string}} SelectOption */
@@ -36,11 +37,11 @@
  * @property {string} handle
  * @property {string} name
  * @property {string} elementType FQCN of the target element type.
- * @property {Object<string, string>} elementCriteria e.g. {section, type, author}.
+ * @property {Object<string, string>} elementCriteria Keyed by the target's criteriaKeys(), e.g. {section, type} for entries; empty for a target that declares none.
  * @property {?string} endpoint
  * @property {?string} itemEndpoint
  * @property {Array<{site: string, endpoint: string}>} siteEndpoints ordered per-site endpoints (run order).
- * @property {Object<string, *>} auth {type, token?, header?, param?} or empty.
+ * @property {Object<string, *>} auth {type} plus the keys that type's schema declares (username, token, header, param), or empty.
  * @property {?string} rootNode
  * @property {?string} paginatorNode
  * @property {?string} totalCountNode response path to the total item count, if the feed reports one.
@@ -65,12 +66,12 @@
  * @property {('text'|'select'|'element')} defaultType
  * @property {Object<string, string>} [options] For defaultType 'select': value → label.
  * @property {string} [elementType] For defaultType 'element': FQCN to pick from.
- * @property {?string} [fieldClass] FQCN of the Craft field class.
+ * @property {string} [fieldClass] FQCN of the Craft field class; absent for natives.
  * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {schema, subfieldsOnly, ...} — an extras block exists when schema is non-empty.
  */
 
 /**
- * DataService::inspect() output — the "Fetch sample" report.
+ * FeedInspector::report() output — the "Fetch sample" report.
  *
  * @typedef {Object} SampleReport
  * @property {string} url
@@ -78,6 +79,7 @@
  * @property {string[]} rootNodeCandidates
  * @property {?string} paginatorNode
  * @property {string[]} paginatorNodeCandidates
+ * @property {string[]} countNodeCandidates Scalar-leaf paths offered as totalCountNode / pageCountNode.
  * @property {?Object} sampleItem
  * @property {Array<{field: string, type: string, node: string}>} mappingSuggestions
  * @property {SelectOption[]} flatNodes
@@ -86,10 +88,43 @@
 /**
  * The bootstrap envelope that hydrates the SPA.
  *
+ * `options` and `meta` are grab-bags rather than fixed records, so they stay
+ * loosely typed here; LinkBuilderOptionsPresenter and LinkBuilderService own
+ * their shapes. The non-obvious members:
+ *
+ *   options.elementTypes[]      {value, label, criteria, multiSite}
+ *   options.sectionEntryTypes   sectionHandle → {typeHandle: typeName} (a map, not a list)
+ *   options.processingActions[] {value, label, note}
+ *   options.authStrategies[]    {type, schema} — schema definitions, not select options
+ *   meta.envSuggestions[]       {kind, label, data: [{name, hint, type}]}
+ *
  * @typedef {Object} BootstrapResponse
  * @property {LinkPayload} link
  * @property {Object} options elementTypes, sections, sectionEntryTypes, sites, processingActions, authTypes, authStrategies.
  * @property {Object} meta isNew, readOnly, handle, uid, csrfTokenName, csrfToken, envSuggestions.
+ */
+
+/**
+ * The failure envelope every JSON route answers with. Two producers, one shape:
+ * AbstractController::runAction() catches an uncaught throwable and reports its
+ * class in `type`, while an action that fails validation reports per-attribute
+ * `errors` instead. Neither ever carries both.
+ *
+ * @typedef {Object} ErrorEnvelope
+ * @property {false} success
+ * @property {string} message
+ * @property {string} [type] Short class name of the thrown exception.
+ * @property {ValidationErrors} [errors] Present on a validation failure.
+ */
+
+/**
+ * The enum-derived UI vocabulary, built by web\Vocabulary and carried on the log
+ * and debug bootstrap configs under `vocabulary`. `lib/vocabulary.js` installs
+ * it; a page that ships none falls back to `lib/vocabulary.generated.json`.
+ *
+ * @typedef {Object} Vocabulary
+ * @property {Object<string, ('live'|'pending'|'expired')>} actionColors Action string — committed and `would-…` alike — → Craft status colour.
+ * @property {Array<{key: string, action: ?string, label: string, tone: ?string}>} counters Log-viewer counters in display order, leading with `itemsSeen` (action null = clears the filter).
  */
 
 export {};

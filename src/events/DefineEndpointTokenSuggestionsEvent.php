@@ -8,7 +8,7 @@ use yii\base\Event;
 /**
  * Fired when the link edit screen builds the Resource Endpoint token picker.
  * Listeners append entries to `$suggestions` so their tokens show up in the
- * "Append token" menu (see the property's shape; the optional `kind` slug
+ * "Insert token" menu (see the property's shape; the optional `kind` slug
  * drives styling and falls back to `custom`).
  *
  *   Event::on(

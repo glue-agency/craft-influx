@@ -99,7 +99,8 @@ import { store } from './store.js';
  *      to the link index).
  *
  * The teleport target is a `<div data-influx-actions-slot>` rendered into
- * cpScreen.additionalButtonsHtml() by LinksController::actionEdit. We
+ * cpScreen.additionalButtonsHtml() by LinksController::builderScreen(), the
+ * helper both the edit and duplicate actions render through. We
  * wait for the document mounted hook before teleporting so the slot is
  * guaranteed present in the DOM.
  */

@@ -30,7 +30,7 @@ import { errorText, notifyError, notifyNotice, t } from './lib/notify.js';
 const initial = () => ({
     link: null,            // serialized link, mutable via tab components
     options: null,         // small bundle of always-needed options
-    meta: null,            // isNew, readOnly, handle, csrf info
+    meta: null,            // isNew, readOnly, handle, uid, csrf info, envSuggestions
     mappable: null,        // {fields, groups, matchOptions}; lazy-loaded
     mappableError: null,
     tokenSuggestions: null,// list of {kind, label, data[]}; lazy-loaded

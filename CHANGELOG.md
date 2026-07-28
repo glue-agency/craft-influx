@@ -1,5 +1,37 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Added
+- **Field indicator:** a small Influx glyph now marks every field an active mapping writes, on the edit screen of any targeted element. Its tooltip explains the value is set by synchronisation, so an editor sees at a glance which values are Influx-managed and may be overwritten on the next sync.
+- Extension points can be registered imperatively as well as by event: `Influx::getInstance()->targets->register(MyTarget::class)`, likewise `->fields->register()` and `->auth->register()`. Registering a class that doesn't satisfy the extension point now fails loudly instead of being dropped.
+- `SchemaBuilder::node()`, an escape hatch for a mapping-extras control the builder doesn't ship a node type for. The CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
+- The endpoint-token allow-list is overridable, so a plugin can substitute tokens for field types Influx doesn't allow by default.
+- Enum owners for the run-status, item-action and missing-element-processing vocabularies (`RunStatus`, `ItemAction`, `ProcessingAction`, `RunFailure`), plus a `schema` namespace holding `SchemaBuilder` and a typed `MappableField` descriptor.
+- The CP's action colours and log counters are derived from those enums and shipped to the Vue apps in each app's bootstrap config, instead of being hand-maintained in the JavaScript.
+
+### Changed
+- **Breaking:** the endpoint-token events follow Craft's `EVENT_DEFINE_*` convention. `EndpointTokensService::EVENT_REGISTER_ENDPOINT_TOKENS` → `EVENT_DEFINE_ENDPOINT_TOKENS` and `EVENT_REGISTER_ENDPOINT_TOKEN_SUGGESTIONS` → `EVENT_DEFINE_ENDPOINT_TOKEN_SUGGESTIONS`; the payload classes `RegisterEndpointTokensEvent` and `RegisterEndpointTokenSuggestionsEvent` are now `DefineEndpointTokensEvent` and `DefineEndpointTokenSuggestionsEvent`.
+- **Breaking:** the targets, fields and auth registries share one API. `FieldsService::registerClass()` is now `register()`, and `AuthService::strategies()` is now `all()`.
+- **Breaking:** `SchemaBuilder` moved from `GlueAgency\Influx\helpers` to `GlueAgency\Influx\schema`.
+- **Breaking:** `ElementTargetInterface::getMappableFields()` returns a list of `schema\MappableField` objects instead of plain arrays.
+- **Breaking:** `DebugService::streamSite()` is now `inspectSite()`; inspecting a stored log item moved to `InspectorService::inspectStoredLogItem()`.
+- **Breaking:** the sync engine's collaborators moved into `sync\item` (the per-item pipeline) and `sync\run` (per-run orchestration). `SynchronizationService`'s own public methods and all five sync events — constants, sender, firing order and cancel semantics — are unchanged.
+- Every JSON route answers a failure with the same envelope: `{success: false, message}`, plus `type` (the exception's short class name) for an uncaught error or `errors` for a validation failure.
+- Queuing a sync for a link that doesn't take a pre-run backup no longer enqueues an extra job to take one.
+
+### Removed
+- **Breaking:** `Link::PROCESSING_*`, `Link::ALL_PROCESSING` and `Link::PROCESSING_SITE_COUNTERPARTS`. The `ProcessingAction` enum owns the processing flags, and their defaults, per-site counterparts, labels and pill colours all derive from it.
+- The `pending` run status, which was never written. A run is `running`, `ok` or `error`.
+
+### Fixed
+- **Data loss:** queuing a sync for a single-site link enqueued an unscoped job, which fetched the wrong feed and could sweep missing elements across every site instead of the link's own. Site expansion now happens up front.
+- A Matrix field with a lightswitch sub-field counted as changed on every run — the stored `1` / `0` was compared against the feed's `true` / `false` — so the element was re-saved each sync.
+- A queued run's progress denominator shifted mid-run: the queued page loop sized its estimate from the current page while the synchronous one used the first page, so a short final page changed the reported total. Both use the first page's size now.
+- "Disabled for site" rows in the run log and debug inspector render red, like their deleted counterpart.
+- Link-builder strings missing from the server-side catalogue now translate, and stale entries are gone. The catalogue is pinned to the Vue sources by a test, so it can't drift again.
+- The nav and plugin-store icons render in full again. The previous mark was stroke-based and Craft's icon-mask rendering zeroed its strokes, collapsing it to an underscore.
+
 ## 1.0.0-alpha.4 - 2026-07-16
 
 ### Fixed

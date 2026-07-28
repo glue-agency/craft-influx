@@ -12,7 +12,9 @@ namespace GlueAgency\Influx\web;
  *
  * ONLY the builder SPA's own strings live here. Server-built option labels (see
  * {@see LinkBuilderOptionsPresenter}) already run through `Craft::t()` and reach
- * the wire translated.
+ * the wire translated. The log viewer and debug inspector install the same `$t`
+ * helper but have no catalogue of their own registered, so their strings render
+ * as their English source — untranslated, not broken.
  *
  * Pinned EXACTLY — in both directions — against the `$t(…)` / `t(…)` calls in
  * `src/web/assets/cp/src/builder/**` by
