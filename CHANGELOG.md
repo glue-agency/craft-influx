@@ -1,6 +1,6 @@
 # Release Notes for Influx
 
-## Unreleased
+## 1.0.0-alpha.5 - 2026-07-29
 
 ### Added
 - **Field indicator:** a small Influx glyph now marks every field an active mapping writes, on the edit screen of any targeted element. Its tooltip explains the value is set by synchronisation, so an editor sees at a glance which values are Influx-managed and may be overwritten on the next sync.
