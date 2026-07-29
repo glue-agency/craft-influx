@@ -500,8 +500,16 @@ export default {
             });
         },
 
+        // The active counter's own label, so the filter hints read the same noun
+        // the counter does — and the label arrives translated from the server
+        // rather than being re-translated client-side from the action value,
+        // which no catalogue can list because the value isn't a literal here.
         activeLabel() {
-            return this.activeAction ? this.$t(this.activeAction) : '';
+            if (! this.activeAction) {
+                return '';
+            }
+
+            return counterDefs().find((d) => d.action === this.activeAction)?.label || '';
         },
 
         selectedRow() {

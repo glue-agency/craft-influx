@@ -81,7 +81,7 @@ async function request(url, init) {
 
     if (!res.ok || body?.success === false) {
         throw new ApiError(
-            body?.message || body?.error || `Request failed (${res.status})`,
+            body?.message || `Request failed (${res.status})`,
             { status: res.status, errors: body?.errors || {}, body },
         );
     }

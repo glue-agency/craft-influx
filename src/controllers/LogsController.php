@@ -11,6 +11,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\services\LogsService;
 use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
+use GlueAgency\Influx\web\LogViewerTranslations;
 use GlueAgency\Influx\web\Vocabulary;
 use yii\web\Response;
 
@@ -96,6 +97,8 @@ class LogsController extends AbstractController
         );
 
         ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $links->endpointDisplay($link, $elementId, $log->siteHandle);
+
+        $this->registerAppTranslations(LogViewerTranslations::strings());
 
         return $this->renderTemplate('influx/logs/view', [
             'config' => [

@@ -9,6 +9,7 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\web\assets\cp\InfluxAsset;
+use GlueAgency\Influx\web\SharedComponentTranslations;
 use ReflectionClass;
 use Throwable;
 use yii\base\Action;
@@ -110,6 +111,26 @@ abstract class AbstractController extends Controller
         }
 
         Craft::$app->getView()->registerAssetBundle(InfluxAsset::class);
+    }
+
+    /**
+     * Register one Vue app's UI strings for the screen about to render, together
+     * with the shared component tree's — every app mounts something out of
+     * `assets/cp/src/components`, so those strings belong on every screen that
+     * mounts an app. Overlap between the two catalogues is harmless:
+     * `registerTranslations()` keys each message once.
+     *
+     * Without this the app's `$t()` calls silently fall back to their English
+     * source strings, so a screen that mounts an app must call it.
+     *
+     * @param string[] $strings
+     */
+    protected function registerAppTranslations(array $strings): void
+    {
+        Craft::$app->getView()->registerTranslations(
+            'influx',
+            array_merge($strings, SharedComponentTranslations::strings()),
+        );
     }
 
     /**

@@ -10,6 +10,7 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\services\DebugService;
+use GlueAgency\Influx\web\DebugInspectorTranslations;
 use GlueAgency\Influx\web\LinkBuilderTranslations;
 use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
@@ -83,6 +84,8 @@ class LinksController extends AbstractController
 
         $options = (new LinkPresenter())->debugOptions($link, $allLinks);
         $siteHandles = array_column($options['sites'], 'handle');
+
+        $this->registerAppTranslations(DebugInspectorTranslations::strings());
 
         return $this->renderTemplate('influx/links/debug', [
             'link'           => $link,
@@ -194,8 +197,7 @@ class LinksController extends AbstractController
      */
     protected function builderScreen(string $title, Link $link, ?int $duplicateOf = null): Response
     {
-        $view = Craft::$app->getView();
-        $view->registerTranslations('influx', LinkBuilderTranslations::strings());
+        $this->registerAppTranslations(LinkBuilderTranslations::strings());
 
         $response = $this->asCpScreen()
             ->title($title)

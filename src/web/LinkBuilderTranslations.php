@@ -10,11 +10,13 @@ namespace GlueAgency\Influx\web;
  * translations file. Without a file, `Craft.t` falls back to the source string
  * — the wrap is forward-compatible.
  *
- * ONLY the builder SPA's own strings live here. Server-built option labels (see
- * {@see LinkBuilderOptionsPresenter}) already run through `Craft::t()` and reach
- * the wire translated. The log viewer and debug inspector install the same `$t`
- * helper but have no catalogue of their own registered, so their strings render
- * as their English source — untranslated, not broken.
+ * ONLY the builder SPA's own strings (`src/web/assets/cp/src/builder/**`) live
+ * here. The shared components it mounts carry theirs in
+ * {@see SharedComponentTranslations}, which every app screen registers alongside
+ * its own catalogue; the log viewer and debug inspector have
+ * {@see LogViewerTranslations} and {@see DebugInspectorTranslations}.
+ * Server-built option labels (see {@see LinkBuilderOptionsPresenter}) already
+ * run through `Craft::t()` and reach the wire translated.
  *
  * Pinned EXACTLY — in both directions — against the `$t(…)` / `t(…)` calls in
  * `src/web/assets/cp/src/builder/**` by

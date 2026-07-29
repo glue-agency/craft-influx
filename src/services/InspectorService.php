@@ -101,7 +101,6 @@ class InspectorService extends Component
         if ($raw === null) {
             return [
                 'row' => [
-                    'index'    => (int) $item->id,
                     'action'   => (string) $item->action,
                     'message'  => (string) ($item->message ?: Craft::t('influx', 'No stored payload for this item — drill-down was added after this run.')),
                     'mappings' => [],
@@ -117,7 +116,6 @@ class InspectorService extends Component
             $item->elementId !== null ? (int) $item->elementId : null,
             withParsedHtml: true,
         );
-        $row['index'] = (int) $item->id;
         $row['action'] = (string) $item->action;
 
         if ($item->message) {
@@ -197,10 +195,10 @@ class InspectorService extends Component
      * mapping rows, and the dry-run skip action a run that decides nothing lands
      * on.
      *
-     * {@see inspectStoredLogItem()} deviates twice: it stamps the log-item id on
-     * as `index`, and an item saved before drill-down existed has no payload to
-     * inspect, so it answers with a five-key subset (index / action / message /
-     * mappings / raw) that the Vue side guards for.
+     * {@see inspectStoredLogItem()} deviates once: an item saved before
+     * drill-down existed has no payload to inspect, so it answers with a
+     * four-key subset (action / message / mappings / raw) that the Vue side
+     * guards for.
      */
     public static function itemRow(array $values = []): array
     {

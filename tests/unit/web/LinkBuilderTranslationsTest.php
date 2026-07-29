@@ -3,9 +3,8 @@
 namespace GlueAgency\Influx\Tests\unit\web;
 
 use Codeception\Test\Unit;
+use GlueAgency\Influx\Tests\unit\Support\TranslationScanner;
 use GlueAgency\Influx\web\LinkBuilderTranslations;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 
 /**
  * Anti-drift lock between the PHP translation catalogue and the LinkBuilder
@@ -14,42 +13,33 @@ use RecursiveIteratorIterator;
  * but the catalogue omits is silently untranslatable, and a catalogue entry no
  * component uses is dead weight a translator still has to service.
  *
- * The scan reads every `.vue` / `.js` file under `src/web/assets/cp/src/builder`
- * (specs excluded) and collects the literal first argument of every translation
- * call — `$t('…')` in components, and the bare `t('…')` the store imports from
- * `lib/installT.js`. The builder has no dynamic (variable / template-literal)
- * translation calls, which is asserted here too, so the two sides can be pinned
- * as exact sets rather than "the catalogue must at least contain".
+ * {@see TranslationScanner} reads every `.vue` / `.js` file under
+ * `src/web/assets/cp/src/builder` (specs excluded) and collects the literal
+ * first argument of every translation call — `$t('…')` in components, and the
+ * bare `t('…')` the store imports from `lib/installT.js`. The builder has no
+ * dynamic (variable / template-literal) translation calls, which is asserted
+ * here too, so the two sides can be pinned as exact sets rather than "the
+ * catalogue must at least contain".
+ *
+ * The shared components the builder mounts are a tree of their own with a
+ * catalogue of their own — see
+ * {@see \GlueAgency\Influx\Tests\unit\web\CpAppTranslationsTest}, which locks
+ * that tree and the log viewer's and debug inspector's the same way.
  */
 class LinkBuilderTranslationsTest extends Unit
 {
-    /**
-     * `$t(` with any prefix (`this.$t(`), or a bare `t(` whose preceding
-     * character is neither a word character nor `$`/`.` — that lookbehind is
-     * what keeps it off `format(`, `.split(`, `assert(`.
-     */
-    protected const T_CALL = '/(?:\$t|(?<![\w$.])t)\(\s*([\'"])((?:\\\\.|(?!\1)[^\\\\])*)\1/';
-
-    /**
-     * A translation call whose argument isn't a plain quoted literal — the scan
-     * can't read those, so their existence would make the exact-set assertions
-     * unsound.
-     */
-    protected const DYNAMIC_T_CALL = '/(?:\$t|(?<![\w$.])t)\(\s*[^\'"\s)]/';
-
     public function testTheScanFindsTheSpaStrings(): void
     {
         // Guards the assertions below from passing vacuously on a broken regex
         // or a moved source tree.
-        $this->assertGreaterThan(100, count($this->scanBuilderStrings()));
+        $this->assertGreaterThan(100, count(TranslationScanner::strings('builder')));
     }
 
     public function testNoBuilderComponentTranslatesADynamicValue(): void
     {
-        foreach ($this->builderSources() as $path => $source) {
-            $this->assertSame(
-                0,
-                preg_match(self::DYNAMIC_T_CALL, $source),
+        foreach (TranslationScanner::sources('builder') as $path => $source) {
+            $this->assertFalse(
+                TranslationScanner::hasDynamicCall($source),
                 "{$path} translates a non-literal value; the catalogue can't be scanned for it.",
             );
         }
@@ -59,7 +49,7 @@ class LinkBuilderTranslationsTest extends Unit
     {
         $catalogue = LinkBuilderTranslations::strings();
 
-        foreach ($this->scanBuilderStrings() as $string => $files) {
+        foreach (TranslationScanner::strings('builder') as $string => $files) {
             $this->assertContains(
                 $string,
                 $catalogue,
@@ -70,7 +60,7 @@ class LinkBuilderTranslationsTest extends Unit
 
     public function testTheCatalogueCarriesNothingTheSpaDoesntUse(): void
     {
-        $used = array_keys($this->scanBuilderStrings());
+        $used = array_keys(TranslationScanner::strings('builder'));
 
         foreach (LinkBuilderTranslations::strings() as $string) {
             $this->assertContains(
@@ -86,63 +76,5 @@ class LinkBuilderTranslationsTest extends Unit
         $catalogue = LinkBuilderTranslations::strings();
 
         $this->assertSame(array_values(array_unique($catalogue)), $catalogue);
-    }
-
-    /**
-     * Every translated literal in the builder sources => the files it appears
-     * in, for a failure message that points at the component to fix.
-     *
-     * @return array<string, list<string>>
-     */
-    protected function scanBuilderStrings(): array
-    {
-        $found = [];
-
-        foreach ($this->builderSources() as $path => $source) {
-            if (! preg_match_all(self::T_CALL, $source, $matches, PREG_SET_ORDER)) {
-                continue;
-            }
-
-            foreach ($matches as $match) {
-                $string = stripcslashes($match[2]);
-
-                if (! in_array($path, $found[$string] ?? [], true)) {
-                    $found[$string][] = $path;
-                }
-            }
-        }
-
-        return $found;
-    }
-
-    /**
-     * The builder's own sources, keyed by their path relative to the builder
-     * root. Specs are excluded: their fixtures aren't shipped UI.
-     *
-     * @return array<string, string>
-     */
-    protected function builderSources(): array
-    {
-        $root = dirname(__DIR__, 3) . '/src/web/assets/cp/src/builder';
-        $this->assertDirectoryExists($root);
-
-        $sources = [];
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
-
-        foreach ($files as $file) {
-            if (! $file->isFile() || ! preg_match('/\.(vue|js)$/', $file->getFilename())) {
-                continue;
-            }
-
-            if (str_contains($file->getPathname(), '__tests__')) {
-                continue;
-            }
-
-            $sources[substr($file->getPathname(), strlen($root) + 1)] = (string) file_get_contents($file->getPathname());
-        }
-
-        ksort($sources);
-
-        return $sources;
     }
 }

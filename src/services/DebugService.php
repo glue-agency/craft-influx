@@ -110,13 +110,11 @@ class DebugService extends Component
             return;
         }
 
-        $index = 0;
-
         foreach (array_slice($firstPage->items, 0, $limit) as $item) {
-            $row = $plugin->inspector->inspectWithTarget($link, $target, $item->raw(), $siteHandle);
-            $row['index'] = $index++;
-
-            yield ['type' => 'item', 'data' => $row];
+            yield [
+                'type' => 'item',
+                'data' => $plugin->inspector->inspectWithTarget($link, $target, $item->raw(), $siteHandle),
+            ];
         }
     }
 }

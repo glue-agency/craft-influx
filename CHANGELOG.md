@@ -31,6 +31,7 @@
 - A queued run's progress denominator shifted mid-run: the queued page loop sized its estimate from the current page while the synchronous one used the first page, so a short final page changed the reported total. Both use the first page's size now.
 - "Disabled for site" rows in the run log and debug inspector render red, like their deleted counterpart.
 - Link-builder strings missing from the server-side catalogue now translate, and stale entries are gone. The catalogue is pinned to the Vue sources by a test, so it can't drift again.
+- The run-log viewer and debug inspector were untranslatable: they install the same translation helper as the link builder, but no catalogue of their strings was ever registered, so every label they render themselves stayed English on a translated control panel. Both apps — and the components they share — now ship a catalogue of their own, registered by the screen that mounts them and pinned to the Vue sources by the same kind of test. The log viewer's status filter also names the active counter with the label the server already translated, instead of the raw action value.
 - The nav and plugin-store icons render in full again. The previous mark was stroke-based and Craft's icon-mask rendering zeroed its strokes, collapsing it to an underscore.
 
 ## 1.0.0-alpha.4 - 2026-07-16

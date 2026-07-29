@@ -64,6 +64,25 @@ describe('LogApp', () => {
         expect(counters[1].find('.influx-counter-value').classes()).toContain('is-good');
     });
 
+    it('names the active filter with the counter label the server shipped', async () => {
+        installVocabulary({
+            counters: [
+                { key: 'itemsSeen', action: null, label: 'gezien', tone: null },
+                { key: 'itemsCreated', action: 'created', label: 'aangemaakt', tone: 'good' },
+            ],
+        });
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({ data: { items: [], total: 0, counters: {}, done: false } }));
+
+        const w = mountApp();
+        await w.findAll('.influx-counter')[1].trigger('click');
+        await flushPromises();
+
+        // The translated label, not the raw 'created' action value the filter
+        // travels as.
+        expect(w.find('.influx-split-list-hint').text()).toBe('showing aangemaakt');
+        expect(w.find('.influx-split-empty').text()).toBe('No aangemaakt items');
+    });
+
     it('filters the list by action when a counter is clicked', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
             data: { items: [{ id: 1, action: 'created', matchValue: 'A', message: '', title: 'Item A', errorCount: 0 }], total: 1, counters: {}, done: false },
