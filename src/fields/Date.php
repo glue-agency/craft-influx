@@ -11,15 +11,19 @@ use DateTimeInterface;
 use DateTimeZone;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use yii\base\Event;
 
 /**
- * Date/time mapping strategy. Change detection needs no override of its own: the
- * shared normaliser ({@see \GlueAgency\Influx\helpers\Comparable::of()}) already
- * reduces a date to its timestamp, so two values for the same instant compare
- * equal and anything non-date compares as changed.
+ * Date/time mapping strategy.
+ *
+ * Change detection reduces a date to its instant — but only the shared
+ * normaliser's DateTime case does that, and a STORED date doesn't always reach a
+ * comparison as a DateTime: Craft serializes it to a string first. Widening that
+ * normalisation to bring a serialized date back to a DateTime is this strategy's
+ * one comparison concern ({@see normalize()}).
  */
 class Date extends Field
 {
@@ -147,5 +151,30 @@ class Date extends Field
         }
 
         return $parsed;
+    }
+
+    /**
+     * Bring a serialized date back to a DateTime before the shared normaliser
+     * sees it, so the same instant compares equal whichever shape it arrives in.
+     * Needed because {@see Matrix} fingerprints its stored blocks through
+     * `getSerializedFieldValues()`, where Craft has already rendered the date as
+     * a string ({@see Compat::serializedDateFormat()}) while the incoming side is
+     * still a DateTime — string vs. timestamp never matches, so a date leaf read
+     * as changed on every sync. The top-level path is unaffected: there the
+     * stored value is the field's normalized DateTime, which {@see tryParse()}
+     * hands straight back.
+     *
+     * Pre-Craft-4.15 dates with "Show time zone" on serialize as `{date, tz}`
+     * instead: `date` is already UTC and `tz` is display-only, so `date` alone
+     * carries the instant. A value no date parse accepts keeps the base normal
+     * form rather than collapsing to null, so non-dates stay distinguishable.
+     */
+    protected function normalize(mixed $value): mixed
+    {
+        if (is_array($value) && ! empty($value['date'])) {
+            $value = $value['date'];
+        }
+
+        return parent::normalize(self::tryParse($value, Compat::serializedDateFormat()) ?? $value);
     }
 }

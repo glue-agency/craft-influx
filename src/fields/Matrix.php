@@ -307,6 +307,12 @@ class Matrix extends Field
      * that can't be walked) falls back to the base normalise-and-compare, and
      * a throwing current read lands on {@see Field::hasChanged()}'s
      * "assume changed" guard.
+     *
+     * Leaf values are normalised by the CHILD strategy that owns them
+     * ({@see childLeaves()}), not by this one: the two sides of a leaf arrive in
+     * different shapes — parsed on the incoming side, Craft-serialized on the
+     * stored side — and only the owning strategy knows how to reconcile them
+     * ({@see Date::normalize()}).
      */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
@@ -314,11 +320,15 @@ class Matrix extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        $customByType = [];
+        $leavesByType = [];
         $nativeByType = [];
 
         foreach ($context->mapping->blockMappings() as $typeHandle => $typeMapping) {
-            $customByType[$typeHandle] = array_keys($this->activeCustomHandles($typeMapping));
+            $leavesByType[$typeHandle] = $this->childLeaves(
+                $context,
+                $typeHandle,
+                array_keys($this->activeCustomHandles($typeMapping)),
+            );
             $nativeByType[$typeHandle] = array_keys($this->activeNativeHandles($typeMapping));
         }
 
@@ -330,7 +340,7 @@ class Matrix extends Field
             $type = (string) ($row['type'] ?? '');
             $incomingPrint[] = $this->incomingFingerprint(
                 $row,
-                $customByType[$type] ?? [],
+                $leavesByType[$type] ?? [],
                 $nativeByType[$type] ?? [],
             );
         }
@@ -342,7 +352,7 @@ class Matrix extends Field
 
             $currentPrint[] = $this->currentFingerprint(
                 $block,
-                $customByType[$type] ?? [],
+                $leavesByType[$type] ?? [],
                 $nativeByType[$type] ?? [],
             );
         }
@@ -352,15 +362,16 @@ class Matrix extends Field
 
     /**
      * Fingerprint one parsed incoming block row: type, native values, then the
-     * ksort'd mapped custom values — every leaf normalised so it lines up with
-     * the current-block fingerprint.
+     * ksort'd mapped custom values — every leaf normalised through its own child
+     * strategy so it lines up with the current-block fingerprint.
      *
      * @param array<string, mixed> $row
-     * @param list<string> $customHandles
+     * @param array<string, ?Field> $customLeaves mapped custom handle → the
+     * strategy that normalises that leaf, in mapped order
      * @param list<string> $nativeHandles
      * @return array<string, mixed>
      */
-    protected function incomingFingerprint(array $row, array $customHandles, array $nativeHandles): array
+    protected function incomingFingerprint(array $row, array $customLeaves, array $nativeHandles): array
     {
         $print = ['type' => $row['type'] ?? null];
 
@@ -371,9 +382,9 @@ class Matrix extends Field
         $fields = is_array($row['fields'] ?? null) ? $row['fields'] : [];
         $print['fields'] = [];
 
-        foreach ($customHandles as $handle) {
+        foreach ($customLeaves as $handle => $leaf) {
             if (array_key_exists($handle, $fields)) {
-                $print['fields'][$handle] = $this->normalize($fields[$handle]);
+                $print['fields'][$handle] = $this->leafNormalize($leaf, $fields[$handle]);
             }
         }
 
@@ -390,11 +401,11 @@ class Matrix extends Field
      * getSerializedFieldValues() is declared on the interface — they live on the
      * concrete block element classes.
      *
-     * @param list<string> $customHandles
+     * @param array<string, ?Field> $customLeaves
      * @param list<string> $nativeHandles
      * @return array<string, mixed>
      */
-    protected function currentFingerprint(object $block, array $customHandles, array $nativeHandles): array
+    protected function currentFingerprint(object $block, array $customLeaves, array $nativeHandles): array
     {
         $print = ['type' => $block->getType()->handle];
 
@@ -402,18 +413,60 @@ class Matrix extends Field
             $print['native'][$handle] = $this->normalize($block->{$handle} ?? null);
         }
 
-        $serialized = $block->getSerializedFieldValues($customHandles);
+        $serialized = $block->getSerializedFieldValues(array_keys($customLeaves));
         $print['fields'] = [];
 
-        foreach ($customHandles as $handle) {
+        foreach ($customLeaves as $handle => $leaf) {
             if (array_key_exists($handle, $serialized)) {
-                $print['fields'][$handle] = $this->normalize($serialized[$handle]);
+                $print['fields'][$handle] = $this->leafNormalize($leaf, $serialized[$handle]);
             }
         }
 
         ksort($print['fields']);
 
         return $print;
+    }
+
+    /**
+     * The child strategy behind each mapped custom handle of one block type,
+     * keyed by handle in mapped order — one normaliser per fingerprint leaf.
+     * Resolved off a throwaway block of the type, exactly as {@see parse()}
+     * resolves the child fields it coerces values through.
+     *
+     * A handle the type's layout doesn't expose — or a type that no longer
+     * resolves at all — maps to null. Unlike {@see parse()}, change detection
+     * never throws over that: {@see leafNormalize()} falls back and the
+     * comparison still runs.
+     *
+     * @param list<string> $customHandles
+     * @return array<string, ?Field>
+     */
+    protected function childLeaves(FieldContext $context, string $typeHandle, array $customHandles): array
+    {
+        $layout = $this->blockElement($context, $typeHandle)?->getFieldLayout();
+
+        $leaves = [];
+
+        foreach ($customHandles as $handle) {
+            $childCraftField = $layout?->getFieldByHandle($handle);
+            $leaves[$handle] = $childCraftField !== null ? $this->childStrategy($childCraftField) : null;
+        }
+
+        return $leaves;
+    }
+
+    /**
+     * Normalise one fingerprint leaf through the strategy that owns its field
+     * type, so the stored and the incoming side of the same value reduce to the
+     * same form. A date leaf is the case that needs it: Craft hands the stored
+     * side back serialized as a string while the incoming side is a DateTime, and
+     * only {@see Date::normalize()} knows how to close that gap. Reaching a
+     * sibling strategy's protected normalize() is legal — it's declared on the
+     * shared {@see Field} base, which puts this class in its scope.
+     */
+    protected function leafNormalize(?Field $leaf, mixed $value): mixed
+    {
+        return $leaf !== null ? $leaf->normalize($value) : $this->normalize($value);
     }
 
     /**

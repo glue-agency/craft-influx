@@ -412,6 +412,77 @@ class MatrixFieldTest extends Unit
         $this->assertTrue($strategy->exposedValueDiffers($context, $shifted, $incoming));
     }
 
+    public function testStoredSerializedDateLeafFingerprintsByInstant(): void
+    {
+        // The regression: currentFingerprint() reads the stored side through
+        // getSerializedFieldValues(), where Craft has already rendered the
+        // DateTime as a string, while the incoming side is still a DateTime. Both
+        // fingerprint sides route their leaves through the CHILD strategy, so the
+        // real Date strategy stands in for the child here — its normalisation is
+        // the thing under test. Without it a date leaf reads as changed on every
+        // single sync and the element is saved for nothing.
+        $strategy = $this->strategy(['season' => ['published']], realChild: new Date());
+        $context = $this->context(new RemoteItem(['seasons' => [['at' => '2024-03-02 10:00:00']]]), [
+            'season' => [
+                'fields' => [
+                    'published' => [
+                        'node'    => 'seasons.at',
+                        'options' => ['format' => 'Y-m-d H:i:s'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $incoming = $strategy->parse($context);
+        $this->assertInstanceOf(DateTime::class, $incoming['new1']['fields']['published']);
+
+        $sameInstant = $this->fakeQuery([$this->fakeBlock('season', [
+            'published' => '2024-03-02T10:00:00+00:00',
+        ])]);
+        $this->assertFalse(
+            $strategy->exposedValueDiffers($context, $sameInstant, $incoming),
+            'A stored ISO-8601 string and an incoming DateTime for the same instant are not a change.',
+        );
+
+        // Same instant written with another offset — still not a change.
+        $otherOffset = $this->fakeQuery([$this->fakeBlock('season', [
+            'published' => '2024-03-02T11:00:00+01:00',
+        ])]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $otherOffset, $incoming));
+
+        $oneSecondLater = $this->fakeQuery([$this->fakeBlock('season', [
+            'published' => '2024-03-02T10:00:01+00:00',
+        ])]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $oneSecondLater, $incoming));
+    }
+
+    public function testEmptyOrUnparseableStoredDateLeafIsStillAChange(): void
+    {
+        // Reading an instant out of the stored side must not make emptiness look
+        // like one: a date leaf the stored block doesn't carry — cleared, or
+        // holding something that is no date at all — still differs from a real
+        // incoming instant.
+        $strategy = $this->strategy(['season' => ['published']], realChild: new Date());
+        $context = $this->context(new RemoteItem(['seasons' => [['at' => '2024-03-02 10:00:00']]]), [
+            'season' => [
+                'fields' => [
+                    'published' => [
+                        'node'    => 'seasons.at',
+                        'options' => ['format' => 'Y-m-d H:i:s'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $incoming = $strategy->parse($context);
+
+        $cleared = $this->fakeQuery([$this->fakeBlock('season', ['published' => null])]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $cleared, $incoming));
+
+        $garbage = $this->fakeQuery([$this->fakeBlock('season', ['published' => 'not-a-date'])]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $garbage, $incoming));
+    }
+
     public function testValueDiffersFallsBackToParentForNonQueryCurrent(): void
     {
         $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
@@ -461,27 +532,33 @@ class MatrixFieldTest extends Unit
      * @param array<string, callable> $childValues per-handle coercion, for leaves
      * whose real strategy yields a typed value (a bool, a date) rather than a
      * string — the default marker coercion can't stand in for those.
+     * @param ?Field $realChild a REAL strategy standing in for every child, for
+     * specs whose subject is the child strategy's own behaviour (a date leaf's
+     * comparison normalisation) rather than the zip mechanics.
      */
-    protected function strategy(array $typeLayouts, array $childValues = []): Matrix
+    protected function strategy(array $typeLayouts, array $childValues = [], ?Field $realChild = null): Matrix
     {
         $test = $this;
 
-        return new class($typeLayouts, $childValues, $test) extends Matrix {
+        return new class($typeLayouts, $childValues, $realChild, $test) extends Matrix {
             /** @var array<string, list<string>> */
             public array $typeLayouts = [];
 
             /** @var array<string, callable> */
             public array $childValues = [];
 
+            public ?Field $realChild = null;
+
             public MatrixFieldTest $test;
 
             /** @var array<string, list<FieldContext>> */
             public array $recordedContexts = [];
 
-            public function __construct(array $typeLayouts, array $childValues, MatrixFieldTest $test)
+            public function __construct(array $typeLayouts, array $childValues, ?Field $realChild, MatrixFieldTest $test)
             {
                 $this->typeLayouts = $typeLayouts;
                 $this->childValues = $childValues;
+                $this->realChild = $realChild;
                 $this->test = $test;
             }
 
@@ -502,6 +579,10 @@ class MatrixFieldTest extends Unit
 
             protected function childStrategy(CraftFieldInterface $childCraftField): Field
             {
+                if ($this->realChild !== null) {
+                    return $this->realChild;
+                }
+
                 $strategy = $this;
 
                 return new class($strategy) extends Field {

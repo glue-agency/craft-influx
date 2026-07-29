@@ -27,6 +27,7 @@
 ### Fixed
 - **Data loss:** queuing a sync for a single-site link enqueued an unscoped job, which fetched the wrong feed and could sweep missing elements across every site instead of the link's own. Site expansion now happens up front.
 - A Matrix field with a lightswitch sub-field counted as changed on every run — the stored `1` / `0` was compared against the feed's `true` / `false` — so the element was re-saved each sync.
+- Likewise for a date sub-field: Craft hands a stored date back serialized as a string while the feed's is a `DateTime`, so the two never matched. Both sides of a sub-field comparison now normalise through the strategy that owns that field type, so the same instant compares equal whichever shape it arrives in.
 - A queued run's progress denominator shifted mid-run: the queued page loop sized its estimate from the current page while the synchronous one used the first page, so a short final page changed the reported total. Both use the first page's size now.
 - "Disabled for site" rows in the run log and debug inspector render red, like their deleted counterpart.
 - Link-builder strings missing from the server-side catalogue now translate, and stale entries are gone. The catalogue is pinned to the Vue sources by a test, so it can't drift again.

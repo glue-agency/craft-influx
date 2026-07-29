@@ -170,6 +170,12 @@ abstract class Field
      * date or a related element compares the same either side. Subclasses reach
      * for it when they build their own comparison (e.g. {@see Matrix}'s
      * per-block fingerprint) instead of re-normalising leaves themselves.
+     *
+     * Also the per-field-type override point for a value whose comparable form
+     * needs more than {@see Comparable::of()} can see — a serialized date is one
+     * ({@see Date::normalize()}). Default is the shared normaliser verbatim, and
+     * {@see Matrix} routes each fingerprint leaf through the OWNING strategy's
+     * version so both sides of a leaf reduce the same way.
      */
     protected function normalize(mixed $value): mixed
     {

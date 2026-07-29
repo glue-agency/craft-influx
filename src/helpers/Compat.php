@@ -16,6 +16,7 @@ use craft\models\EntryType;
 use craft\models\FieldLayout;
 use craft\models\Section;
 use craft\services\Sections;
+use DateTime;
 use yii\web\Response;
 
 /**
@@ -149,6 +150,27 @@ class Compat
         }
 
         return null;
+    }
+
+    /**
+     * The `DateTime::createFromFormat()` format a STORED date comes back in from
+     * `Field::serializeValue()` — the shape change detection has to undo before it
+     * can compare a stored date against an incoming one.
+     *
+     * The shape moved WITHIN Craft 4, not between the majors: 4.15 added
+     * `serializeValueForDb()` (@since 4.15.0) and moved DB formatting there, after
+     * which `serializeValue()` renders a DateTime as ISO-8601 carrying its own
+     * offset (`DateTimeHelper::toIso8601()`, i.e. `DateTime::ATOM`) — Craft 5 does
+     * the same. Before 4.15 `craft\fields\Date` overrode `serializeValue()` and
+     * emitted `Db::prepareDateForDb()`, a UTC `Y-m-d H:i:s` string with no offset.
+     * That method's presence on the field API is the marker, so a 4.x point
+     * release that backports it reads right too.
+     */
+    public static function serializedDateFormat(): string
+    {
+        return method_exists(CraftFieldInterface::class, 'serializeValueForDb')
+            ? DateTime::ATOM
+            : 'Y-m-d H:i:s';
     }
 
     /**

@@ -14,7 +14,8 @@
 
 date_default_timezone_set('UTC');
 
-// The Yii class is bootstrapped, not autoloaded. Field strategies extend
+// The Yii class is bootstrapped, not autoloaded. The service classes under
+// test (the registries, SynchronizationService, LogsService, ...) extend
 // craft\base\Component which extends yii\base\Component; constructing one
 // touches Yii::configure(), so the class has to be in scope even for the
 // pure-PHP unit suite.

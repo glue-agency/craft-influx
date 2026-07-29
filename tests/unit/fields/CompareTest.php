@@ -4,8 +4,12 @@ namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
+use DateTime;
+use DateTimeZone;
+use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\DefaultField;
 use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\RemoteItem;
@@ -80,6 +84,60 @@ class CompareTest extends Unit
         $context = $this->context($this->elementReturning(true), handle: 'featured');
         $this->assertFalse($strategy->hasChanged($context, true));
         $this->assertTrue($strategy->hasChanged($context, false));
+    }
+
+    public function testDateComparesByInstantWhateverShapeTheStoredValueTakes(): void
+    {
+        $strategy = new Date();
+
+        // The top-level path is unchanged: a Date field's current value is its
+        // normalized DateTime, and two DateTimes compare by instant.
+        $context = $this->context(
+            $this->elementReturning(new DateTime('2024-03-02 10:00:00', new DateTimeZone('UTC'))),
+            handle: 'published',
+        );
+        $this->assertFalse($strategy->hasChanged(
+            $context,
+            new DateTime('2024-03-02 11:00:00', new DateTimeZone('Europe/Brussels')),
+        ));
+        $this->assertTrue($strategy->hasChanged(
+            $context,
+            new DateTime('2024-03-02 10:00:01', new DateTimeZone('UTC')),
+        ));
+
+        // A current value Craft already serialized reads as the same instant too —
+        // the Matrix fingerprint's stored side arrives in exactly that shape.
+        $serialized = $this->context($this->elementReturning('2024-03-02T10:00:00+00:00'), handle: 'published');
+        $this->assertFalse($strategy->hasChanged(
+            $serialized,
+            new DateTime('2024-03-02 10:00:00', new DateTimeZone('UTC')),
+        ));
+    }
+
+    public function testDateUnwrapsTheStoredTimeZoneEnvelope(): void
+    {
+        // Craft before 4.15 serialized a Date field with "Show time zone" on as
+        // {date, tz}, where date is already UTC and tz is display-only — the
+        // envelope has to be unwrapped rather than JSON-compared whole. The inner
+        // string is written in whatever format the running Craft serializes to, so
+        // this reads the same on either major.
+        $instant = new DateTime('2024-03-02 10:00:00', new DateTimeZone('UTC'));
+        $stored = [
+            'date' => $instant->format(Compat::serializedDateFormat()),
+            'tz'   => 'Europe/Brussels',
+        ];
+
+        $context = $this->context($this->elementReturning($stored), handle: 'published');
+        $this->assertFalse((new Date())->hasChanged($context, $instant));
+    }
+
+    public function testDateKeepsNonDatesDistinguishable(): void
+    {
+        // Reading a date out of a value is a widening of the base normalisation,
+        // not a replacement: two values no date parse accepts must not both
+        // collapse to "no value" and read as equal.
+        $context = $this->context($this->elementReturning('not-a-date'), handle: 'published');
+        $this->assertTrue((new Date())->hasChanged($context, 'another-non-date'));
     }
 
     private function context(ElementInterface $element, string $handle = 'summary'): FieldContext
