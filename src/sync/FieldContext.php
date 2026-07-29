@@ -2,12 +2,16 @@
 
 namespace GlueAgency\Influx\sync;
 
+use Closure;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\exceptions\MappingDepthException;
+use GlueAgency\Influx\fields\Field;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\ElementLookupCache;
+use GlueAgency\Influx\sync\item\MappingApplier;
 use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
@@ -62,6 +66,18 @@ class FieldContext
      */
     public ?ElementLookupCache $lookups = null;
 
+    /**
+     * Strategy-lookup seam: `fn(CraftFieldInterface): Field`. Null = ask the
+     * plugin's registry ({@see strategyFor()}).
+     */
+    public ?Closure $strategyResolver = null;
+
+    /**
+     * The applier driving this walk, lent to the field layer for its
+     * sub-mappings ({@see applySubMappings()}).
+     */
+    public ?MappingApplier $applier = null;
+
     public function __construct(
         ?CraftFieldInterface $craftField,
         string $handle,
@@ -72,6 +88,8 @@ class FieldContext
         bool $dryRun = false,
         int $depth = 0,
         ?ElementLookupCache $lookups = null,
+        ?Closure $strategyResolver = null,
+        ?MappingApplier $applier = null,
     ) {
         $this->craftField = $craftField;
         $this->handle = $handle;
@@ -82,6 +100,55 @@ class FieldContext
         $this->dryRun = $dryRun;
         $this->depth = $depth;
         $this->lookups = $lookups;
+        $this->strategyResolver = $strategyResolver;
+        $this->applier = $applier;
+    }
+
+    /**
+     * The mapping strategy for a Craft field, resolved through the seam this
+     * context carries.
+     *
+     * WHY it rides the context: {@see \GlueAgency\Influx\sync\item\MappingApplier::mapCustomField()}
+     * and {@see \GlueAgency\Influx\fields\Matrix::childStrategy()} each reached
+     * `Influx::getInstance()->fields->forCraftField()` mid-walk, putting the
+     * plugin singleton in the middle of the mapping walk and making the field
+     * layer unusable without a booted plugin. The resolver travels with the call
+     * instead, and {@see descend()} carries it to every sub-mapping.
+     *
+     * A null resolver falls back to the plugin's registry, resolved lazily on
+     * use only: production code paths that build a context without one keep
+     * working, and a hand-built (bootless) context stays boot-free unless it
+     * actually resolves a strategy.
+     */
+    public function strategyFor(CraftFieldInterface $craftField): Field
+    {
+        if ($this->strategyResolver !== null) {
+            return ($this->strategyResolver)($craftField);
+        }
+
+        return Influx::getInstance()->fields->forCraftField($craftField);
+    }
+
+    /**
+     * Run this mapping's sub-mappings against a related element, through the
+     * applier that started this walk.
+     *
+     * WHY it rides the context: {@see \GlueAgency\Influx\fields\RelationalField::persistSubElement()}
+     * used to `new MappingApplier()` mid-parse, closing a construction cycle
+     * (applier → registry → strategy → applier). The applier lends itself to the
+     * contexts it builds, so the field layer borrows it instead of building one
+     * — and never names the class at all.
+     *
+     * A context nobody lent an applier to (a strategy exercised directly) gets a
+     * throwaway one, so the call still behaves like the real walk. Not memoized:
+     * a context is read-only and an applier holds no per-call state.
+     *
+     * @return bool Whether any sub-mapping wrote a differing value.
+     * @throws MappingDepthException on runaway recursion
+     */
+    public function applySubMappings(ElementInterface $subElement): bool
+    {
+        return ($this->applier ?? new MappingApplier())->applySubMappings($this, $subElement);
     }
 
     /**
@@ -94,6 +161,10 @@ class FieldContext
      * {@see \GlueAgency\Influx\fields\Matrix} descends with a synthetic
      * single-value item so a child strategy's own resolve() yields exactly one
      * block's value.
+     *
+     * The strategy resolver and the applier carry over too — a sub-mapping is
+     * part of the same walk, so it must resolve child strategies and nested
+     * sub-mappings through the same seams the top level got.
      *
      * @throws MappingDepthException past MAX_DEPTH
      */
@@ -120,6 +191,8 @@ class FieldContext
             dryRun: $this->dryRun,
             depth: $this->depth + 1,
             lookups: $this->lookups,
+            strategyResolver: $this->strategyResolver,
+            applier: $this->applier,
         );
     }
 }

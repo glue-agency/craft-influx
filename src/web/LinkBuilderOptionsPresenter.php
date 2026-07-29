@@ -44,9 +44,10 @@ class LinkBuilderOptionsPresenter
     }
 
     /**
-     * `criteria` and `multiSite` are capability flags the General tab reacts to
-     * — which criteria dropdowns to render, and whether multi-site support is
-     * offered.
+     * `criteria`, `multiSite` and `sweeping` are the target's capability flags,
+     * which the General tab reacts to — which criteria dropdowns to render,
+     * whether the site-specific endpoint controls are offered, and whether the
+     * missing-element processing policies are.
      */
     public function elementTypeOptions(): array
     {
@@ -58,6 +59,7 @@ class LinkBuilderOptionsPresenter
                 'label'     => $target::friendlyName(),
                 'criteria'  => $target::criteriaKeys(),
                 'multiSite' => $target::supportsMultiSite(),
+                'sweeping'  => $target::supportsSweeping(),
             ];
         }
 
@@ -105,13 +107,22 @@ class LinkBuilderOptionsPresenter
     /**
      * The builder's processing checkboxes: a terse label with the behaviour
      * spelled out in a note beneath it, in {@see ProcessingAction::optionOrder()}.
+     *
+     * `missingPolicy` marks the four sweep policies, which the General tab hides
+     * for an element type whose target reports no sweeping support — the whole
+     * list ships either way, since the selected type changes without a reload.
      */
     public function processingActionOptions(): array
     {
         $out = [];
 
         foreach (ProcessingAction::optionOrder() as $action) {
-            $out[] = ['value' => $action->value, 'label' => $action->label(), 'note' => $action->note()];
+            $out[] = [
+                'value'         => $action->value,
+                'label'         => $action->label(),
+                'note'          => $action->note(),
+                'missingPolicy' => $action->isMissingPolicy(),
+            ];
         }
 
         return $out;

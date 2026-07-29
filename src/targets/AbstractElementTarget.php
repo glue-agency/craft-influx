@@ -98,6 +98,30 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Default: sweepable. Most element types can enumerate what a link owns, so
+     * the builder offers the missing-element policies; a type that can't (see
+     * {@see \GlueAgency\Influx\targets\UserTarget}) overrides this to false and
+     * leaves {@see missingElementsQuery()} at its null default.
+     */
+    public static function supportsSweeping(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Default: one sentinel cell — the element type has no sub-partition, so
+     * every link to it claims the same, undivided set and any two of them
+     * overlap. Targets whose element type IS partitioned (see
+     * {@see EntryTarget}) expand the link's criteria into cells instead.
+     *
+     * @return list<string>
+     */
+    public function claimCells(Link $link): array
+    {
+        return [self::CLAIM_ALL];
+    }
+
+    /**
      * Default native-attribute apply: resolve the remote value (`node` then
      * `default`) and assign it via setAttribute, falling back to setFieldValue
      * for attrs Craft exposes that way. A `parseFoo` method wins when one
@@ -226,11 +250,29 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     {
     }
 
+    /**
+     * Craft's own element save with validation OFF — deliberate, and the same
+     * policy Feed Me imports run on: the feed is authoritative, so a value Craft
+     * would reject (an over-long title, a required field the feed left empty)
+     * still has to land rather than dropping the whole item. What genuinely needs
+     * coercing is coerced on the way in instead — {@see EntryTarget::parseTitle()}
+     * truncates, an unparseable date is a no-op — and
+     * {@see \GlueAgency\Influx\sync\item\ItemProcessor::commit()} reports a false
+     * return as an ERROR row.
+     *
+     * Every save the engine and the sweep perform routes through here, so a
+     * target that needs different flags overrides this one method.
+     */
+    public function save(ElementInterface $element): bool
+    {
+        return Craft::$app->getElements()->saveElement($element, false);
+    }
+
     public function disable(ElementInterface $element): bool
     {
         $element->enabled = false;
 
-        return Craft::$app->getElements()->saveElement($element, false);
+        return $this->save($element);
     }
 
     /**
@@ -238,14 +280,13 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * false])` (the siteId-keyed array form) is stable across Craft 4 and 5 —
      * no Compat seam needed. The whole-element `enabled` flag is left alone so
      * the element stays live in its other sites; only the passed site's
-     * per-site row flips off. Saved with validation off (mirrors {@see
-     * disable()}), so a since-invalidated element still persists its status.
+     * per-site row flips off.
      */
     public function disableForSite(ElementInterface $element, int $siteId): bool
     {
         $element->setEnabledForSite([$siteId => false]);
 
-        return Craft::$app->getElements()->saveElement($element, false);
+        return $this->save($element);
     }
 
     public function delete(ElementInterface $element): bool
@@ -262,9 +303,11 @@ abstract class AbstractElementTarget implements ElementTargetInterface
 
     /**
      * Default: no missing-elements query. A target that can't safely enumerate
-     * "everything this link owns" opts out of the sweep by returning null here;
-     * the sweep then does nothing for that element type. Targets that can (see
-     * {@see EntryTarget}) override with a scoped, seen-excluding query.
+     * "everything this link owns" reports {@see supportsSweeping()} = false —
+     * which is what keeps the policies off the builder and bails the sweep with a
+     * reported skip — and leaves this at null as the last line of defence.
+     * Targets that can sweep (see {@see EntryTarget}) override with a scoped,
+     * seen-excluding query.
      */
     public function missingElementsQuery(Link $link, array $seenIds, ?int $siteId): ?ElementQueryInterface
     {

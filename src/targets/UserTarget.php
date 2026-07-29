@@ -26,13 +26,15 @@ use GlueAgency\Influx\sync\SyncContext;
  * endpoint controls for it ({@see Link::validateSiteEndpoints()} is the
  * server-side backstop).
  *
- * There's no section/type-style scoping dimension for users, so the
- * missing-elements sweep is deliberately NOT implemented (the base
- * {@see AbstractElementTarget::missingElementsQuery()} returns null, opting
- * out): a user link can't safely enumerate "everything it owns" without a
- * scope, and sweeping every user in the system — potentially disabling admins
- * or the current user — is not a safe default. User links therefore create /
- * update only; the delete/disable-missing policies no-op for them.
+ * There's no section/type-style scoping dimension for users, so this target
+ * reports {@see supportsSweeping()} = false: a user link can't enumerate
+ * "everything it owns" without a scope, and sweeping every user in the system —
+ * potentially disabling admins or the current user — is not a safe default. User
+ * links therefore create / update only. The builder omits the disable-/
+ * delete-missing policies for them, {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}
+ * reports a skipped sweep for config that still carries one, and the base
+ * {@see AbstractElementTarget::missingElementsQuery()} stays at its null default
+ * as the last line of defence.
  *
  * User groups (a Pro-edition feature) are offered as a `groups` mapping field:
  * its config lives entirely in the extras schema — a lightswitch per group plus
@@ -45,13 +47,10 @@ use GlueAgency\Influx\sync\SyncContext;
 class UserTarget extends AbstractElementTarget
 {
     /**
-     * Memoized user-group handle → id map, so {@see afterCommit()} (called once
-     * per committed item) doesn't re-query the groups on every user. Groups
-     * don't change mid-run, so caching on the run's singleton target is safe.
-     *
-     * @var array<string, int>|null
+     * Cache key for the run-scoped user-group map. Prefixed with the owner so
+     * two targets sharing a run's memo can't collide.
      */
-    protected ?array $groupIdMap = null;
+    protected const MEMO_GROUP_IDS = 'userTarget.groupIdMap';
 
     public static function elementType(): string
     {
@@ -63,6 +62,15 @@ class UserTarget extends AbstractElementTarget
      * and its per-site sweep policies don't apply to them.
      */
     public static function supportsMultiSite(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Users have no scoping dimension, so "every user this link owns" is every
+     * user in the system — see the class docblock for why that's never swept.
+     */
+    public static function supportsSweeping(): bool
     {
         return false;
     }
@@ -174,7 +182,7 @@ class UserTarget extends AbstractElementTarget
             return;
         }
 
-        $byHandle = $this->groupIdMap();
+        $byHandle = $this->groupIdMap($context);
 
         $selectedIds = [];
 
@@ -211,21 +219,26 @@ class UserTarget extends AbstractElementTarget
     }
 
     /**
-     * User-group handle → id map, memoized for the run.
+     * User-group handle → id map, memoized on the RUN rather than on this
+     * target: the registry hands out one shared prototype per process, so a
+     * property memo would outlive the run and hide a group created between two
+     * runs of a long-lived worker. {@see \GlueAgency\Influx\sync\RunMemo} scopes
+     * it to the run the way {@see SyncContext::$lookups} scopes element lookups,
+     * which is enough to spare {@see afterCommit()} a query per item.
      *
      * @return array<string, int>
      */
-    protected function groupIdMap(): array
+    protected function groupIdMap(SyncContext $context): array
     {
-        if ($this->groupIdMap === null) {
-            $this->groupIdMap = [];
+        return $context->memo->remember(self::MEMO_GROUP_IDS, static function(): array {
+            $map = [];
 
             foreach (Craft::$app->getUserGroups()->getAllGroups() as $group) {
-                $this->groupIdMap[$group->handle] = (int) $group->id;
+                $map[$group->handle] = (int) $group->id;
             }
-        }
 
-        return $this->groupIdMap;
+            return $map;
+        });
     }
 
     /**

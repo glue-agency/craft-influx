@@ -92,9 +92,9 @@
  * loosely typed here; LinkBuilderOptionsPresenter and LinkBuilderService own
  * their shapes. The non-obvious members:
  *
- *   options.elementTypes[]      {value, label, criteria, multiSite}
+ *   options.elementTypes[]      {value, label, criteria, multiSite, sweeping}
  *   options.sectionEntryTypes   sectionHandle → {typeHandle: typeName} (a map, not a list)
- *   options.processingActions[] {value, label, note}
+ *   options.processingActions[] {value, label, note, missingPolicy}
  *   options.authStrategies[]    {type, schema} — schema definitions, not select options
  *   meta.envSuggestions[]       {kind, label, data: [{name, hint, type}]}
  *

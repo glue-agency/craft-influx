@@ -3,14 +3,13 @@
 namespace GlueAgency\Influx\models;
 
 use craft\base\Model;
-use craft\elements\Entry;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\StringHelper;
 use DateTime;
 use GlueAgency\Influx\enums\ProcessingAction;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * An Influx link: one configured connection between Craft and an external
@@ -32,6 +31,9 @@ use GlueAgency\Influx\sync\item\RemoteItem;
  *    this link's auth headers + query for an outbound request.
  *  - {@see \GlueAgency\Influx\enums\SyncDecision::decide()} decides the sync
  *    action for a remote item.
+ *  - {@see ElementTargetInterface} answers everything that depends on the
+ *    element type a link points at — its claim scope ({@see claimScope()})
+ *    included, and which {@see $elementCriteria} keys mean anything.
  */
 class Link extends Model
 {
@@ -138,6 +140,15 @@ class Link extends Model
      * 'type' => 'article']). Forwarded to the configured ElementTarget so it
      * can both build the find-query and set required attributes on new
      * elements.
+     *
+     * Which keys are meaningful is the target's business, not the model's: each
+     * one declares them through
+     * {@see ElementTargetInterface::criteriaKeys()} and owns the key names as
+     * constants (see {@see \GlueAgency\Influx\targets\EntryTarget::CRITERIA_SECTION}).
+     * Read through {@see criterion()} rather than indexing this directly, so the
+     * key literals stay in that one place.
+     *
+     * @var array<string, string>
      */
     public array $elementCriteria = [];
 
@@ -378,7 +389,7 @@ class Link extends Model
             return;
         }
 
-        $target = $this->targetsService()?->forLink($this);
+        $target = $this->target();
 
         if ($target && ! $target::supportsMultiSite()) {
             $this->addError($attribute, $target::friendlyName() . ' links can’t use site-specific endpoints.');
@@ -509,8 +520,8 @@ class Link extends Model
 
     /**
      * Resolve the targets service via the plugin singleton, returning null when
-     * the plugin isn't bootstrapped (e.g. standalone unit tests) — the caller
-     * then skips the target-dependent validation.
+     * the plugin isn't bootstrapped (e.g. standalone unit tests) — {@see target()}
+     * then hands back null and its callers fall back.
      */
     protected function targetsService(): ?\GlueAgency\Influx\services\TargetsService
     {
@@ -639,55 +650,50 @@ class Link extends Model
     }
 
     /**
+     * One {@see $elementCriteria} value, or null when the link doesn't scope on
+     * that key. THE reader for stored criteria: callers pass the owning target's
+     * key constant (`EntryTarget::CRITERIA_SECTION`) instead of a literal, so the
+     * key names live with the target that declares them.
+     *
+     * An empty string is no criterion — the builder writes an unset dropdown as
+     * null, {@see getConfig()} strips it, and a hand-edited `section: ''` is a
+     * missing section rather than a section whose handle is blank.
+     */
+    public function criterion(string $key): ?string
+    {
+        $value = $this->elementCriteria[$key] ?? null;
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (string) $value;
+    }
+
+    /**
      * The link's STRUCTURAL claim scope — a canonical, comparable description
      * of which elements this link manages, used to warn about two links owning
      * the same elements ({@see overlaps()}).
      *
-     * Shape: `['type' => <elementType FQCN>, 'cells' => <string[]>]`. The
-     * `type` key ensures links to different element types never overlap; the
-     * `cells` set is what two same-type links intersect on:
-     *
-     *  - Entries partition into `"{section} {entryType}"` cells. The link's
-     *    `elementCriteria` expand against project config: both criteria set →
-     *    one cell; section-only → every entry type in that section; type-only →
-     *    every section using that type (Craft 5 shares entry types across
-     *    sections); neither → every (section, entryType) cell.
-     *  - Other element types (e.g. User) have no sub-partition, so they get a
-     *    single sentinel cell — two links of the type always overlap, which is
-     *    the intended "one resource mapping per user feed" warning.
+     * Shape: `['type' => <elementType FQCN>, 'cells' => <string[]>]`. The `type`
+     * key ensures links to different element types never overlap; the `cells` set
+     * is what two same-type links intersect on, and comes from the target —
+     * partitioning an element type is its business, not the model's
+     * ({@see ElementTargetInterface::claimCells()}). An unresolvable target (no
+     * registered target for the type, or the plugin isn't bootstrapped) falls back
+     * to the broadest sentinel, so an unknown type is treated as "claims
+     * everything" rather than as claiming nothing.
      *
      * @return array{type: string, cells: list<string>}
      */
     public function claimScope(): array
     {
-        $type = ltrim($this->elementType, '\\');
+        $target = $this->target();
 
-        if ($type !== ltrim(Entry::class, '\\')) {
-            return ['type' => $type, 'cells' => ['*']];
-        }
-
-        $section = $this->elementCriteria['section'] ?? null;
-        $section = ($section === '' ? null : $section);
-        $entryType = $this->elementCriteria['type'] ?? null;
-        $entryType = ($entryType === '' ? null : $entryType);
-
-        $cells = [];
-
-        foreach ($this->sectionEntryTypeMap() as $sectionHandle => $typeHandles) {
-            if ($section !== null && $sectionHandle !== $section) {
-                continue;
-            }
-
-            foreach ($typeHandles as $typeHandle) {
-                if ($entryType !== null && $typeHandle !== $entryType) {
-                    continue;
-                }
-
-                $cells[] = $sectionHandle . ' ' . $typeHandle;
-            }
-        }
-
-        return ['type' => $type, 'cells' => array_values(array_unique($cells))];
+        return [
+            'type'  => ltrim($this->elementType, '\\'),
+            'cells' => $target ? $target->claimCells($this) : [ElementTargetInterface::CLAIM_ALL],
+        ];
     }
 
     /**
@@ -707,28 +713,13 @@ class Link extends Model
     }
 
     /**
-     * Project-config view used by {@see claimScope()} to expand an entry
-     * link's criteria: section handle => list of entry-type handles in that
-     * section. Isolated as a seam so the scope-expansion logic can be unit
-     * tested without a booted Craft. Craft 4/5 differ only in the service
-     * that lists sections — routed through {@see Compat}.
-     *
-     * @return array<string, list<string>>
+     * The target registered for this link's element type, or null when there is
+     * none — including when the plugin isn't bootstrapped (standalone unit
+     * tests). Isolated as a seam so the target-dependent members stay testable
+     * against a stub; every caller must handle the null.
      */
-    protected function sectionEntryTypeMap(): array
+    protected function target(): ?ElementTargetInterface
     {
-        $map = [];
-
-        foreach (Compat::getAllSections() as $section) {
-            $handles = [];
-
-            foreach ($section->getEntryTypes() as $entryType) {
-                $handles[] = $entryType->handle;
-            }
-
-            $map[$section->handle] = $handles;
-        }
-
-        return $map;
+        return $this->targetsService()?->forLink($this);
     }
 }

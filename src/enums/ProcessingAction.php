@@ -80,6 +80,22 @@ enum ProcessingAction: string
     }
 
     /**
+     * Whether this policy is a missing-elements sweep rather than a write — the
+     * four disable/delete cases, which only apply to an element type whose target
+     * can enumerate what a link owns
+     * ({@see \GlueAgency\Influx\targets\ElementTargetInterface::supportsSweeping()}).
+     * The builder hides these checkboxes for a type that can't sweep.
+     *
+     * Derived from the global ⇄ per-site pairing rather than listed again: having
+     * a counterpart in either direction is exactly what makes a case a
+     * missing-elements policy — the writes have neither.
+     */
+    public function isMissingPolicy(): bool
+    {
+        return $this->isForSite() || $this->siteCounterpart() !== null;
+    }
+
+    /**
      * The per-site counterpart of a global missing-element policy, or null when
      * there is none (the writes, and the per-site policies themselves).
      *

@@ -33,11 +33,21 @@ const bootstrapPayload = () => ({
     },
     options: {
         elementTypes: [
-            { value: 'craft\\elements\\Entry', label: 'Entry', criteria: ['section', 'type'], multiSite: true },
+            { value: 'craft\\elements\\Entry', label: 'Entry', criteria: ['section', 'type'], multiSite: true, sweeping: true },
+            { value: 'craft\\elements\\User', label: 'User', criteria: [], multiSite: false, sweeping: false },
         ],
         sections: [],
         sectionEntryTypes: {},
-        processingActions: [],
+        // Mirrors LinkBuilderOptionsPresenter::processingActionOptions(): the
+        // writes carry missingPolicy false, the four sweep policies true.
+        processingActions: [
+            { value: 'create', label: 'Create', note: '', missingPolicy: false },
+            { value: 'update', label: 'Update', note: '', missingPolicy: false },
+            { value: 'disable', label: 'Disable globally', note: '', missingPolicy: true },
+            { value: 'delete', label: 'Delete globally', note: '', missingPolicy: true },
+            { value: 'disable-for-site', label: 'Disable for site', note: '', missingPolicy: true },
+            { value: 'delete-for-site', label: 'Delete for site', note: '', missingPolicy: true },
+        ],
         sites: [],
     },
     meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x', envSuggestions: [] },
@@ -99,5 +109,54 @@ describe('GeneralTab feature toggles', () => {
 
         expect(store.ui.supportsOffset).toBe(false);
         expect(store.link.offset).toEqual({ hour: { since: '-1 hour', queryParam: 'modified_since' } });
+    });
+});
+
+describe('GeneralTab processing actions', () => {
+    beforeEach(async () => {
+        vi.useFakeTimers();
+        vi.clearAllMocks();
+        api.bootstrap.mockResolvedValue(bootstrapPayload());
+        api.mappableFields.mockResolvedValue({ fields: [], groups: [], matchOptions: [] });
+        api.endpointTokenSuggestions.mockResolvedValue({ suggestions: [] });
+        await store.load(1);
+        vi.clearAllTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
+    it('offers every policy for a sweepable element type', () => {
+        const tab = mountTab().vm;
+
+        expect(tab.supportsSweeping).toBe(true);
+        expect(tab.processingActions.map((o) => o.value)).toEqual([
+            'create', 'update', 'disable', 'delete', 'disable-for-site', 'delete-for-site',
+        ]);
+    });
+
+    it('hides the missing-element policies for an element type that cannot be swept', async () => {
+        const wrapper = mountTab();
+        const tab = wrapper.vm;
+
+        store.link.elementType = 'craft\\elements\\User';
+        await nextTick();
+
+        expect(tab.supportsSweeping).toBe(false);
+        // Only the writes are left — a User link's run would skip the rest.
+        expect(tab.processingActions.map((o) => o.value)).toEqual(['create', 'update']);
+        expect(wrapper.findAll('.checkbox-group input[type="checkbox"]')).toHaveLength(2);
+    });
+
+    it('defaults to sweepable while no element type is resolved', async () => {
+        const tab = mountTab().vm;
+
+        store.link.elementType = 'vendor\\elements\\Widget';
+        await nextTick();
+
+        expect(tab.supportsSweeping).toBe(true);
+        expect(tab.processingActions).toHaveLength(6);
     });
 });

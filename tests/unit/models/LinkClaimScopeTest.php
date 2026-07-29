@@ -3,18 +3,26 @@
 namespace GlueAgency\Influx\Tests\unit\models;
 
 use Codeception\Test\Unit;
+use craft\base\ElementInterface;
 use craft\elements\Entry;
 use craft\elements\User;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\AbstractElementTarget;
+use GlueAgency\Influx\targets\ElementTargetInterface;
+use GlueAgency\Influx\targets\UserTarget;
+use RuntimeException;
 
 /**
  * {@see Link::claimScope()} + {@see Link::overlaps()}: the structural
  * scope-overlap detection that warns when two links both define a resource
  * mapping for the same elements.
  *
- * The section→entry-type expansion reads project config in production; here it
- * runs against a fixed map injected through the `sectionEntryTypeMap()` seam,
- * so the set logic is exercised without a booted Craft.
+ * The model only supplies the element type and delegates the cells to the link's
+ * target ({@see ElementTargetInterface::claimCells()}), so the cells here come
+ * from a stub target injected through the `target()` seam — the entry-specific
+ * section×type expansion is specced where it now lives, in
+ * {@see \GlueAgency\Influx\Tests\unit\targets\EntryClaimCellsTest}. No Craft
+ * boot either way.
  */
 class LinkClaimScopeTest extends Unit
 {
@@ -23,103 +31,147 @@ class LinkClaimScopeTest extends Unit
         $a = $this->userLink();
         $b = $this->userLink();
 
-        // No sub-partition for users — a single sentinel cell keyed by type.
+        // No sub-partition for users — the real UserTarget inherits the base's
+        // single sentinel cell, keyed by type.
         $this->assertSame(['type' => ltrim(User::class, '\\'), 'cells' => ['*']], $a->claimScope());
         $this->assertTrue($a->overlaps($b));
     }
 
     public function testDifferentElementTypesNeverOverlap(): void
     {
-        $entry = $this->entryLink(['news' => ['article']], ['section' => 'news', 'type' => 'article']);
+        $entry = $this->entryLink(['news article']);
         $user = $this->userLink();
 
         $this->assertFalse($entry->overlaps($user));
         $this->assertFalse($user->overlaps($entry));
     }
 
-    public function testDisjointSectionTypeCellsDoNotOverlap(): void
+    public function testDisjointCellsDoNotOverlap(): void
     {
-        $map = ['news' => ['article', 'story'], 'blog' => ['post']];
-        $a = $this->entryLink($map, ['section' => 'news', 'type' => 'article']);
-        $b = $this->entryLink($map, ['section' => 'blog', 'type' => 'post']);
+        $a = $this->entryLink(['news article']);
+        $b = $this->entryLink(['blog post']);
 
         $this->assertFalse($a->overlaps($b));
     }
 
     public function testIdenticalCellsOverlap(): void
     {
-        $map = ['news' => ['article', 'story']];
-        $a = $this->entryLink($map, ['section' => 'news', 'type' => 'article']);
-        $b = $this->entryLink($map, ['section' => 'news', 'type' => 'article']);
+        $a = $this->entryLink(['news article']);
+        $b = $this->entryLink(['news article']);
 
         $this->assertTrue($a->overlaps($b));
     }
 
-    public function testSectionOnlyExpandsToEveryTypeInThatSection(): void
+    public function testAWiderCellSetOverlapsANarrowerOne(): void
     {
-        $map = ['news' => ['article', 'story'], 'blog' => ['post']];
-        $sectionOnly = $this->entryLink($map, ['section' => 'news']);
+        // A section-only link expands to every type in the section, so it
+        // overlaps a link scoped to one of them — but not a disjoint section.
+        $sectionOnly = $this->entryLink(['news article', 'news story']);
 
-        $this->assertSame(['news article', 'news story'], $sectionOnly->claimScope()['cells']);
-
-        // Overlaps a link scoped to one of its types, but not a disjoint section.
-        $this->assertTrue($sectionOnly->overlaps($this->entryLink($map, ['section' => 'news', 'type' => 'article'])));
-        $this->assertFalse($sectionOnly->overlaps($this->entryLink($map, ['section' => 'blog'])));
+        $this->assertTrue($sectionOnly->overlaps($this->entryLink(['news article'])));
+        $this->assertFalse($sectionOnly->overlaps($this->entryLink(['blog post'])));
     }
 
-    public function testTypeOnlySpansEverySectionUsingThatType(): void
+    public function testTheCellsComeFromTheTargetVerbatim(): void
     {
-        // Craft 5 shares entry types across sections: a type-only criterion
-        // spans every section that uses the type.
-        $map = ['news' => ['article', 'story'], 'features' => ['article']];
-        $typeOnly = $this->entryLink($map, ['type' => 'article']);
+        $link = $this->entryLink(['news article', 'news story']);
 
-        $this->assertSame(['news article', 'features article'], $typeOnly->claimScope()['cells']);
+        $this->assertSame(
+            ['type' => ltrim(Entry::class, '\\'), 'cells' => ['news article', 'news story']],
+            $link->claimScope(),
+        );
     }
 
-    public function testNoCriteriaCoversEveryCellAndOverlapsAnyScopedLink(): void
+    public function testAnUnresolvableTargetClaimsEverything(): void
     {
-        $map = ['news' => ['article', 'story'], 'blog' => ['post']];
-        $unscoped = $this->entryLink($map, []);
+        // No registered target — an unknown element type, or (as here) a link in
+        // a process where the plugin isn't bootstrapped. Falling back to the
+        // sentinel keeps the warning conservative: two such links overlap.
+        $a = $this->targetlessLink();
+        $b = $this->targetlessLink();
 
-        $this->assertSame(['news article', 'news story', 'blog post'], $unscoped->claimScope()['cells']);
-        $this->assertTrue($unscoped->overlaps($this->entryLink($map, ['section' => 'blog', 'type' => 'post'])));
+        $this->assertSame(
+            ['type' => 'vendor\elements\Widget', 'cells' => [ElementTargetInterface::CLAIM_ALL]],
+            $a->claimScope(),
+        );
+        $this->assertTrue($a->overlaps($b));
     }
 
     protected function userLink(): Link
     {
-        $link = $this->scopedLink([]);
-        $link->elementType = User::class;
-
-        return $link;
+        return $this->linkWithTarget(User::class, new UserTarget());
     }
 
-    protected function entryLink(array $map, array $criteria): Link
+    /**
+     * An entry link whose target reports the given cells — standing in for the
+     * expansion {@see \GlueAgency\Influx\targets\EntryTarget::claimCells()} does
+     * against project config.
+     *
+     * @param list<string> $cells
+     */
+    protected function entryLink(array $cells): Link
     {
-        $link = $this->scopedLink($map);
-        $link->elementType = Entry::class;
-        $link->elementCriteria = $criteria;
+        return $this->linkWithTarget(Entry::class, $this->target($cells));
+    }
+
+    protected function targetlessLink(): Link
+    {
+        return $this->linkWithTarget('vendor\elements\Widget', null);
+    }
+
+    /**
+     * A Link whose registered target is injected rather than resolved through the
+     * plugin singleton (null in a bootless test).
+     */
+    protected function linkWithTarget(string $elementType, ?ElementTargetInterface $target): Link
+    {
+        $link = new class() extends Link {
+            public ?ElementTargetInterface $targetStub = null;
+
+            protected function target(): ?ElementTargetInterface
+            {
+                return $this->targetStub;
+            }
+        };
+        $link->elementType = $elementType;
+        $link->targetStub = $target;
 
         return $link;
     }
 
     /**
-     * A Link whose project-config section→type map is a fixed fixture, so
-     * scope expansion is deterministic and Craft-free.
+     * A target reporting fixed claim cells.
+     *
+     * @param list<string> $cells
      */
-    protected function scopedLink(array $map): Link
+    protected function target(array $cells): ElementTargetInterface
     {
-        $link = new class() extends Link {
-            /** @var array<string, list<string>> */
-            public array $map = [];
+        $target = new class() extends AbstractElementTarget {
+            /** @var list<string> */
+            public array $cells = [];
 
-            protected function sectionEntryTypeMap(): array
+            public static function elementType(): string
             {
-                return $this->map;
+                return Entry::class;
+            }
+
+            public function claimCells(Link $link): array
+            {
+                return $this->cells;
+            }
+
+            public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface
+            {
+                return null;
+            }
+
+            public function buildNew(Link $link, ?int $siteId = null): ElementInterface
+            {
+                throw new RuntimeException('not needed');
             }
         };
-        $link->map = $map;
+        $target->cells = $cells;
 
-        return $link;
+        return $target;
     }
 }

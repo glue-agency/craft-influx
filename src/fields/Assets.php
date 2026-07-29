@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\fields;
 
 use Craft;
+use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 use craft\fields\Assets as CraftAssetsField;
@@ -31,6 +32,16 @@ use Throwable;
  */
 class Assets extends RelationalField
 {
+    /**
+     * How many same-filename assets a URL match inspects before settling for the
+     * first one. Bounded because a filename can be reused across every folder of
+     * every volume the field relates: enough candidates to find the exact-URL hit
+     * in any realistic library, few enough that one pathological filename can't
+     * turn a single URL into an unbounded result set (each candidate also costs a
+     * `getUrl()`).
+     */
+    protected const URL_MATCH_CANDIDATES = 20;
+
     public static function craftFieldClass(): ?string
     {
         return CraftAssetsField::class;
@@ -144,7 +155,7 @@ class Assets extends RelationalField
      *   options.upload:   bool — turn on download/upload behaviour
      *   options.conflict: replace|index (default: index)
      */
-    protected function resolveByUrl(FieldContext $context, string $url): ?Asset
+    protected function resolveByUrl(FieldContext $context, string $url): ?ElementInterface
     {
         $existing = $this->matchExistingByUrl($context, $url);
 
@@ -232,33 +243,58 @@ class Assets extends RelationalField
 
     /**
      * Match an existing asset for a remote URL. Filename first — much faster
-     * than enumerating volumes — then preferring the asset whose `getUrl()`
-     * matches exactly. A volume may not expose URLs at all, in which case the
-     * same-filename hit stands as a best-effort match (possibly a different
-     * host).
+     * than enumerating volumes — then the candidate whose `getUrl()` matches the
+     * remote URL exactly.
+     *
+     * FALLBACK: when no candidate's URL matches, the first same-filename one is
+     * returned as a best-effort match (possibly a different host), so a CDN/host
+     * change doesn't force a re-download. That also covers a volume exposing no
+     * URLs at all: `getUrl()` throws there, and a throwing candidate is skipped
+     * rather than allowed to abandon the remaining ones.
+     *
+     * Typed on ElementInterface — always an Asset in practice — so the candidate
+     * seam can be stubbed without booting Craft, the same trade
+     * {@see Relation::findOne()} makes.
      */
-    protected function matchExistingByUrl(FieldContext $context, string $url): ?Asset
+    protected function matchExistingByUrl(FieldContext $context, string $url): ?ElementInterface
     {
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
 
-        if ($name === '' || $name === false) {
+        if ($name === '') {
             return null;
         }
 
-        $query = Asset::find()->filename($name)->status(null);
-        $this->scopeToAllowedVolumes($query, $context);
-        $asset = $query->one();
+        $candidates = $this->candidatesByFilename($context, $name);
 
-        if ($asset) {
+        foreach ($candidates as $candidate) {
             try {
-                if ($asset->getUrl() === $url) {
-                    return $asset;
+                if ($candidate->getUrl() === $url) {
+                    return $candidate;
                 }
             } catch (Throwable) {
+                continue;
             }
         }
 
-        return $asset;
+        return $candidates[0] ?? null;
+    }
+
+    /**
+     * The same-filename assets a URL match chooses from, scoped to the field's
+     * allowed volumes and capped at {@see URL_MATCH_CANDIDATES}. Extracted so
+     * tests can supply candidates without booting Craft.
+     *
+     * The order is the query's own, so the first row is the one the previous
+     * single-row lookup returned — the fallback picks exactly what it used to.
+     *
+     * @return list<ElementInterface>
+     */
+    protected function candidatesByFilename(FieldContext $context, string $filename): array
+    {
+        $query = Asset::find()->filename($filename)->status(null)->limit(self::URL_MATCH_CANDIDATES);
+        $this->scopeToAllowedVolumes($query, $context);
+
+        return array_values($query->all());
     }
 
     /**

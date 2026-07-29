@@ -34,7 +34,11 @@ class InspectorService extends Component
 {
     /**
      * The same pipeline the real sync runs ({@see \GlueAgency\Influx\sync\item\ItemRunner})
-     * — invoked here with dry-run contexts and never committed.
+     * — invoked here with dry-run contexts and never committed. Injectable, like
+     * {@see \GlueAgency\Influx\sync\item\ItemRunner::__construct()}'s, so a caller
+     * can hand in a processor built around its own
+     * {@see \GlueAgency\Influx\sync\item\MappingApplier} instead of inheriting
+     * whichever one this service would have created.
      */
     protected ItemProcessor $itemProcessor;
 
@@ -51,10 +55,20 @@ class InspectorService extends Component
      */
     protected LogPresenter $logRows;
 
+    /**
+     * `$config` stays last so Yii can still configure the component the normal
+     * way ({@see \yii\base\Configurable}).
+     */
+    public function __construct(?ItemProcessor $itemProcessor = null, array $config = [])
+    {
+        $this->itemProcessor = $itemProcessor ?? new ItemProcessor();
+
+        parent::__construct($config);
+    }
+
     public function init(): void
     {
         parent::init();
-        $this->itemProcessor = new ItemProcessor();
         $this->rows = new ItemRowPresenter();
         $this->logRows = new LogPresenter();
     }

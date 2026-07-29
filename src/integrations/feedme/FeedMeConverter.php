@@ -9,6 +9,7 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\MappingCollection;
+use GlueAgency\Influx\targets\EntryTarget;
 
 /**
  * Converts a craftcms/feed-me feed (a row from the `feedme_feeds` table) into
@@ -217,8 +218,9 @@ class FeedMeConverter
     /**
      * Feed Me's elementGroup stores ids per element type, e.g.
      * `{craft\elements\Entry: {section: 2, entryType: 4}}` — Influx criteria
-     * use handles. Only entries are converted (the only built-in Influx
-     * target); other element types keep an empty criteria with a warning.
+     * use handles, under the keys {@see EntryTarget} declares. Only entries are
+     * converted (the only built-in Influx target); other element types keep an
+     * empty criteria with a warning.
      */
     protected function convertElementCriteria(array $feed, string $elementType): array
     {
@@ -245,7 +247,7 @@ class FeedMeConverter
             $sectionHandle = $this->sectionHandleById($sectionId);
 
             if ($sectionHandle !== null) {
-                $criteria['section'] = $sectionHandle;
+                $criteria[EntryTarget::CRITERIA_SECTION] = $sectionHandle;
             } else {
                 $this->warn("Section id {$sectionId} no longer exists; set the section on the link manually.");
             }
@@ -257,7 +259,7 @@ class FeedMeConverter
             $typeHandle = $this->entryTypeHandleById($entryTypeId);
 
             if ($typeHandle !== null) {
-                $criteria['type'] = $typeHandle;
+                $criteria[EntryTarget::CRITERIA_TYPE] = $typeHandle;
             } else {
                 $this->warn("Entry type id {$entryTypeId} no longer exists; set the entry type on the link manually.");
             }

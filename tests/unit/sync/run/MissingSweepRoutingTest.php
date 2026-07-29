@@ -10,6 +10,7 @@ use GlueAgency\Influx\sync\run\MissingElementsSweeper;
 use GlueAgency\Influx\sync\run\MissingSweepPlan;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\AbstractElementTarget;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 use RuntimeException;
 
@@ -31,6 +32,10 @@ use RuntimeException;
  *   - Any unattributed errors block the sweep.
  *   - Offset (sliding-window) run — sweep skipped SILENTLY: a partial feed's
  *     complement isn't "missing", so only a full sync may delete/disable.
+ *   - Capability guard: an element type whose target can't sweep
+ *     ({@see ElementTargetInterface::supportsSweeping()} = false, i.e. User) skips
+ *     and REPORTS, so a stored policy the builder no longer offers can't fail
+ *     silently.
  *
  * No Craft boot, and nothing stubbed: plan() is the pure decision half of the
  * sweeper — it resolves the policy, runs every guard, and hands back a
@@ -149,6 +154,34 @@ class MissingSweepRoutingTest extends Unit
         $this->assertNotNull($plan->skipRow);
     }
 
+    public function testANonSweepingElementTypeSkipsAndReports(): void
+    {
+        // The builder no longer offers the missing-element policies for a target
+        // that reports supportsSweeping() = false, but config predating the flag
+        // still carries them — the pass must say so rather than silently doing
+        // nothing (which is what apply()'s null-query backstop would do).
+        $context = $this->context($this->link(['update', 'delete']), siteId: null, siteHandle: null, target: $this->nonSweepingTarget());
+
+        $plan = $this->plan($context, [1, 2], 0);
+
+        $this->assertNull($plan->policy);
+        $this->assertNotNull($plan->skipRow);
+        $this->assertNotNull($plan->warning);
+    }
+
+    public function testANonSweepingElementTypeStaysSilentWithoutAPolicy(): void
+    {
+        // No missing-element flag: nothing to warn about, so the capability guard
+        // must not fire either.
+        $context = $this->context($this->link(['create', 'update']), siteId: null, siteHandle: null, target: $this->nonSweepingTarget());
+
+        $plan = $this->plan($context, [1, 2], 0);
+
+        $this->assertNull($plan->policy);
+        $this->assertNull($plan->skipRow);
+        $this->assertNull($plan->warning);
+    }
+
     public function testNoMissingFlagSweepsNothing(): void
     {
         $context = $this->context($this->link(['create', 'update']), siteId: 5, siteHandle: 'nl');
@@ -211,14 +244,20 @@ class MissingSweepRoutingTest extends Unit
     }
 
     /**
-     * A context wrapping a throwaway target (never touched — plan() decides
-     * without querying) at the given site scope.
+     * A context wrapping a throwaway target (queried only for its sweeping
+     * capability — plan() decides without touching the database) at the given
+     * site scope.
      */
-    protected function context(Link $link, ?int $siteId, ?string $siteHandle, ?string $offsetHandle = null): SyncContext
-    {
+    protected function context(
+        Link $link,
+        ?int $siteId,
+        ?string $siteHandle,
+        ?string $offsetHandle = null,
+        ?ElementTargetInterface $target = null,
+    ): SyncContext {
         return new SyncContext(
             link: $link,
-            target: $this->target(),
+            target: $target ?? $this->target(),
             siteId: $siteId,
             siteHandle: $siteHandle,
             offsetHandle: $offsetHandle,
@@ -226,16 +265,44 @@ class MissingSweepRoutingTest extends Unit
     }
 
     /**
-     * A bare target — the sweep routing never calls into it (only apply() would,
-     * and that isn't under test here), so only the abstract contract needs
-     * satisfying.
+     * A bare target — the sweep routing calls nothing on it but the static
+     * capability flags, so only the abstract contract needs satisfying. Sweepable,
+     * per the base default.
      */
-    protected function target(): object
+    protected function target(): ElementTargetInterface
     {
         return new class() extends AbstractElementTarget {
             public static function elementType(): string
             {
                 return ElementInterface::class;
+            }
+
+            public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface
+            {
+                return null;
+            }
+
+            public function buildNew(Link $link, ?int $siteId = null): ElementInterface
+            {
+                throw new RuntimeException('not needed');
+            }
+        };
+    }
+
+    /**
+     * A target for an element type that can't be swept — what UserTarget reports.
+     */
+    protected function nonSweepingTarget(): ElementTargetInterface
+    {
+        return new class() extends AbstractElementTarget {
+            public static function elementType(): string
+            {
+                return ElementInterface::class;
+            }
+
+            public static function supportsSweeping(): bool
+            {
+                return false;
             }
 
             public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface

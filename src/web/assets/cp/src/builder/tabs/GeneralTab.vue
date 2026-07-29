@@ -131,7 +131,7 @@
 
         <div class="field">
             <ul class="checkbox-group">
-                <li v-for="opt in options.processingActions" :key="opt.value">
+                <li v-for="opt in processingActions" :key="opt.value">
                     <input type="checkbox"
                            class="checkbox"
                            :id="`builder-processing-${opt.value}`"
@@ -210,6 +210,23 @@ export default {
         // true until an element type is resolved.
         supportsMultiSite() {
             return this.currentElementType ? this.currentElementType.multiSite !== false : true;
+        },
+
+        // An element type whose target can't enumerate "everything a link owns"
+        // (Users) is never swept for elements missing from the feed. Same
+        // default-to-true rule as multi-site.
+        supportsSweeping() {
+            return this.currentElementType ? this.currentElementType.sweeping !== false : true;
+        },
+
+        // The processing checkboxes to render: the missing-element policies are
+        // dropped for a non-sweeping element type, so the operator can't tick a
+        // policy its run would only skip. Stored config keeps loading either way
+        // — the server neither rejects nor rewrites it.
+        processingActions() {
+            const actions = this.options.processingActions || [];
+
+            return this.supportsSweeping ? actions : actions.filter((o) => ! o.missingPolicy);
         },
 
         section: {

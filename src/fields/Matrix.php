@@ -9,7 +9,6 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Matrix as CraftMatrixField;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
-use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
@@ -449,7 +448,7 @@ class Matrix extends Field
 
         foreach ($customHandles as $handle) {
             $childCraftField = $layout?->getFieldByHandle($handle);
-            $leaves[$handle] = $childCraftField !== null ? $this->childStrategy($childCraftField) : null;
+            $leaves[$handle] = $childCraftField !== null ? $this->childStrategy($context, $childCraftField) : null;
         }
 
         return $leaves;
@@ -491,7 +490,7 @@ class Matrix extends Field
 
         $childContext = $context->descend($blockElement, $sub, $childCraftField, $childItem);
 
-        return $this->childStrategy($childCraftField)->parse($childContext);
+        return $this->childStrategy($context, $childCraftField)->parse($childContext);
     }
 
     /**
@@ -519,12 +518,15 @@ class Matrix extends Field
     }
 
     /**
-     * Resolve the mapping strategy for a child craft field. Extracted so tests
-     * can record the {@see FieldContext} a child receives and return a marker.
+     * Resolve the mapping strategy for a child craft field, through the seam the
+     * context carries ({@see FieldContext::strategyFor()}) rather than the plugin
+     * singleton — a field strategy has no business reaching a global mid-walk.
+     * Still extracted so tests can record the {@see FieldContext} a child
+     * receives and return a marker.
      */
-    protected function childStrategy(CraftFieldInterface $childCraftField): Field
+    protected function childStrategy(FieldContext $context, CraftFieldInterface $childCraftField): Field
     {
-        return Influx::getInstance()->fields->forCraftField($childCraftField);
+        return $context->strategyFor($childCraftField);
     }
 
     /**

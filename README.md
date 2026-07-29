@@ -40,7 +40,9 @@ composer require glue-agency/craft-influx
 ./craft influx/sync news --site=fr      # only the "fr" site-specific endpoint
 ```
 
-Runs also trigger from the CP — the sync action on a link's row under **Influx → Links**, or the "Sync from remote" action on a synced element. Link-level CP runs are queued (one job per site, one feed page per step, so large feeds don't time out a request); single-element runs and console runs are synchronous. Unless logging is switched off in the plugin settings, every run produces a log under **Influx → Logs** with a per-item drill-down. The **Debug** screen, reachable from a link's row, dry-runs the feed against the current mapping without writing anything — for building/troubleshooting a link before it goes live.
+Runs also trigger from the CP — the sync action on a link's row under **Influx → Links**, or the "Sync from remote" action on a synced entry, offered to users holding the *Sync elements from a remote link* permission. Link-level CP runs are queued (one job per site, one feed page per step, so large feeds don't time out a request); single-element runs and console runs are synchronous. Unless logging is switched off in the plugin settings, every run produces a log under **Influx → Logs** with a per-item drill-down. The **Debug** screen, reachable from a link's row, dry-runs the feed against the current mapping without writing anything — for building/troubleshooting a link before it goes live.
+
+On the edit screen of any element a link writes to, each actively-mapped field carries a small Influx mark next to its label, tooltipped "This field is updated by Influx." — so an editor sees at a glance which values the next sync may overwrite. Purely informational, and not permission-gated.
 
 ### Migrating from Feed Me
 
@@ -56,7 +58,7 @@ Existing [Feed Me](https://github.com/craftcms/feed-me) feeds can be converted t
 
 The conversion is best-effort: everything that can't be carried over (parent entries, non-JSON feed types, ...) is reported as a warning so you can finish the link in the builder. Matrix block mappings do convert, but only their custom fields — Feed Me's per-block-type keys other than `fields` are warned about and dropped.
 
-Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical across those majors except for a few renamed handles (e.g. `authorId` → `authorIds`), which the importer accepts interchangeably since rows of different vintages coexist after upgrades.
+Feeds saved by Feed Me 4, 5 and 6 all convert — the stored shape is identical across those majors bar two divergences the importer accepts interchangeably: the entry-author handle (`authorId` through v5, `authorIds` since v6) and relation `options.match` values (raw content-table column names through v5, bare handles since v6). Feed Me never rewrites stored `fieldMapping` JSON on upgrade, so the vintage is a property of the row rather than of the installed version — which is why there's one converter instead of one per major.
 
 ## Concepts
 
@@ -95,12 +97,17 @@ A `target` is an adapter for one element type. The plugin ships `EntryTarget` (f
 
 Third-party plugins register their own through `TargetsService::EVENT_REGISTER_TARGETS` or `->targets->register()` (see [Registries](#registries)); targets are keyed by the `elementType()` they declare.
 
-A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and handle disable / disable-for-site / delete / delete-for-site.
+A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and own every write to it — `save()` plus disable / disable-for-site / delete / delete-for-site. Every write to the synced element routes through the target instead of Craft's element API, so a target can save with whatever flags its element type needs; the base implementation is Craft's own save with validation off (the feed is authoritative — same policy Feed Me imports run on). Related elements a mapping creates on the fly are the strategies' own business, not the target's.
 
-Two static capabilities let a target describe its element type to the builder and the sync engine:
+Three static capabilities let a target describe its element type to the builder and the sync engine:
 
 - **`supportsMultiSite()`** — whether links can carry site-specific endpoints and be swept per-site. Localizable types (Entry) return `true`; global, non-localizable ones (User) return `false`, so their links always run once against a single endpoint and the CP hides the site-specific controls. `Link` rejects site endpoints configured against a non-multi-site target as a server-side backstop.
-- **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on, rendered as extra dropdowns on the builder's General tab (Entry uses `['section', 'type']`; User has none).
+- **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on, rendered as extra dropdowns on the builder's General tab (Entry uses `['section', 'type']`; User has none). The target owns those key names as constants (`EntryTarget::CRITERIA_SECTION`), and stored criteria are read through `Link::criterion($key)`.
+- **`supportsSweeping()`** — whether links to this type can be swept for elements missing from the feed. A sweep acts on the complement of what a run saw, so it needs a target that can enumerate "everything this link owns" (`missingElementsQuery()`). Types with no scoping dimension (User: the candidate set would be every user in the system) return `false`, and the builder then leaves the disable-/delete-missing policies out of the processing checkboxes; a stored policy from before that gets a reported skip in the run's log rather than silently doing nothing.
+
+A target that partitions its element type also implements **`claimCells()`** — the comparable cells two links intersect on when Influx warns that both define a resource mapping for the same elements (entries expand to `"{section} {entryType}"`; the base reports one `*` sentinel, so two links of an unpartitioned type always overlap).
+
+A target also reports which fields a link may map to: `getMappableFields()` returns a `list<MappableField>` — its element type's native attributes, declared with the same `SchemaBuilder` the mapping extras use, plus the custom fields on the resolved field layout, grouped the way the element editor groups them. Natives the element type hides are left out by omission: an entry type with `hasTitleField` off never offers `title`. A stored mapping for a handle the target no longer offers is pruned the next time the link is saved.
 
 ### Mappings
 
@@ -122,23 +129,23 @@ A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuild
 
 ### Match
 
-Every link needs a match config: `attribute` is the field/handle on the element used as a stable key (typically a custom plain-text field called `importId`). There's no separate match-source path — the match value is always read from that same field's own mapping node, so the field that identifies an item is mapped like any other field. Influx looks up the existing element by this attribute across all sites — that's how multi-language links land on the same canonical entry.
+Every link needs a match config: `attribute` is the field/handle on the element used as a stable key (typically a custom plain-text field called `importId`). There's no separate match-source path — the match value is always read from that same field's own mapping node, so the field that identifies an item is mapped like any other field. Influx looks up the existing element by this attribute — unscoped across sites for a single-endpoint link, scoped to the site being processed for a per-site run. Either way a multi-language link converges on one canonical element, provided the match field isn't translatable so every site's row carries the same key.
 
 ### Multi-site
 
-Set per-site endpoints and the link runs once per site. The element is matched once across all sites, so each site's data lands on the right localized row of the same element.
+Set per-site endpoints and the link runs once per site — one queue job and one log per site, in the configured order. Each pass matches the element inside the site it's processing and writes to that site's localized row, so every endpoint feeds the same canonical element. Element types whose target reports no multi-site support (Users) always run once against a single endpoint.
 
 ### Offset presets
 
-A link can declare named sliding-window presets (`offset: { hour: { since: '-1 hour', queryParam: modified_since } }`) so a scheduled `--offset=hour` run only asks the feed for what changed recently, instead of re-fetching everything every time.
+A link can declare named sliding-window presets (`offset: { hour: { since: '-1 hour', queryParam: modified_since } }`) so a scheduled `--offset=hour` run only asks the feed for what changed recently, instead of re-fetching everything every time. `since` and `queryParam` are required; an optional `format` sets how the cutoff is formatted (ISO 8601 by default). An offset run never sweeps for missing elements — its seen-set only covers the window.
 
 ### Backup
 
-A link can be flagged to take a full database backup (through Craft's own database-backup API) immediately before it runs — cheap insurance for a first sync or a link with delete permissions enabled.
+A link can be flagged to take a full database backup (through Craft's own database-backup API, `Craft::$app->getDb()->backup()`) immediately before it runs — cheap insurance for a first sync or a link with delete permissions enabled. A failed backup aborts the run rather than letting a destructive sweep proceed unprotected.
 
 ### Auth
 
-Built-in strategies: Basic, Bearer, Custom Header, Query String. Secrets are stored as written (e.g. `$API_KEY`) and resolved from `.env` at request time, never persisted in plain text in Project Config. Third-party strategies register via `AuthService::EVENT_REGISTER_AUTH_TYPES` or `->auth->register()` (see [Registries](#registries)).
+Built-in strategies: Basic, Bearer, Custom Header, Query String. Tokens are stored exactly as written and resolved through Craft's `App::parseEnv()` at request time, so writing `$API_KEY` keeps the secret itself in `.env` instead of Project Config. Resolution is deliberately lenient — an unset or empty variable sends an empty credential rather than throwing, since a local environment legitimately leaves one blank. Third-party strategies register via `AuthService::EVENT_REGISTER_AUTH_TYPES` or `->auth->register()` (see [Registries](#registries)).
 
 A strategy implements `AuthStrategyInterface`: three static descriptors of the class — `type()` (the stored discriminator and registry key), `label()` (CP dropdown) and `schema()` (the form the CP renders for it, a `SchemaBuilder`) — plus an instance `apply()` returning the headers / query params for one request. Extending `AbstractAuthStrategy` makes it a Craft model, so per-type validation goes in `defineRules()`. Per request, the link's stored `auth` slice is handed to the constructor as its last argument.
 
@@ -148,7 +155,8 @@ Hook into any stage:
 
 - `LinksService::EVENT_BEFORE_SAVE_LINK` / `EVENT_AFTER_SAVE_LINK`
 - `LinksService::EVENT_BEFORE_DELETE_LINK` / `EVENT_AFTER_DELETE_LINK`
-- `SynchronizationService::EVENT_BEFORE_SYNC_LINK` / `EVENT_AFTER_SYNC_LINK`
+- `SynchronizationService::EVENT_BEFORE_SYNC_LINK` — once per run, and cancellable: `$event->isValid = false` cancels every site that run would cover
+- `SynchronizationService::EVENT_AFTER_SYNC_LINK` — once per site log, carrying that site's `siteHandle` and counters
 - `SynchronizationService::EVENT_BEFORE_ITEM` — set `$event->skip = true` or swap `$event->element` to redirect
 - `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` — mappings have been applied but the element hasn't been saved
 - `SynchronizationService::EVENT_AFTER_ITEM` — `$event->action` is `created` / `updated` / `unchanged` / `error`. Skipped items return before this fires, and the missing-elements sweep's outcomes (`disabled`, `deleted`, …) are log rows only, never event payloads

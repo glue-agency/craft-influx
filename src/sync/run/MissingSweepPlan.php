@@ -9,10 +9,10 @@ use GlueAgency\Influx\enums\ItemAction;
  * missing-elements sweep: the policy to apply and the scope to apply it in, or
  * the messages a bailed sweep must leave behind. Treat as read-only.
  *
- * Splitting the decision out of the action is what keeps every guard
- * (offset, clean-pass, D2, policy precedence) assertable without a Craft boot:
- * the guards produce a plan, and only {@see MissingElementsSweeper::apply()}
- * touches the database.
+ * Splitting the decision out of the action is what keeps every guard (offset,
+ * capability, clean-pass, D2, policy precedence) assertable without a Craft
+ * boot: the guards produce a plan, and only
+ * {@see MissingElementsSweeper::apply()} touches the database.
  *
  * Three shapes:
  *   - a sweep: `$policy` set, `$warning`/`$skipRow` null.

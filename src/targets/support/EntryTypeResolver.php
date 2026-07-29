@@ -7,13 +7,17 @@ use craft\models\Section;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\EntryTarget;
 
 /**
  * Resolves a link's `elementCriteria` (section/type handles) to the actual
  * Section + EntryType pair. This resolution used to exist three times —
- * {@see \GlueAgency\Influx\targets\EntryTarget::buildNew()},
- * {@see \GlueAgency\Influx\targets\EntryTarget::getMappableFields()} and the
+ * {@see EntryTarget::buildNew()}, {@see EntryTarget::getMappableFields()} and the
  * endpoint-token field walker — each one free to drift from the others.
+ *
+ * The criteria keys belong to {@see EntryTarget}, which declares them; this
+ * reads them through {@see Link::criterion()} with that target's constants
+ * rather than repeating the literals.
  */
 class EntryTypeResolver
 {
@@ -32,7 +36,7 @@ class EntryTypeResolver
      */
     public function resolve(Link $link): array
     {
-        if (! ($sectionHandle = $link->elementCriteria['section'] ?? null)) {
+        if (! ($sectionHandle = $link->criterion(EntryTarget::CRITERIA_SECTION))) {
             throw new InfluxException(
                 "Link '{$link->handle}' must declare elementCriteria.section for Entry targets.",
             );
@@ -42,7 +46,7 @@ class EntryTypeResolver
             throw new InfluxException("Section '{$sectionHandle}' does not exist.");
         }
 
-        $typeHandle = $link->elementCriteria['type'] ?? null;
+        $typeHandle = $link->criterion(EntryTarget::CRITERIA_TYPE);
 
         $sectionEntryTypes = $section->getEntryTypes();
         $entryType = null;
@@ -81,7 +85,7 @@ class EntryTypeResolver
      */
     public function tryResolve(Link $link): ?array
     {
-        $sectionHandle = $link->elementCriteria['section'] ?? null;
+        $sectionHandle = $link->criterion(EntryTarget::CRITERIA_SECTION);
 
         if (! $sectionHandle) {
             return null;
@@ -93,7 +97,7 @@ class EntryTypeResolver
             return null;
         }
 
-        $typeHandle = $link->elementCriteria['type'] ?? null;
+        $typeHandle = $link->criterion(EntryTarget::CRITERIA_TYPE);
         $entryTypes = $section->getEntryTypes();
         $entryType = null;
 

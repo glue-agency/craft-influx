@@ -7,6 +7,7 @@ use craft\helpers\UrlHelper;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\EntryTarget;
 
 /**
  * Shapes a {@see Link} into what the CP screens display about it — the
@@ -44,8 +45,7 @@ class LinkPresenter
      */
     public function targetCriteriaLabel(Link $link): ?string
     {
-        $criteria = $link->elementCriteria ?? [];
-        $sectionHandle = $criteria['section'] ?? null;
+        $sectionHandle = $link->criterion(EntryTarget::CRITERIA_SECTION);
 
         if (! $sectionHandle) {
             return null;
@@ -54,7 +54,7 @@ class LinkPresenter
         $section = Compat::getSectionByHandle($sectionHandle);
         $parts = [$section?->name ?? $sectionHandle];
 
-        $typeHandle = $criteria['type'] ?? null;
+        $typeHandle = $link->criterion(EntryTarget::CRITERIA_TYPE);
 
         if ($typeHandle) {
             $typeName = null;

@@ -2,8 +2,8 @@
 
 namespace GlueAgency\Influx\sync\item;
 
+use Closure;
 use craft\base\ElementInterface;
-use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\SyncContext;
@@ -51,6 +51,23 @@ use Throwable;
  */
 class MappingApplier
 {
+    /**
+     * Strategy-lookup seam handed to every {@see FieldContext} this walk builds
+     * (and, through {@see FieldContext::descend()}, to every sub-mapping), so
+     * neither this class nor a field strategy reaches FieldsService through the
+     * plugin singleton mid-walk. Null = the context asks the plugin's registry
+     * ({@see FieldContext::strategyFor()}).
+     */
+    protected ?Closure $strategyResolver = null;
+
+    /**
+     * @param callable|null $strategyResolver `fn(CraftFieldInterface): Field`.
+     */
+    public function __construct(?callable $strategyResolver = null)
+    {
+        $this->strategyResolver = $strategyResolver !== null ? Closure::fromCallable($strategyResolver) : null;
+    }
+
     /**
      * Walk the link's mappings against one remote item, writing the resolved
      * values onto the element and returning one {@see MappingResult} per
@@ -104,6 +121,8 @@ class MappingApplier
                     element: $element,
                     dryRun: $syncContext->dryRun,
                     lookups: $syncContext->lookups,
+                    strategyResolver: $this->strategyResolver,
+                    applier: $this,
                 );
                 $result = $this->applyCustomField($context);
             }
@@ -294,7 +313,7 @@ class MappingApplier
     {
         $rawValue = $context->mapping->rawValue($context->item);
         $currentValue = $this->safeFieldValue($context->element, $context->handle);
-        $strategy = Influx::getInstance()->fields->forCraftField($context->craftField);
+        $strategy = $context->strategyFor($context->craftField);
 
         if (! $strategy->addressed($context)) {
             return new MappingResult(

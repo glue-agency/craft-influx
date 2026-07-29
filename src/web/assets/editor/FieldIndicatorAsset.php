@@ -10,7 +10,7 @@ use craft\web\assets\cp\CpAsset;
  * "linked by Influx" icon next to every field an active mapping writes.
  *
  * Deliberately hand-authored and served straight from `resources/` — not part
- * of the Vue/Vite bundle in web/assets/links. It's a few lines of vanilla JS
+ * of the Vue/Vite bundle in web/assets/cp. It's a few lines of vanilla JS
  * with nothing to build, and keeping it separate means the editor page never
  * loads the heavier link-builder SPA. Registered on demand from
  * {@see \GlueAgency\Influx\Influx::registerFieldIndicators()}, only when the

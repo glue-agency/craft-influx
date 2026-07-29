@@ -52,6 +52,15 @@ use Throwable;
  * Only a full sync (no offset) may sweep. That skip is expected behaviour, so
  * it's silent: no warning, no SKIPPED row.
  *
+ * Capability guard: an element type whose target reports
+ * {@see ElementTargetInterface::supportsSweeping()} = false (User — no scoping
+ * dimension, so "everything this link owns" is every user in the system) can
+ * never sweep. The builder doesn't offer the policies for such a type, so this
+ * only bites config that predates the flag or was hand-edited; unlike the offset
+ * bail it warns and logs a SKIPPED row, because an operator who ticked
+ * "delete missing" must not be left thinking it ran. {@see apply()}'s null-query
+ * check is the last line of defence behind it, not the reporting path.
+ *
  * Clean-pass guard: a sweep acts on the COMPLEMENT of the seen-set, so it's only
  * safe when the seen-set is complete. If any item failed WITHOUT a resolvable
  * element ($unattributedErrors > 0) the set is untrustworthy — an element that's
@@ -104,8 +113,9 @@ class MissingElementsSweeper
      * Run every guard and hand back what this pass should do — the whole of the
      * sweep's decision-making, and nothing that touches Craft. Guard order is
      * load-bearing: the two silent bails (no flag, offset run) come first so an
-     * offset run never warns, then the clean-pass guard, then D2, then the
-     * site-scope requirement.
+     * offset run never warns, then the can't-sweep bail (a property of the
+     * element type, so it outranks the per-pass guards), then the clean-pass
+     * guard, then D2, then the site-scope requirement.
      *
      * @param list<int> $seenIds
      */
@@ -120,6 +130,17 @@ class MissingElementsSweeper
 
         if ($context->offsetHandle !== null) {
             return new MissingSweepPlan();
+        }
+
+        if (! $context->target::supportsSweeping()) {
+            $friendlyName = $context->target::friendlyName();
+
+            return new MissingSweepPlan(
+                warning: "Influx: missing-elements sweep skipped for link '{$link->handle}'"
+                    . " — {$friendlyName} links don't support sweeping, so the '{$policy->value}' policy"
+                    . ' cannot be applied. Remove it from the link.',
+                skipRow: "Missing-elements sweep skipped: {$friendlyName} links don't support sweeping.",
+            );
         }
 
         if ($unattributedErrors > 0) {
@@ -186,6 +207,10 @@ class MissingElementsSweeper
      * row on a thrown failure. All policies route here, so the per-element loop,
      * the false-vs-success discipline, and the tail flush live in exactly one
      * place.
+     *
+     * A null candidate query returns silently: that's the backstop behind the
+     * capability guard, which is where a target that can't enumerate its
+     * candidates is reported ({@see plan()}), so there's nothing left to say here.
      *
      * DISABLED only touches still-enabled elements (skip the churn of
      * re-disabling); the delete policies consider every status. A save that

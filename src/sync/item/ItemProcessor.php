@@ -2,11 +2,12 @@
 
 namespace GlueAgency\Influx\sync\item;
 
-use Craft;
+use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\SyncContext;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * The per-item pipeline, in three phases that exist exactly once for both
@@ -125,9 +126,11 @@ class ItemProcessor
     }
 
     /**
-     * Phase 3 — persist the populated element. Pass-through for dry-runs and
-     * skips; on save failure the action becomes {@see ItemAction::ERROR} with
-     * the element's validation errors as the message.
+     * Phase 3 — persist the populated element through the target
+     * ({@see ElementTargetInterface::save()}, which saves with validation OFF —
+     * deliberate, and documented there). Pass-through for dry-runs and skips; a
+     * failed save becomes {@see ItemAction::ERROR} carrying
+     * {@see commitFailureMessage()}.
      *
      * The element is saved only when a field actually changed — unchanged
      * existing elements skip the save. Either way, a committed create/update
@@ -141,7 +144,7 @@ class ItemProcessor
             return $draft;
         }
 
-        if ($draft->changed && ! Craft::$app->getElements()->saveElement($draft->element, false)) {
+        if ($draft->changed && ! $context->target->save($draft->element)) {
             return new ItemSyncResult(
                 decision: $draft->decision,
                 action: ItemAction::ERROR,
@@ -150,13 +153,35 @@ class ItemProcessor
                 isNew: $draft->isNew,
                 changed: $draft->changed,
                 mappingResults: $draft->mappingResults,
-                message: json_encode($draft->element->getErrors()) ?: null,
+                message: $this->commitFailureMessage($draft->element),
             );
         }
 
         $context->target->afterCommit($context, $draft->element, $draft->isNew);
 
         return $draft;
+    }
+
+    /**
+     * Why a save that returned false failed, for the item's log row.
+     *
+     * Saves run with validation off, so the usual `getErrors()` dump is normally
+     * EMPTY here — a false return then means Craft itself refused the save
+     * (`beforeSave()`/`afterSave()` on the element or a listening plugin returned
+     * false, which adds no error), and reporting `[]` would tell the operator
+     * nothing. Errors are still reported when there are any: a target may
+     * validate on its own terms, and Craft's save path can attach errors of its
+     * own (e.g. a failed slug/URI generation).
+     */
+    protected function commitFailureMessage(ElementInterface $element): string
+    {
+        $errors = $element->getErrors();
+
+        if ($errors !== []) {
+            return json_encode($errors) ?: 'The element reported validation errors that could not be encoded.';
+        }
+
+        return 'Craft rejected the save without reporting validation errors — a beforeSave/afterSave handler refused it.';
     }
 
     protected function skipMessage(Link $link, SyncDecision $decision): string

@@ -16,14 +16,40 @@ use GlueAgency\Influx\sync\SyncContext;
  * ...). Built-ins are registered by Influx; third-party targets register by
  * listening to TargetsService::EVENT_REGISTER_TARGETS.
  *
- * Each target owns three concerns:
- *   1. Decide whether it can handle a given link (typically by FQCN match).
- *   2. Find an existing element for a link item, or build a new one.
- *   3. Apply link-level requirements (section/type/calendar/etc.) so a freshly
- *      built element passes Craft's save-time validation.
+ * A target owns everything the engine and the CP need to know about one element
+ * type, grouped into six concerns:
+ *   1. Identity + capabilities — which element class, what to call it, and which
+ *      of the engine's features apply to it ({@see supportsMultiSite()},
+ *      {@see criteriaKeys()}, {@see supportsSweeping()}). All static: the CP asks
+ *      them per element type, before any link exists.
+ *   2. Claiming — which links and which elements are this target's business
+ *      ({@see handles()}, {@see targetsElement()}, {@see claimsElement()}), and
+ *      the comparable scope two links overlap on ({@see claimCells()}).
+ *   3. Resolution + construction — find the element a feed item pairs with, or
+ *      build a fresh one carrying every link-mandated attribute
+ *      ({@see findByMatchValue()}, {@see buildNew()}, {@see assignMatchValue()},
+ *      {@see matchableNativeAttributes()}).
+ *   4. Writing — apply native attributes ({@see applyNativeAttribute()},
+ *      {@see ownsAttribute()}), persist ({@see save()}), and reconcile whatever
+ *      a save doesn't cover ({@see afterCommit()}).
+ *   5. Destructive writes + the missing-elements sweep ({@see disable()},
+ *      {@see disableForSite()}, {@see delete()}, {@see deleteForSite()},
+ *      {@see missingElementsQuery()}).
+ *   6. Schema — the fields a link may map to ({@see getMappableFields()}).
+ *
+ * {@see AbstractElementTarget} implements every member a target doesn't have to
+ * think about, so a new target is `elementType()` + `findByMatchValue()` +
+ * `buildNew()` and nothing else.
  */
 interface ElementTargetInterface
 {
+    /**
+     * The broadest claim cell — "every element of this type". A target whose
+     * element type has no sub-partition reports only this, so two links of that
+     * type always intersect. {@see claimCells()}
+     */
+    public const CLAIM_ALL = '*';
+
     /**
      * FQCN of the element class this target handles, e.g. craft\elements\Entry.
      */
@@ -53,9 +79,29 @@ interface ElementTargetInterface
      * uses `['section', 'type']`; User has none). Drives which of the builder's
      * criteria fields render for the selected type; the base returns `[]`.
      *
+     * A target that scopes on criteria OWNS those key names — declared as
+     * constants and returned from here ({@see EntryTarget::CRITERIA_SECTION}) —
+     * and every reader goes through {@see Link::criterion()} with one of them, so
+     * the literals live in exactly one place.
+     *
      * @return list<string>
      */
     public static function criteriaKeys(): array;
+
+    /**
+     * Whether links to this element type can be swept for elements that are
+     * missing from the feed. A sweep acts on the COMPLEMENT of the ids a run saw,
+     * so it's only safe for a type whose links can enumerate "everything I own"
+     * ({@see missingElementsQuery()}). A type with no scoping dimension — User,
+     * where the candidate set would be every user in the system — returns false,
+     * and the builder then doesn't offer the disable-/delete-missing policies for
+     * it at all. {@see AbstractElementTarget} defaults to true; a non-sweeping
+     * target overrides it, and
+     * {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()} is the
+     * server-side backstop that reports a skipped sweep for config still
+     * carrying one of those policies.
+     */
+    public static function supportsSweeping(): bool;
 
     /**
      * Is this target the right one for the given link?
@@ -85,10 +131,29 @@ interface ElementTargetInterface
     public function claimsElement(Link $link, ElementInterface $element): bool;
 
     /**
+     * The cells this link claims — a canonical, comparable partition of "which
+     * elements does this link manage", intersected with another link's to warn
+     * about two links owning the same elements
+     * ({@see \GlueAgency\Influx\models\Link::overlaps()}). Cells are only ever
+     * compared between links of the SAME element type, so the strings are this
+     * target's own vocabulary.
+     *
+     * Entries partition into `"{section} {entryType}"` cells expanded from the
+     * link's criteria ({@see EntryTarget::claimCells()}). An element type with no
+     * sub-partition reports the single {@see CLAIM_ALL} sentinel — which is what
+     * the base returns, so a target only implements this when its element type
+     * actually has a partition to report.
+     *
+     * @return list<string>
+     */
+    public function claimCells(Link $link): array;
+
+    /**
      * Find an existing element matching the given key value, or null.
-     * Implementations are expected to query across sites — multi-site links
-     * rely on finding the same canonical element regardless of which site is
-     * being processed first.
+     * A per-site run passes $siteId and the lookup may scope to that site; a
+     * siteless run passes null and the lookup must span all sites. Both
+     * converge on the same canonical element as long as the match field is
+     * not translatable — the precondition multi-site links rely on.
      */
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface;
 
@@ -176,6 +241,16 @@ interface ElementTargetInterface
      * element from an updated one. No-op by default.
      */
     public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void;
+
+    /**
+     * Persist the element, reporting whether the save landed. The engine's ONE
+     * write, on the target for the same reason the four destructive writes below
+     * are: so a third-party target can save with whatever flags its element type
+     * needs (its own propagation, search-index or resave policy) instead of the
+     * engine hardcoding Craft's defaults. {@see AbstractElementTarget::save()}
+     * runs Craft's own save with validation OFF — see there for why.
+     */
+    public function save(ElementInterface $element): bool;
 
     public function disable(ElementInterface $element): bool;
 

@@ -60,6 +60,14 @@ class SyncContext
      */
     public ElementLookupCache $lookups;
 
+    /**
+     * Per-run scratch memo for the run-scoped lookups that don't warrant a cache
+     * class of their own — a target's user-group map, say. Constructed and
+     * isolated exactly like {@see $lookups}; it exists because targets are shared
+     * prototypes that must not memoize on themselves ({@see RunMemo}).
+     */
+    public RunMemo $memo;
+
     public function __construct(
         Link $link,
         ElementTargetInterface $target,
@@ -77,6 +85,7 @@ class SyncContext
         $this->offsetHandle = $offsetHandle;
         $this->dryRun = $dryRun;
         $this->lookups = new ElementLookupCache();
+        $this->memo = new RunMemo();
     }
 
     /**

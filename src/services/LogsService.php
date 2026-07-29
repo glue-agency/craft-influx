@@ -33,12 +33,22 @@ use yii\db\Expression;
  * Per-item rows are BUFFERED, not written one at a time: recordItem() only
  * appends to an in-memory {@see LogItemBuffer} (and bumps the record's live
  * counters), and flush() writes the whole page in one batch insert plus one
- * counter UPDATE. The caller flushes at each page boundary (see
- * {@see \GlueAgency\Influx\sync\run\PageWalker}), and finish()/fail() flush before
- * closing the run.
+ * counter UPDATE.
  * Net effect for the live log viewer: rows and counters advance per page (or
  * per {@see FLUSH_THRESHOLD} items on a huge page) instead of per item — a
  * bounded number of DB round-trips regardless of feed size.
+ *
+ * The flush protocol, in full — every caller that drains a buffer:
+ *   - {@see \GlueAgency\Influx\sync\run\PageWalker} at each page boundary;
+ *   - {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper} once the sweep is
+ *     done (the tail flush the queued path depends on);
+ *   - {@see finish()} / {@see fail()} before closing the run;
+ *   - {@see recordItem()} itself, whenever a single page overruns
+ *     {@see FLUSH_THRESHOLD}.
+ *
+ * A buffer's ENTRY in the map outlives its rows, so the map is released where a
+ * log's lifecycle ends ({@see forgetBuffer()}) — otherwise a long-lived queue
+ * worker keeps one drained buffer per log id it ever touched.
  */
 class LogsService extends Component
 {
@@ -257,6 +267,7 @@ class LogsService extends Component
     public function finish(LogRecord $log): void
     {
         $this->flush($log);
+        $this->forgetBuffer($log);
 
         $log->status = RunStatus::OK->value;
         $log->finishedAt = Db::prepareDateForDb(new DateTime());
@@ -270,7 +281,9 @@ class LogsService extends Component
     /**
      * The pending buffer is flushed first so already-processed rows aren't
      * lost, but a throwing flush is caught and only warned about: nothing may
-     * stop the ERROR status from landing.
+     * stop the ERROR status from landing. The buffer is released either way —
+     * rows a failed flush couldn't write have nowhere else to go, and the run is
+     * over.
      */
     public function fail(LogRecord $log, string $error): void
     {
@@ -279,6 +292,8 @@ class LogsService extends Component
         } catch (Throwable $e) {
             Craft::warning("Influx: flushing log #{$log->id} before fail() threw: {$e->getMessage()}", __METHOD__);
         }
+
+        $this->forgetBuffer($log);
 
         $log->status = RunStatus::ERROR->value;
         $log->error = $error;
@@ -292,11 +307,33 @@ class LogsService extends Component
 
     /**
      * The pending-row buffer for a log record, created on first use. Keyed by
-     * the record id so a reloaded record shares the buffer of the id it carries.
+     * the record id so a reloaded record shares the buffer of the id it carries
+     * — and re-created lazily after a {@see forgetBuffer()}, which is what makes
+     * a log reopened across queue steps
+     * ({@see SynchronizationService::batchStep()}) safe: it simply buffers into a
+     * fresh one.
      */
     protected function bufferFor(LogRecord $log): LogItemBuffer
     {
         return $this->buffers[$log->id] ??= new LogItemBuffer();
+    }
+
+    /**
+     * Release a log's buffer entry. {@see flush()} empties the buffer OBJECT but
+     * leaves its map entry behind, so without this a long-lived queue worker
+     * accumulates one drained {@see LogItemBuffer} per log id it ever wrote.
+     * Called wherever a log's lifecycle ends: {@see finish()} and {@see fail()}
+     * (after their flush — the rows must land first), and {@see delete()}, where
+     * any still-pending rows have nowhere left to land anyway.
+     *
+     * {@see deleteOlderThan()} needs no release: it only ever removes logs older
+     * than a retention window in days, never one this request opened.
+     */
+    protected function forgetBuffer(LogRecord $log): void
+    {
+        if ($log->id) {
+            unset($this->buffers[$log->id]);
+        }
     }
 
     /**
@@ -486,18 +523,24 @@ class LogsService extends Component
     }
 
     /**
-     * Drop one log row; its item rows go with it via the FK cascade.
+     * Drop one log row; its item rows go with it via the FK cascade. Any pending
+     * buffer goes too — the row it would insert into no longer exists.
      */
     public function delete(LogRecord $log): void
     {
         $log->delete();
+        $this->forgetBuffer($log);
         Influx::getInstance()->links->forgetDeletedLogs();
         $this->invalidateErrorLogCount();
     }
 
+    /**
+     * Every log row goes, so every buffer does too — see {@see delete()}.
+     */
     public function clear(): int
     {
         $deleted = LogRecord::deleteAll();
+        $this->buffers = [];
         Influx::getInstance()->links->forgetDeletedLogs();
         $this->invalidateErrorLogCount();
 

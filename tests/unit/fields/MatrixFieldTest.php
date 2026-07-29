@@ -577,7 +577,7 @@ class MatrixFieldTest extends Unit
                 return $this->test->fakeBlockElement($this->typeLayouts[$typeHandle] ?? []);
             }
 
-            protected function childStrategy(CraftFieldInterface $childCraftField): Field
+            protected function childStrategy(FieldContext $context, CraftFieldInterface $childCraftField): Field
             {
                 if ($this->realChild !== null) {
                     return $this->realChild;

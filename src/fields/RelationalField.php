@@ -4,8 +4,9 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\item\MappingApplier;
+use yii\base\Model;
 
 /**
  * Shared base for fields that store related-element ids and may write values
@@ -61,18 +62,76 @@ abstract class RelationalField extends Field
      * Apply this mapping's sub-mappings to a related element and persist it,
      * but only when a sub-mapping actually changed a value. Skipped under dry-
      * run: the related element is a real, saved element the debug inspector
-     * must not mutate. The walk itself ({@see MappingApplier::applySubMappings()})
-     * never saves; persistence is decided here.
+     * must not mutate. The walk itself
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()})
+     * never saves; persistence is decided here, and it rides the context
+     * ({@see FieldContext::applySubMappings()}) so this class never builds an
+     * applier of its own.
+     *
+     * A REFUSED save throws. The sweeper's discipline holds for related elements
+     * too — "a save that returns false WITHOUT throwing (a validation failure
+     * that didn't persist) is an ERROR row, never a success row"
+     * ({@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::apply()}) — and
+     * discarding the return here was exactly that: the related element silently
+     * kept its old values while the parent row logged success. The throw lands on
+     * the parent mapping's row, the only row a sub-element has
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyCustomField()}).
+     *
+     * @throws MappingValueException when the related element refuses to save
      */
     protected function persistSubElement(FieldContext $context, ElementInterface $element): void
     {
-        if ($context->dryRun) {
+        if ($context->dryRun || ! $context->mapping->hasSubMappings()) {
             return;
         }
 
-        if ((new MappingApplier())->applySubMappings($context, $element)) {
-            Craft::$app->getElements()->saveElement($element, false);
+        if (! $context->applySubMappings($element)) {
+            return;
         }
+
+        if (! $this->saveSubElement($element)) {
+            throw new MappingValueException($this->saveFailureMessage($element));
+        }
+    }
+
+    /**
+     * The related-element save, extracted so tests can stub persistence without
+     * booting Craft.
+     */
+    protected function saveSubElement(ElementInterface $element): bool
+    {
+        return Craft::$app->getElements()->saveElement($element, false);
+    }
+
+    /**
+     * Name the sub-element that refused to save, with its validation errors when
+     * it carries any — a bare "save failed" on a nested element the feed also
+     * fills is unactionable. Errors are read through {@see Model} rather than
+     * ElementInterface, which declares no error API of its own.
+     */
+    protected function saveFailureMessage(ElementInterface $element): string
+    {
+        $label = $element->getUiLabel();
+
+        $who = array_filter([
+            $element->id !== null ? "#{$element->id}" : null,
+            $label !== '' ? "'{$label}'" : null,
+        ]);
+
+        $message = rtrim('Failed to save related element ' . implode(' ', $who)) . '.';
+        $errors = $element instanceof Model ? $element->getFirstErrors() : [];
+
+        if ($errors === []) {
+            return $message;
+        }
+
+        $parts = [];
+
+        foreach ($errors as $attribute => $error) {
+            $parts[] = "{$attribute}: {$error}";
+        }
+
+        return $message . ' ' . implode('; ', $parts);
     }
 
     /**

@@ -25,13 +25,17 @@ use GlueAgency\Influx\targets\support\EntryTypeResolver;
 /**
  * Default target for craft\elements\Entry.
  *
- * Recognized elementCriteria keys:
- *   section: handle of the section (required for new entries)
- *   type:    handle of the entry type (required for new entries)
- *   author:  id or username of the default author (optional)
+ * Recognized elementCriteria keys — {@see CRITERIA_SECTION} (handle of the
+ * section, required for new entries) and {@see CRITERIA_TYPE} (handle of the
+ * entry type, required for new entries). This target OWNS those two key names:
+ * every reader goes through {@see Link::criterion()} with one of the constants
+ * below, so the literals live here and nowhere else.
  */
 class EntryTarget extends AbstractElementTarget
 {
+    public const CRITERIA_SECTION = 'section';
+    public const CRITERIA_TYPE = 'type';
+
     public static function elementType(): string
     {
         return Entry::class;
@@ -45,7 +49,7 @@ class EntryTarget extends AbstractElementTarget
      */
     public static function criteriaKeys(): array
     {
-        return ['section', 'type'];
+        return [self::CRITERIA_SECTION, self::CRITERIA_TYPE];
     }
 
     /**
@@ -65,19 +69,77 @@ class EntryTarget extends AbstractElementTarget
             return false;
         }
 
-        $sectionHandle = $link->elementCriteria['section'] ?? null;
+        $sectionHandle = $link->criterion(self::CRITERIA_SECTION);
 
-        if ($sectionHandle && $element->getSection()?->handle !== $sectionHandle) {
+        if ($sectionHandle !== null && $element->getSection()?->handle !== $sectionHandle) {
             return false;
         }
 
-        $typeHandle = $link->elementCriteria['type'] ?? null;
+        $typeHandle = $link->criterion(self::CRITERIA_TYPE);
 
-        if ($typeHandle && $element->getType()?->handle !== $typeHandle) {
+        if ($typeHandle !== null && $element->getType()?->handle !== $typeHandle) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Entries partition by section × entry type, so a link's claim is the set of
+     * `"{section} {entryType}"` cells its criteria cover, expanded against
+     * project config: both criteria set → one cell; section only → every entry
+     * type in that section; type only → every section using that type (Craft 5
+     * shares entry types across sections); neither → every cell there is.
+     *
+     * @return list<string>
+     */
+    public function claimCells(Link $link): array
+    {
+        $section = $link->criterion(self::CRITERIA_SECTION);
+        $entryType = $link->criterion(self::CRITERIA_TYPE);
+
+        $cells = [];
+
+        foreach ($this->sectionEntryTypeMap() as $sectionHandle => $typeHandles) {
+            if ($section !== null && $sectionHandle !== $section) {
+                continue;
+            }
+
+            foreach ($typeHandles as $typeHandle) {
+                if ($entryType !== null && $typeHandle !== $entryType) {
+                    continue;
+                }
+
+                $cells[] = $sectionHandle . ' ' . $typeHandle;
+            }
+        }
+
+        return array_values(array_unique($cells));
+    }
+
+    /**
+     * Project-config view {@see claimCells()} expands against: section handle =>
+     * list of entry-type handles in that section. Isolated as a seam so the
+     * expansion is unit-testable without a booted Craft. Craft 4/5 differ only in
+     * the service that lists sections — routed through {@see Compat}.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function sectionEntryTypeMap(): array
+    {
+        $map = [];
+
+        foreach (Compat::getAllSections() as $section) {
+            $handles = [];
+
+            foreach ($section->getEntryTypes() as $entryType) {
+                $handles[] = $entryType->handle;
+            }
+
+            $map[$section->handle] = $handles;
+        }
+
+        return $map;
     }
 
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?Entry
@@ -104,12 +166,12 @@ class EntryTarget extends AbstractElementTarget
      */
     protected function scopeToLink(EntryQuery $query, Link $link, ?int $siteId): EntryQuery
     {
-        if (isset($link->elementCriteria['section'])) {
-            $query->section($link->elementCriteria['section']);
+        if (($section = $link->criterion(self::CRITERIA_SECTION)) !== null) {
+            $query->section($section);
         }
 
-        if (isset($link->elementCriteria['type'])) {
-            $query->type($link->elementCriteria['type']);
+        if (($type = $link->criterion(self::CRITERIA_TYPE)) !== null) {
+            $query->type($type);
         }
 
         if ($siteId) {
