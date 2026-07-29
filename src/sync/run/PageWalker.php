@@ -26,9 +26,13 @@ use Throwable;
  *
  * Rows flush at the page boundary in a `finally`, so a throw escaping the loop
  * still persists what this page saved — leaving a retried queue step only the
- * un-flushed tail to redo. Progress is reported once per page rather than per
- * item to keep queue writes bounded, and only on the normal path: a page that
- * threw has nothing meaningful to report.
+ * un-flushed tail to redo.
+ *
+ * Progress is reported PER ITEM, not per page. It has to be: a queued run walks
+ * one page per job ({@see \GlueAgency\Influx\services\SynchronizationService::batchStep()}),
+ * so a per-page report only ever lands as the job is about to finish and the bar
+ * sits at 0 for the whole of every step. Queue writes stay bounded because the
+ * job throttles them to whole-percent changes, not because the reports are rare.
  *
  * The mutex deliberately stays OUTSIDE: the synchronous path holds the link's
  * sync lock for its whole run, the queued path takes it per step, and neither
@@ -44,9 +48,12 @@ class PageWalker
     }
 
     /**
+     * The seen count is bumped BEFORE the item runs: an item that throws still
+     * came from the feed, and the count must not depend on its outcome.
+     *
      * @param callable|null $onProgress fn(int $seen, ?int $total): called once
-     * per page with the log's running items-seen count and the estimated total
-     * ({@see PageWalk::estimateTotal()}). Null for runs that don't report.
+     * per feed item with the walk's running items-seen count and the estimated
+     * total ({@see PageWalk::estimateTotal()}). Null for runs that don't report.
      */
     public function walk(SyncContext $context, FeedPage $page, LogRecord $log, PageWalk $walk, ?callable $onProgress = null): void
     {
@@ -55,6 +62,9 @@ class PageWalker
 
         try {
             foreach ($page->items as $item) {
+                $walk->itemsSeen++;
+                $logs->recordSeen($log);
+
                 try {
                     $elementId = $this->itemRunner->run($context, $item, $log);
 
@@ -65,13 +75,13 @@ class PageWalker
                     $logs->recordItem($log, ItemAction::ERROR, null, null, $e->getMessage(), $item->raw());
                     $walk->unattributedErrors++;
                 }
+
+                if ($onProgress !== null) {
+                    $onProgress($walk->itemsSeen, $walk->estimateTotal($page));
+                }
             }
         } finally {
             $logs->flush($log);
-        }
-
-        if ($onProgress !== null) {
-            $onProgress((int) $log->itemsSeen, $walk->estimateTotal($page));
         }
     }
 }

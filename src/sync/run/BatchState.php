@@ -7,7 +7,7 @@ namespace GlueAgency\Influx\sync\run;
  * has accumulated, and whether it's finished. MUTABLE by design — a step advances
  * it in place and hands the result back for the next step to resume from.
  *
- * It exists so the seven carried keys are spelled out ONCE. They used to be
+ * It exists so the carried keys are spelled out ONCE. They used to be
  * echoed in three places (the job's properties, the state array
  * {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()} threads
  * through, and the re-push), where any of the three could quietly drop one — and
@@ -37,8 +37,9 @@ class BatchState
 
     /**
      * What the walk has accumulated so far — the seen-set, the unattributed-error
-     * count and the first page's size, all of which MUST survive across steps
-     * because the sweep and the progress denominator are derived from them.
+     * count, the first page's size and the items-walked count, all of which MUST
+     * survive across steps because the sweep, the progress denominator and the
+     * progress numerator are derived from them.
      */
     public PageWalk $walk;
 
@@ -53,18 +54,19 @@ class BatchState
         array $seenIds = [],
         int $unattributedErrors = 0,
         ?int $firstPageSize = null,
+        int $itemsSeen = 0,
     ) {
         $this->logId = $logId;
         $this->cursorUrl = $cursorUrl;
         $this->page = $page;
-        $this->walk = new PageWalk($seenIds, $unattributedErrors, $firstPageSize);
+        $this->walk = new PageWalk($seenIds, $unattributedErrors, $firstPageSize, $itemsSeen);
     }
 
     /**
      * Read a step's incoming state. `done` is deliberately not read back: a state
      * being handed to a step is by definition not finished yet.
      *
-     * @param array{logId?: ?int, cursorUrl?: ?string, page?: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int} $state
+     * @param array{logId?: ?int, cursorUrl?: ?string, page?: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int, itemsSeen?: int} $state
      */
     public static function fromArray(array $state): self
     {
@@ -75,11 +77,12 @@ class BatchState
             seenIds: $state['seenIds'] ?? [],
             unattributedErrors: (int) ($state['unattributedErrors'] ?? 0),
             firstPageSize: $state['firstPageSize'] ?? null,
+            itemsSeen: (int) ($state['itemsSeen'] ?? 0),
         );
     }
 
     /**
-     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, done: bool}
+     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, itemsSeen: int, done: bool}
      */
     public function toArray(): array
     {
@@ -88,10 +91,10 @@ class BatchState
 
     /**
      * The carried keys alone, named to match {@see \GlueAgency\Influx\queue\jobs\SyncLinkJob}'s
-     * public properties so a re-push can spread them instead of hand-copying six
+     * public properties so a re-push can spread them instead of hand-copying seven
      * names. `done` is omitted: it's the step's answer, not part of the payload.
      *
-     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int}
+     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, itemsSeen: int}
      */
     public function carried(): array
     {
@@ -102,6 +105,7 @@ class BatchState
             'seenIds'            => $this->walk->seenIds(),
             'unattributedErrors' => $this->walk->unattributedErrors,
             'firstPageSize'      => $this->walk->firstPageSize,
+            'itemsSeen'          => $this->walk->itemsSeen,
         ];
     }
 }

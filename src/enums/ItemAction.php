@@ -47,8 +47,9 @@ enum ItemAction: string
     }
 
     /**
-     * The log counter column this action increments, or null when the action
-     * isn't counted separately (errors only bump `itemsSeen`).
+     * The log counter column this action increments, or null when the action has
+     * no column of its own — errors are visible as `error` rows and through the
+     * nav's error badge instead.
      */
     public function counterAttribute(): ?string
     {

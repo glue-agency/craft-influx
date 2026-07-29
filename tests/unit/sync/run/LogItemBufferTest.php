@@ -8,8 +8,8 @@ use RuntimeException;
 
 /**
  * Behaviour spec for {@see LogItemBuffer}: rows accumulate in order, counter
- * deltas aggregate per column, itemsSeen counts every add (including a null
- * counter attribute), and clear() empties both.
+ * deltas aggregate per column, itemsSeen counts feed items rather than rows, and
+ * clear() empties both.
  */
 class LogItemBufferTest extends Unit
 {
@@ -35,31 +35,54 @@ class LogItemBufferTest extends Unit
 
         $this->assertSame(2, $deltas['itemsCreated']);
         $this->assertSame(1, $deltas['itemsUpdated']);
-        $this->assertSame(3, $deltas['itemsSeen']);
     }
 
-    public function testItemsSeenCountsEveryAddIncludingNullCounterAttribute(): void
+    /**
+     * The row/feed-item split: the missing-elements sweep writes a row per
+     * element the feed never mentioned, so a row must not imply a seen item.
+     */
+    public function testAddDoesNotCountTowardItemsSeen(): void
     {
         $buffer = new LogItemBuffer();
         $buffer->add(['ok'], 'itemsCreated');
-        // ERROR action carries a null counter attribute — still counts toward
-        // itemsSeen but contributes no per-action column.
+        // ERROR action carries a null counter attribute — no column of its own.
         $buffer->add(['err'], null);
 
         $deltas = $buffer->counterDeltas();
 
-        $this->assertSame(2, $deltas['itemsSeen']);
+        $this->assertArrayNotHasKey('itemsSeen', $deltas);
         $this->assertSame(1, $deltas['itemsCreated']);
         $this->assertArrayNotHasKey('error', $deltas);
     }
 
-    public function testIsEmptyReflectsRowState(): void
+    public function testAddSeenAccumulatesIndependentlyOfRows(): void
+    {
+        $buffer = new LogItemBuffer();
+        $buffer->addSeen();
+        $buffer->addSeen(4);
+
+        $this->assertSame(5, $buffer->counterDeltas()['itemsSeen']);
+        $this->assertSame([], $buffer->rows());
+        $this->assertSame(0, $buffer->count());
+    }
+
+    /**
+     * A seen delta with no row behind it still has to be written, so isEmpty()
+     * can't answer on rows alone — LogsService::flush() skips on it.
+     */
+    public function testIsEmptyReflectsRowsAndPendingDeltas(): void
     {
         $buffer = new LogItemBuffer();
 
         $this->assertTrue($buffer->isEmpty());
         $this->assertSame(0, $buffer->count());
 
+        $buffer->addSeen();
+
+        $this->assertFalse($buffer->isEmpty());
+        $this->assertSame(0, $buffer->count());
+
+        $buffer->clear();
         $buffer->add(['a'], null);
 
         $this->assertFalse($buffer->isEmpty());
@@ -93,7 +116,9 @@ class LogItemBufferTest extends Unit
 
         try {
             try {
+                $buffer->addSeen();
                 $buffer->add(['a'], 'itemsCreated');
+                $buffer->addSeen();
                 $buffer->add(['b'], 'itemsUpdated');
 
                 throw new RuntimeException('mid-page failure');

@@ -32,8 +32,8 @@ use yii\db\Expression;
  *
  * Per-item rows are BUFFERED, not written one at a time: recordItem() only
  * appends to an in-memory {@see LogItemBuffer} (and bumps the record's live
- * counters), and flush() writes the whole page in one batch insert plus one
- * counter UPDATE.
+ * counters), recordSeen() adds to the run's feed-item count, and flush() writes
+ * the whole page in one batch insert plus one counter UPDATE.
  * Net effect for the live log viewer: rows and counters advance per page (or
  * per {@see FLUSH_THRESHOLD} items on a huge page) instead of per item — a
  * bounded number of DB round-trips regardless of feed size.
@@ -155,6 +155,9 @@ class LogsService extends Component
      * read them off the in-memory record rather than the DB; the DB catches up
      * on the next flush.
      *
+     * Bumps the row's own action counter only. `itemsSeen` is NOT a row count —
+     * see {@see recordSeen()}.
+     *
      * @param array<string, string> $fieldErrors {handle: message} for fields
      * whose strategy threw — stored so the drill-down can show each on its own
      * field row even when re-inspection can't reproduce it.
@@ -201,11 +204,34 @@ class LogsService extends Component
         if ($counterAttr) {
             $log->$counterAttr = (int) $log->$counterAttr + 1;
         }
-        $log->itemsSeen = (int) $log->itemsSeen + 1;
 
         if ($this->bufferFor($log)->count() >= self::FLUSH_THRESHOLD) {
             $this->flush($log);
         }
+    }
+
+    /**
+     * Count feed items against the run's `itemsSeen`.
+     *
+     * Separate from {@see recordItem()} because "seen" means WHAT THE FEED
+     * CONTAINED, not how many rows the run wrote. The two diverge badly
+     * otherwise: the missing-elements sweep writes a row per element the feed
+     * never mentioned, sweep bails write a notice row, and an item can log twice
+     * (its own outcome, then an ERROR row when an afterItem listener throws).
+     * Counted once per item by {@see \GlueAgency\Influx\sync\run\PageWalker},
+     * which is the one place a feed's items are iterated.
+     *
+     * Advances the in-memory record immediately, for the same reason
+     * {@see recordItem()} does; the DB catches up on the next flush.
+     */
+    public function recordSeen(LogRecord $log, int $count = 1): void
+    {
+        if (! $log->id || $count < 1) {
+            return;
+        }
+
+        $this->bufferFor($log)->addSeen($count);
+        $log->itemsSeen = (int) $log->itemsSeen + $count;
     }
 
     /**
@@ -240,9 +266,11 @@ class LogsService extends Component
 
         $db = Craft::$app->getDb();
 
-        $db->createCommand()
-            ->batchInsert(Table::LOG_ITEMS, self::ITEM_COLUMNS, $buffer->rows())
-            ->execute();
+        if ($buffer->rows() !== []) {
+            $db->createCommand()
+                ->batchInsert(Table::LOG_ITEMS, self::ITEM_COLUMNS, $buffer->rows())
+                ->execute();
+        }
 
         $updates = [];
 

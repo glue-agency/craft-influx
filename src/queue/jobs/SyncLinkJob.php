@@ -3,10 +3,12 @@
 namespace GlueAgency\Influx\queue\jobs;
 
 use Craft;
-use craft\queue\BaseJob;
+use craft\i18n\Translation;
+use craft\queue\QueueInterface;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\run\BatchState;
+use yii\queue\Queue;
 
 /**
  * Queue job that runs one scope of a link sync, one feed page per step: each
@@ -32,6 +34,8 @@ use GlueAgency\Influx\sync\run\BatchState;
  *     failed WITHOUT a resolvable element — any at all makes the sweep bail.
  *   - firstPageSize (?int) — the progress denominator's multiplier, fixed on the
  *     first page so a short final page can't shrink the estimate mid-run.
+ *   - itemsSeen (int) — the progress numerator, cumulative over this scope's
+ *     pages so a re-queued step resumes the percentage instead of restarting.
  *
  * These stay individual PUBLIC PROPERTIES because they are the serialised queue
  * payload; {@see BatchState} is the value object they convert to and from at the
@@ -42,7 +46,7 @@ use GlueAgency\Influx\sync\run\BatchState;
  * count: fine for feeds up to tens of thousands of ids; a feed far larger than
  * that would bloat the job row and should page the sweep differently.
  */
-class SyncLinkJob extends BaseJob
+class SyncLinkJob extends AbstractLinkJob
 {
     /**
      * Streamed feeds that report no total have no known denominator, so the
@@ -50,11 +54,6 @@ class SyncLinkJob extends BaseJob
      * soft target it curves against. A feed with count nodes shows a real %.
      */
     protected const PROGRESS_SOFT_TARGET = 250;
-
-    public string $linkHandle = '';
-    public ?string $offset = null;
-    public ?string $site = null;
-    public string $trigger = 'queue';
 
     public ?int $logId = null;
     public ?string $cursorUrl = null;
@@ -85,12 +84,28 @@ class SyncLinkJob extends BaseJob
     public ?int $firstPageSize = null;
 
     /**
+     * Feed items this scope's walk has reached — the progress numerator.
+     * Carried across steps so the bar picks up where the previous step left off;
+     * a step that started it back at 0 would walk the percentage backwards on
+     * every page.
+     */
+    public int $itemsSeen = 0;
+
+    /**
+     * The last whole percent this job wrote to the queue, so the per-item
+     * reports only cost a write when the number actually moves.
+     *
+     * Transient — set during {@see execute()}, never meaningful in a pushed
+     * payload (a re-push builds a fresh job, and Craft resets a deserialised
+     * job's progress anyway).
+     */
+    protected ?int $lastProgress = null;
+
+    /**
      * Runs one step of this scope's walk. The trigger is resolved with
      * `tryFrom()` so an unexpected value degrades to {@see SyncTrigger::QUEUE}
-     * instead of throwing. Progress is a real percentage when the feed reports
-     * a total (via the link's count nodes) and otherwise eases toward 1 as
-     * items arrive, with the live count carried in the label. While pages
-     * remain, the next step is re-queued on the same log.
+     * instead of throwing. While pages remain, the next step is re-queued on the
+     * same log.
      *
      * The carried state travels as a {@see BatchState}, which owns the key names
      * so this job only has to name its own properties: {@see carriedState()}
@@ -107,20 +122,7 @@ class SyncLinkJob extends BaseJob
             $trigger,
             $this->site,
             $this->carriedState()->toArray(),
-            function(int $seen, ?int $total) use ($queue): void {
-                if ($total !== null && $total > 0) {
-                    $progress = min(1.0, $seen / $total);
-                    $label = Craft::t('influx', '{count} of {total} items synced', [
-                        'count' => $seen,
-                        'total' => $total,
-                    ]);
-                } else {
-                    $progress = 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
-                    $label = Craft::t('influx', '{count} items synced', ['count' => $seen]);
-                }
-
-                $this->setProgress($queue, $progress, $label);
-            },
+            fn(int $seen, ?int $total) => $this->reportProgress($queue, $seen, $total),
         );
 
         if (empty($state['done'])) {
@@ -131,6 +133,44 @@ class SyncLinkJob extends BaseJob
                 'trigger'    => $this->trigger,
             ] + BatchState::fromArray($state)->carried()));
         }
+    }
+
+    /**
+     * Push this step's progress to the queue. A real percentage when the feed
+     * reports a total (via the link's count nodes), otherwise the soft-target
+     * curve easing toward — never reaching — 100%, with the live count in the
+     * label either way.
+     *
+     * Called once per feed item ({@see \GlueAgency\Influx\sync\run\PageWalker}),
+     * so it throttles itself to whole-percent movements: Craft's own guard in
+     * `setProgress()` can't do it for us, since the count in the label differs on
+     * every single item and a changed label is enough to trigger a write. The
+     * label is only built once the percentage has actually moved.
+     */
+    protected function reportProgress(Queue|QueueInterface $queue, int $seen, ?int $total): void
+    {
+        $hasTotal = $total !== null && $total > 0;
+
+        $progress = $hasTotal
+            ? min(1.0, $seen / $total)
+            : 1 - 1 / (1 + $seen / self::PROGRESS_SOFT_TARGET);
+
+        $percent = (int) round($progress * 100);
+
+        if ($percent === $this->lastProgress) {
+            return;
+        }
+
+        $this->lastProgress = $percent;
+
+        $label = $hasTotal
+            ? Translation::prep('influx', '{count} of {total} items synced', [
+                'count' => $seen,
+                'total' => $total,
+            ])
+            : Translation::prep('influx', '{count} items synced', ['count' => $seen]);
+
+        $this->setProgress($queue, $progress, $label);
     }
 
     /**
@@ -146,20 +186,48 @@ class SyncLinkJob extends BaseJob
             seenIds: $this->seenIds,
             unattributedErrors: $this->unattributedErrors,
             firstPageSize: $this->firstPageSize,
+            itemsSeen: $this->itemsSeen,
         );
     }
 
+    /**
+     * Four whole sentences rather than one with an assembled suffix: both the
+     * offset preset and the site are legitimately absent, and a translator needs
+     * to move the clauses, not just fill the blanks.
+     *
+     * Prepped rather than translated ({@see Translation::prep()}), per
+     * {@see \craft\queue\BaseJob::defaultDescription()}: the description is
+     * captured when the job is pushed, so translating it here would freeze it in
+     * the language of whoever triggered the run instead of each viewer's own.
+     */
     protected function defaultDescription(): ?string
     {
-        $parts = array_filter([
-            $this->site ? "site: {$this->site}" : null,
-            $this->offset ? "preset: {$this->offset}" : null,
-        ]);
-        $suffix = $parts ? ' (' . implode(', ', $parts) . ')' : '';
+        $link = $this->linkLabel();
+        $offset = $this->offsetLabel();
+        $site = $this->siteLabel();
 
-        return Craft::t('influx', 'Syncing influx link “{handle}”{suffix}', [
-            'handle' => $this->linkHandle,
-            'suffix' => $suffix,
-        ]);
+        if ($offset !== null && $site !== null) {
+            return Translation::prep('influx', 'Importing {link} with {offset} for site {site}', [
+                'link'   => $link,
+                'offset' => $offset,
+                'site'   => $site,
+            ]);
+        }
+
+        if ($site !== null) {
+            return Translation::prep('influx', 'Importing {link} for site {site}', [
+                'link' => $link,
+                'site' => $site,
+            ]);
+        }
+
+        if ($offset !== null) {
+            return Translation::prep('influx', 'Importing {link} with {offset}', [
+                'link'   => $link,
+                'offset' => $offset,
+            ]);
+        }
+
+        return Translation::prep('influx', 'Importing {link}', ['link' => $link]);
     }
 }

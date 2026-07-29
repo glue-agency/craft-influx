@@ -1,6 +1,13 @@
 # Release Notes for Influx
 
-## 1.0.0-alpha.5 - 2026-07-29
+## Unreleased
+
+### Changed
+- Queue job descriptions read as sentences naming the link, the sliding-window preset and the site — "Importing Units with 1day for site Durabrik - NL" — instead of a handle with `(site: …, preset: …)` appended. Each clause is part of a translatable sentence now rather than concatenated outside the translation, and descriptions and progress labels are lazy-translated (`Translation::prep()`), so a queue row reads in the viewer's own language rather than the language of whoever triggered the run.
+
+### Fixed
+- **Progress never moved:** a queued sync reported progress once per feed page, but a queued run walks one page per job — so the only report landed as the job was about to finish and the bar sat at 0% for the whole of every step (an unpaginated feed is a single job, so the entire run showed 0%). Progress is reported per item now, throttled to whole-percent movements, and its cumulative count is carried across steps so a re-queued page resumes the percentage instead of restarting. It also no longer depends on `loggingEnabled`, which pinned the numerator at 0 when logging was off.
+- A run log's "seen" counter counted log ROWS, not feed items: it also counted every element the missing-elements sweep disabled or deleted (elements that by definition weren't in the feed), sweep-bail notices, and an item that logged twice. It counts the items the feed actually contained now; swept elements remain in the "disabled" / "deleted" counters.
 
 ### Added
 - **Field indicator:** a small Influx glyph now marks every field an active mapping writes, on the edit screen of any targeted element. Its tooltip explains the value is set by synchronisation, so an editor sees at a glance which values are Influx-managed and may be overwritten on the next sync.

@@ -5,10 +5,10 @@ namespace GlueAgency\Influx\sync\run;
 use GlueAgency\Influx\data\FeedPage;
 
 /**
- * Everything one scope's page walk accumulates across its pages: the seen-set
- * feeding the missing-elements sweep, the unattributed-error count that can
- * disable it, the progress denominator's multiplier, and the memoized
- * denominator itself.
+ * Everything one scope's page walk accumulates across its pages: the count of
+ * feed items walked, the seen-set feeding the missing-elements sweep, the
+ * unattributed-error count that can disable it, the progress denominator's
+ * multiplier, and the memoized denominator itself.
  *
  * Deliberately MUTABLE and passed by handle: {@see PageWalker::walk()} folds each
  * page into it, so both walk paths accumulate through one implementation instead
@@ -29,6 +29,16 @@ class PageWalk
     protected array $seen = [];
 
     /**
+     * Feed items this walk has reached — the progress numerator, and what the
+     * log's `itemsSeen` counter mirrors.
+     *
+     * Deliberately NOT read off the log record: with `loggingEnabled` off the
+     * record is never saved, so its counters stay at 0 and the progress bar
+     * could never move.
+     */
+    public int $itemsSeen = 0;
+
+    /**
      * Items that failed WITHOUT a resolvable element. Any at all makes the
      * missing-elements sweep bail, since the seen-set can no longer be trusted
      * to protect everything the feed actually mentioned.
@@ -46,11 +56,16 @@ class PageWalk
     protected ?int $total = null;
 
     /** @param list<int> $seenIds */
-    public function __construct(array $seenIds = [], int $unattributedErrors = 0, ?int $firstPageSize = null)
-    {
+    public function __construct(
+        array $seenIds = [],
+        int $unattributedErrors = 0,
+        ?int $firstPageSize = null,
+        int $itemsSeen = 0,
+    ) {
         $this->seen = array_fill_keys($seenIds, true);
         $this->unattributedErrors = $unattributedErrors;
         $this->firstPageSize = $firstPageSize;
+        $this->itemsSeen = $itemsSeen;
     }
 
     /**

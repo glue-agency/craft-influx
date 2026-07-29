@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\queue\jobs;
 
 use Craft;
-use craft\queue\BaseJob;
+use craft\i18n\Translation;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use Throwable;
@@ -25,16 +25,8 @@ use Throwable;
  * does not rethrow (that would retry the failing backup on a loop); the failed
  * log is the durable signal.
  */
-class BackupJob extends BaseJob
+class BackupJob extends AbstractLinkJob
 {
-    public string $linkHandle = '';
-
-    public ?string $offset = null;
-
-    public ?string $site = null;
-
-    public string $trigger = 'cp';
-
     /**
      * The link can be deleted between queueing and running, hence the
      * missing-link guard.
@@ -63,10 +55,15 @@ class BackupJob extends BaseJob
         $plugin->synchronization->queueSyncJobs($link, $this->offset, $this->site, $trigger);
     }
 
+    /**
+     * Names the link and nothing else: the dump is DB-wide and taken once for
+     * the whole fan-out, so this job's site and offset say nothing about it.
+     * Prepped rather than translated — see {@see SyncLinkJob::defaultDescription()}.
+     */
     protected function defaultDescription(): ?string
     {
-        return Craft::t('influx', 'Taking backup for influx link “{handle}”', [
-            'handle' => $this->linkHandle,
+        return Translation::prep('influx', 'Backing up the database before importing {link}', [
+            'link' => $this->linkLabel(),
         ]);
     }
 }

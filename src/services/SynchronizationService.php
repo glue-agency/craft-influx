@@ -73,7 +73,7 @@ class SynchronizationService extends Component
     /** One remote item: pipeline, item events, log row. */
     protected ItemRunner $itemRunner;
 
-    /** One fetched page: the item loop, the flush, the progress report. */
+    /** One fetched page: the item loop, the flush, the per-item progress report. */
     protected PageWalker $pageWalker;
 
     /** The end-of-pass disable/delete sweep. */
@@ -114,7 +114,7 @@ class SynchronizationService extends Component
      * @param string|null $siteHandle Restrict the run to a single configured
      * site; null runs every site the link is configured for.
      * @param callable|null $onProgress fn(int $seen, ?int $total): called once
-     * per fetched page with THIS site's running items-seen count and the feed's
+     * per feed item with THIS site's running items-seen count and the feed's
      * reported total (null when it doesn't report one). Null for synchronous
      * runs that don't need it.
      * @return list<LogRecord> Every log produced — one per site. The console
@@ -289,9 +289,10 @@ class SynchronizationService extends Component
      *
      * The state array is the queue payload's carried state and converts to a
      * {@see BatchState} on the way in and back on the way out — the accumulated
-     * seen-set, unattributed-error count and first-page size have to survive
-     * across steps, since the sweep and the progress denominator are derived from
-     * them (see {@see BatchState} for why they're spelled out in one place).
+     * seen-set, unattributed-error count, first-page size and items-seen count
+     * have to survive across steps, since the sweep and both halves of the
+     * progress fraction are derived from them (see {@see BatchState} for why
+     * they're spelled out in one place).
      *
      * Retry-safe by construction: the step runs under {@see syncLockKey()}, so
      * no two steps of the same link can race find-or-create into duplicate
@@ -301,9 +302,9 @@ class SynchronizationService extends Component
      * ({@see PageWalker}): a throw still persists what this step saved, leaving a
      * retried step only the un-flushed tail to redo.
      *
-     * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int} $state
+     * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int, itemsSeen?: int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
-     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, done: bool}
+     * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, itemsSeen: int, done: bool}
      */
     public function batchStep(
         string $linkHandle,
@@ -435,6 +436,7 @@ class SynchronizationService extends Component
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
 
                 $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);
+                $plugin->logs->recordSeen($log);
 
                 try {
                     $this->itemRunner->run($context, $item, $log);

@@ -27,18 +27,23 @@ class LogItemBuffer
 
     /**
      * Counter increments to apply to the log record on flush, keyed by column
-     * name. Always carries an `itemsSeen` delta; a per-action counter column
-     * (itemsCreated, itemsUpdated, ...) is added when the action has one.
+     * name. A per-action counter column (itemsCreated, itemsUpdated, ...) comes
+     * from {@see add()} when the action has one; `itemsSeen` comes from
+     * {@see addSeen()} alone.
      *
      * @var array<string, int>
      */
     protected array $counterDeltas = [];
 
     /**
-     * Append one row and bump the counter deltas it contributes to. Every add
-     * bumps `itemsSeen`; `$counterAttribute` (null for the ERROR action, which
-     * still counts toward itemsSeen) bumps its own column when non-null —
-     * mirroring LogsService::recordItem's original per-item counter logic.
+     * Append one row and bump the per-action counter it contributes to.
+     * `$counterAttribute` is null for the ERROR action, which has no column of
+     * its own.
+     *
+     * Deliberately does NOT touch `itemsSeen`: rows and feed items aren't the
+     * same thing — the missing-elements sweep writes a row per element the feed
+     * never mentioned — so the seen count is bumped per feed item by
+     * {@see addSeen()} instead.
      *
      * @param list<mixed> $row Column values in the service's fixed order.
      */
@@ -46,16 +51,28 @@ class LogItemBuffer
     {
         $this->rows[] = $row;
 
-        $this->counterDeltas['itemsSeen'] = ($this->counterDeltas['itemsSeen'] ?? 0) + 1;
-
         if ($counterAttribute !== null) {
             $this->counterDeltas[$counterAttribute] = ($this->counterDeltas[$counterAttribute] ?? 0) + 1;
         }
     }
 
+    /**
+     * Bump the `itemsSeen` delta by the number of feed items walked, without
+     * writing a row — see {@see add()} for why the two are separate.
+     */
+    public function addSeen(int $count = 1): void
+    {
+        $this->counterDeltas['itemsSeen'] = ($this->counterDeltas['itemsSeen'] ?? 0) + $count;
+    }
+
+    /**
+     * Whether there is nothing left to write. Pending counter deltas count:
+     * {@see addSeen()} can leave a delta with no row behind it, and a flush that
+     * skipped on rows alone would drop it.
+     */
     public function isEmpty(): bool
     {
-        return $this->rows === [];
+        return $this->rows === [] && $this->counterDeltas === [];
     }
 
     public function count(): int

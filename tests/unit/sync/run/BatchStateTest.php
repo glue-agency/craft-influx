@@ -8,7 +8,7 @@ use GlueAgency\Influx\sync\run\BatchState;
 /**
  * Round-trip spec for the resumable queue state — {@see BatchState}.
  *
- * The regression class this pins: the seven carried keys used to be echoed in
+ * The regression class this pins: the carried keys used to be echoed in
  * three places (the job's properties, the state array
  * {@see \GlueAgency\Influx\services\SynchronizationService::batchStep()} threads
  * through, and the re-push), so any of the three could quietly drop one.
@@ -29,6 +29,7 @@ class BatchStateTest extends Unit
             'seenIds'            => [7, 8, 9],
             'unattributedErrors' => 2,
             'firstPageSize'      => 25,
+            'itemsSeen'          => 55,
         ];
 
         $this->assertSame($state + ['done' => false], BatchState::fromArray($state)->toArray());
@@ -43,6 +44,7 @@ class BatchStateTest extends Unit
             'seenIds'            => [],
             'unattributedErrors' => 0,
             'firstPageSize'      => null,
+            'itemsSeen'          => 0,
             'done'               => false,
         ], BatchState::fromArray([])->toArray());
     }
@@ -72,7 +74,26 @@ class BatchStateTest extends Unit
         $carried = (new BatchState(logId: 1, cursorUrl: 'https://example.test/2', page: 2))->carried();
 
         $this->assertArrayNotHasKey('done', $carried);
-        $this->assertSame(['logId', 'cursorUrl', 'page', 'seenIds', 'unattributedErrors', 'firstPageSize'], array_keys($carried));
+        $this->assertSame(
+            ['logId', 'cursorUrl', 'page', 'seenIds', 'unattributedErrors', 'firstPageSize', 'itemsSeen'],
+            array_keys($carried),
+        );
+    }
+
+    /**
+     * The progress numerator is cumulative over the scope's pages, so a step has
+     * to resume the count rather than restart it — a dropped `itemsSeen` walks
+     * the queue's percentage back to 0 on every page.
+     */
+    public function testTheItemsSeenCountResumesFromTheCarriedState(): void
+    {
+        $state = BatchState::fromArray(['itemsSeen' => 100, 'firstPageSize' => 50]);
+
+        $this->assertSame(100, $state->walk->itemsSeen);
+
+        $state->walk->itemsSeen++;
+
+        $this->assertSame(101, $state->carried()['itemsSeen']);
     }
 
     public function testWalkAdvancesArePickedUpByToArray(): void
@@ -81,6 +102,7 @@ class BatchStateTest extends Unit
         $state->walk->firstPageSize ??= 50;
         $state->walk->unattributedErrors++;
         $state->walk->markSeen(2);
+        $state->walk->itemsSeen += 50;
         $state->cursorUrl = 'https://example.test/articles?page=2';
         $state->page++;
 
@@ -91,6 +113,7 @@ class BatchStateTest extends Unit
             'seenIds'            => [1, 2],
             'unattributedErrors' => 1,
             'firstPageSize'      => 50,
+            'itemsSeen'          => 50,
             'done'               => false,
         ], $state->toArray());
     }
