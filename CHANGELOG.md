@@ -1,6 +1,6 @@
 # Release Notes for Influx
 
-## Unreleased
+## 1.0.0-alpha.6 - 2026-07-29
 
 ### Changed
 - Queue job descriptions read as sentences naming the link, the sliding-window preset and the site — "Importing Units with 1day for site Durabrik - NL" — instead of a handle with `(site: …, preset: …)` appended. Each clause is part of a translatable sentence now rather than concatenated outside the translation, and descriptions and progress labels are lazy-translated (`Translation::prep()`), so a queue row reads in the viewer's own language rather than the language of whoever triggered the run.
