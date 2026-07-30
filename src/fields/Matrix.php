@@ -364,6 +364,15 @@ class Matrix extends Field
      * ksort'd mapped custom values — every leaf normalised through its own child
      * strategy so it lines up with the current-block fingerprint.
      *
+     * Every mapped leaf is printed, missing ones as null. A child resolving to
+     * null contributes no per-block value, so {@see appendTypeBlocks()} leaves it
+     * out of the row entirely — while the current side reads
+     * `getSerializedFieldValues()`, which returns each requested handle whether
+     * it holds a value or not. Keying on presence would make those two shapes
+     * disagree for any nullable leaf and read as a difference on every sync,
+     * replacing the blocks each time. Absent means null here: that is what the
+     * block holds once saved.
+     *
      * @param array<string, mixed> $row
      * @param array<string, ?Field> $customLeaves mapped custom handle → the
      * strategy that normalises that leaf, in mapped order
@@ -382,9 +391,9 @@ class Matrix extends Field
         $print['fields'] = [];
 
         foreach ($customLeaves as $handle => $leaf) {
-            if (array_key_exists($handle, $fields)) {
-                $print['fields'][$handle] = $this->leafNormalize($leaf, $fields[$handle]);
-            }
+            $print['fields'][$handle] = array_key_exists($handle, $fields)
+                ? $this->leafNormalize($leaf, $fields[$handle])
+                : null;
         }
 
         ksort($print['fields']);
@@ -416,9 +425,9 @@ class Matrix extends Field
         $print['fields'] = [];
 
         foreach ($customLeaves as $handle => $leaf) {
-            if (array_key_exists($handle, $serialized)) {
-                $print['fields'][$handle] = $this->leafNormalize($leaf, $serialized[$handle]);
-            }
+            $print['fields'][$handle] = array_key_exists($handle, $serialized)
+                ? $this->leafNormalize($leaf, $serialized[$handle])
+                : null;
         }
 
         ksort($print['fields']);
