@@ -177,17 +177,55 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * {@see Lightswitch::coerce()}, so an addressed-but-empty value coerces to
      * false, i.e. disabled.
      *
+     * Written per site, with the whole-element flag DERIVED from the result:
+     * the mapped value lands on the site being processed, every other site keeps
+     * the status it had, and `enabled` becomes "enabled in at least one site".
+     * A link fanning out over sites shares one canonical element, so writing the
+     * whole-element flag directly would let one site's feed — most obviously a
+     * per-language `/deleted` endpoint — retire that element everywhere. Feed Me
+     * resolves it the same way ({@see \craft\feedme\services\Process}), which is
+     * why its per-language disable feeds only ever removed an entry from their
+     * own site.
+     *
+     * No branching on the link's endpoint shape is needed: for a single-endpoint
+     * link the element's only site IS the site being processed, so the derived
+     * flag equals the mapped value and the behaviour collapses to the obvious
+     * one. Element types with no per-site status fall back to the flag itself.
+     *
      * Dispatched by handle from {@see applyNativeAttribute()}, whose
      * `method_exists()` lookup sees inherited parsers like this one.
      */
     protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $new = Lightswitch::coerce($mapping->resolve($item));
+        $siteId = $element->siteId ?? $context->siteId;
 
-        $changed = (bool) $element->enabled !== $new;
-        $element->enabled = $new;
+        if ($siteId === null || ! $element::isLocalized()) {
+            $changed = (bool) $element->enabled !== $new;
+            $element->enabled = $new;
 
-        return $changed;
+            return $changed;
+        }
+
+        $statuses = [];
+
+        foreach (Craft::$app->getSites()->getAllSiteIds(true) as $id) {
+            $status = $element->getEnabledForSite($id);
+
+            if ($status !== null) {
+                $statuses[$id] = $status;
+            }
+        }
+
+        $wasForSite = (bool) $element->getEnabledForSite($siteId);
+        $wasEnabled = (bool) $element->enabled;
+
+        $statuses[$siteId] = $new;
+
+        $element->setEnabledForSite($statuses);
+        $element->enabled = in_array(true, $statuses, true) || $wasEnabled;
+
+        return $wasForSite !== $new || $wasEnabled !== (bool) $element->enabled;
     }
 
     /**
