@@ -187,10 +187,17 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * why its per-language disable feeds only ever removed an entry from their
      * own site.
      *
-     * No branching on the link's endpoint shape is needed: for a single-endpoint
-     * link the element's only site IS the site being processed, so the derived
-     * flag equals the mapped value and the behaviour collapses to the obvious
-     * one. Element types with no per-site status fall back to the flag itself.
+     * WHICH of the two happens is decided by the link's endpoint shape, read off
+     * the run rather than the element: `$context->siteId` is set only for a
+     * per-site endpoint, and is null when the link has one endpoint for
+     * everything. A single-endpoint link is making a statement about the element
+     * as a whole, so it writes the whole-element flag — the site rows follow
+     * through the section's own propagation. Reading the site off the ELEMENT
+     * instead would be wrong here: a cross-site lookup resolves through
+     * `siteId('*')->unique()`, so `$element->siteId` is whichever row Craft
+     * happened to return, and the status would land on an arbitrary site.
+     *
+     * Element types with no per-site status use the whole-element flag too.
      *
      * Dispatched by handle from {@see applyNativeAttribute()}, whose
      * `method_exists()` lookup sees inherited parsers like this one.
@@ -198,7 +205,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     protected function parseEnabled(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         $new = Lightswitch::coerce($mapping->resolve($item));
-        $siteId = $element->siteId ?? $context->siteId;
+        $siteId = $context->siteId;
 
         if ($siteId === null || ! $element::isLocalized()) {
             $changed = (bool) $element->enabled !== $new;
