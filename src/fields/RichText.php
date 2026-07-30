@@ -34,6 +34,12 @@ class RichText extends Field
      * `getRawContent()` / `serializeValue()` run the field's purifier and can
      * throw on bad HTML; on failure fall back to the base normalize()
      * comparison rather than assuming changed.
+     *
+     * Both sides are trimmed: saving drops surrounding whitespace, so a feed
+     * whose HTML ends in a newline can never equal what the field ends up
+     * storing, and the mapping would read as changed on every sync over that
+     * one byte. Leading and trailing whitespace carries no meaning in rendered
+     * HTML, so trimming can't mask a real edit.
      */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
@@ -50,6 +56,6 @@ class RichText extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        return $currentRaw !== $serialized;
+        return trim($currentRaw) !== trim($serialized);
     }
 }

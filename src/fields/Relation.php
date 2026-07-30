@@ -181,6 +181,13 @@ abstract class Relation extends RelationalField
      * A freshly created element is written back into the run's lookup cache to
      * flip the cached miss to a hit — otherwise later items carrying the same
      * reference re-create it and produce duplicates.
+     *
+     * Ids are de-duplicated, keeping first-seen order. A collapsed node path
+     * repeats its value once per parent row — `sessions.…room.location.id` on an
+     * eleven-session activity yields the same location eleven times — and Craft
+     * relates an element once however many times it is passed, so leaving the
+     * repeats in would both write a pointless list and leave the field reading
+     * as changed against the stored ids on every sync.
      */
     public function parse(FieldContext $context): mixed
     {
@@ -209,7 +216,7 @@ abstract class Relation extends RelationalField
             }
         }
 
-        return $ids ?: null;
+        return array_values(array_unique($ids)) ?: null;
     }
 
     /**
