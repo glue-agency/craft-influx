@@ -14,6 +14,7 @@ use craft\helpers\StringHelper;
 use craft\models\EntryType;
 use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
+use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -329,6 +330,38 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
+     * Coerce the mapped value into the element's per-site enabled flag, leaving
+     * the whole-element `enabled` alone — the mapped counterpart of
+     * {@see \GlueAgency\Influx\targets\AbstractElementTarget::disableForSite()},
+     * and the difference between "gone from this site" and "gone everywhere".
+     *
+     * A feed that names what to retire per site — the common shape being a
+     * separate `/deleted` endpoint per language — needs this rather than
+     * `enabled`: a link fanning out over sites shares one canonical element, so
+     * writing `enabled` from one site's feed retires it in every other site too.
+     *
+     * Falls back to the whole-element flag when the run isn't site-scoped, where
+     * per-site state has no meaning.
+     */
+    protected function parseEnabledForSite(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    {
+        $new = Lightswitch::coerce($mapping->resolve($item));
+        $siteId = $context->siteId;
+
+        if ($siteId === null) {
+            $changed = (bool) $element->enabled !== $new;
+            $element->enabled = $new;
+
+            return $changed;
+        }
+
+        $changed = (bool) $element->getEnabledForSite($siteId) !== $new;
+        $element->setEnabledForSite([$siteId => $new]);
+
+        return $changed;
+    }
+
+    /**
      * Resolve the per-item author through the same match strategy the
      * relational Users field uses (id / username / email / custom field),
      * then assign as `authorIds`. Falls back to the mapping's `default` (a
@@ -480,6 +513,17 @@ class EntryTarget extends AbstractElementTarget
                     fn(SchemaBuilder $builder) => $builder->select([
                         'handle'  => 'enabled',
                         'name'    => Craft::t('app', 'Enabled'),
+                        'options' => [
+                            'true'  => Craft::t('app', 'Enabled'),
+                            'false' => Craft::t('app', 'Disabled'),
+                        ],
+                    ]),
+                )
+                ->when(
+                    $entryType === null || Compat::entryTypeShowsStatusField($entryType),
+                    fn(SchemaBuilder $builder) => $builder->select([
+                        'handle'  => 'enabledForSite',
+                        'name'    => Craft::t('influx', 'Enabled for site'),
                         'options' => [
                             'true'  => Craft::t('app', 'Enabled'),
                             'false' => Craft::t('app', 'Disabled'),
