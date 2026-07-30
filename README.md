@@ -135,6 +135,14 @@ Every link needs a match config: `attribute` is the field/handle on the element 
 
 Set per-site endpoints and the link runs once per site — one queue job and one log per site, in the configured order. Each pass matches the element inside the site it's processing and writes to that site's localized row, so every endpoint feeds the same canonical element. Element types whose target reports no multi-site support (Users) always run once against a single endpoint.
 
+### Concurrency
+
+**Can a per-site fan-out create the same element twice?** No — double writes to the same site group are protected by a mutex lock on the jobs (`influx:sync:{handle}`), keyed on the link handle rather than the site, so one site's pass always finishes before the next starts looking.
+
+**Can two different links?** Yes — the lock doesn't span links. Run links that write the same section in one sequential `influx/sync a,b,c` invocation.
+
+**Does it guarantee one element per match value?** No. It serialises runs; finding the element from the next site's pass still depends on the section's propagation, which is Craft's setting, not the plugin's.
+
 ### Offset presets
 
 A link can declare named sliding-window presets (`offset: { hour: { since: '-1 hour', queryParam: modified_since } }`) so a scheduled `--offset=hour` run only asks the feed for what changed recently, instead of re-fetching everything every time. `since` and `queryParam` are required; an optional `format` sets how the cutoff is formatted (ISO 8601 by default). An offset run never sweeps for missing elements — its seen-set only covers the window.
