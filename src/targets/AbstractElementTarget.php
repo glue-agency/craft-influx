@@ -6,6 +6,7 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fieldlayoutelements\CustomField;
+use craft\helpers\ElementHelper;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Comparable;
@@ -16,6 +17,7 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappableField;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
+use Throwable;
 
 abstract class AbstractElementTarget implements ElementTargetInterface
 {
@@ -251,21 +253,70 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
-     * Craft's own element save with validation OFF — deliberate, and the same
-     * policy Feed Me imports run on: the feed is authoritative, so a value Craft
-     * would reject (an over-long title, a required field the feed left empty)
-     * still has to land rather than dropping the whole item. What genuinely needs
-     * coercing is coerced on the way in instead — {@see EntryTarget::parseTitle()}
-     * truncates, an unparseable date is a no-op — and
+     * Craft's own element save with validation OFF — deliberate: the feed is
+     * authoritative, so a value Craft would reject (an over-long title, a
+     * required field the feed left empty) still has to land rather than dropping
+     * the whole item. What genuinely needs coercing is coerced on the way in
+     * instead — {@see EntryTarget::parseTitle()} truncates, an unparseable date
+     * is a no-op — and
      * {@see \GlueAgency\Influx\sync\item\ItemProcessor::commit()} reports a false
      * return as an ERROR row.
+     *
+     * (Feed Me takes the opposite side of that trade: it saves WITH validation,
+     * `saveElement($element, true, true, $updateSearchIndexes)`. Worth knowing,
+     * because anything Craft only does during validation has to be done here
+     * instead — {@see ensureSlug()} is one such thing.)
      *
      * Every save the engine and the sweep perform routes through here, so a
      * target that needs different flags overrides this one method.
      */
     public function save(ElementInterface $element): bool
     {
+        $this->ensureSlug($element);
+
         return Craft::$app->getElements()->saveElement($element, false);
+    }
+
+    /**
+     * Derive an empty slug from the title, because skipping validation skips the
+     * only thing that would have.
+     *
+     * Craft generates a slug in {@see \craft\validators\SlugValidator}, so with
+     * validation off a created element keeps a null slug — and with no slug it
+     * gets no URI either, leaving it unreachable on the front end. Mirrors the
+     * validator rather than inventing a scheme: same `hasUris()` gate, same title
+     * source, same `limitAutoSlugsToAscii` setting, same site language.
+     *
+     * Only fills a blank. A slug the feed mapped, or one an editor set, is left
+     * exactly as it is.
+     */
+    protected function ensureSlug(ElementInterface $element): void
+    {
+        if (! $element::hasUris() || ! property_exists($element, 'slug')) {
+            return;
+        }
+
+        if (($element->slug ?? '') !== '') {
+            return;
+        }
+
+        $title = (string) ($element->title ?? '');
+
+        if ($title === '') {
+            return;
+        }
+
+        try {
+            $language = $element->getSite()->language;
+        } catch (Throwable) {
+            $language = null;
+        }
+
+        $element->slug = ElementHelper::generateSlug(
+            $title,
+            Craft::$app->getConfig()->getGeneral()->limitAutoSlugsToAscii,
+            $language,
+        );
     }
 
     public function disable(ElementInterface $element): bool
