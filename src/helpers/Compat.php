@@ -125,13 +125,22 @@ class Compat
      * class name so this file never hard-references a symbol absent from the
      * Craft 5 vendor tree. {@see matrixBlockTypes()} covers the discovery half
      * of the same divergence.
+     *
+     * `fieldId` is as load-bearing as the type on both: without it a Craft 5
+     * nested entry can't resolve an owner, so every property read throws
+     * "Either `sectionId` or `fieldId` + `ownerId` must be set on the entry" —
+     * including the `getFieldLayout()` call this block exists to serve, which
+     * silently costs the caller every child value.
      */
     public static function newMatrixBlock(CraftFieldInterface $field, string $typeHandle): ?ElementInterface
     {
         if (method_exists($field, 'getEntryTypes')) {
             foreach ($field->getEntryTypes() as $entryType) {
                 if ($entryType->handle === $typeHandle) {
-                    return new Entry(['typeId' => $entryType->id]);
+                    return new Entry([
+                        'typeId'  => $entryType->id,
+                        'fieldId' => $field->id,
+                    ]);
                 }
             }
 

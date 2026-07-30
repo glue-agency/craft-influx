@@ -107,6 +107,12 @@ class Date extends Field
      * its own tz token still wins. A non-scalar value can't be format-parsed, so
      * it goes to the auto-detector, which understands Craft's array date shapes.
      *
+     * The auto-detector reads a timezone-less value as SYSTEM time, not UTC: a
+     * feed writing `2026-07-07` means midnight where the site lives, and reading
+     * it as UTC shifts every date-only value by the site's offset — enough to
+     * rewrite them on every sync. A value carrying its own offset is unaffected,
+     * so this stays an assumption for the ambiguous case rather than an override.
+     *
      * Returns null when the value can't be parsed — what to DO about that is the
      * caller's policy, and the two callers differ deliberately.
      */
@@ -123,7 +129,7 @@ class Date extends Field
             return $parsed === false ? null : $parsed;
         }
 
-        return DateTimeHelper::toDateTime($raw) ?: null;
+        return DateTimeHelper::toDateTime($raw, true) ?: null;
     }
 
     /**
