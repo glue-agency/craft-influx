@@ -7,6 +7,7 @@ use Codeception\Test\Unit;
 use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fieldlayoutelements\entries\EntryTitleField;
 use craft\models\FieldLayout;
 use DateTime;
 use DateTimeZone;
@@ -17,6 +18,7 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -287,6 +289,85 @@ class MatrixFieldTest extends Unit
         $this->assertSame('season', $blocks['new1']['type']);
         $this->assertSame('coerced:A1', $blocks['new2']['fields']['label']);
         $this->assertSame('quote', $blocks['new2']['type']);
+    }
+
+    // -- schema ---------------------------------------------------------------
+
+    public function testTitleLeadsTheCardOfABlockTypeThatHasOne(): void
+    {
+        $strategy = $this->strategy(['season' => ['year', 'notes']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
+        ])->toArray();
+
+        $this->assertCount(1, $nodes);
+        $this->assertSame('matrixFields', $nodes[0]['type']);
+        $this->assertSame('season', $nodes[0]['blockType']);
+
+        $subFields = $nodes[0]['subFields'];
+        $this->assertSame(['title', 'year', 'notes'], array_column($subFields, 'handle'));
+        $this->assertSame('nativeFields', $subFields[0]['channel']);
+        $this->assertSame('Title', $subFields[0]['label']);
+    }
+
+    public function testTheTitleRowTakesTheLayoutsOwnLabel(): void
+    {
+        // A block type can relabel its title element ("Season name"), and that
+        // is what the editor sees on the block — so it names the row too.
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            [
+                'handle'        => 'season',
+                'name'          => 'Season',
+                'hasTitleField' => true,
+                'titleLabel'    => 'Season name',
+            ],
+        ])->toArray();
+
+        $this->assertSame('Season name', $nodes[0]['subFields'][0]['label']);
+    }
+
+    public function testABlockTypeWithoutATitleFieldGetsNoTitleRow(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+        ])->toArray();
+
+        $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
+    }
+
+    public function testCustomRowsCarryNoChannel(): void
+    {
+        // An absent `channel` IS the custom-field channel — the stored shape
+        // that predates the key, so a custom row must never gain one.
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
+        ])->toArray();
+
+        $this->assertArrayNotHasKey('channel', $nodes[0]['subFields'][1]);
+    }
+
+    public function testEachBlockTypeGetsItsOwnCard(): void
+    {
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+            ['handle' => 'quote', 'name' => 'Quote', 'hasTitleField' => true],
+        ])->toArray();
+
+        $this->assertSame(['season', 'quote'], array_column($nodes, 'blockType'));
+        $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
+        $this->assertSame(['title', 'text'], array_column($nodes[1]['subFields'], 'handle'));
+    }
+
+    public function testAFieldWithoutBlockTypesRendersANote(): void
+    {
+        $nodes = $this->strategy([])->exposedSchema([])->toArray();
+
+        $this->assertCount(1, $nodes);
+        $this->assertSame('note', $nodes[0]['type']);
     }
 
     // -- change detection -----------------------------------------------------
@@ -1074,9 +1155,36 @@ class MatrixFieldTest extends Unit
                 $this->test = $test;
             }
 
+            /** @var list<array<string, mixed>> */
+            public array $descriptors = [];
+
             public function exposedValueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
             {
                 return $this->valueDiffers($context, $current, $incoming);
+            }
+
+            /**
+             * Build the mapping schema off the given block-type descriptors,
+             * each given the fake layout of its handle in `$typeLayouts` (plus
+             * a relabelled title element when the descriptor asks for one).
+             *
+             * @param list<array<string, mixed>> $descriptors
+             */
+            public function exposedSchema(array $descriptors): SchemaBuilder
+            {
+                $this->descriptors = array_map(fn(array $descriptor): array => $descriptor + [
+                    'layout' => $this->test->fakeLayout(
+                        $this->typeLayouts[$descriptor['handle']] ?? [],
+                        $descriptor['titleLabel'] ?? null,
+                    ),
+                ], $descriptors);
+
+                return $this->schema($this->test->fakeCraftField());
+            }
+
+            protected function blockTypeDescriptors(CraftFieldInterface $field): array
+            {
+                return $this->descriptors;
             }
 
             protected function blockTypeHandles(FieldContext $context): array
@@ -1139,6 +1247,52 @@ class MatrixFieldTest extends Unit
         $element->method('getFieldLayout')->willReturn($layout);
 
         return $element;
+    }
+
+    /**
+     * A block type's fake field layout: a custom field per handle (the schema
+     * reads name + handle off each), and — when a label is given — a relabelled
+     * title element for the native Title row to name itself after.
+     *
+     * @param list<string> $handles
+     */
+    public function fakeLayout(array $handles, ?string $titleLabel = null): FieldLayout
+    {
+        // Plain carriers rather than field mocks: the schema reads nothing off a
+        // custom field but its handle and name.
+        $customFields = array_map(static fn(string $handle): object => new class($handle) {
+            public string $handle;
+
+            public string $name;
+
+            public function __construct(string $handle)
+            {
+                $this->handle = $handle;
+                $this->name = ucfirst($handle);
+            }
+        }, $handles);
+
+        $titleElement = null;
+
+        if ($titleLabel !== null) {
+            $titleElement = $this->createMock(EntryTitleField::class);
+            $titleElement->method('label')->willReturn($titleLabel);
+        }
+
+        $layout = $this->createMock(FieldLayout::class);
+        $layout->method('getCustomFields')->willReturn($customFields);
+        $layout->method('getFirstElementByType')->willReturn($titleElement);
+
+        return $layout;
+    }
+
+    /**
+     * The Craft field a schema is built for — a bare mock, since every block
+     * type it would be asked for comes from the stubbed descriptors instead.
+     */
+    public function fakeCraftField(): CraftFieldInterface
+    {
+        return $this->createMock(CraftFieldInterface::class);
     }
 
     /**

@@ -93,7 +93,15 @@ class Compat
      * and falls back to the Craft 4 one. The returned layout is what a caller
      * reads to resolve a block's child fields by handle.
      *
-     * @return list<array{handle: string, name: string, layout: ?FieldLayout}>
+     * `hasTitleField` says whether the block type exposes a native Title at
+     * all — Craft 5 nested entry types carry the flag (EntryType::$hasTitleField),
+     * and Craft 4 MatrixBlockType has no such property because a Craft 4 Matrix
+     * block has no title to begin with. So an ABSENT property reads FALSE here,
+     * the inverse of {@see entryTypeShowsTitleField()}, where absence means an
+     * older entry type that always had a title. Same feature detection, opposite
+     * default, because the two describe different elements.
+     *
+     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}>
      */
     public static function matrixBlockTypes(CraftFieldInterface $field): array
     {
@@ -105,9 +113,10 @@ class Compat
 
         foreach ($blockTypes as $blockType) {
             $normalized[] = [
-                'handle' => $blockType->handle,
-                'name'   => $blockType->name,
-                'layout' => $blockType->getFieldLayout(),
+                'handle'        => $blockType->handle,
+                'name'          => $blockType->name,
+                'layout'        => $blockType->getFieldLayout(),
+                'hasTitleField' => property_exists($blockType, 'hasTitleField') && $blockType->hasTitleField,
             ];
         }
 

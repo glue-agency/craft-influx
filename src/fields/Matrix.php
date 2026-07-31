@@ -6,7 +6,9 @@ use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
+use craft\fieldlayoutelements\entries\EntryTitleField;
 use craft\fields\Matrix as CraftMatrixField;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
@@ -99,12 +101,19 @@ class Matrix extends Field
 
     /**
      * One always-visible card per block type, each reading and writing its own
-     * `blocks.<handle>.fields` slice; a block type with no custom fields still
-     * gets a card.
+     * `blocks.<handle>` slice; a block type with no mappable sub-fields at all
+     * still gets a card.
+     *
+     * A block type that exposes a native Title leads with a title row, ahead of
+     * the custom fields, in the same order {@see appendTypeBlocks()} fills a
+     * block in. Rows carry an optional `channel` key that routes where the SPA
+     * writes them: `nativeFields` for the title, ABSENT for a custom field —
+     * absent means the `fields` channel, which is the stored shape that predates
+     * the key.
      */
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
-        $blockTypes = Compat::matrixBlockTypes($field);
+        $blockTypes = $this->blockTypeDescriptors($field);
 
         if (! $blockTypes) {
             return SchemaBuilder::make()
@@ -116,6 +125,14 @@ class Matrix extends Field
         foreach ($blockTypes as $blockType) {
             $subFields = SchemaBuilder::make();
             $layout = $blockType['layout'];
+
+            if ($blockType['hasTitleField']) {
+                $subFields->text([
+                    'handle'  => 'title',
+                    'label'   => $this->titleLabel($layout),
+                    'channel' => 'nativeFields',
+                ]);
+            }
 
             foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
                 $subFields->text([
@@ -132,6 +149,19 @@ class Matrix extends Field
         }
 
         return $builder;
+    }
+
+    /**
+     * The label a block type's native Title row carries: what the editor sees on
+     * the block itself — the layout's title element can be relabelled per type —
+     * falling back to Craft's own "Title". Mirrors how {@see \GlueAgency\Influx\targets\EntryTarget::matchableNativeAttributes()}
+     * labels the entry-level title option.
+     */
+    protected function titleLabel(?FieldLayout $layout): string
+    {
+        $titleElement = $layout?->getFirstElementByType(EntryTitleField::class);
+
+        return $titleElement?->label() ?: Craft::t('app', 'Title');
     }
 
     /**
@@ -1176,6 +1206,19 @@ class Matrix extends Field
     }
 
     /**
+     * The block-type descriptors declared on the Matrix field, in declared
+     * order. Extracted — like {@see blockTypeHandles()} and
+     * {@see blockElement()} — so tests can stub block-type discovery without
+     * booting Craft.
+     *
+     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}>
+     */
+    protected function blockTypeDescriptors(CraftFieldInterface $field): array
+    {
+        return Compat::matrixBlockTypes($field);
+    }
+
+    /**
      * The block-type handles declared on the Matrix field, in declared order.
      * Extracted so tests can stub block-type discovery without booting Craft.
      *
@@ -1185,7 +1228,7 @@ class Matrix extends Field
     {
         return array_map(
             static fn(array $blockType): string => $blockType['handle'],
-            Compat::matrixBlockTypes($context->craftField),
+            $this->blockTypeDescriptors($context->craftField),
         );
     }
 

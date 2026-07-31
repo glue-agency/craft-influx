@@ -6,11 +6,13 @@ import SearchableSelect from '../../../SearchableSelect.vue';
 /**
  * Locks in the blocks-channel writer contract: the card owns ONE block
  * type's slice of the mapping's whole `blocks` object. Child rows land
- * under `blocks[type].fields[handle]` with the same node/default/useDefault
- * vocabulary as the parent rows; other types' slices, unknown keys on the
- * card's own type entry, and a child's unknown keys (per-type `options`,
- * nested `fields`, …) survive every rewrite untouched; emptied slices
- * collapse away (row → `fields` map → type entry).
+ * under `blocks[type].fields[handle]` — or `blocks[type].nativeFields[handle]`
+ * for a row whose schema node declares `channel: 'nativeFields'` (the block's
+ * native Title) — with the same node/default/useDefault vocabulary as the
+ * parent rows; other types' slices, unknown keys on the card's own type
+ * entry, and a child's unknown keys (per-type `options`, nested `fields`, …)
+ * survive every rewrite untouched; emptied slices collapse away (row →
+ * channel map → type entry).
  */
 
 const node = {
@@ -19,6 +21,7 @@ const node = {
     label: 'Quote',
     blockType: 'quote',
     subFields: [
+        { type: 'text', handle: 'title', label: 'Title', channel: 'nativeFields' },
         { type: 'text', handle: 'quote', label: 'Quote' },
         { type: 'text', handle: 'cite', label: 'Cite' },
     ],
@@ -37,8 +40,11 @@ const mountFields = (props = {}) => mount(MatrixFields, {
     global: { mocks: { $t: (s) => s } },
 });
 
-// Row i's source-node control is the i-th SearchableSelect.
-const nodeSelect = (wrapper, idx) => wrapper.findAllComponents(SearchableSelect).at(idx);
+// Rows render in node.subFields order, one source-node control and one
+// default-value input each.
+const rowIndex = (handle) => node.subFields.findIndex((sub) => sub.handle === handle);
+const nodeSelect = (wrapper, handle) => wrapper.findAllComponents(SearchableSelect).at(rowIndex(handle));
+const defaultInput = (wrapper, handle) => wrapper.findAll('input[type="text"]').at(rowIndex(handle));
 
 describe('MatrixFields', () => {
     it('starts collapsed without saved rows, open with them', () => {
@@ -53,15 +59,15 @@ describe('MatrixFields', () => {
 
     it('renders each row as name label + code handle, like other sub-field rows', () => {
         const wrapper = mountFields();
-        const firstRow = wrapper.find('.sub-field-row label');
+        const quoteRow = wrapper.findAll('.sub-field-row label').at(rowIndex('quote'));
 
-        expect(firstRow.text()).toContain('Quote');
-        expect(firstRow.find('code.handle').text()).toBe('quote');
+        expect(quoteRow.text()).toContain('Quote');
+        expect(quoteRow.find('code.handle').text()).toBe('quote');
     });
 
     it('writes a picked node under blocks[type].fields[handle].node', () => {
         const wrapper = mountFields();
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'quotes.text');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', 'quotes.text');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
             .toEqual([{ quote: { fields: { quote: { node: 'quotes.text' } } } }]);
@@ -71,7 +77,7 @@ describe('MatrixFields', () => {
         const wrapper = mountFields({
             modelValue: { stat: { fields: { number: { node: 'stats.value' } } } },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'quotes.text');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', 'quotes.text');
 
         expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{
             stat:  { fields: { number: { node: 'stats.value' } } },
@@ -79,15 +85,15 @@ describe('MatrixFields', () => {
         }]);
     });
 
-    it('preserves unknown keys on its own type\'s entry (nativeFields, …)', () => {
+    it('preserves unknown keys on its own type\'s entry (futureFlag, …)', () => {
         const wrapper = mountFields({
-            modelValue: { quote: { nativeFields: { title: { node: 'quotes.author' } } } },
+            modelValue: { quote: { futureFlag: true } },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'quotes.text');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', 'quotes.text');
 
         expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{
             quote: {
-                nativeFields: { title: { node: 'quotes.author' } },
+                futureFlag: true,
                 fields: { quote: { node: 'quotes.text' } },
             },
         }]);
@@ -99,7 +105,7 @@ describe('MatrixFields', () => {
                 quote: { fields: { quote: { node: 'quotes.text' }, cite: { node: 'quotes.author' } } },
             },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', '');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
             .toEqual([{ quote: { fields: { cite: { node: 'quotes.author' } } } }]);
@@ -112,7 +118,7 @@ describe('MatrixFields', () => {
                 stat:  { fields: { number: { node: 'stats.value' } } },
             },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', '');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
             .toEqual([{ stat: { fields: { number: { node: 'stats.value' } } } }]);
@@ -122,7 +128,7 @@ describe('MatrixFields', () => {
         const last = mountFields({
             modelValue: { quote: { fields: { quote: { node: 'quotes.text' } } } },
         });
-        nodeSelect(last, 0).vm.$emit('update:modelValue', '');
+        nodeSelect(last, 'quote').vm.$emit('update:modelValue', '');
 
         expect(last.emitted('update:modelValue').at(-1)).toEqual([{}]);
     });
@@ -132,21 +138,21 @@ describe('MatrixFields', () => {
             modelValue: {
                 quote: {
                     fields: { quote: { node: 'quotes.text' } },
-                    nativeFields: { title: { node: 'quotes.author' } },
+                    futureFlag: true,
                 },
             },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', '');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
-            .toEqual([{ quote: { nativeFields: { title: { node: 'quotes.author' } } } }]);
+            .toEqual([{ quote: { futureFlag: true } }]);
     });
 
     it('round-trips the __default__ sentinel to useDefault, never the wire node', () => {
         const wrapper = mountFields({
             modelValue: { quote: { fields: { quote: { node: 'quotes.text' } } } },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '__default__');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', '__default__');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
             .toEqual([{ quote: { fields: { quote: { useDefault: true } } } }]);
@@ -155,7 +161,7 @@ describe('MatrixFields', () => {
         const hydrated = mountFields({
             modelValue: { quote: { fields: { quote: { useDefault: true } } } },
         });
-        expect(nodeSelect(hydrated, 0).props('modelValue')).toBe('__default__');
+        expect(nodeSelect(hydrated, 'quote').props('modelValue')).toBe('__default__');
     });
 
     it('keeps a child\'s unknown keys intact across a write round-trip', async () => {
@@ -173,7 +179,7 @@ describe('MatrixFields', () => {
         const wrapper = mountFields({ modelValue: saved });
 
         // Rewriting the row's default must not disturb options / fields.
-        await wrapper.findAll('input[type="text"]').at(0).setValue('Fallback');
+        await defaultInput(wrapper, 'quote').setValue('Fallback');
 
         expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{
             quote: {
@@ -195,7 +201,7 @@ describe('MatrixFields', () => {
                 quote: { fields: { quote: { node: 'quotes.text', options: { format: 'raw' } } } },
             },
         });
-        nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', '');
 
         expect(wrapper.emitted('update:modelValue').at(-1))
             .toEqual([{ quote: { fields: { quote: { options: { format: 'raw' } } } } }]);
@@ -223,5 +229,85 @@ describe('MatrixFields', () => {
         expect(wrapper.find('.influx-mapping-headings').exists()).toBe(false);
         expect(wrapper.find('.sub-field-row').exists()).toBe(false);
         expect(wrapper.find('.pill-count').text()).toBe('0');
+    });
+
+    // -- native channel -------------------------------------------------------
+
+    it('writes a channel: nativeFields row under blocks[type].nativeFields', () => {
+        const wrapper = mountFields();
+        nodeSelect(wrapper, 'title').vm.$emit('update:modelValue', 'quotes.author');
+
+        expect(wrapper.emitted('update:modelValue').at(-1))
+            .toEqual([{ quote: { nativeFields: { title: { node: 'quotes.author' } } } }]);
+    });
+
+    it('renders both channels as one table and keeps them independent', () => {
+        const wrapper = mountFields({
+            modelValue: {
+                quote: {
+                    fields:       { quote: { node: 'quotes.text' } },
+                    nativeFields: { title: { node: 'quotes.author' } },
+                },
+            },
+        });
+
+        // Both saved rows hydrate their own control…
+        expect(nodeSelect(wrapper, 'title').props('modelValue')).toBe('quotes.author');
+        expect(nodeSelect(wrapper, 'quote').props('modelValue')).toBe('quotes.text');
+
+        // …and editing one leaves the other channel exactly as it was.
+        nodeSelect(wrapper, 'quote').vm.$emit('update:modelValue', 'quotes.meta.body');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{
+            quote: {
+                nativeFields: { title: { node: 'quotes.author' } },
+                fields:       { quote: { node: 'quotes.meta.body' } },
+            },
+        }]);
+    });
+
+    it('collapses an emptied nativeFields off the type entry', () => {
+        const wrapper = mountFields({
+            modelValue: {
+                quote: {
+                    fields:       { quote: { node: 'quotes.text' } },
+                    nativeFields: { title: { node: 'quotes.author' } },
+                },
+            },
+        });
+        nodeSelect(wrapper, 'title').vm.$emit('update:modelValue', '');
+
+        expect(wrapper.emitted('update:modelValue').at(-1))
+            .toEqual([{ quote: { fields: { quote: { node: 'quotes.text' } } } }]);
+    });
+
+    it('collapses the type out of blocks when the native row was its last', () => {
+        const wrapper = mountFields({
+            modelValue: { quote: { nativeFields: { title: { node: 'quotes.author' } } } },
+        });
+        nodeSelect(wrapper, 'title').vm.$emit('update:modelValue', '');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{}]);
+    });
+
+    it('round-trips a stale saved native handle back into nativeFields', () => {
+        // `legacy` is no longer among the type's subFields (the block type
+        // dropped it), so only where it was SAVED says which channel it
+        // belongs to — it must not migrate into `fields` on the next write.
+        const wrapper = mountFields({
+            modelValue: {
+                quote: { nativeFields: { legacy: { node: 'quotes.legacy' } } },
+            },
+        });
+        nodeSelect(wrapper, 'title').vm.$emit('update:modelValue', 'quotes.author');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{
+            quote: {
+                nativeFields: {
+                    legacy: { node: 'quotes.legacy' },
+                    title:  { node: 'quotes.author' },
+                },
+            },
+        }]);
     });
 });

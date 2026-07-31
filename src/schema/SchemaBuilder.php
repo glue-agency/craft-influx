@@ -153,10 +153,16 @@ class SchemaBuilder
     }
 
     /**
-     * One Matrix block type's card: source-node + default rows for its custom
-     * fields, writing the block type's slice of the mapping's `blocks` channel
-     * (`blocks.<blockType>.fields`). `$config` supplies `label`, `subFields`
-     * and `blockType`.
+     * One Matrix block type's card: source-node + default rows for its
+     * mappable sub-fields, writing the block type's slice of the mapping's
+     * `blocks` channel. `$config` supplies `label`, `subFields` and
+     * `blockType`.
+     *
+     * Each sub-field row may carry an optional `channel` key saying which half
+     * of the block type's slice it writes: `nativeFields` routes the row to
+     * `blocks.<blockType>.nativeFields` (the block's native Title), while an
+     * ABSENT key means `blocks.<blockType>.fields` — the custom-field channel,
+     * and the stored shape that predates the key.
      */
     public function matrixFields(array $config = []): self
     {
