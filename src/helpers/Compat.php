@@ -310,6 +310,10 @@ class Compat
      * Element chip HTML. Craft 5: Cp::elementChipHtml(); Craft 4:
      * Cp::elementHtml(), which has no `hyperlink` option — emulated with a
      * plain anchor wrap. Exposed to Twig as `influxElementChip()`.
+     *
+     * The emulation skips the anchor for a trashed element, matching Craft 5's
+     * chip, which refuses to hyperlink one (its edit URL leads nowhere until it
+     * is restored).
      */
     public static function elementChipHtml(ElementInterface $element, array $config = []): string
     {
@@ -319,7 +323,7 @@ class Compat
 
         $html = Cp::elementHtml($element);
 
-        if (! empty($config['hyperlink'])) {
+        if (! empty($config['hyperlink']) && ! $element->trashed) {
             $url = $element->getCpEditUrl();
 
             if ($url) {

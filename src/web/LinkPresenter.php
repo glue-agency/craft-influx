@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\web;
 
 use Craft;
+use craft\helpers\Html;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
@@ -142,7 +143,12 @@ class LinkPresenter
     /**
      * The log viewer's "Resource" row for a single-element run: the element chip
      * for the resource the run was triggered for, or its `#id` when it has since
-     * been deleted. Null for whole-feed runs, which have no single resource.
+     * been HARD deleted. Null for whole-feed runs, which have no single resource.
+     *
+     * A soft-deleted resource still resolves (`trashed(null)`) — the plugin's own
+     * deletes are soft — and gets a pill saying where it is, since Craft's chip
+     * silently drops the hyperlink for a trashed element but shows nothing that
+     * explains why.
      */
     public function resourceDisplay(?Link $link, ?int $elementId): ?string
     {
@@ -150,13 +156,20 @@ class LinkPresenter
             return null;
         }
 
-        $element = Craft::$app->getElements()->getElementById($elementId, $link?->elementType);
+        $element = Craft::$app->getElements()->getElementById($elementId, $link?->elementType, null, ['trashed' => null]);
 
         if (! $element) {
             return '<span class="light">#' . $elementId . '</span>';
         }
 
-        return (new ItemRowPresenter())->elementChip($element);
+        $chip = (new ItemRowPresenter())->elementChip($element);
+
+        if (! $element->trashed) {
+            return $chip;
+        }
+
+        // Encoded: translation files are user-supplied.
+        return $chip . ' <span class="influx-pill influx-pill--gray">' . Html::encode(Craft::t('influx', 'In trash')) . '</span>';
     }
 
     /**

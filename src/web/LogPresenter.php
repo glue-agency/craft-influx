@@ -91,11 +91,15 @@ class LogPresenter
     /**
      * One log-item row. The row carries a plain-text title and no per-row
      * element chip, falling back in a fixed order: the element's UI label, else
-     * the item's match value, else the row's own `#id`. A removed element
-     * degrades to its `#id` reference.
+     * the item's match value, else the row's own `#id`.
+     *
+     * A trashed element still resolves ({@see elementMap()} loads them) and is
+     * flagged with `trashed` so the list can say so — only a HARD-deleted one is
+     * unresolvable, and then the match value is the better label than an `#id`
+     * pointing at nothing.
      *
      * When `$elementMap` is supplied (batch path), the element is read from it —
-     * an absent id is a since-deleted element and degrades the same way. When
+     * an absent id is a since-purged element and degrades the same way. When
      * null (single-item path), the element is loaded on demand.
      *
      * `errorCount` is the number of stored per-field errors
@@ -106,19 +110,21 @@ class LogPresenter
      */
     public function presentItem(LogItemRecord $item, ?array $elementMap = null): array
     {
+        $element = null;
         $title = null;
 
         if ($item->elementId) {
             $element = $elementMap !== null
                 ? ($elementMap[$item->elementId] ?? null)
-                : Craft::$app->getElements()->getElementById($item->elementId);
-            $title = $element
-                ? (string) ($element->getUiLabel() ?: '#' . $element->id)
-                : '#' . $item->elementId;
+                : Craft::$app->getElements()->getElementById($item->elementId, null, null, ['trashed' => null]);
+
+            if ($element) {
+                $title = (string) ($element->getUiLabel() ?: '#' . $element->id);
+            }
         }
 
         $matchValue = (string) ($item->matchValue ?? '');
-        $title = $title ?? ($matchValue !== '' ? $matchValue : '#' . $item->id);
+        $title ??= $matchValue !== '' ? $matchValue : '#' . ($item->elementId ?: $item->id);
 
         $errorCount = count($this->fieldErrors($item->fieldErrors));
 
@@ -128,6 +134,7 @@ class LogPresenter
             'matchValue' => $matchValue,
             'message'    => (string) ($item->message ?? ''),
             'title'      => $title,
+            'trashed'    => (bool) $element?->trashed,
             'errorCount' => $errorCount,
         ];
     }
@@ -278,6 +285,10 @@ class LogPresenter
      * site); otherwise (link deleted) it falls back to deduplicated per-id
      * loads so a repeated id is still only fetched once.
      *
+     * Trashed elements are loaded too (`trashed(null)`): the plugin's own
+     * deletes are soft, so excluding them — which is what an element query does
+     * by default — would degrade every row a sync deleted to a bare `#id`.
+     *
      * @param LogItemRecord[] $items
      * @return array<int, ElementInterface>
      */
@@ -301,6 +312,7 @@ class LogPresenter
             return $elementType::find()
                 ->id($ids)
                 ->status(null)
+                ->trashed(null)
                 ->siteId('*')
                 ->unique()
                 ->indexBy('id')
@@ -311,7 +323,7 @@ class LogPresenter
         $map = [];
 
         foreach ($ids as $id) {
-            $element = $elements->getElementById($id);
+            $element = $elements->getElementById($id, null, null, ['trashed' => null]);
 
             if ($element) {
                 $map[$id] = $element;

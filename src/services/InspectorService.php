@@ -170,8 +170,12 @@ class InspectorService extends Component
 
     /**
      * The element a stored log item touched, loaded FRESH so its chip and edit
-     * link show the element as it stands now — and null once it's been deleted,
-     * which degrades the drill-down's header to the match value.
+     * link show the element as it stands now — and null once it's been HARD
+     * deleted, which degrades the drill-down's header to the match value. A
+     * soft-deleted one still resolves (`trashed(null)`): the plugin's own
+     * deletes are soft, so an element in the Trash is exactly what a run's
+     * deleted rows point at, and losing it would blank the header of every one
+     * of them.
      *
      * Deliberately not {@see resolvePinned()}: that exists to hand the dry-run
      * pipeline a decision, needs the link's target, and re-derives the match
@@ -197,10 +201,10 @@ class InspectorService extends Component
             : null;
 
         $elements = Craft::$app->getElements();
-        $element = $elements->getElementById($elementId, null, $siteId ?? '*');
+        $element = $elements->getElementById($elementId, null, $siteId ?? '*', ['trashed' => null]);
 
         if ($element === null && $siteId !== null) {
-            $element = $elements->getElementById($elementId, null, '*');
+            $element = $elements->getElementById($elementId, null, '*', ['trashed' => null]);
         }
 
         return $element;

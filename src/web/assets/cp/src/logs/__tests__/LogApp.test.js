@@ -9,8 +9,8 @@ const baseConfig = (over = {}) => ({
     log: { id: 1, linkHandle: 'news', trigger: 'cp', status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
     // The bootstrap ships only page 1 (newest first).
     items: [
-        { id: 2, action: 'skipped', matchValue: 'B', message: 'missing id', title: 'Item B', errorCount: 0 },
-        { id: 1, action: 'created', matchValue: 'A', message: '', title: 'Item A', errorCount: 0 },
+        { id: 2, action: 'skipped', matchValue: 'B', message: 'missing id', title: 'Item B', trashed: false, errorCount: 0 },
+        { id: 1, action: 'created', matchValue: 'A', message: '', title: 'Item A', trashed: false, errorCount: 0 },
     ],
     itemTotal: 2,
     perPage: 25,
@@ -66,6 +66,20 @@ describe('LogApp', () => {
         expect(counters.length).toBe(7);
         expect(counters[0].text()).toContain('2');
         expect(counters[0].text().toLowerCase()).toContain('seen');
+    });
+
+    it('pills an item whose element sits in the trash, and only that one', () => {
+        const w = mountApp({
+            items: [
+                { id: 2, action: 'deleted', matchValue: 'B', message: '', title: 'Item B', trashed: true, errorCount: 0 },
+                { id: 1, action: 'created', matchValue: 'A', message: '', title: 'Item A', trashed: false, errorCount: 0 },
+            ],
+        });
+
+        const rows = w.findAll('.influx-split-item');
+        expect(rows[0].find('.influx-split-item-trashed').text()).toBe('In trash');
+        expect(rows[0].find('.influx-split-item-title').text()).toBe('Item B');
+        expect(rows[1].find('.influx-split-item-trashed').exists()).toBe(false);
     });
 
     it('hangs the resize handle on the seam, between the list and the detail', () => {

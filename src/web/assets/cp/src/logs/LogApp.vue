@@ -93,6 +93,11 @@
                                 <span class="influx-split-item-top">
                                     <span class="influx-split-item-title" v-text="item.title"></span>
                                     <span
+                                        v-if="item.trashed"
+                                        class="influx-pill influx-pill--gray influx-split-item-trashed"
+                                        v-text="$t('In trash')"
+                                    ></span>
+                                    <span
                                         v-if="item.errorCount"
                                         class="influx-log-haserror"
                                         data-icon="alert"
@@ -396,6 +401,9 @@
 }
 
 .influx-split-item-badge { flex: none; }
+/* Look comes from the global pill classes; this only stops the ellipsising
+   title from squeezing it. */
+.influx-split-item-trashed { flex: none; }
 .influx-split-item-sub { font-size: 11px; color: var(--light-text-color); }
 
 /* "Saved despite a field error" count beside the action badge. */
