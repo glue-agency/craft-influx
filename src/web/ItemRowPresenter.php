@@ -13,6 +13,7 @@ use craft\helpers\Html;
 use DateTimeInterface;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use Throwable;
@@ -27,11 +28,17 @@ use Throwable;
  * The array shapes emitted here are a contract with the Vue layer
  * (DebugItemDetail.vue) and its vitest specs — the row keys
  * (handle/label/node/default/native/rawValue/parsedValue/parsedHtml/
- * currentValue/changed/unaddressed/usedDefault/managedByTarget/error, and the
- * element chipHtml) and the 500-char value truncation must not drift. `parsedHtml` is the log viewer's opt-in
- * server-rendered variant of the parsed value — element chips for relations, a
- * lightswitch for booleans (see {@see presentMappingResults()}) — and is null
- * on every row unless that flag is set and the value has a rich rendering.
+ * currentValue/changed/unaddressed/usedDefault/managedByTarget/error/children/
+ * childrenType, and the element chipHtml) and the 500-char value truncation must
+ * not drift. `parsedHtml` is the log viewer's opt-in server-rendered variant of
+ * the parsed value — element chips for relations, a lightswitch for booleans
+ * (see {@see presentMappingResults()}) — and is null on every row unless that
+ * flag is set and the value has a rich rendering.
+ *
+ * `children` is the row's nested drill-down — one entry per Matrix block or
+ * related element, each carrying its own `mappings` in this very same row shape
+ * (see {@see presentChildren()}) — and is null, alongside the `childrenType`
+ * noun beside it, on every row that nests nothing.
  *
  * Craft is only touched inside the methods (never the constructor), so the
  * presenter can be instantiated without a booted app.
@@ -45,6 +52,15 @@ class ItemRowPresenter
      * @var array<string, array<string, string>>
      */
     protected array $fieldLabelCache = [];
+
+    /**
+     * Memoized handle => friendly-name maps for child rows, keyed by field-layout
+     * id, so a Matrix field holding twenty blocks of one type — or a relation
+     * holding twenty elements of one entry type — resolves those labels once.
+     *
+     * @var array<int, array<string, string>>
+     */
+    protected array $childLabelCache = [];
 
     /**
      * Render {@see MappingResult}s into the Twig/JS-facing row shape —
@@ -64,6 +80,11 @@ class ItemRowPresenter
      * builds many rows per run — never pays for the extra rendering. Every
      * other value keeps its plain string and a null `parsedHtml`, so the
      * emitted shape stays uniform.
+     *
+     * A row that nests elements also carries them, presented
+     * ({@see presentChildren()}) — every child's own field rows come back through
+     * this same method, so the shape is recursive to whatever depth the walk
+     * produced.
      *
      * @param list<MappingResult> $results
      * @param array<string, string> $labels handle => friendly field name
@@ -120,10 +141,102 @@ class ItemRowPresenter
                 'usedDefault'     => $result->usedDefault,
                 'managedByTarget' => $result->managedByTarget,
                 'error'           => $result->error,
+                'children'        => $this->presentChildren($result->children, $element, $withParsedHtml),
+                'childrenType'    => $result->childrenType,
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Present a row's nested children — one entry per Matrix block or related
+     * element, each with its own `mappings` in the same row shape the parent
+     * rows use. Null in, null out: a row that nests nothing keeps its null.
+     *
+     * The labels are resolved from the CHILD's own layout
+     * ({@see childFieldLabels()}) rather than reusing the map the parent rows
+     * were given: that one holds the TARGET's mappable fields
+     * ({@see fieldLabels()}), and a block type's or related element's fields
+     * aren't in it — handing it down would label every child row by its bare
+     * handle.
+     *
+     * {@see ChildResult::$labelElement} is also the element the child rows'
+     * normalizeValue display parity runs against, and it can be missing (a
+     * removed block that couldn't be narrowed to an element), so the parent's
+     * element stands in: the values still describe the same way, and the labels
+     * simply fall back to handles.
+     *
+     * @param list<ChildResult>|null $children
+     * @return list<array>|null
+     */
+    protected function presentChildren(?array $children, ElementInterface $fallbackElement, bool $withParsedHtml): ?array
+    {
+        if ($children === null) {
+            return null;
+        }
+
+        $rows = [];
+
+        foreach ($children as $child) {
+            $rows[] = [
+                'title'     => $child->title,
+                'blockType' => $child->blockType,
+                'element'   => $child->element !== null ? $this->presentElement($child->element) : null,
+                'action'    => $child->action,
+                'mappings'  => $this->presentMappingResults(
+                    $child->mappingResults,
+                    $child->labelElement ?? $fallbackElement,
+                    $this->childFieldLabels($child->labelElement),
+                    $withParsedHtml,
+                ),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Handle => friendly field name for one child's rows: its layout's own custom
+     * fields, plus the native sub-rows a nested mapping can write (`title`,
+     * `slug`), which are attributes and so never appear on a layout. Memoized by
+     * layout id, skipping the cache when there is none to key on.
+     *
+     * The native labels translate, which needs a booted app, so they are guarded
+     * the way {@see describeDate()} is — the presenter stays constructible and
+     * callable without one (see the class docblock), degrading to the English
+     * source strings instead of taking the row down.
+     *
+     * @return array<string, string>
+     */
+    protected function childFieldLabels(?ElementInterface $labelElement): array
+    {
+        $layout = $labelElement?->getFieldLayout();
+        $key = $layout?->id;
+
+        if ($key !== null && isset($this->childLabelCache[$key])) {
+            return $this->childLabelCache[$key];
+        }
+
+        $labels = [];
+
+        foreach ($layout?->getCustomFields() ?? [] as $field) {
+            $labels[$field->handle] = $field->name ?: $field->handle;
+        }
+
+        try {
+            $labels['title'] = Craft::t('app', 'Title');
+            $labels['slug'] = Craft::t('app', 'Slug');
+        } catch (Throwable) {
+            $labels['title'] = 'Title';
+            $labels['slug'] = 'Slug';
+        }
+
+        if ($key !== null) {
+            $this->childLabelCache[$key] = $labels;
+        }
+
+        return $labels;
     }
 
     /**

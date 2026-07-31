@@ -14,6 +14,10 @@ import fixture from '../../../tests/fixtures/inspector-row.json';
  * it, server-side); the rich-render branch is covered by overriding the key
  * locally, so the contract "key always present, value usually null" is asserted
  * end to end.
+ *
+ * A row that nests elements carries them under `children`, each child holding
+ * its own `mappings` in this very same row shape — so the keys are asserted at
+ * every depth the fixture goes.
  */
 
 const ROW_KEYS = [
@@ -24,8 +28,15 @@ const ROW_KEYS = [
 const MAPPING_KEYS = [
     'handle', 'label', 'node', 'default', 'native', 'rawValue', 'parsedValue',
     'parsedHtml', 'currentValue', 'changed', 'unaddressed', 'usedDefault',
-    'managedByTarget', 'error',
+    'managedByTarget', 'error', 'children', 'childrenType',
 ].sort();
+
+const CHILD_KEYS = ['title', 'blockType', 'element', 'action', 'mappings'].sort();
+
+// Every child of every row, recursively.
+const childrenOf = (mappings) => mappings.flatMap(
+    (m) => (m.children ?? []).flatMap((c) => [c, ...childrenOf(c.mappings)]),
+);
 
 const mountDetail = (props = {}) => mount(DebugItemDetail, {
     props: { row: fixture, matchAttribute: fixture.matchAttribute, ...props },
@@ -42,6 +53,42 @@ describe('Inspector row wire contract', () => {
 
         for (const mapping of fixture.mappings) {
             expect(Object.keys(mapping).sort()).toEqual(MAPPING_KEYS);
+        }
+    });
+
+    it('carries exactly the child keys on every nested child, at every depth', () => {
+        const children = childrenOf(fixture.mappings);
+
+        expect(children.length).toBeGreaterThan(1);
+
+        for (const child of children) {
+            expect(Object.keys(child).sort()).toEqual(CHILD_KEYS);
+
+            // A child's own rows are rows — same keys, same reader.
+            for (const mapping of child.mappings) {
+                expect(Object.keys(mapping).sort()).toEqual(MAPPING_KEYS);
+                expect(mapping.children === null || Array.isArray(mapping.children)).toBe(true);
+            }
+        }
+    });
+
+    it('pins both child flavours — a block with no identity and a related element with one', () => {
+        const children = childrenOf(fixture.mappings);
+        const block = children.find((c) => c.blockType !== null);
+        const related = children.find((c) => c.element !== null);
+
+        expect(block.element).toBe(null);
+        expect(typeof block.title).toBe('string');
+        expect(typeof block.action).toBe('string');
+
+        expect(related.blockType).toBe(null);
+        expect(typeof related.element.chipHtml).toBe('string');
+        expect(typeof related.element.id).toBe('number');
+    });
+
+    it('names the child count noun only alongside children', () => {
+        for (const mapping of fixture.mappings) {
+            expect(mapping.childrenType === null).toBe(mapping.children === null);
         }
     });
 
@@ -62,6 +109,7 @@ describe('Inspector row wire contract', () => {
             for (const key of ['rawValue', 'parsedValue', 'currentValue', 'parsedHtml', 'error']) {
                 expect(['string', 'object']).toContain(typeof mapping[key]);
             }
+            expect(mapping.children === null || Array.isArray(mapping.children)).toBe(true);
         }
     });
 });
@@ -73,11 +121,15 @@ describe('DebugItemDetail renders the contract', () => {
         expect(w.find('.influx-detail-chip').html()).toContain('Werfkelder');
         expect(w.findAll('.influx-detail-row')).toHaveLength(fixture.mappings.length);
         // The pills read `matchAttribute` against each row's handle, plus the
-        // row's own unaddressed / usedDefault / managedByTarget flags.
+        // row's own unaddressed / usedDefault / managedByTarget flags. The
+        // children-bearing rows render as plain rows today — the drill-down into
+        // them is the component's own concern, not the contract's.
         expect(w.findAll('.influx-detail-field-name').map((n) => n.text())).toEqual([
             'Import ID match by',
             'Title',
             'Building type missing node',
+            'Content blocks',
+            'Related projects',
         ]);
     });
 

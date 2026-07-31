@@ -15,7 +15,12 @@
     "raw": {
         "id": "42",
         "title": "Werfkelder",
-        "building_type": { "id": "7" }
+        "building_type": { "id": "7" },
+        "blocks": [
+            { "type": "text", "heading": "Werfkelder", "body": "14de-eeuwse kelder" },
+            { "type": "image", "caption": "Voorzijde" }
+        ],
+        "projects": { "id": "412", "summary": "Restauratie" }
     },
     "mappings": [
         {
@@ -32,7 +37,9 @@
             "unaddressed": false,
             "usedDefault": false,
             "managedByTarget": false,
-            "error": null
+            "error": null,
+            "children": null,
+            "childrenType": null
         },
         {
             "handle": "title",
@@ -48,7 +55,9 @@
             "unaddressed": false,
             "usedDefault": false,
             "managedByTarget": false,
-            "error": null
+            "error": null,
+            "children": null,
+            "childrenType": null
         },
         {
             "handle": "building_type",
@@ -64,7 +73,149 @@
             "unaddressed": true,
             "usedDefault": false,
             "managedByTarget": false,
-            "error": "Relation lookup failed: no element matches '7'."
+            "error": "Relation lookup failed: no element matches '7'.",
+            "children": null,
+            "childrenType": null
+        },
+        {
+            "handle": "content_blocks",
+            "label": "Content blocks",
+            "node": null,
+            "default": null,
+            "native": false,
+            "rawValue": null,
+            "parsedValue": "{\"new1\":{\"type\":\"text\",\"enabled\":true,\"title\":\"Werfkelder\",\"fields\":{\"body\":\"14de-eeuwse kelder\"}},\"new2\":{\"type\":\"image\",\"enabled\":true,\"fields\":{\"caption\":\"Voorzijde\"}}}",
+            "parsedHtml": null,
+            "currentValue": "(#512)",
+            "changed": true,
+            "unaddressed": false,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": null,
+            "children": [
+                {
+                    "title": "Tekst",
+                    "blockType": "text",
+                    "element": null,
+                    "action": "unchanged",
+                    "mappings": [
+                        {
+                            "handle": "title",
+                            "label": "Title",
+                            "node": "blocks.heading",
+                            "default": null,
+                            "native": true,
+                            "rawValue": "Werfkelder",
+                            "parsedValue": "Werfkelder",
+                            "parsedHtml": null,
+                            "currentValue": "Werfkelder",
+                            "changed": false,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        },
+                        {
+                            "handle": "body",
+                            "label": "Body",
+                            "node": "blocks.body",
+                            "default": null,
+                            "native": false,
+                            "rawValue": "14de-eeuwse kelder",
+                            "parsedValue": "14de-eeuwse kelder",
+                            "parsedHtml": null,
+                            "currentValue": "14de-eeuwse kelder",
+                            "changed": false,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        }
+                    ]
+                },
+                {
+                    "title": "Afbeelding",
+                    "blockType": "image",
+                    "element": null,
+                    "action": "would-add",
+                    "mappings": [
+                        {
+                            "handle": "caption",
+                            "label": "Caption",
+                            "node": "blocks.caption",
+                            "default": null,
+                            "native": false,
+                            "rawValue": "Voorzijde",
+                            "parsedValue": "Voorzijde",
+                            "parsedHtml": null,
+                            "currentValue": null,
+                            "changed": true,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        }
+                    ]
+                }
+            ],
+            "childrenType": "blocks"
+        },
+        {
+            "handle": "related_projects",
+            "label": "Related projects",
+            "node": "projects.id",
+            "default": null,
+            "native": false,
+            "rawValue": "412",
+            "parsedValue": "[412]",
+            "parsedHtml": null,
+            "currentValue": "Werfkelder Zuid (#412)",
+            "changed": false,
+            "unaddressed": false,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": null,
+            "children": [
+                {
+                    "title": "Werfkelder Zuid",
+                    "blockType": null,
+                    "element": {
+                        "id": 412,
+                        "title": "Werfkelder Zuid",
+                        "cpEditUrl": "https://example.test/admin/entries/projects/412",
+                        "siteId": 1,
+                        "chipHtml": "<a class=\"chip small\" href=\"https://example.test/admin/entries/projects/412\">Werfkelder Zuid</a>"
+                    },
+                    "action": "updated",
+                    "mappings": [
+                        {
+                            "handle": "summary",
+                            "label": "Summary",
+                            "node": "projects.summary",
+                            "default": null,
+                            "native": false,
+                            "rawValue": "Restauratie",
+                            "parsedValue": "Restauratie",
+                            "parsedHtml": null,
+                            "currentValue": "Renovatie",
+                            "changed": true,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        }
+                    ]
+                }
+            ],
+            "childrenType": "entries"
         }
     ],
     "error": null
