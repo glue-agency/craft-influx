@@ -89,6 +89,29 @@ abstract class Field
     }
 
     /**
+     * How the builder should render this field's default-value editor — the
+     * "— use default —" cell of a mapping row. Null (the base) leaves it a plain
+     * text input, which is right for anything the operator types.
+     *
+     * The keys are the ones {@see SchemaBuilder::group()} reads off a declared
+     * node, so a CUSTOM field describes its editor in exactly the vocabulary a
+     * native attribute already does: `type` ({@see SchemaBuilder::TEXT},
+     * {@see SchemaBuilder::SELECT} or {@see SchemaBuilder::ELEMENT}) plus
+     * `options` for a select / `elementType` for an element picker.
+     *
+     * Overriding this is a promise {@see parse()} has to keep: a default picked
+     * from a select or an element picker is a stored value / an element id, so
+     * the strategy must stop putting it through the feed-value matching its
+     * `options.match` describes ({@see Relation::parse()}).
+     *
+     * @return array{type: string, options?: array<string, string>, elementType?: class-string}|null
+     */
+    public function defaultEditor(CraftFieldInterface $field): ?array
+    {
+        return null;
+    }
+
+    /**
      * Wrap a builder-schema node list in the `fieldMeta` envelope the SPA's
      * SchemaForm consumes: the {@see schema()} nodes, with any extra meta
      * merged in. THE one place the `{schema}` shape is defined — every mappable

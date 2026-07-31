@@ -46,12 +46,45 @@ class Dropdown extends Field
             ]);
     }
 
+    /**
+     * The default is one of the field's own configured options, so the row
+     * offers them as a select instead of a free-text box the operator could
+     * mistype a stored value into. Option rows without a `value` are optgroup
+     * headings — they carry no storable value, so they're skipped (the same
+     * rows {@see labelToValueMap()} ignores).
+     */
+    public function defaultEditor(CraftFieldInterface $field): ?array
+    {
+        $map = [];
+
+        /** @var BaseOptionsField $field */
+        foreach ($field->options ?? [] as $option) {
+            if (! is_array($option) || ! isset($option['value'])) {
+                continue;
+            }
+
+            $map[(string) $option['value']] = (string) ($option['label'] ?? $option['value']);
+        }
+
+        return [
+            'type'    => SchemaBuilder::SELECT,
+            'options' => $map,
+        ];
+    }
+
     public function parse(FieldContext $context): mixed
     {
         $raw = $context->mapping->resolve($context->item);
 
         if ($raw === null) {
             return null;
+        }
+
+        // A default is picked from the field's own options (see defaultEditor()),
+        // so it already IS a stored value — `match: label` describes feed values
+        // and would translate a picked one into nothing.
+        if ($context->mapping->usesDefault($context->item)) {
+            return $raw;
         }
 
         if ((string) $context->mapping->option('match', 'value') !== 'label') {

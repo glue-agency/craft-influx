@@ -136,6 +136,20 @@ abstract class Relation extends RelationalField
     }
 
     /**
+     * A relation's default is an element the operator PICKS in the CP, so the
+     * row offers the same element selector an entry's native author does — not a
+     * text box to retype a reference into. {@see parse()} matches a picked
+     * default by id accordingly.
+     */
+    public function defaultEditor(CraftFieldInterface $field): ?array
+    {
+        return [
+            'type'        => SchemaBuilder::ELEMENT,
+            'elementType' => $this->elementType(),
+        ];
+    }
+
+    /**
      * Native attributes (title / slug) the related element can receive values
      * for, rendered as an `elementSubFields` editor and applied via the
      * mapping's `nativeFields` channel
@@ -194,6 +208,16 @@ abstract class Relation extends RelationalField
      * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyCustomField()})
      * and the field is left exactly as it was.
      *
+     * A value that comes from the mapping's DEFAULT rather than the feed is
+     * matched by id, whatever `options.match` says, and never creates: the
+     * default is an element picked in the CP ({@see defaultEditor()}), so its id
+     * is the reference — matching it as a title/slug finds nobody, and creating
+     * on that miss would conjure an element named after an id. Same rule, same
+     * reason as the native author's ({@see \GlueAgency\Influx\targets\EntryTarget::resolveAuthorId()});
+     * {@see \GlueAgency\Influx\models\FieldMapping::usesDefault()} is the shared
+     * "which source won" seam, so a mapped node that's missing on THIS item
+     * falls back to the picked default the same way.
+     *
      * Ids are de-duplicated, keeping first-seen order. A collapsed node path
      * repeats its value once per parent row — `sessions.…room.location.id` on an
      * eleven-session activity yields the same location eleven times — and Craft
@@ -212,7 +236,8 @@ abstract class Relation extends RelationalField
             return null;
         }
 
-        $match = (string) $context->mapping->option('match', 'id');
+        $fromDefault = $context->mapping->usesDefault($context->item);
+        $match = $fromDefault ? 'id' : (string) $context->mapping->option('match', 'id');
 
         $ids = [];
 
@@ -220,7 +245,7 @@ abstract class Relation extends RelationalField
             $element = $this->lookup($context, $match, $value);
             $created = false;
 
-            if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
+            if (! $element && ! $fromDefault && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
                 $created = $element !== null;
 

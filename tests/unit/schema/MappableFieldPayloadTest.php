@@ -3,9 +3,13 @@
 namespace GlueAgency\Influx\Tests\unit\schema;
 
 use Codeception\Test\Unit;
+use craft\elements\Entry;
 use craft\elements\User;
+use craft\fields\Entries as CraftEntriesField;
 use craft\fields\Matrix;
 use craft\fields\PlainText;
+use GlueAgency\Influx\fields\Entries;
+use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\schema\MappableField;
 use GlueAgency\Influx\schema\SchemaBuilder;
 
@@ -45,6 +49,20 @@ class MappableFieldPayloadTest extends Unit
         $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'options'], $keys[1]);
         $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'elementType', 'fieldMeta'], $keys[2]);
         $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'fieldClass', 'fieldMeta'], $keys[3]);
+        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'elementType', 'fieldClass', 'fieldMeta'], $keys[5]);
+    }
+
+    public function testACustomFieldCarriesItsStrategysDefaultEditor(): void
+    {
+        // A custom field is no longer stuck with a plain text default: its
+        // strategy declares the editor, so an Entries field offers the same
+        // element picker a native author does — and still identifies its kind
+        // through fieldClass + fieldMeta.
+        $descriptor = MappableField::toArrays($this->descriptors())[5];
+
+        $this->assertSame(SchemaBuilder::ELEMENT, $descriptor['defaultType']);
+        $this->assertSame(Entry::class, $descriptor['elementType']);
+        $this->assertSame(CraftEntriesField::class, $descriptor['fieldClass']);
     }
 
     public function testCustomFieldsAlwaysCarryFieldMetaEvenWhenEmpty(): void
@@ -69,9 +87,9 @@ class MappableFieldPayloadTest extends Unit
     }
 
     /**
-     * The fixture's five descriptors: the three native shapes (plain text,
-     * select with options, element with extras) plus a plain and a
-     * subfields-only custom field.
+     * The fixture's six descriptors: the three native shapes (plain text,
+     * select with options, element with extras) plus a plain, a subfields-only
+     * and an element-defaulted custom field.
      *
      * @return list<MappableField>
      */
@@ -112,7 +130,46 @@ class MappableFieldPayloadTest extends Unit
                 ],
                 'subfieldsOnly' => true,
             ]),
+            $this->relationDescriptor(),
         ]);
+    }
+
+    /**
+     * A custom Entries field, with its default editor taken from the REAL
+     * producer ({@see \GlueAgency\Influx\fields\Entries::defaultEditor()}) the
+     * way the natives take theirs from {@see SchemaBuilder::group()} — so the
+     * fixture pins the field-type-aware default too, not just a hand-written
+     * shape. The extras schema mirrors what {@see Relation::schema()} declares
+     * for a field whose sources expose no native sub-fields.
+     */
+    protected function relationDescriptor(): MappableField
+    {
+        $editor = (new Entries())->defaultEditor($this->createMock(CraftEntriesField::class));
+
+        return MappableField::custom(
+            handle: 'relatedArticles',
+            name: 'Related articles',
+            group: 'Content',
+            fieldClass: CraftEntriesField::class,
+            fieldMeta: Field::meta(SchemaBuilder::make()
+                ->matchBy([
+                    'options' => [
+                        [
+                            'label'   => 'Entry',
+                            'kind'    => 'element',
+                            'options' => [
+                                ['value' => 'id', 'label' => 'ID (id)'],
+                                ['value' => 'slug', 'label' => 'Slug (slug)'],
+                                ['value' => 'title', 'label' => 'Title (title)'],
+                            ],
+                        ],
+                    ],
+                ])
+                ->createWhenMissing()
+                ->toArray()),
+            defaultType: $editor['type'],
+            elementType: $editor['elementType'],
+        );
     }
 
     protected function fixture(): array

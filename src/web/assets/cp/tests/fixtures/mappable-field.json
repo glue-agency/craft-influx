@@ -69,5 +69,40 @@
             ],
             "subfieldsOnly": true
         }
+    },
+    {
+        "handle": "relatedArticles",
+        "name": "Related articles",
+        "native": false,
+        "group": "Content",
+        "defaultType": "element",
+        "elementType": "craft\\elements\\Entry",
+        "fieldClass": "craft\\fields\\Entries",
+        "fieldMeta": {
+            "schema": [
+                {
+                    "type": "select",
+                    "options": [
+                        {
+                            "label": "Entry",
+                            "kind": "element",
+                            "options": [
+                                { "value": "id", "label": "ID (id)" },
+                                { "value": "slug", "label": "Slug (slug)" },
+                                { "value": "title", "label": "Title (title)" }
+                            ]
+                        }
+                    ],
+                    "handle": "match",
+                    "label": "Match by",
+                    "default": "id"
+                },
+                {
+                    "type": "lightswitch",
+                    "handle": "create",
+                    "label": "Create when not found"
+                }
+            ]
+        }
     }
 ]

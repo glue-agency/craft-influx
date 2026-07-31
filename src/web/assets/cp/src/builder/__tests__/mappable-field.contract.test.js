@@ -81,6 +81,18 @@ describe('Mappable field wire contract', () => {
         expect(Array.isArray(byHandle('importId').fieldMeta.schema)).toBe(true);
     });
 
+    it('lets a custom field carry an element default editor too', () => {
+        // The default editor is the field strategy's call, not a native-only
+        // privilege: an Entries field picks entries the way the author picks
+        // users, and still identifies its kind through fieldClass + fieldMeta.
+        const related = byHandle('relatedArticles');
+
+        expect(related.native).toBe(false);
+        expect(related.defaultType).toBe('element');
+        expect(related.elementType).toBe('craft\\elements\\Entry');
+        expect(typeof related.fieldClass).toBe('string');
+    });
+
     it('carries no visibility flag — everything reported is mappable', () => {
         for (const field of fixture) {
             expect(field).not.toHaveProperty('offered');
@@ -133,6 +145,16 @@ describe('MappingRow reads the contract', () => {
 
         expect(row.vm.subfieldsOnly).toBe(true);
         expect(row.vm.hasExtras).toBe(true);
+    });
+
+    it('renders the element picker off `defaultType` alone, native or not', () => {
+        // The row branches on defaultType only — nothing in the editor cell
+        // asks whether the descriptor is a native.
+        const row = mountRow(byHandle('relatedArticles'));
+        const picker = row.findComponent({ name: 'ElementPicker' });
+
+        expect(picker.exists()).toBe(true);
+        expect(picker.props('elementType')).toBe('craft\\elements\\Entry');
     });
 
     it('treats a descriptor with no fieldMeta as extras-less', () => {

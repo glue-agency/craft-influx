@@ -59,7 +59,7 @@
         <div>
             <!-- Default-value editor. Three shapes:
                  - `select` → searchable single-select
-                 - `element` → not yet supported in the SPA (followup)
+                 - `element` → element picker, storing the picked id
                  - anything else → plain text -->
             <template v-if="subfieldsOnly" />
             <template v-else-if="field.defaultType === 'select'">

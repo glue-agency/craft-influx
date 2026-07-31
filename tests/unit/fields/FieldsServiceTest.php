@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Codeception\Test\Unit;
+use craft\elements\Entry;
 use craft\fields\Assets as CraftAssetsField;
 use craft\fields\BaseOptionsField;
 use craft\fields\Categories as CraftCategoriesField;
@@ -23,6 +24,7 @@ use GlueAgency\Influx\fields\Entries;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Users;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\services\FieldsService;
 
 /**
@@ -94,6 +96,45 @@ class FieldsServiceTest extends Unit
             $service->forCraftField($field),
             'PlainText has no dedicated strategy; it must resolve to the DefaultField fallback.',
         );
+    }
+
+    public function testDefaultEditorForDescribesAnElementPickerForRelations(): void
+    {
+        $service = new FieldsService();
+        $service->init();
+
+        $this->assertSame(
+            ['type' => SchemaBuilder::ELEMENT, 'elementType' => Entry::class],
+            $service->defaultEditorFor($this->createMock(CraftEntriesField::class)),
+            'An Entries field must default-pick entries, the way a native author picks users.',
+        );
+    }
+
+    public function testDefaultEditorForDescribesASelectOverAnOptionFieldsOptions(): void
+    {
+        $service = new FieldsService();
+        $service->init();
+
+        $field = $this->createMock(RadioButtons::class);
+        $field->options = [
+            ['label' => 'North', 'value' => 'north'],
+            ['label' => 'South', 'value' => 'south'],
+        ];
+
+        $this->assertSame(
+            ['type' => SchemaBuilder::SELECT, 'options' => ['north' => 'North', 'south' => 'South']],
+            $service->defaultEditorFor($field),
+            'The whole BaseOptionsField family default-picks from its own options.',
+        );
+    }
+
+    public function testDefaultEditorForIsEmptyForAFieldWithNoOpinion(): void
+    {
+        $service = new FieldsService();
+        $service->init();
+
+        // No strategy, no opinion: the builder falls back to a plain text input.
+        $this->assertSame([], $service->defaultEditorFor($this->createMock(PlainText::class)));
     }
 
     public function testRegisterReplacesExistingStrategy(): void

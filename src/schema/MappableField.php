@@ -124,9 +124,15 @@ class MappableField
     }
 
     /**
-     * A custom field on an element's field layout. Its default editor is always
-     * a plain text input — the field's own kind is expressed through
-     * `fieldClass` + `fieldMeta` instead.
+     * A custom field on an element's field layout. Its kind is expressed through
+     * `fieldClass` + `fieldMeta`; the default editor is a plain text input unless
+     * the field's strategy asks for something field-type aware
+     * ({@see \GlueAgency\Influx\fields\Field::defaultEditor()}) — an Entries field
+     * gets the same element picker a native author does, a Dropdown a select over
+     * its own options.
+     *
+     * @param array<string, string>|null $options
+     * @param class-string|null $elementType
      */
     public static function custom(
         string $handle,
@@ -134,15 +140,18 @@ class MappableField
         string $group,
         string $fieldClass,
         array $fieldMeta,
+        string $defaultType = SchemaBuilder::TEXT,
+        ?array $options = null,
+        ?string $elementType = null,
     ): self {
         return new self(
             handle: $handle,
             name: $name,
             native: false,
             group: $group,
-            defaultType: SchemaBuilder::TEXT,
-            options: null,
-            elementType: null,
+            defaultType: $defaultType,
+            options: $options,
+            elementType: $elementType,
             fieldClass: $fieldClass,
             fieldMeta: $fieldMeta,
         );

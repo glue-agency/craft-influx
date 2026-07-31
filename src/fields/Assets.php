@@ -105,6 +105,19 @@ class Assets extends RelationalField
     }
 
     /**
+     * An asset default is a file the operator picks in the CP, so the row offers
+     * an asset selector rather than a box to paste a URL into; {@see parse()}
+     * matches a picked default by id.
+     */
+    public function defaultEditor(CraftFieldInterface $field): ?array
+    {
+        return [
+            'type'        => SchemaBuilder::ELEMENT,
+            'elementType' => Asset::class,
+        ];
+    }
+
+    /**
      * `resolve()` already normalises empty to null, so no extra empty guard is
      * needed. A source node may carry many values (a list of URLs or ids); each
      * is resolved to an asset, the way a relation field maps a list of
@@ -123,7 +136,10 @@ class Assets extends RelationalField
             return null;
         }
 
-        $mode = $context->mapping->option('mode', 'id');
+        // A picked default is an asset id (see defaultEditor()), so it takes the
+        // id branch even under `url` mode — where it would otherwise be
+        // basename-matched into nothing.
+        $mode = $context->mapping->usesDefault($context->item) ? 'id' : $context->mapping->option('mode', 'id');
 
         $ids = [];
 

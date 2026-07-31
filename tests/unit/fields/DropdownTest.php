@@ -5,8 +5,10 @@ namespace GlueAgency\Influx\Tests\unit\fields;
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use craft\fields\BaseOptionsField;
+use craft\fields\Dropdown as CraftDropdownField;
 use GlueAgency\Influx\fields\Dropdown;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
@@ -111,6 +113,58 @@ class DropdownTest extends Unit
             mapping: ['node' => 'region', 'default' => 'north'],
         );
         $this->assertSame('north', $this->strategy()->parse($context));
+    }
+
+    public function testAPickedDefaultIsNotLabelTranslated(): void
+    {
+        // The default is picked from the field's own options, so it already IS a
+        // stored value — putting it through `match: label` (which describes FEED
+        // values) would translate a value that only looks like a label.
+        $context = $this->context(
+            feed: [],
+            mapping: [
+                'useDefault' => true,
+                'default'    => 'Energiezuinig (A)',
+                'options'    => ['match' => 'label'],
+            ],
+        );
+        $this->assertSame('Energiezuinig (A)', $this->strategy()->parse($context));
+    }
+
+    public function testAFallenBackDefaultIsNotLabelTranslatedEither(): void
+    {
+        $context = $this->context(
+            feed: ['epc' => ''],
+            mapping: [
+                'node'    => 'epc',
+                'default' => 'Energiezuinig (A)',
+                'options' => ['match' => 'label'],
+            ],
+        );
+        $this->assertSame('Energiezuinig (A)', $this->strategy()->parse($context));
+    }
+
+    public function testDefaultEditorIsASelectOverTheFieldsOwnOptions(): void
+    {
+        // Optgroup headings carry no value — they're skipped, the same rows
+        // labelToValueMap() ignores.
+        $field = $this->createMock(CraftDropdownField::class);
+        $field->options = [
+            ['optgroup' => 'Energy'],
+            ['label' => 'Zeer energiezuinig (A+)', 'value' => 'aPlus'],
+            ['label' => 'Energiezuinig (A)', 'value' => 'a'],
+        ];
+
+        $this->assertSame(
+            [
+                'type'    => SchemaBuilder::SELECT,
+                'options' => [
+                    'aPlus' => 'Zeer energiezuinig (A+)',
+                    'a'     => 'Energiezuinig (A)',
+                ],
+            ],
+            (new Dropdown())->defaultEditor($field),
+        );
     }
 
     /**

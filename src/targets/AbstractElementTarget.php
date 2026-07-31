@@ -14,6 +14,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappableField;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 
@@ -402,12 +403,17 @@ abstract class AbstractElementTarget implements ElementTargetInterface
                 if (! $field) {
                     continue;
                 }
+                $editor = Influx::getInstance()->fields->defaultEditorFor($field);
+
                 $fields[] = MappableField::custom(
                     handle: $field->handle,
                     name: $field->name,
                     group: $tabName,
                     fieldClass: $field::class,
                     fieldMeta: Influx::getInstance()->fields->metaFor($field),
+                    defaultType: $editor['type'] ?? SchemaBuilder::TEXT,
+                    options: $editor['options'] ?? null,
+                    elementType: $editor['elementType'] ?? null,
                 );
             }
         }

@@ -91,6 +91,19 @@ class FieldsService extends AbstractRegistry
     }
 
     /**
+     * Default-value editor descriptor for a given Craft field, as
+     * {@see \GlueAgency\Influx\schema\MappableField::custom()} consumes it:
+     * `type` plus `options` / `elementType` when the kind needs them. An empty
+     * array means "plain text input" — the strategy declared no opinion.
+     *
+     * @return array{type?: string, options?: array<string, string>, elementType?: class-string}
+     */
+    public function defaultEditorFor(CraftFieldInterface $field): array
+    {
+        return $this->forCraftField($field)->defaultEditor($field) ?? [];
+    }
+
+    /**
      * @return list<class-string<Field>>
      */
     protected function defaults(): array
