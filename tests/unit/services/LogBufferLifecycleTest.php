@@ -128,6 +128,24 @@ class LogBufferLifecycleTest extends Unit
         $this->assertNull($logs->bufferedRowByColumn(12)['mappings']);
     }
 
+    public function testASnapshotWithInvalidUtf8SurvivesBySubstitution(): void
+    {
+        $logs = $this->service();
+        $log = $this->log(21);
+
+        // An element's stored content can carry bad bytes the feed never sent
+        // (seen in the wild on a CKEditor field); losing every row over one bad
+        // value is the wrong trade, so the bytes become U+FFFD instead.
+        $tainted = [['handle' => 'body', 'currentValue' => "Ludwig \xC3caf\xE9", 'children' => null]];
+
+        $logs->recordItem($log, ItemAction::UPDATED, 42, 'abc', mappings: $tainted);
+
+        $stored = json_decode($logs->bufferedRowByColumn(21)['mappings'], true);
+
+        $this->assertSame('body', $stored[0]['handle']);
+        $this->assertStringContainsString("\u{FFFD}", $stored[0]['currentValue']);
+    }
+
     public function testACallWithoutASnapshotStoresNull(): void
     {
         $logs = $this->service();

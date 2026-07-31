@@ -214,7 +214,7 @@ class LogsService extends Component
             $fieldErrors !== [] ? json_encode($fieldErrors) : null,
             $changedFields !== null ? json_encode($changedFields) : null,
             $payload !== null ? json_encode($payload) : null,
-            $this->encodeMappings($mappings),
+            $this->encodeMappings($mappings, $log->id, $matchValue),
         ];
 
         $this->bufferFor($log)->add($row, $counterAttr);
@@ -235,23 +235,40 @@ class LogsService extends Component
     /**
      * A mapping snapshot as the column stores it: JSON, or null when there is
      * nothing to store or the JSON can't be stored safely — it blew
-     * {@see MAPPINGS_MAX_BYTES}, or it holds a value json_encode() refuses
-     * (invalid UTF-8 off a feed). A null column reads as "no snapshot" and the
-     * drill-down renders flat, which is exactly the degradation we want.
+     * {@see MAPPINGS_MAX_BYTES}, or json_encode() still refused it. Invalid
+     * UTF-8 does NOT drop the snapshot: an element's stored content can carry
+     * bad bytes the feed never sent (seen in the wild on a CKEditor field), and
+     * losing all 45 rows over one bad value is the wrong trade — the offending
+     * bytes become U+FFFD instead (JSON_INVALID_UTF8_SUBSTITUTE). A genuine
+     * drop logs a warning naming the item, because a null column reads as "no
+     * snapshot" and the drill-down renders flat — silent, the flat view looks
+     * like a pre-snapshot row and the loss is undiagnosable.
      *
      * An EMPTY row list is not the same thing and is kept as `[]`: the item was
      * presented and simply maps no fields, so the drill-down must not claim its
      * data is missing.
      */
-    protected function encodeMappings(?array $mappings): ?string
+    protected function encodeMappings(?array $mappings, ?int $logId = null, ?string $matchValue = null): ?string
     {
         if ($mappings === null) {
             return null;
         }
 
-        $json = json_encode($mappings);
+        $json = json_encode($mappings, JSON_INVALID_UTF8_SUBSTITUTE);
+        $reason = null;
 
-        if ($json === false || strlen($json) > self::MAPPINGS_MAX_BYTES) {
+        if ($json === false) {
+            $reason = 'json_encode() failed: ' . json_last_error_msg();
+        } elseif (strlen($json) > self::MAPPINGS_MAX_BYTES) {
+            $reason = 'the snapshot is ' . strlen($json) . ' bytes, over the ' . self::MAPPINGS_MAX_BYTES . '-byte cap';
+        }
+
+        if ($reason !== null) {
+            Craft::warning(
+                "Dropped the mapping snapshot for item '{$matchValue}' on log #{$logId} — {$reason}. The item renders without a drill-down.",
+                __METHOD__,
+            );
+
             return null;
         }
 

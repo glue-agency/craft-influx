@@ -137,7 +137,7 @@ class StoredLogItemDrillDownTest extends Unit
 
         $this->assertSame([], $result['row']['mappings']);
         $this->assertSame(['remote_id' => 'abc'], $result['row']['raw']);
-        $this->assertSame('No stored field data for this item — recorded before drill-down storage.', $result['row']['message']);
+        $this->assertSame('No stored field data for this item — it predates snapshot storage, or the snapshot could not be kept.', $result['row']['message']);
     }
 
     public function testMalformedSnapshotJsonReadsAsNoSnapshot(): void
@@ -152,7 +152,7 @@ class StoredLogItemDrillDownTest extends Unit
         ]), $this->log());
 
         $this->assertSame([], $result['row']['mappings']);
-        $this->assertSame('No stored field data for this item — recorded before drill-down storage.', $result['row']['message']);
+        $this->assertSame('No stored field data for this item — it predates snapshot storage, or the snapshot could not be kept.', $result['row']['message']);
     }
 
     public function testTheRecordsOwnMessageWinsOverTheNotice(): void

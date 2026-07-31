@@ -133,7 +133,7 @@ class InspectorService extends Component
         $message = $item->message ? (string) $item->message : null;
 
         if ($mappings === null) {
-            $message ??= Craft::t('influx', 'No stored field data for this item — recorded before drill-down storage.');
+            $message ??= Craft::t('influx', 'No stored field data for this item — it predates snapshot storage, or the snapshot could not be kept.');
         }
 
         $matchAttr = $link?->matchAttribute();
