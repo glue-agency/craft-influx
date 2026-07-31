@@ -68,6 +68,16 @@ describe('LogApp', () => {
         expect(counters[0].text().toLowerCase()).toContain('seen');
     });
 
+    it('hangs the resize handle on the seam, between the list and the detail', () => {
+        const split = mountApp().find('.influx-split').element;
+
+        expect([...split.children].map((el) => el.classList[0])).toEqual([
+            'influx-split-list',
+            'influx-split-resizer',
+            'influx-split-detail',
+        ]);
+    });
+
     it('renders the counter row the server ships, labels and all', () => {
         installVocabulary({
             counters: [
@@ -247,6 +257,9 @@ describe('LogApp', () => {
             expect(w.findAll('.influx-drill-item').length).toBe(2);
             // The back header names the item drilled out of.
             expect(w.find('.influx-drill-back-title').text()).toBe('Item B');
+            // The swap happens inside the list pane, so the seam handle — and
+            // the width it holds on the container — is untouched by it.
+            expect(w.find('.influx-split-resizer').exists()).toBe(true);
             // Only the one drill-down fetch the selection made.
             expect(window.Craft.sendActionRequest).toHaveBeenCalledTimes(1);
         });

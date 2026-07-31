@@ -108,6 +108,8 @@
                 />
             </div>
 
+            <v-split-resizer />
+
             <div class="influx-split-detail">
                 <!-- Drilled, the pane renders the selected child instead of the
                      item: the key carries the drill position so each level (and
@@ -190,12 +192,20 @@
     border-radius: var(--large-border-radius);
 }
 
+/* Only while SplitResizer has the pointer: keeps a drag across the panes from
+   selecting their text. The class lands on this element, so the rule lives here
+   rather than in the resizer's own scoped styles. */
+.influx-split.influx-is-resizing { user-select: none; }
+
 .influx-split-list {
     display: flex;
-    /* Matches the log detail's items column — at most a quarter of the split. */
-    flex: 1 1 0;
-    max-width: 25%;
+    /* A quarter of the split by default — the same column the log detail uses —
+       and whatever SplitResizer last wrote once a reader has dragged the seam.
+       Fixed rather than flexible so the variable is what decides the width;
+       min-width: 0 keeps the contents from pushing past it. */
+    flex: 0 0 var(--influx-split-list-width, 25%);
     flex-direction: column;
+    min-width: 0;
     min-height: 0;
     border-inline-end: 1px solid var(--hairline-color);
 }
@@ -315,6 +325,7 @@ import DebugItemDetail from '../components/DebugItemDetail.vue';
 import DrillList from '../components/DrillList.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
+import SplitResizer from '../components/SplitResizer.vue';
 import { requestErrorMessage } from '../lib/requestError.js';
 
 /**
@@ -517,6 +528,6 @@ export default {
         },
     },
 
-    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
+    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel, 'v-split-resizer': SplitResizer },
 };
 </script>

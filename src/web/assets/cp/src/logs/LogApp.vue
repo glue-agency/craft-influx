@@ -132,6 +132,8 @@
                 />
             </div>
 
+            <v-split-resizer />
+
             <div class="influx-split-detail">
                 <p v-if="loadingRow" class="influx-split-loading"><span class="spinner" /> {{ $t('Loading…') }}</p>
                 <p v-else-if="selectedError" class="error influx-split-placeholder" v-text="selectedError"></p>
@@ -295,13 +297,20 @@
     border-radius: var(--large-border-radius);
 }
 
+/* Only while SplitResizer has the pointer: keeps a drag across the panes from
+   selecting their text. The class lands on this element, so the rule lives here
+   rather than in the resizer's own scoped styles. */
+.influx-split.influx-is-resizing { user-select: none; }
+
 .influx-split-list {
     display: flex;
-    /* At most a quarter of the split width (capped via max-width; a flex-basis
-       percentage on its own wasn't taking effect). */
-    flex: 1 1 0;
-    max-width: 25%;
+    /* A quarter of the split width by default, and whatever SplitResizer last
+       wrote once a reader has dragged the seam. Fixed rather than flexible so
+       the variable is what decides the width; min-width: 0 keeps the contents
+       from pushing past it. */
+    flex: 0 0 var(--influx-split-list-width, 25%);
     flex-direction: column;
+    min-width: 0;
     min-height: 0;
     border-inline-end: 1px solid var(--hairline-color);
 }
@@ -437,6 +446,7 @@ import DebugItemDetail from '../components/DebugItemDetail.vue';
 import DrillList from '../components/DrillList.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
+import SplitResizer from '../components/SplitResizer.vue';
 import { requestErrorMessage } from '../lib/requestError.js';
 import { counterDefs } from '../lib/vocabulary.js';
 
@@ -827,6 +837,6 @@ export default {
         },
     },
 
-    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
+    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel, 'v-split-resizer': SplitResizer },
 };
 </script>

@@ -116,6 +116,16 @@ describe('DebugApp', () => {
         expect(second.vm).not.toBe(first.vm);
     });
 
+    it('hangs the resize handle on the seam, between the list and the detail', () => {
+        const split = mountApp().find('.influx-split').element;
+
+        expect([...split.children].map((el) => el.classList[0])).toEqual([
+            'influx-split-list',
+            'influx-split-resizer',
+            'influx-split-detail',
+        ]);
+    });
+
     it('surfaces a failed fetch as an error', async () => {
         window.Craft.sendActionRequest = vi.fn(() => Promise.reject(new Error('boom')));
 
@@ -143,6 +153,9 @@ describe('DebugApp', () => {
             expect(w.findComponent({ name: 'DrillList' }).exists()).toBe(true);
             expect(w.findAll('.influx-split-item').length).toBe(0);
             expect(w.findAll('.influx-drill-item').length).toBe(2);
+            // The swap happens inside the list pane, so the seam handle — and
+            // the width it holds on the container — is untouched by it.
+            expect(w.find('.influx-split-resizer').exists()).toBe(true);
             // The back header names the item drilled out of.
             expect(w.find('.influx-drill-back-title').text()).toBe('Werfkelder');
             expect(window.Craft.sendActionRequest).toHaveBeenCalledTimes(1);
