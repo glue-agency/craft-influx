@@ -60,6 +60,7 @@ class LogViewerTranslations
             'run summary' => [
                 'Endpoints',
                 'Resource',
+                'by {u}',
                 'site {s}',
                 'window {w}',
                 'started {d}',

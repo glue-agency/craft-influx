@@ -23,6 +23,10 @@ class LogsController extends AbstractController
      * stale query string falls back to "all". The `handle => id` /
      * `handle => name` maps the rows read from carry no entry for a link that has
      * since been deleted.
+     *
+     * The page's triggering users are resolved in one query up front
+     * ({@see LogPresenter::userLabels()}) rather than per row — 50 rows, 50
+     * lookups otherwise.
      */
     public function actionIndex(): Response
     {
@@ -58,6 +62,8 @@ class LogsController extends AbstractController
             $selectedTrigger,
         );
 
+        $presenter = new LogPresenter();
+
         return $this->renderTemplate('influx/logs/index', [
             'logs'            => $logs,
             'page'            => $page,
@@ -65,7 +71,8 @@ class LogsController extends AbstractController
             'total'           => $total,
             'linkIds'         => $linkIds,
             'linkNames'       => $linkNames,
-            'presenter'       => new LogPresenter(),
+            'presenter'       => $presenter,
+            'userNames'       => $presenter->userLabels($logs),
             'selectedLink'    => $selectedLink,
             'selectedStatus'  => $selectedStatus,
             'statuses'        => $statuses,

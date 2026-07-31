@@ -4,17 +4,20 @@ namespace GlueAgency\Influx\queue\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\sync\run\RunOrigin;
 
 /**
- * Shared base for the queue jobs that act on ONE link scope: the four
- * properties that identify the scope, and the human labels a description is
- * built from.
+ * Shared base for the queue jobs that act on ONE link scope: the five
+ * properties that identify the scope and its origin, and the human labels a
+ * description is built from.
  *
- * The four properties are the serialised queue payload every subclass carries,
+ * The five properties are the serialised queue payload every subclass carries,
  * spelled out here so the two jobs can't drift on their names or types. Each
  * subclass owns the {@see SyncTrigger} its `execute()` falls back to when
- * `$trigger` doesn't resolve, which is why no default is asserted here.
+ * `$trigger` doesn't resolve, which is why no default is asserted here — it
+ * passes that fallback to {@see origin()}, the one place the pair is read back.
  *
  * Labels are resolved at DESCRIPTION time, not at push time, and each one falls
  * back to its handle: a link can be deleted (or a site removed) between the push
@@ -36,6 +39,25 @@ abstract class AbstractLinkJob extends BaseJob
 
     /** {@see \GlueAgency\Influx\enums\SyncTrigger} value that kicked the run off. */
     public string $trigger = '';
+
+    /**
+     * The Craft user who triggered the run, captured at trigger time by the
+     * controller and carried verbatim from push to push. NEVER re-read here:
+     * inside a job the web user is whoever is draining the queue, so asking
+     * Craft would attribute the run to the wrong person or to nobody.
+     */
+    public ?int $userId = null;
+
+    /**
+     * This job's payload as the origin a run is opened with — the trigger and
+     * the user as one unit, so a step can't record one without the other.
+     * `$fallback` is the subclass's answer for a `$trigger` that no longer
+     * resolves ({@see RunOrigin::fromPayload()}).
+     */
+    protected function origin(SyncTrigger $fallback): RunOrigin
+    {
+        return RunOrigin::fromPayload($this->trigger, $this->userId, $fallback);
+    }
 
     /**
      * The link's display name, falling back to its handle.

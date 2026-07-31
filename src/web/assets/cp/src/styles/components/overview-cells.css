@@ -38,6 +38,12 @@
     color: var(--light-text-color);
 }
 
+/* Same sub-line in a cell with no status dot in front of it (the trigger cell's
+   user name), so there is nothing to indent clear of. */
+.influx-cell-sub--flush {
+    padding-inline-start: 0;
+}
+
 /* Actions cell: the Sync btngroup + the three-dots overflow, kept together. */
 .influx-row-actions {
     align-items: center;

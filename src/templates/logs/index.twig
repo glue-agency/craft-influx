@@ -117,8 +117,15 @@
                             {% endif %}
                         </td>
 
-                        {# Trigger #}
-                        <td>{{ ui.pill(log.trigger, "gray") }}</td>
+                        {# Trigger — the mechanism as its own label (the same one
+                           the filter above offers), with the person who asked
+                           for the run underneath when a person did. #}
+                        <td>
+                            {{ ui.pill(triggers[log.trigger] ?? log.trigger, "gray") }}
+                            {% if log.userId %}
+                                <div class="influx-cell-sub influx-cell-sub--flush">{{ userNames[log.userId] }}</div>
+                            {% endif %}
+                        </td>
 
                         {# Site the run was scoped to — a single-site run shows
                            its handle; a run with no site scope shows "primary",

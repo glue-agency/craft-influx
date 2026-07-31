@@ -16,6 +16,7 @@ use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 use GlueAgency\Influx\sync\run\LogItemBuffer;
+use GlueAgency\Influx\sync\run\RunOrigin;
 use Throwable;
 use yii\db\Expression;
 
@@ -126,20 +127,24 @@ class LogsService extends Component
      * element-triggered resync doesn't count as the link's "last run", so it
      * stamps nothing.
      *
+     * @param RunOrigin $origin What started the run and, when a person asked for
+     * it, who — both stored on the row, so a CP run can name the editor behind
+     * it while a console run stays attributed to nobody.
      * @param string|null $siteHandle Site the run is scoped to (null = all).
      * @param string|null $offsetHandle Sliding-window preset the run applied.
      * @param int|null $elementId Resource a single-element run was triggered for.
      */
     public function start(
         Link $link,
-        SyncTrigger $trigger,
+        RunOrigin $origin,
         ?string $siteHandle = null,
         ?string $offsetHandle = null,
         ?int $elementId = null,
     ): LogRecord {
         $log = new LogRecord();
         $log->linkHandle = $link->handle;
-        $log->trigger = $trigger->value;
+        $log->trigger = $origin->trigger->value;
+        $log->userId = $origin->userId;
         $log->siteHandle = $siteHandle;
         $log->offsetHandle = $offsetHandle;
         $log->elementId = $elementId;
@@ -151,7 +156,7 @@ class LogsService extends Component
             $log->save(false);
         }
 
-        if ($trigger !== SyncTrigger::ELEMENT) {
+        if ($origin->trigger !== SyncTrigger::ELEMENT) {
             Influx::getInstance()->links->recordRun($link, $log->id ?: null, $startedAt);
         }
 

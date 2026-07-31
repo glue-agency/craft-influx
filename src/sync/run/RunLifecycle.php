@@ -4,7 +4,6 @@ namespace GlueAgency\Influx\sync\run;
 
 use Craft;
 use GlueAgency\Influx\enums\RunFailure;
-use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\events\SyncLinkEvent;
 use GlueAgency\Influx\exceptions\FeedFetchException;
 use GlueAgency\Influx\exceptions\InfluxException;
@@ -75,6 +74,8 @@ class RunLifecycle
      * Open the log for one scope. The pre-run backup is the trigger layer's job
      * ({@see SynchronizationService::queueSync()}), so nothing is dumped here.
      *
+     * @param RunOrigin $origin What started this run and who asked for it,
+     * recorded on the log so the viewer can name both.
      * @param string|null $siteHandle The site this run is scoped to (null = the
      * primary/unscoped scope), recorded on the log so the viewer can show which
      * site's endpoint was fetched.
@@ -85,12 +86,12 @@ class RunLifecycle
      */
     public function openLog(
         Link $link,
-        SyncTrigger $trigger,
+        RunOrigin $origin,
         ?string $siteHandle = null,
         ?string $offsetHandle = null,
         ?int $elementId = null,
     ): LogRecord {
-        return Influx::getInstance()->logs->start($link, $trigger, $siteHandle, $offsetHandle, $elementId);
+        return Influx::getInstance()->logs->start($link, $origin, $siteHandle, $offsetHandle, $elementId);
     }
 
     /**

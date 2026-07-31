@@ -3,9 +3,9 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
-use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\sync\run\RunOrigin;
 use Throwable;
 use yii\base\Action;
 use yii\web\BadRequestHttpException;
@@ -31,6 +31,19 @@ class SynchronizationController extends AbstractController
     protected function requireAccess(Action $action): void
     {
         $this->requirePermission(Influx::PERMISSION_SYNC);
+    }
+
+    /**
+     * The user a run started here is attributed to. THE moment the identity is
+     * available: a queued run is drained by whoever runs the worker, so anything
+     * further down the chain would name the wrong person (see {@see RunOrigin}).
+     *
+     * `getIdentity()?->id` rather than `getId()`, which is typed `int|string|null`
+     * and would widen the whole chain for no gain.
+     */
+    protected function triggeringUserId(): ?int
+    {
+        return Craft::$app->getUser()->getIdentity()?->id;
     }
 
     /**
@@ -63,7 +76,7 @@ class SynchronizationController extends AbstractController
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
 
-        $plugin->synchronization->queueSync($link, $offset, $site, SyncTrigger::CP);
+        $plugin->synchronization->queueSync($link, $offset, $site, RunOrigin::cp($this->triggeringUserId()));
 
         $queuedSites = $plugin->synchronization->syncScopes($link, $site);
 
@@ -137,7 +150,7 @@ class SynchronizationController extends AbstractController
         }
 
         try {
-            $plugin->synchronization->syncElement($link, $element);
+            $plugin->synchronization->syncElement($link, $element, $this->triggeringUserId());
         } catch (Throwable $e) {
             return $this->asFailure($e->getMessage());
         }

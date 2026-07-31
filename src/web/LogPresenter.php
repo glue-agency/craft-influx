@@ -4,9 +4,11 @@ namespace GlueAgency\Influx\web;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\elements\User;
 use craft\helpers\DateTimeHelper;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\RunStatus;
+use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
 
@@ -39,10 +41,76 @@ class LogPresenter
             'id'           => (int) $log->id,
             'linkHandle'   => (string) $log->linkHandle,
             'trigger'      => (string) $log->trigger,
+            'triggerLabel' => SyncTrigger::tryFrom((string) $log->trigger)?->label() ?? (string) $log->trigger,
+            'user'         => $this->userLabel($log),
             'siteHandle'   => $log->siteHandle,
             'offsetHandle' => $log->offsetHandle,
             'startedAt'    => $this->datetime($log->startedAt),
         ] + $this->presentCounters($log);
+    }
+
+    /**
+     * Name the users a page of runs was triggered by, keyed by user id, in ONE
+     * query — the overview renders 50 rows, and a per-row lookup is the same N+1
+     * {@see elementMap()} exists to avoid on the item list.
+     *
+     * `status(null)` is required: a user query defaults to enabled-only, so a
+     * suspended or pending account would drop out and its runs would go
+     * unattributed. `trashed(null)` for the same reason — a just-deleted account
+     * still names the runs it triggered inside the log retention window, which is
+     * the window where "who ran this" is actually asked.
+     *
+     * A HARD-purged user can't be named at all, so the map carries `#id` for it:
+     * baked in here rather than left to each caller, so no template has to spell
+     * the fallback (and none can spell it differently).
+     *
+     * @param LogRecord[] $logs
+     * @return array<int, string>
+     */
+    public function userLabels(array $logs): array
+    {
+        $ids = [];
+
+        foreach ($logs as $log) {
+            if ($log->userId) {
+                $ids[(int) $log->userId] = true;
+            }
+        }
+
+        $ids = array_keys($ids);
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $users = User::find()
+            ->id($ids)
+            ->status(null)
+            ->trashed(null)
+            ->indexBy('id')
+            ->all();
+
+        $labels = [];
+
+        foreach ($ids as $id) {
+            $labels[$id] = (string) (($users[$id] ?? null)?->getUiLabel() ?: '#' . $id);
+        }
+
+        return $labels;
+    }
+
+    /**
+     * The user ONE run was triggered by, or null when nobody triggered it (a
+     * console or cron run). Same resolution and same `#id` fallback as
+     * {@see userLabels()}, which it defers to so the two can't disagree.
+     */
+    public function userLabel(LogRecord $log): ?string
+    {
+        if (! $log->userId) {
+            return null;
+        }
+
+        return $this->userLabels([$log])[(int) $log->userId] ?? null;
     }
 
     /**

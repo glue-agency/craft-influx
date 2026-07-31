@@ -614,10 +614,13 @@ export default {
             };
         },
 
-        // A run-info line for the summary bar: trigger, site/offset, started.
+        // A run-info line for the summary bar: trigger, who asked for it,
+        // site/offset, started. The trigger is the mechanism and the user is the
+        // person, so both show when a person triggered the run.
         metaLine() {
-            const parts = [this.log.trigger];
+            const parts = [this.log.triggerLabel || this.log.trigger];
 
+            if (this.log.user) parts.push(this.$t('by {u}', { u: this.log.user }));
             if (this.log.siteHandle) parts.push(this.$t('site {s}', { s: this.log.siteHandle }));
             if (this.log.offsetHandle) parts.push(this.$t('window {w}', { w: this.log.offsetHandle }));
             if (this.log.startedAt) parts.push(this.$t('started {d}', { d: this.log.startedAt }));

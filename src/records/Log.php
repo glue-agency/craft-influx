@@ -9,6 +9,7 @@ use GlueAgency\Influx\db\Table;
  * @property int $id
  * @property string $linkHandle
  * @property string $trigger
+ * @property ?int $userId
  * @property ?string $siteHandle
  * @property ?string $offsetHandle
  * @property ?int $elementId

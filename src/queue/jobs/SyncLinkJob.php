@@ -8,6 +8,7 @@ use craft\queue\QueueInterface;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\run\BatchState;
+use GlueAgency\Influx\sync\run\RunOrigin;
 use yii\queue\Queue;
 
 /**
@@ -102,24 +103,29 @@ class SyncLinkJob extends AbstractLinkJob
     protected ?int $lastProgress = null;
 
     /**
-     * Runs one step of this scope's walk. The trigger is resolved with
-     * `tryFrom()` so an unexpected value degrades to {@see SyncTrigger::QUEUE}
-     * instead of throwing. While pages remain, the next step is re-queued on the
-     * same log.
+     * Runs one step of this scope's walk. The origin is read back off the
+     * payload, degrading to {@see SyncTrigger::QUEUE} when the stored trigger
+     * doesn't resolve ({@see RunOrigin::fromPayload()}). While pages remain, the
+     * next step is re-queued on the same log.
      *
      * The carried state travels as a {@see BatchState}, which owns the key names
      * so this job only has to name its own properties: {@see carriedState()}
      * converts them in, and {@see BatchState::carried()} converts the step's
      * answer back out into the re-pushed payload.
+     *
+     * The origin goes back onto that payload as ONE spread
+     * ({@see RunOrigin::payload()}) rather than key by key: the trigger and the
+     * user it composes with must travel together, and a hand-copied pair is
+     * exactly where page two of a run loses the person who asked for it.
      */
     public function execute($queue): void
     {
-        $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::QUEUE;
+        $origin = $this->origin(SyncTrigger::QUEUE);
 
         $state = Influx::getInstance()->synchronization->batchStep(
             $this->linkHandle,
             $this->offset,
-            $trigger,
+            $origin,
             $this->site,
             $this->carriedState()->toArray(),
             fn(int $seen, ?int $total) => $this->reportProgress($queue, $seen, $total),
@@ -130,8 +136,7 @@ class SyncLinkJob extends AbstractLinkJob
                 'linkHandle' => $this->linkHandle,
                 'offset'     => $this->offset,
                 'site'       => $this->site,
-                'trigger'    => $this->trigger,
-            ] + BatchState::fromArray($state)->carried()));
+            ] + $origin->payload() + BatchState::fromArray($state)->carried()));
         }
     }
 

@@ -6,7 +6,7 @@ import { installVocabulary } from '../../lib/vocabulary.js';
 const $t = (s, p) => (p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m)) : s);
 
 const baseConfig = (over = {}) => ({
-    log: { id: 1, linkHandle: 'news', trigger: 'cp', status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
+    log: { id: 1, linkHandle: 'news', trigger: 'cp', triggerLabel: 'Control panel', user: null, status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
     // The bootstrap ships only page 1 (newest first).
     items: [
         { id: 2, action: 'skipped', matchValue: 'B', message: 'missing id', title: 'Item B', trashed: false, errorCount: 0 },
@@ -66,6 +66,21 @@ describe('LogApp', () => {
         expect(counters.length).toBe(7);
         expect(counters[0].text()).toContain('2');
         expect(counters[0].text().toLowerCase()).toContain('seen');
+    });
+
+    it('names the user a run was triggered by, next to the trigger label', () => {
+        const w = mountApp({ log: { ...baseConfig().log, user: 'Ada Lovelace' } });
+        const meta = w.find('.influx-log-meta').text();
+
+        // The label, never the raw stored value — the trigger is the mechanism,
+        // the user is who asked for it.
+        expect(meta).toContain('Control panel');
+        expect(meta).not.toContain('cp');
+        expect(meta).toContain('by Ada Lovelace');
+    });
+
+    it('leaves the meta line userless for a run nobody triggered', () => {
+        expect(mountApp().find('.influx-log-meta').text()).not.toContain('by ');
     });
 
     it('pills an item whose element sits in the trash, and only that one', () => {

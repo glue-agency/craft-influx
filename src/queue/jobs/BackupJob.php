@@ -30,6 +30,10 @@ class BackupJob extends AbstractLinkJob
     /**
      * The link can be deleted between queueing and running, hence the
      * missing-link guard.
+     *
+     * The failed backup's log is a real run log, so it carries the origin the
+     * trigger captured — the person who pressed Sync is the person the failure
+     * belongs to — and so does the fan-out this hands off to.
      */
     public function execute($queue): void
     {
@@ -40,19 +44,19 @@ class BackupJob extends AbstractLinkJob
             return;
         }
 
-        $trigger = SyncTrigger::tryFrom($this->trigger) ?? SyncTrigger::CP;
+        $origin = $this->origin(SyncTrigger::CP);
 
         try {
             $plugin->backup->backupForLink($link);
         } catch (Throwable $e) {
-            $log = $plugin->logs->start($link, $trigger, $this->site, $this->offset);
+            $log = $plugin->logs->start($link, $origin, $this->site, $this->offset);
             $plugin->logs->fail($log, $e->getMessage());
             Craft::error($e, __METHOD__);
 
             return;
         }
 
-        $plugin->synchronization->queueSyncJobs($link, $this->offset, $this->site, $trigger);
+        $plugin->synchronization->queueSyncJobs($link, $this->offset, $this->site, $origin);
     }
 
     /**

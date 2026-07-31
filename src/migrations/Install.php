@@ -14,6 +14,12 @@ class Install extends Migration
      *     Project Config; lastLogId is a soft pointer, nulled when its log is
      *     deleted.
      *   - logs.trigger — console | cp | element | queue.
+     *   - logs.userId — the Craft user who triggered the run, captured at
+     *     trigger time; null for console/cron runs, which nobody asked for.
+     *     Deliberately NO foreign key: a cascade would erase the very
+     *     attribution the column exists to keep, and a restrict would block
+     *     deleting a user who ever pressed Sync. No index either — nothing
+     *     filters on it, it's only read back per row for display.
      *   - logs.offsetHandle — the sliding-window preset the run used.
      *   - logs.elementId — the resource a single-element run was triggered for.
      *   - logs.status — running | ok | error.
@@ -75,6 +81,7 @@ class Install extends Migration
             'id'             => $this->primaryKey(),
             'linkHandle'     => $this->string(100)->notNull(),
             'trigger'        => $this->string(30)->notNull(),
+            'userId'         => $this->integer()->null(),
             'siteHandle'     => $this->string(100)->null(),
             'offsetHandle'   => $this->string(100)->null(),
             'elementId'      => $this->integer()->null(),

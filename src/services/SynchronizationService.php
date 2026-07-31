@@ -24,6 +24,7 @@ use GlueAgency\Influx\sync\run\MissingElementsSweeper;
 use GlueAgency\Influx\sync\run\PageWalk;
 use GlueAgency\Influx\sync\run\PageWalker;
 use GlueAgency\Influx\sync\run\RunLifecycle;
+use GlueAgency\Influx\sync\run\RunOrigin;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use Throwable;
@@ -111,6 +112,9 @@ class SynchronizationService extends Component
      * 'running') and the next site still runs.
      *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
+     * @param RunOrigin|null $origin What started the run and who asked for it;
+     * null means the console/programmatic origin this path has always defaulted
+     * to — nobody's name against it.
      * @param string|null $siteHandle Restrict the run to a single configured
      * site; null runs every site the link is configured for.
      * @param callable|null $onProgress fn(int $seen, ?int $total): called once
@@ -131,10 +135,12 @@ class SynchronizationService extends Component
     public function syncLink(
         Link $link,
         ?string $offset = null,
-        SyncTrigger $trigger = SyncTrigger::CONSOLE,
+        ?RunOrigin $origin = null,
         ?string $siteHandle = null,
         ?callable $onProgress = null,
     ): array {
+        $origin ??= RunOrigin::console();
+
         $this->lifecycle->announce($link);
 
         $target = $this->resolveTarget($link);
@@ -155,13 +161,13 @@ class SynchronizationService extends Component
 
         try {
             foreach ($siteHandles as $handle) {
-                $log = $this->lifecycle->openLog($link, $trigger, $handle, $preset?->handle);
+                $log = $this->lifecycle->openLog($link, $origin, $handle, $preset?->handle);
 
                 $this->lifecycle->run(
                     $link,
                     $log,
-                    function(LogRecord $log) use ($link, $target, $handle, $trigger, $preset, $queryParams, $onProgress): void {
-                        $context = SyncContext::forSite($link, $target, $handle, $trigger, offsetHandle: $preset?->handle);
+                    function(LogRecord $log) use ($link, $target, $handle, $origin, $preset, $queryParams, $onProgress): void {
+                        $context = SyncContext::forSite($link, $target, $handle, $origin->trigger, offsetHandle: $preset?->handle);
                         $this->processSite($context, $queryParams, $log, $onProgress);
                     },
                     RunFailure::FAIL_AND_CONTINUE,
@@ -194,21 +200,23 @@ class SynchronizationService extends Component
      * the request returns instantly and the dump happens once for the whole
      * fan-out. When it doesn't, the per-site sync jobs are enqueued directly,
      * skipping that hop entirely.
+     *
+     * @param RunOrigin $origin Captured by the caller (the controller), never
+     * re-read inside the jobs — see {@see RunOrigin}.
      */
-    public function queueSync(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
+    public function queueSync(Link $link, ?string $offset, ?string $site, RunOrigin $origin): void
     {
         if ($link->backup) {
             Craft::$app->getQueue()->push(new BackupJob([
                 'linkHandle' => $link->handle,
                 'offset'     => $offset,
                 'site'       => $site,
-                'trigger'    => $trigger->value,
-            ]));
+            ] + $origin->payload()));
 
             return;
         }
 
-        $this->queueSyncJobs($link, $offset, $site, $trigger);
+        $this->queueSyncJobs($link, $offset, $site, $origin);
     }
 
     /**
@@ -216,16 +224,18 @@ class SynchronizationService extends Component
      * {@see syncScopes()} resolves. Called directly by {@see queueSync()} when
      * no pre-run backup is needed, and by {@see BackupJob} once its backup has
      * been taken.
+     *
+     * @param RunOrigin $origin Spread onto every job's payload as one unit, so
+     * the trigger and the user it composes with can't be half-dropped.
      */
-    public function queueSyncJobs(Link $link, ?string $offset, ?string $site, SyncTrigger $trigger): void
+    public function queueSyncJobs(Link $link, ?string $offset, ?string $site, RunOrigin $origin): void
     {
         foreach ($this->syncScopes($link, $site) as $handle) {
             Craft::$app->getQueue()->push(new SyncLinkJob([
                 'linkHandle' => $link->handle,
                 'offset'     => $offset,
                 'site'       => $handle,
-                'trigger'    => $trigger->value,
-            ]));
+            ] + $origin->payload()));
         }
     }
 
@@ -302,6 +312,9 @@ class SynchronizationService extends Component
      * ({@see PageWalker}): a throw still persists what this step saved, leaving a
      * retried step only the un-flushed tail to redo.
      *
+     * @param RunOrigin $origin Read back off the job's payload each step
+     * ({@see \GlueAgency\Influx\queue\jobs\AbstractLinkJob::origin()}), so every
+     * step of a paginated run records the same trigger and the same user.
      * @param array{logId: ?int, cursorUrl: ?string, page: int, seenIds?: list<int>, unattributedErrors?: int, firstPageSize?: ?int, itemsSeen?: int} $state
      * @param callable|null $onProgress fn(int $seen, ?int $total)
      * @return array{logId: ?int, cursorUrl: ?string, page: int, seenIds: list<int>, unattributedErrors: int, firstPageSize: ?int, itemsSeen: int, done: bool}
@@ -309,7 +322,7 @@ class SynchronizationService extends Component
     public function batchStep(
         string $linkHandle,
         ?string $offset,
-        SyncTrigger $trigger,
+        RunOrigin $origin,
         ?string $requestedSite,
         array $state,
         ?callable $onProgress = null,
@@ -331,14 +344,14 @@ class SynchronizationService extends Component
 
         if ($batch->logId === null) {
             $this->lifecycle->announce($link);
-            $log = $this->lifecycle->openLog($link, $trigger, $requestedSite, $preset?->handle);
+            $log = $this->lifecycle->openLog($link, $origin, $requestedSite, $preset?->handle);
             $batch->logId = $log->id;
         } else {
             $log = $this->lifecycle->reopenLog($batch->logId);
         }
 
         try {
-            $context = SyncContext::forSite($link, $target, $requestedSite, $trigger, offsetHandle: $preset?->handle);
+            $context = SyncContext::forSite($link, $target, $requestedSite, $origin->trigger, offsetHandle: $preset?->handle);
             $page = $plugin->data->page($link, $requestedSite, $batch->cursorUrl, $queryParams, $batch->page);
         } catch (Throwable $e) {
             $this->lifecycle->fail($log, $e->getMessage());
@@ -403,8 +416,16 @@ class SynchronizationService extends Component
      * Fires no link events: it isn't a link run, it's one element's refresh.
      * A failure re-throws ({@see RunFailure::RETHROW}) so the CP endpoint can
      * turn it into a message for the editor who pressed the button.
+     *
+     * Takes the USER rather than a whole {@see RunOrigin}, unlike every other
+     * entry point here: this path's trigger is {@see SyncTrigger::ELEMENT} by
+     * definition — it's what the method IS — and is never the caller's to choose,
+     * so only the half a caller can actually answer is asked for.
+     *
+     * @param int|null $userId The editor who pressed "Sync from remote",
+     * captured by the controller; null for a programmatic call.
      */
-    public function syncElement(Link $link, ElementInterface $element): LogRecord
+    public function syncElement(Link $link, ElementInterface $element, ?int $userId = null): LogRecord
     {
         $plugin = Influx::getInstance();
         $target = $this->resolveTarget($link);
@@ -426,13 +447,14 @@ class SynchronizationService extends Component
         }
 
         $siteHandle = $siteHandles[0];
-        $log = $this->lifecycle->openLog($link, SyncTrigger::ELEMENT, $siteHandle, null, $element->id);
+        $origin = RunOrigin::element($userId);
+        $log = $this->lifecycle->openLog($link, $origin, $siteHandle, null, $element->id);
 
         return $this->lifecycle->run(
             $link,
             $log,
-            function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandle): void {
-                $context = SyncContext::forSite($link, $target, $siteHandle, SyncTrigger::ELEMENT);
+            function(LogRecord $log) use ($plugin, $link, $target, $element, $siteHandle, $origin): void {
+                $context = SyncContext::forSite($link, $target, $siteHandle, $origin->trigger);
                 $tokens = $plugin->endpointTokens->tokensForElement($link, $element, $siteHandle);
 
                 $item = RemoteItem::fromItemResponse($plugin->data->fetchOne($link, $tokens), $link->rootNode);

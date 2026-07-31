@@ -5,8 +5,8 @@ namespace GlueAgency\Influx\console\controllers;
 use Craft;
 use craft\console\Controller;
 use GlueAgency\Influx\console\ConsoleOutputCompatTrait;
-use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\sync\run\RunOrigin;
 use Throwable;
 use yii\console\ExitCode;
 
@@ -87,7 +87,7 @@ class SyncController extends Controller
             $this->stdout("→ Syncing '{$link->handle}'\n");
 
             try {
-                $plugin->synchronization->syncLink($link, $this->offset, SyncTrigger::CONSOLE, $this->site);
+                $plugin->synchronization->syncLink($link, $this->offset, RunOrigin::console(), $this->site);
                 $this->success('done.');
             } catch (Throwable $e) {
                 $this->failure('FAILED: ' . $e->getMessage());
