@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
+use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\Influx;
@@ -16,19 +17,20 @@ use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\web\ItemRowPresenter;
-use GlueAgency\Influx\web\LogPresenter;
 use Throwable;
 
 /**
  * The shared per-item inspection engine: runs one remote item through the exact
  * {@see ItemProcessor} pipeline the real sync uses, but with `dryRun: true` so
  * nothing is written — no logs, no element saves, no cooldown marks — then
- * presents the resolved element + per-field mapping results as row arrays.
+ * presents the resolved element + per-field mapping results as row arrays. The
+ * Links overview "Debug" view drives it, fanning a whole first page through
+ * {@see inspectWithTarget()} ({@see DebugService::inspectSite()}).
  *
- * Two consumers share this one engine so the logic exists exactly once: the
- * Links overview "Debug" view ({@see DebugService::inspectSite()}, which fans a
- * whole first page through {@see inspectWithTarget()}) and the log detail
- * drill-down ({@see inspectStoredLogItem()}, one historical stored payload).
+ * It also answers the log detail's drill-down ({@see inspectStoredLogItem()}),
+ * which is NOT an inspection: a historical row is presented from what the run
+ * itself stored. Both live here because they emit one row shape
+ * ({@see itemRow()}) for one Vue component.
  */
 class InspectorService extends Component
 {
@@ -50,12 +52,6 @@ class InspectorService extends Component
     protected ItemRowPresenter $rows;
 
     /**
-     * Owns the stored-vs-recomputed overlays the log drill-down needs
-     * ({@see inspectStoredLogItem()}).
-     */
-    protected LogPresenter $logRows;
-
-    /**
      * `$config` stays last so Yii can still configure the component the normal
      * way ({@see \yii\base\Configurable}).
      */
@@ -70,49 +66,60 @@ class InspectorService extends Component
     {
         parent::init();
         $this->rows = new ItemRowPresenter();
-        $this->logRows = new LogPresenter();
     }
 
     /**
      * Drill-down for one stored log item, as the log viewer's detail pane
-     * consumes it: `{row: array}`, or `{row: null, message: …}` when the run's
-     * link has since been deleted and there's nothing to inspect against.
+     * consumes it: `{row: array}`, or `{row: null, message: …}` when there is
+     * nothing stored to show and the run's link is gone too.
      *
-     * Re-runs the debug-view inspection against the raw remote payload captured
-     * when the item was synced, so the user can see per-field source/parsed/
-     * current values and which mappings would (re-)apply if synced again. Pins to
-     * the item's own `elementId` rather than re-deriving the element from the
-     * match value — `$log->siteHandle` is null for element-triggered runs, so an
-     * unscoped match-value lookup would be ambiguous whenever the same match
-     * value exists on more than one element across sites.
+     * PRESENTED FROM STORAGE, not re-inspected. The run stored its own presented
+     * mapping rows ({@see \GlueAgency\Influx\sync\item\ItemRunner::mappingSnapshot()}),
+     * captured from the real {@see \GlueAgency\Influx\sync\item\MappingResult}s
+     * the sync produced — so every per-row `changed` flag and every per-field
+     * error is the genuine article, and the whole overlay dance this method used
+     * to do is gone with the dry run that made it necessary. That dry run read
+     * the element's PRESENT state: a successfully-updated item came back "no
+     * change" on every row, a run-time failure (an asset upload, say) couldn't be
+     * reproduced at all, and the honest values had to be stamped back on top
+     * afterwards. Reading what the run wrote is both truthful and cheap — no
+     * pipeline, no feed, no element save path.
      *
-     * The stored run-time field errors and "changed" flags are then overlaid on
-     * top of that fresh inspection, because the stored values are the
-     * authoritative ones: a dry run reads the element's LIVE state, so it can't
-     * reproduce e.g. an asset-upload failure, and an item that was already
-     * updated would falsely read "no change". A null `changedFields` column
-     * resets the rows to the viewer's "?" state.
+     * The row still carries the full {@see itemRow()} envelope the Vue component
+     * renders, sourced accordingly: `action` / `message` / `matchValue` off the
+     * record, `raw` from the stored payload, `mappings` from the snapshot,
+     * `element` resolved fresh ({@see storedElement()}) so the chip and its edit
+     * link reflect the element as it is now. `error` stays null — a run-time
+     * failure is already the row's `message` or its per-field errors.
      *
-     * An item with no stored payload — swept missing-element rows have none, and
-     * older runs predate payload storage — still returns a real row so the
-     * drill-down renders normally.
+     * Two degradations, both rendering rather than refusing:
+     *   - nothing stored at all (a sweep row, which never had a payload) answers
+     *     with the four-key subset the Vue side guards for;
+     *   - a payload with no snapshot (rows written before the column existed, or
+     *     one whose snapshot blew {@see \GlueAgency\Influx\services\LogsService::MAPPINGS_MAX_BYTES})
+     *     renders its raw JSON with an empty field list and says so.
+     *
+     * A DELETED LINK no longer blocks any of that: the stored row is the source,
+     * so only the link-derived match metadata drops out (null `matchAttribute` /
+     * `matchNode`). It's still the answer when there's nothing stored either —
+     * then there really is nothing to show.
      *
      * @return array{row: ?array, message?: string}
      */
     public function inspectStoredLogItem(LogItemRecord $item, LogRecord $log): array
     {
-        $link = Influx::getInstance()->links->getLinkByHandle($log->linkHandle);
-
-        if (! $link) {
-            return [
-                'row'     => null,
-                'message' => Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle]),
-            ];
-        }
-
+        $link = $this->linkFor($log);
         $raw = $this->storedPayload($item);
+        $mappings = $this->storedMappings($item);
 
-        if ($raw === null) {
+        if ($raw === null && $mappings === null) {
+            if (! $link) {
+                return [
+                    'row'     => null,
+                    'message' => Craft::t('influx', "Link '{handle}' no longer exists.", ['handle' => $log->linkHandle]),
+                ];
+            }
+
             return [
                 'row' => [
                     'action'   => (string) $item->action,
@@ -123,26 +130,111 @@ class InspectorService extends Component
             ];
         }
 
-        $row = $this->inspectItem(
-            $link,
-            $raw,
-            $log->siteHandle,
-            $item->elementId !== null ? (int) $item->elementId : null,
-            withParsedHtml: true,
-        );
-        $row['action'] = (string) $item->action;
+        $message = $item->message ? (string) $item->message : null;
 
-        if ($item->message) {
-            $row['message'] = (string) $item->message;
+        if ($mappings === null) {
+            $message ??= Craft::t('influx', 'No stored field data for this item — recorded before drill-down storage.');
         }
 
-        $mappings = $this->logRows->overlayFieldErrors(
-            $row['mappings'] ?? [],
-            $this->logRows->fieldErrors($item->fieldErrors),
-        );
-        $row['mappings'] = $this->logRows->overlayChangedFlags($mappings, $item->changedFields);
+        $matchAttr = $link?->matchAttribute();
+        $matchNode = $matchAttr !== null ? $link?->getMappingCollection()->get($matchAttr)?->node : null;
+        $element = $this->storedElement($item, $log);
 
-        return ['row' => $row];
+        return [
+            'row' => self::itemRow([
+                'matchAttribute' => $matchAttr,
+                'matchNode'      => $matchNode,
+                'matchValue'     => $item->matchValue !== null ? (string) $item->matchValue : null,
+                'element'        => $element !== null ? $this->rows->presentElement($element) : null,
+                'isNew'          => self::storedActionCreates((string) $item->action),
+                'action'         => (string) $item->action,
+                'message'        => $message,
+                'raw'            => $raw,
+                'mappings'       => $mappings ?? [],
+            ]),
+        ];
+    }
+
+    /**
+     * Whether a stored action means the run brought the element into existence —
+     * the drill-down's `isNew`. DERIVED FROM THE ACTION, because there is no
+     * live pipeline behind a stored row to ask: the flag the sync computed isn't
+     * a column, and the action it produced says the same thing. The dry-run
+     * label is accepted alongside the committed one so the check reads the same
+     * for either vocabulary.
+     */
+    protected static function storedActionCreates(string $action): bool
+    {
+        return in_array($action, [ItemAction::CREATED->value, ItemAction::CREATED->dryRunLabel()], true);
+    }
+
+    /**
+     * The element a stored log item touched, loaded FRESH so its chip and edit
+     * link show the element as it stands now — and null once it's been deleted,
+     * which degrades the drill-down's header to the match value.
+     *
+     * Deliberately not {@see resolvePinned()}: that exists to hand the dry-run
+     * pipeline a decision, needs the link's target, and re-derives the match
+     * value from the payload — none of which a stored row needs, and the link may
+     * be gone. The site handling is the same though, and for the same reason: load
+     * in the run's own site so the edit link points at the row the run actually
+     * touched, falling back to `'*'` when the element isn't propagated there (or
+     * the run spanned sites and has no single one).
+     *
+     * The element type is left to Craft rather than taken from the link: the id
+     * already determines it, and that keeps a since-deleted link from costing us
+     * the chip.
+     */
+    protected function storedElement(LogItemRecord $item, LogRecord $log): ?ElementInterface
+    {
+        if (! $item->elementId) {
+            return null;
+        }
+
+        $elementId = (int) $item->elementId;
+        $siteId = $log->siteHandle !== null
+            ? Craft::$app->getSites()->getSiteByHandle((string) $log->siteHandle)?->id
+            : null;
+
+        $elements = Craft::$app->getElements();
+        $element = $elements->getElementById($elementId, null, $siteId ?? '*');
+
+        if ($element === null && $siteId !== null) {
+            $element = $elements->getElementById($elementId, null, '*');
+        }
+
+        return $element;
+    }
+
+    /**
+     * The run's link, or null when it has since been deleted. On its own method
+     * because it is {@see inspectStoredLogItem()}'s only reach outside the two
+     * records it was handed — which is what lets that method be specced without a
+     * booted plugin.
+     */
+    protected function linkFor(LogRecord $log): ?Link
+    {
+        return Influx::getInstance()->links->getLinkByHandle($log->linkHandle);
+    }
+
+    /**
+     * A log item's stored mapping snapshot — the presented row tree the run
+     * captured — or null when the row has none: a sweep row that never mapped
+     * anything, a row written before the column existed, or one whose snapshot
+     * was too big to store. Null is what makes the drill-down say so; an empty
+     * list means "presented, maps no fields" and renders as such.
+     *
+     * @return list<array>|null
+     */
+    protected function storedMappings(LogItemRecord $item): ?array
+    {
+        if (! $item->mappings) {
+            return null;
+        }
+
+        $decoded = json_decode($item->mappings, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**
@@ -162,18 +254,16 @@ class InspectorService extends Component
 
     /**
      * Inspect an already-fetched remote item against a link, resolving the
-     * link's element target first. Used by the log detail drill-down to reuse
-     * the inspection machinery against a historical row's stored payload;
-     * callers that already hold the target (the debug inspector) skip the
-     * lookup and call {@see inspectWithTarget()} directly.
+     * link's element target first — the entry point for a caller holding just a
+     * link and a payload. The debug inspector isn't one: it resolves the target
+     * once for a whole page and calls {@see inspectWithTarget()} per item.
      *
      * $pinnedElementId, when given, resolves straight to that element instead
      * of re-deriving one from the match value — see {@see inspectWithTarget()}.
      *
-     * $withParsedHtml is threaded down to the presenter so the log drill-down
-     * can render rich parsed values server-side (element chips for relations,
-     * a lightswitch for booleans); it defaults to false, leaving the debug
-     * path untouched.
+     * $withParsedHtml is threaded down to the presenter so a caller can render
+     * rich parsed values server-side (element chips for relations, a lightswitch
+     * for booleans); it defaults to false, leaving the debug path untouched.
      */
     public function inspectItem(
         Link $link,
@@ -209,8 +299,8 @@ class InspectorService extends Component
      * mapping rows, and the dry-run skip action a run that decides nothing lands
      * on.
      *
-     * {@see inspectStoredLogItem()} deviates once: an item saved before
-     * drill-down existed has no payload to inspect, so it answers with a
+     * {@see inspectStoredLogItem()} deviates once: a log item with nothing
+     * stored at all (a sweep row) has no envelope to fill, so it answers with a
      * four-key subset (action / message / mappings / raw) that the Vue side
      * guards for.
      */
@@ -239,14 +329,11 @@ class InspectorService extends Component
      *
      * $pinnedElementId short-circuits the match-value lookup and resolves
      * straight to that element. Without it, `resolve()` re-derives the element
-     * from the match value scoped to `$siteHandle` — for the log drill-down
-     * that's a problem specifically for element-triggered runs: the log only
-     * carries the run's site (null there, since one run can span several sites),
-     * so an unscoped match-value lookup is ambiguous whenever more than one
-     * element shares that match value across sites (e.g. a non-propagated
-     * section where each site has its own row with the same import id). The log
-     * item DOES know which element the run actually touched, so the drill-down
-     * pins to it directly instead of re-guessing.
+     * from the match value scoped to `$siteHandle`, which is ambiguous whenever
+     * the caller has no single site to scope by and more than one element shares
+     * that match value across sites (e.g. a non-propagated section where each
+     * site holds its own row with the same import id). A caller that already
+     * KNOWS which element it means pins to it rather than re-guessing.
      *
      * $withParsedHtml is passed straight through to the presenter's mapping
      * rendering (both call sites below) so a rich parsed value can render
@@ -342,7 +429,7 @@ class InspectorService extends Component
      * a foreign-language element for a site-scoped run). `$siteId` is null for
      * runs with no single site (element-triggered / all-sites); those fall back
      * to `'*'`. The site-specific load also falls back to `'*'` if the element
-     * isn't propagated to that site, so the drill-down still shows it.
+     * isn't propagated to that site, so the row still shows it.
      */
     protected function resolvePinned(Link $link, ElementTargetInterface $target, RemoteItem $item, int $elementId, ?int $siteId = null): ItemResolution
     {

@@ -81,7 +81,7 @@ class LogsService extends Component
      * with the batchInsert() call in {@see flush()}. `id` and the audit
      * columns are added by Craft; these are the ones recordItem() supplies.
      */
-    protected const ITEM_COLUMNS = ['logId', 'elementId', 'matchValue', 'action', 'message', 'fieldErrors', 'changedFields', 'payload'];
+    protected const ITEM_COLUMNS = ['logId', 'elementId', 'matchValue', 'action', 'message', 'fieldErrors', 'changedFields', 'payload', 'mappings'];
 
     /**
      * Force a flush once a buffer reaches this many rows, so a single huge
@@ -89,6 +89,16 @@ class LogsService extends Component
      * on the batch insert.
      */
     protected const FLUSH_THRESHOLD = 100;
+
+    /**
+     * Size ceiling on one item's stored mapping snapshot. It exists for the
+     * batched inserts {@see flush()} runs — {@see FLUSH_THRESHOLD} rows in one
+     * statement — which a single item nesting thousands of Matrix children could
+     * otherwise push past the DB's `max_allowed_packet`, throwing away the whole
+     * page's rows over one outlier. Past the ceiling the snapshot is simply not
+     * stored: that item's drill-down renders flat, every other row is unharmed.
+     */
+    protected const MAPPINGS_MAX_BYTES = 200000;
 
     /**
      * Pending log-item buffers keyed by log record id. One buffer per open
@@ -159,14 +169,24 @@ class LogsService extends Component
      * see {@see recordSeen()}.
      *
      * @param array<string, string> $fieldErrors {handle: message} for fields
-     * whose strategy threw — stored so the drill-down can show each on its own
-     * field row even when re-inspection can't reproduce it.
+     * whose strategy threw — the count the item list flags an item by
+     * ({@see \GlueAgency\Influx\web\LogPresenter::presentItem()}), queryable on
+     * its own without unpacking `$mappings`, which carries the same errors per
+     * row for the drill-down.
      * @param list<string>|null $changedFields The mapping handles that actually
-     * changed this run (see {@see \GlueAgency\Influx\sync\item\ItemSyncResult::changedFieldHandles()}),
-     * so the drill-down can report what really happened instead of re-deriving
-     * it from a present-tense dry-run. Three states, preserved into storage:
+     * changed this run (see {@see \GlueAgency\Influx\sync\item\ItemSyncResult::changedFieldHandles()})
+     * — the compact per-item record of what moved, beside the full `$mappings`
+     * snapshot the drill-down renders. Three states, preserved into storage:
      * null = the item never went through populate (unknown); `[]` = compared,
      * nothing changed; a list = the handles that changed.
+     * @param list<array>|null $mappings The item's PRESENTED mapping rows
+     * ({@see \GlueAgency\Influx\web\ItemRowPresenter::presentMappingResults()}),
+     * stored as the drill-down's display source so it reports the run's own
+     * results instead of re-inspecting live state
+     * ({@see \GlueAgency\Influx\services\InspectorService::inspectStoredLogItem()}).
+     * Presenting a row tree isn't free, so callers should skip BUILDING it when
+     * logging is off ({@see loggingEnabled()}) — this method would only drop it
+     * on the floor with the rest of the row.
      */
     public function recordItem(
         LogRecord $log,
@@ -177,6 +197,7 @@ class LogsService extends Component
         ?array $payload = null,
         array $fieldErrors = [],
         ?array $changedFields = null,
+        ?array $mappings = null,
     ): void {
         if (! $log->id) {
             return;
@@ -193,6 +214,7 @@ class LogsService extends Component
             $fieldErrors !== [] ? json_encode($fieldErrors) : null,
             $changedFields !== null ? json_encode($changedFields) : null,
             $payload !== null ? json_encode($payload) : null,
+            $this->encodeMappings($mappings),
         ];
 
         $this->bufferFor($log)->add($row, $counterAttr);
@@ -208,6 +230,32 @@ class LogsService extends Component
         if ($this->bufferFor($log)->count() >= self::FLUSH_THRESHOLD) {
             $this->flush($log);
         }
+    }
+
+    /**
+     * A mapping snapshot as the column stores it: JSON, or null when there is
+     * nothing to store or the JSON can't be stored safely — it blew
+     * {@see MAPPINGS_MAX_BYTES}, or it holds a value json_encode() refuses
+     * (invalid UTF-8 off a feed). A null column reads as "no snapshot" and the
+     * drill-down renders flat, which is exactly the degradation we want.
+     *
+     * An EMPTY row list is not the same thing and is kept as `[]`: the item was
+     * presented and simply maps no fields, so the drill-down must not claim its
+     * data is missing.
+     */
+    protected function encodeMappings(?array $mappings): ?string
+    {
+        if ($mappings === null) {
+            return null;
+        }
+
+        $json = json_encode($mappings);
+
+        if ($json === false || strlen($json) > self::MAPPINGS_MAX_BYTES) {
+            return null;
+        }
+
+        return $json;
     }
 
     /**
@@ -599,7 +647,13 @@ class LogsService extends Component
         return $deleted;
     }
 
-    protected function loggingEnabled(): bool
+    /**
+     * Whether runs are persisted at all — {@see start()}'s gate, and THE signal
+     * callers ask before doing work only a stored row would consume (see
+     * {@see recordItem()}'s `$mappings`), so the setting is read in one place
+     * instead of once per caller.
+     */
+    public function loggingEnabled(): bool
     {
         return (bool) Influx::getInstance()->getSettings()->loggingEnabled;
     }

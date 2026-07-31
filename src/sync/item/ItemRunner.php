@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\sync\item;
 
+use Craft;
 use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
@@ -12,6 +13,8 @@ use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\sync\MatchValue;
 use GlueAgency\Influx\sync\SyncContext;
+use GlueAgency\Influx\web\ItemRowPresenter;
+use Throwable;
 
 /**
  * Runs ONE remote item: the {@see ItemProcessor} pipeline, the item events at
@@ -41,10 +44,19 @@ class ItemRunner
      */
     protected ItemProcessor $processor;
 
-    public function __construct(SynchronizationService $service, ?ItemProcessor $processor = null)
+    /**
+     * Presents the item's mapping results into the row tree the log row stores
+     * ({@see mappingSnapshot()}). Injectable like {@see $processor}, and for the
+     * same reason: a caller may hand in its own presenter rather than inherit
+     * whichever one this class would have built.
+     */
+    protected ItemRowPresenter $rows;
+
+    public function __construct(SynchronizationService $service, ?ItemProcessor $processor = null, ?ItemRowPresenter $rows = null)
     {
         $this->service = $service;
         $this->processor = $processor ?? new ItemProcessor();
+        $this->rows = $rows ?? new ItemRowPresenter();
     }
 
     /**
@@ -112,11 +124,51 @@ class ItemRunner
             $item->raw(),
             $result->mappingErrors(),
             $result->changedFieldHandles(),
+            $this->mappingSnapshot($context, $result),
         );
 
         $this->fireAfterItem($link, $item->raw(), $result->element, $context->siteHandle, $result->action);
 
         return $result->element?->id;
+    }
+
+    /**
+     * The item's mapping results, presented, for the log row to keep — the log
+     * drill-down's display source, so it shows what this run actually did
+     * instead of re-deriving it from a later dry run against present state.
+     * `withParsedHtml` is on because this snapshot IS what the viewer renders:
+     * the rich cells (relation chips, boolean lightswitches) have to be in it.
+     *
+     * Null — no presentation at all — when nothing would consume it: logging is
+     * off, so no row is written, or the outcome carries no element, which the
+     * presenter needs to normalize values for display parity.
+     *
+     * Guarded, because a snapshot is a nicety and the item's outcome is not:
+     * unlike the CP drill-down this rendering used to happen in, a real run
+     * presents from a console or queue request, where the rich cells build CP
+     * markup outside a CP request. A failure logs and drops the snapshot; the
+     * row, the element and the run are untouched.
+     *
+     * @return list<array>|null
+     */
+    protected function mappingSnapshot(SyncContext $context, ItemSyncResult $result): ?array
+    {
+        if ($result->element === null || ! Influx::getInstance()->logs->loggingEnabled()) {
+            return null;
+        }
+
+        try {
+            return $this->rows->presentMappingResults(
+                $result->mappingResults,
+                $result->element,
+                $this->rows->fieldLabels($context->link, $context->target),
+                withParsedHtml: true,
+            );
+        } catch (Throwable $e) {
+            Craft::warning('Influx: presenting the log snapshot for item ' . MatchValue::forLog($result->matchValue) . " threw: {$e->getMessage()}", __METHOD__);
+
+            return null;
+        }
     }
 
     protected function fireAfterItem(

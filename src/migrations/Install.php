@@ -23,6 +23,10 @@ class Install extends Migration
      *   - logItems.changedFields — JSON list of mapping handles that changed in
      *     this run.
      *   - logItems.payload — raw remote item JSON (optional).
+     *   - logItems.mappings — the presented per-field mapping rows the run
+     *     produced, JSON, as {@see \GlueAgency\Influx\web\ItemRowPresenter::presentMappingResults()}
+     *     emitted them; the log drill-down's display source. Null when the item
+     *     produced none (sweep rows) or the snapshot was too big to store.
      *
      * Two of the indexes aren't obvious: logs.status is indexed because
      * {@see \GlueAgency\Influx\services\LogsService::errorLogCount()} — the CP
@@ -104,6 +108,7 @@ class Install extends Migration
             'fieldErrors'   => $this->text()->null(),
             'changedFields' => $this->text()->null(),
             'payload'       => $this->longText()->null(),
+            'mappings'      => $this->longText()->null(),
             'dateCreated'   => $this->dateTime()->notNull(),
             'dateUpdated'   => $this->dateTime()->notNull(),
             'uid'           => $this->uid(),

@@ -6,11 +6,10 @@ use Codeception\Test\Unit;
 use GlueAgency\Influx\web\LogPresenter;
 
 /**
- * Behaviour spec for {@see LogPresenter}'s field-error helpers, which back the
- * log-item drill-down: fieldErrors() decodes the stored per-field-error JSON,
- * and overlayFieldErrors() stamps those (authoritative, run-time) errors back
- * onto the dry-run mapping rows. Pure — no Craft boot needed, since the JSON
- * decode + row overlay touch nothing but the passed arrays.
+ * Behaviour spec for {@see LogPresenter::fieldErrors()}, which decodes a log
+ * item's stored per-field-error JSON — the count the item list flags an item by
+ * ({@see LogPresenter::presentItem()}'s `errorCount`). Pure — no Craft boot
+ * needed, since the decode touches nothing but the passed string.
  */
 class LogPresenterFieldErrorsTest extends Unit
 {
@@ -47,39 +46,5 @@ class LogPresenterFieldErrorsTest extends Unit
     {
         // A bare scalar decodes to a non-array; treated as "no errors".
         $this->assertSame([], $this->presenter->fieldErrors('42'));
-    }
-
-    public function testOverlayLandsErrorOnMatchingHandleRow(): void
-    {
-        $mappings = [
-            ['handle' => 'summary', 'error' => null],
-            ['handle' => 'body', 'error' => null],
-        ];
-
-        $result = $this->presenter->overlayFieldErrors($mappings, ['body' => 'Bad HTML']);
-
-        $this->assertNull($result[0]['error']);
-        $this->assertSame('Bad HTML', $result[1]['error']);
-    }
-
-    public function testOverlayLeavesNonMatchingRowsUntouched(): void
-    {
-        $mappings = [
-            ['handle' => 'summary', 'error' => 'existing'],
-        ];
-
-        // Error keyed to a handle that isn't in the rows → nothing changes.
-        $result = $this->presenter->overlayFieldErrors($mappings, ['title' => 'Nope']);
-
-        $this->assertSame($mappings, $result);
-    }
-
-    public function testOverlayWithEmptyErrorsReturnsMappingsUnchanged(): void
-    {
-        $mappings = [
-            ['handle' => 'summary', 'error' => null],
-        ];
-
-        $this->assertSame($mappings, $this->presenter->overlayFieldErrors($mappings, []));
     }
 }

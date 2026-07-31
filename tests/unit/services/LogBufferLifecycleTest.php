@@ -17,6 +17,12 @@ use GlueAgency\Influx\services\LogsService;
  * queue worker keeps one dead buffer per log id it ever wrote. Reopening a log
  * after that has to keep working: bufferFor() recreates lazily, which is what
  * makes the flush-then-reopen path across queue steps safe.
+ *
+ * Plus the shape of what gets buffered, specced here because it is the same
+ * recordItem() → flush() seam: the row is built POSITIONALLY and inserted
+ * against ITEM_COLUMNS, so a drift between the two silently writes every value
+ * into its neighbour's column. The row assertions below read it back BY COLUMN
+ * NAME, which is what makes such a drift a failure rather than a corruption.
  */
 class LogBufferLifecycleTest extends Unit
 {
@@ -74,6 +80,76 @@ class LogBufferLifecycleTest extends Unit
         $this->assertSame(1, $logs->bufferedRowCount(5));
     }
 
+    public function testEveryBufferedValueLandsUnderItsOwnColumn(): void
+    {
+        $logs = $this->service();
+        $log = $this->log(11);
+        $mappings = [['handle' => 'title', 'changed' => true, 'children' => null]];
+
+        $logs->recordItem(
+            $log,
+            ItemAction::UPDATED,
+            42,
+            'abc',
+            'saved',
+            ['id'   => 'abc'],
+            ['body' => 'Bad HTML'],
+            ['title'],
+            $mappings,
+        );
+
+        $this->assertSame([
+            'logId'         => 11,
+            'elementId'     => 42,
+            'matchValue'    => 'abc',
+            'action'        => ItemAction::UPDATED->value,
+            'message'       => 'saved',
+            'fieldErrors'   => '{"body":"Bad HTML"}',
+            'changedFields' => '["title"]',
+            'payload'       => '{"id":"abc"}',
+            'mappings'      => '[{"handle":"title","changed":true,"children":null}]',
+        ], $logs->bufferedRowByColumn(11));
+
+        // The drill-down reads it straight back out of the column.
+        $this->assertSame($mappings, json_decode($logs->bufferedRowByColumn(11)['mappings'], true));
+    }
+
+    public function testAnOversizedSnapshotIsDroppedRatherThanStored(): void
+    {
+        $logs = $this->service();
+        $log = $this->log(12);
+
+        // One outlier item must not push a whole page's batch insert past
+        // max_allowed_packet — it just loses its drill-down detail.
+        $oversized = [['handle' => 'body', 'rawValue' => str_repeat('a', $logs->mappingsMaxBytes())]];
+
+        $logs->recordItem($log, ItemAction::UPDATED, 42, 'abc', mappings: $oversized);
+
+        $this->assertNull($logs->bufferedRowByColumn(12)['mappings']);
+    }
+
+    public function testACallWithoutASnapshotStoresNull(): void
+    {
+        $logs = $this->service();
+        $log = $this->log(13);
+
+        $logs->recordItem($log, ItemAction::SKIPPED, null, 'abc', 'no update');
+
+        $this->assertNull($logs->bufferedRowByColumn(13)['mappings']);
+    }
+
+    public function testAnEmptySnapshotIsStoredAsAnEmptyList(): void
+    {
+        $logs = $this->service();
+        $log = $this->log(14);
+
+        // "Presented, maps no fields" is not "nothing recorded": only the latter
+        // may read as a missing snapshot in the drill-down.
+        $logs->recordItem($log, ItemAction::UNCHANGED, 42, 'abc', mappings: []);
+
+        $this->assertSame('[]', $logs->bufferedRowByColumn(14)['mappings']);
+    }
+
     /**
      * The service with its two out-of-process reaches stubbed: the flush's batch
      * insert (recorded, and draining the buffer the way the real one does) and
@@ -102,6 +178,22 @@ class LogBufferLifecycleTest extends Unit
             public function bufferedRowCount(int $logId): int
             {
                 return isset($this->buffers[$logId]) ? $this->buffers[$logId]->count() : -1;
+            }
+
+            /**
+             * A buffered row keyed by the columns flush() would insert it under —
+             * the alignment the batch insert depends on.
+             *
+             * @return array<string, mixed>
+             */
+            public function bufferedRowByColumn(int $logId, int $index = 0): array
+            {
+                return array_combine(self::ITEM_COLUMNS, $this->buffers[$logId]->rows()[$index]);
+            }
+
+            public function mappingsMaxBytes(): int
+            {
+                return self::MAPPINGS_MAX_BYTES;
             }
 
             protected function invalidateErrorLogCount(): void

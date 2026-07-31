@@ -15,6 +15,7 @@ use GlueAgency\Influx\db\Table;
  * @property ?string $fieldErrors
  * @property ?string $changedFields
  * @property ?string $payload
+ * @property ?string $mappings
  * @property string $dateCreated
  * @property string $dateUpdated
  * @property string $uid

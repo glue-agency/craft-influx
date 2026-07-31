@@ -120,8 +120,8 @@ class LogsController extends AbstractController
     }
 
     /**
-     * Drill-down for one stored log item — the inspection, the stored-value
-     * overlays and the "link is gone" answer all live in
+     * Drill-down for one stored log item — the row is presented from what the
+     * run stored, degradations and the "link is gone" answer included, all in
      * {@see \GlueAgency\Influx\services\InspectorService::inspectStoredLogItem()}.
      */
     public function actionItem(int $id): Response
