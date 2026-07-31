@@ -7,12 +7,16 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Matrix as CraftMatrixField;
+use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\item\ChildResult;
+use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\sync\item\RemoteItem;
+use Throwable;
 
 /**
  * Mapping strategy for Craft's Matrix field. Turns a remote list into Matrix
@@ -64,7 +68,9 @@ use GlueAgency\Influx\sync\item\RemoteItem;
  * are resolved PER TYPE, and a current block of a type the feed doesn't
  * configure fingerprints on its type alone, so it always reads as a difference
  * (the feed is authoritative; the replace that drops it converges on the next
- * run).
+ * run). Those same fingerprints drive the inspectors' per-block drill-down
+ * ({@see collectChildren()}) — a read-only derivation ALONGSIDE change
+ * detection, never part of it.
  *
  * Known v1 limitation — array-valued child nodes mis-fan: a child node that
  * resolves to a flat array for ONE block is indistinguishable from per-block
@@ -75,6 +81,15 @@ use GlueAgency\Influx\sync\item\RemoteItem;
  */
 class Matrix extends Field
 {
+    /**
+     * Cap on the children one mapping row emits. A runaway feed — a node that
+     * fans out into thousands of blocks — would otherwise balloon the debug
+     * inspector's payload and the log rows a run stores, for no diagnostic gain:
+     * the first hundred already show what the mapping does. The cap is PER
+     * MAPPING ROW, so every Matrix row of a link gets its own hundred.
+     */
+    protected const CHILD_RESULT_LIMIT = 100;
+
     public static function craftFieldClass(): ?string
     {
         return CraftMatrixField::class;
@@ -433,6 +448,498 @@ class Matrix extends Field
         ksort($print['fields']);
 
         return $print;
+    }
+
+    /**
+     * Blocks — the noun the inspectors count this row's children with.
+     */
+    public function childrenKind(): ?string
+    {
+        return 'blocks';
+    }
+
+    /**
+     * Per-block drill-down for this row, derived from the value the field is
+     * receiving and the blocks the element still held before it. Read-only: it
+     * persists nothing and touches neither the parsed value nor the element, so
+     * it behaves the same on a dry run (where nothing was applied) as on a real
+     * one.
+     *
+     * Pairing runs two passes over the same per-block fingerprints
+     * {@see valueDiffers()} compares. The EXACT pass walks the incoming rows in
+     * order and lets each consume the first unconsumed current block with an
+     * identical fingerprint — that block comes out of the sync as it went in, so
+     * its child reads UNCHANGED. The POSITIONAL pass then hands every remaining
+     * row the first unconsumed block OF ITS TYPE, in current order, as a
+     * comparison partner (possibly none), and reads ADDED. There is deliberately
+     * no UPDATED for blocks: the sync is full-replace, so even a
+     * paired-but-different block is an add — the partner only supplies the
+     * Current column and the per-field changed flags. Current blocks nobody
+     * consumed follow the incoming ones as REMOVED: in the element, not in the
+     * feed.
+     *
+     * Accepted cost: this re-fingerprints what {@see hasChanged()} already
+     * fingerprinted. Both walks are bounded by the block count, and deriving the
+     * drill-down purely from the two values it is handed is what keeps it
+     * independent of whether — and how — the change check ran.
+     *
+     * @param mixed $incoming the parsed blocks array
+     * @param mixed $current the field's value from before apply() — a block query
+     * @return list<ChildResult>|null
+     */
+    public function collectChildren(FieldContext $context, mixed $incoming, mixed $current): ?array
+    {
+        if (! is_array($incoming)) {
+            return null;
+        }
+
+        $typeMappings = $context->mapping->blockMappings();
+
+        if ($typeMappings === []) {
+            return null;
+        }
+
+        $rows = array_values($incoming);
+        $blocks = $this->currentBlocks($current);
+
+        if ($rows === [] && $blocks === []) {
+            return null;
+        }
+
+        $mapped = $this->mappedLeaves($context);
+        $names = $this->blockTypeNames($context);
+        $pairing = $this->pairBlocks($rows, $blocks, $mapped);
+
+        $children = [];
+        $ordinals = [];
+        $lists = [];
+        $labels = [];
+
+        foreach ($rows as $i => $row) {
+            $type = (string) ($row['type'] ?? '');
+            $ordinal = $ordinals[$type] ?? 0;
+            $ordinals[$type] = $ordinal + 1;
+
+            $partnerIndex = $pairing['partners'][$i] ?? null;
+            $partner = $partnerIndex !== null ? $blocks[$partnerIndex] : null;
+            $typeMapping = $typeMappings[$type] ?? null;
+            $results = [];
+
+            if ($typeMapping !== null) {
+                if (! isset($lists[$type])) {
+                    $lists[$type] = $this->resolvedLists($context, $typeMapping);
+                }
+
+                $results = $this->incomingChildRows(
+                    $typeMapping,
+                    $row,
+                    $this->rawSlice($lists[$type], $ordinal),
+                    $partner,
+                    $pairing['actions'][$i],
+                    $mapped['leaves'][$type] ?? [],
+                );
+            }
+
+            // Memoized including the null a failed build yields, so a type that
+            // no longer resolves isn't retried once per block.
+            if (! array_key_exists($type, $labels)) {
+                $labels[$type] = $this->labelBlock($context, $type);
+            }
+
+            $children[] = new ChildResult(
+                title: $names[$type] ?? $type,
+                blockType: $type,
+                labelElement: $labels[$type],
+                action: $this->childActionLabel($context, $pairing['actions'][$i]),
+                mappingResults: $results,
+            );
+        }
+
+        foreach ($pairing['removed'] as $index) {
+            $block = $blocks[$index];
+            $type = $block->getType()->handle;
+            $typeMapping = $typeMappings[$type] ?? null;
+
+            $children[] = new ChildResult(
+                title: $names[$type] ?? $type,
+                blockType: $type,
+                // Narrowed for the slot's type: a current block travels as
+                // `object` here, for the reason {@see currentFingerprint()} gives.
+                labelElement: $block instanceof ElementInterface ? $block : null,
+                action: $this->childActionLabel($context, ChildAction::REMOVED),
+                mappingResults: $typeMapping !== null ? $this->removedChildRows($typeMapping, $block) : [],
+            );
+        }
+
+        return array_slice($children, 0, self::CHILD_RESULT_LIMIT);
+    }
+
+    /**
+     * The blocks the element currently holds, or none when they can't be read: a
+     * brand-new element's block query has no owner to query for, and the
+     * drill-down must never be the thing that takes a row down.
+     *
+     * @return list<object>
+     */
+    protected function currentBlocks(mixed $current): array
+    {
+        if (! is_object($current) || ! method_exists($current, 'all')) {
+            return [];
+        }
+
+        try {
+            return array_values($current->all());
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * The per-type comparison machinery the fingerprints and the child rows both
+     * read: each configured block type's mapped custom leaves (handle → the
+     * strategy that normalises that leaf) and its mapped native handles. Mirrors
+     * what {@see valueDiffers()} builds inline for the change check.
+     *
+     * @return array{leaves: array<string, array<string, ?Field>>, natives: array<string, list<string>>}
+     */
+    protected function mappedLeaves(FieldContext $context): array
+    {
+        $mapped = ['leaves' => [], 'natives' => []];
+
+        foreach ($context->mapping->blockMappings() as $typeHandle => $typeMapping) {
+            $mapped['leaves'][$typeHandle] = $this->childLeaves(
+                $context,
+                $typeHandle,
+                array_keys($this->activeCustomHandles($typeMapping)),
+            );
+            $mapped['natives'][$typeHandle] = array_keys($this->activeNativeHandles($typeMapping));
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * Pair incoming rows with current blocks — exact fingerprints first, then
+     * positionally within a type ({@see collectChildren()} documents why). Yields,
+     * per incoming index, its partner block's index (or null) and its action, plus
+     * the indexes of the current blocks nobody consumed, in current order.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @param list<object> $blocks
+     * @param array{leaves: array<string, array<string, ?Field>>, natives: array<string, list<string>>} $mapped
+     * @return array{partners: array<int, ?int>, actions: array<int, ChildAction>, removed: list<int>}
+     */
+    protected function pairBlocks(array $rows, array $blocks, array $mapped): array
+    {
+        $incomingPrints = [];
+
+        foreach ($rows as $row) {
+            $type = (string) ($row['type'] ?? '');
+            $incomingPrints[] = json_encode($this->incomingFingerprint(
+                $row,
+                $mapped['leaves'][$type] ?? [],
+                $mapped['natives'][$type] ?? [],
+            ));
+        }
+
+        $currentPrints = [];
+        $currentTypes = [];
+
+        foreach ($blocks as $block) {
+            $type = $block->getType()->handle;
+            $currentTypes[] = $type;
+            $currentPrints[] = json_encode($this->currentFingerprint(
+                $block,
+                $mapped['leaves'][$type] ?? [],
+                $mapped['natives'][$type] ?? [],
+            ));
+        }
+
+        $partners = [];
+        $actions = [];
+        $consumed = [];
+
+        foreach ($incomingPrints as $i => $print) {
+            $match = $this->firstUnconsumed($currentPrints, $consumed, $print);
+
+            if ($match === null) {
+                continue;
+            }
+
+            $consumed[$match] = true;
+            $partners[$i] = $match;
+            $actions[$i] = ChildAction::UNCHANGED;
+        }
+
+        foreach ($rows as $i => $row) {
+            if (isset($actions[$i])) {
+                continue;
+            }
+
+            $match = $this->firstUnconsumed($currentTypes, $consumed, (string) ($row['type'] ?? ''));
+
+            if ($match !== null) {
+                $consumed[$match] = true;
+            }
+
+            $partners[$i] = $match;
+            $actions[$i] = ChildAction::ADDED;
+        }
+
+        return [
+            'partners' => $partners,
+            'actions'  => $actions,
+            'removed'  => array_values(array_diff(array_keys($blocks), array_keys($consumed))),
+        ];
+    }
+
+    /**
+     * The index of the first not-yet-consumed entry equal to `$needle` — the one
+     * greedy step both pairing passes take, over fingerprints and then over type
+     * handles.
+     *
+     * @param list<mixed> $values
+     * @param array<int, true> $consumed
+     */
+    protected function firstUnconsumed(array $values, array $consumed, mixed $needle): ?int
+    {
+        foreach ($values as $index => $value) {
+            if (! isset($consumed[$index]) && $value === $needle) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One block type's active sub-mappings resolved to per-block value lists —
+     * the same resolve-and-{@see valueList()} step {@see appendTypeBlocks()} zips
+     * into blocks, so indexing a list by a block's ordinal among the incoming
+     * rows of its type recovers the feed value that block was built from. Called
+     * once per type per collection (the caller memoizes), because one resolve
+     * walks the whole item and the same list serves every block of the type.
+     *
+     * @return array{native: array<string, list<mixed>>, fields: array<string, list<mixed>>}
+     */
+    protected function resolvedLists(FieldContext $context, FieldMapping $typeMapping): array
+    {
+        $lists = ['native' => [], 'fields' => []];
+
+        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
+            $lists['native'][$sub->handle] = $this->valueList($sub->resolve($context->item));
+        }
+
+        foreach ($this->activeSubMappings($typeMapping) as $sub) {
+            $lists['fields'][$sub->handle] = $this->valueList($sub->resolve($context->item));
+        }
+
+        return $lists;
+    }
+
+    /**
+     * One block's slice of its type's value lists: each mapped handle's feed
+     * value at this block's ordinal, null where the list doesn't reach that far
+     * (the per-index missing value).
+     *
+     * @param array{native: array<string, list<mixed>>, fields: array<string, list<mixed>>} $lists
+     * @return array{native: array<string, mixed>, fields: array<string, mixed>}
+     */
+    protected function rawSlice(array $lists, int $ordinal): array
+    {
+        $slice = ['native' => [], 'fields' => []];
+
+        foreach ($lists as $channel => $handles) {
+            foreach ($handles as $handle => $values) {
+                $slice[$channel][$handle] = $values[$ordinal] ?? null;
+            }
+        }
+
+        return $slice;
+    }
+
+    /**
+     * The mapped rows of one incoming block — the type's active NATIVE
+     * sub-mappings first, then its custom ones: the order
+     * {@see appendTypeBlocks()} fills a row in.
+     *
+     * `$raw` is this block's slice of the per-type value lists
+     * ({@see rawSlice()}). A handle the row doesn't carry AND the slice has no
+     * value for at this index is the per-index missing value — the case
+     * {@see appendTypeBlocks()} leaves the key off the row for — so it reports as
+     * unaddressed rather than as a bare null, and never as changed.
+     *
+     * @param array<string, mixed> $row
+     * @param array{native: array<string, mixed>, fields: array<string, mixed>} $raw
+     * @param ?object $partner the current block this row compares against
+     * @param array<string, ?Field> $leaves
+     * @return list<MappingResult>
+     */
+    protected function incomingChildRows(
+        FieldMapping $typeMapping,
+        array $row,
+        array $raw,
+        ?object $partner,
+        ChildAction $action,
+        array $leaves,
+    ): array {
+        $fields = is_array($row['fields'] ?? null) ? $row['fields'] : [];
+        $results = [];
+
+        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
+            $rawValue = $raw['native'][$sub->handle] ?? null;
+            $parsed = $row[$sub->handle] ?? null;
+            $currentValue = $partner !== null ? ($partner->{$sub->handle} ?? null) : null;
+            $unaddressed = ! array_key_exists($sub->handle, $row) && $rawValue === null;
+
+            $results[] = new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: true,
+                rawValue: $rawValue,
+                parsedValue: $parsed,
+                currentValue: $currentValue,
+                changed: ! $unaddressed && $this->childValueChanged($action, $partner, null, $parsed, $currentValue),
+                unaddressed: $unaddressed,
+            );
+        }
+
+        foreach ($this->activeSubMappings($typeMapping) as $sub) {
+            $rawValue = $raw['fields'][$sub->handle] ?? null;
+            $parsed = $fields[$sub->handle] ?? null;
+            $currentValue = $partner !== null ? $this->currentLeafValue($partner, $sub->handle) : null;
+            $unaddressed = ! array_key_exists($sub->handle, $fields) && $rawValue === null;
+            $leaf = $leaves[$sub->handle] ?? null;
+
+            $results[] = new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: false,
+                rawValue: $rawValue,
+                parsedValue: $parsed,
+                currentValue: $currentValue,
+                changed: ! $unaddressed && $this->childValueChanged($action, $partner, $leaf, $parsed, $currentValue),
+                unaddressed: $unaddressed,
+            );
+        }
+
+        return $results;
+    }
+
+    /**
+     * The mapped rows of a block the replace drops: the same native-then-custom
+     * walk, but there is no feed side to show — raw and parsed stay null and
+     * `changed` stays unevaluated. A block of a type the feed doesn't configure
+     * has no mapped handles at all, so its child shows no rows.
+     *
+     * @return list<MappingResult>
+     */
+    protected function removedChildRows(FieldMapping $typeMapping, object $block): array
+    {
+        $results = [];
+
+        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
+            $results[] = new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: true,
+                rawValue: null,
+                currentValue: $block->{$sub->handle} ?? null,
+                changed: null,
+            );
+        }
+
+        foreach ($this->activeSubMappings($typeMapping) as $sub) {
+            $results[] = new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: false,
+                rawValue: null,
+                currentValue: $this->currentLeafValue($block, $sub->handle),
+                changed: null,
+            );
+        }
+
+        return $results;
+    }
+
+    /**
+     * Whether one incoming row's leaf differs from its partner block's. An
+     * UNCHANGED child was fingerprint-identical, so nothing on it can have
+     * changed; a paired one compares through the strategy that owns the leaf (a
+     * native passes none and lands on the shared normaliser); an unpaired one has
+     * nothing to compare against, so any value it carries is new.
+     */
+    protected function childValueChanged(
+        ChildAction $action,
+        ?object $partner,
+        ?Field $leaf,
+        mixed $parsed,
+        mixed $current,
+    ): bool {
+        if ($action === ChildAction::UNCHANGED) {
+            return false;
+        }
+
+        if ($partner === null) {
+            return $parsed !== null;
+        }
+
+        return $this->leafNormalize($leaf, $parsed) !== $this->leafNormalize($leaf, $current);
+    }
+
+    /**
+     * One current block's stored value for a mapped custom handle, read the way
+     * {@see currentFingerprint()} reads it.
+     */
+    protected function currentLeafValue(object $block, string $handle): mixed
+    {
+        return $block->getSerializedFieldValues([$handle])[$handle] ?? null;
+    }
+
+    /**
+     * The action string a child carries: the hypothetical label on a dry run, the
+     * committed value on a real one ({@see ChildAction::dryRunLabel()}).
+     */
+    protected function childActionLabel(FieldContext $context, ChildAction $action): string
+    {
+        return $context->dryRun ? $action->dryRunLabel() : $action->value;
+    }
+
+    /**
+     * The layout carrier for one incoming block's rows — the same throwaway block
+     * {@see parse()} coerces that block's values through. Presentation only, so a
+     * type that no longer builds degrades to no carrier instead of throwing.
+     */
+    protected function labelBlock(FieldContext $context, string $typeHandle): ?ElementInterface
+    {
+        try {
+            return $this->blockElement($context, $typeHandle);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The field's block types as handle → display name, for the drill-down
+     * titles. Extracted alongside {@see blockTypeHandles()} so tests can stub
+     * block-type discovery without booting Craft.
+     *
+     * @return array<string, string>
+     */
+    protected function blockTypeNames(FieldContext $context): array
+    {
+        $names = [];
+
+        foreach (Compat::matrixBlockTypes($context->craftField) as $blockType) {
+            $names[$blockType['handle']] = $blockType['name'];
+        }
+
+        return $names;
     }
 
     /**
