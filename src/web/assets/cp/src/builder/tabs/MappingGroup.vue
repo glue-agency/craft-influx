@@ -1,6 +1,18 @@
 <template>
     <v-mapping-group-card :label="group.label" :data-group="group.label">
         <template v-slot:tags>
+            <!-- Both .stop modifiers are load-bearing: the card header is its
+                 own toggle, on click AND on keydown.enter/.space — and those
+                 key handlers carry .prevent, which would swallow the button's
+                 native Enter → click before it ever fires. -->
+            <button v-if="hasMappingData && ! readOnly"
+                    type="button"
+                    class="influx-clear-link clear-group"
+                    :title="$t('Clear every mapping in this group')"
+                    v-text="$t('clear nodes')"
+                    @click.stop="clearGroup"
+                    @keydown.stop></button>
+
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
@@ -15,18 +27,6 @@
             </span>
 
             <span class="pill pill-count" :title="$t('Total fields in this group')" v-text="group.fields.length"></span>
-
-            <!-- Both .stop modifiers are load-bearing: the card header is its
-                 own toggle, on click AND on keydown.enter/.space — and those
-                 key handlers carry .prevent, which would swallow the button's
-                 native Enter → click before it ever fires. -->
-            <button v-if="hasMappingData && ! readOnly"
-                    type="button"
-                    class="btn small clear-group"
-                    :title="$t('Clear every mapping in this group')"
-                    v-text="$t('Clear')"
-                    @click.stop="clearGroup"
-                    @keydown.stop></button>
         </template>
 
         <div class="influx-mapping-headings">
