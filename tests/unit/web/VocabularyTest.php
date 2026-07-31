@@ -3,13 +3,14 @@
 namespace GlueAgency\Influx\Tests\unit\web;
 
 use Codeception\Test\Unit;
+use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\web\Vocabulary;
 
 /**
  * The contract between the PHP enums and the Vue apps: every action string the
- * apps can render must arrive with a colour, and the log viewer's counters must
- * be exactly the counted actions.
+ * apps can render — item-level and per-child alike — must arrive with a colour,
+ * and the log viewer's counters must be exactly the counted actions.
  *
  * Also pins `src/web/assets/cp/src/lib/vocabulary.generated.json` — the copy the
  * JS boots from before a payload arrives — against this payload, so it can't
@@ -26,7 +27,7 @@ class VocabularyTest extends Unit
     {
         $colors = Vocabulary::actionColors();
 
-        foreach (ItemAction::cases() as $case) {
+        foreach ([...ItemAction::cases(), ...ChildAction::cases()] as $case) {
             $this->assertArrayHasKey($case->value, $colors, "Missing colour for '{$case->value}'.");
             $this->assertSame($case->color(), $colors[$case->value]);
 
@@ -40,12 +41,42 @@ class VocabularyTest extends Unit
     {
         $known = [];
 
-        foreach (ItemAction::cases() as $case) {
+        foreach ([...ItemAction::cases(), ...ChildAction::cases()] as $case) {
             $known[$case->value] = true;
             $known[$case->dryRunLabel()] = true;
         }
 
         $this->assertSame(array_keys($known), array_keys(Vocabulary::actionColors()));
+    }
+
+    public function testChildOnlyActionsAreCovered(): void
+    {
+        // The relation-level outcomes only ChildAction has: a map built from
+        // ItemAction alone would badge these neutral instead of green/red.
+        $colors = Vocabulary::actionColors();
+
+        $this->assertSame('live', $colors['added'] ?? null);
+        $this->assertSame('live', $colors['would-add'] ?? null);
+        $this->assertSame('expired', $colors['removed'] ?? null);
+        $this->assertSame('expired', $colors['would-remove'] ?? null);
+    }
+
+    public function testItemAndChildActionsAgreeOnTheColoursTheyShare(): void
+    {
+        // A drill-down row and the item row above it must badge a shared value
+        // ('created', 'unchanged', 'error', …) the same way — and the merged map
+        // can only hold one colour per key, so a divergence would silently make
+        // one of the two wrong.
+        foreach (ItemAction::cases() as $item) {
+            $child = ChildAction::tryFrom($item->value);
+
+            if ($child === null) {
+                continue;
+            }
+
+            $this->assertSame($item->color(), $child->color(), "Colour for '{$item->value}' diverged.");
+            $this->assertSame($item->dryRunLabel(), $child->dryRunLabel(), "Dry-run label for '{$item->value}' diverged.");
+        }
     }
 
     public function testSweepDryRunLabelsAreCovered(): void

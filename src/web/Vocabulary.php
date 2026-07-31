@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\web;
 
 use Craft;
+use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\enums\ItemAction;
 
 /**
@@ -12,7 +13,7 @@ use GlueAgency\Influx\enums\ItemAction;
  * Rides along in each app's bootstrap config (the `data-influx-log` /
  * `data-influx-debug` attributes the host templates render), the same channel
  * every other server value reaches them through, so the JS never re-encodes
- * what {@see ItemAction} already knows.
+ * what {@see ItemAction} and {@see ChildAction} already know.
  * `src/web/assets/cp/src/lib/vocabulary.js` consumes it; the generated default
  * it boots from is a copy of this payload, pinned by
  * {@see \GlueAgency\Influx\Tests\unit\web\VocabularyTest}.
@@ -29,9 +30,12 @@ class Vocabulary
 
     /**
      * Every action string the apps can render → its badge colour: each
-     * {@see ItemAction} value plus its {@see ItemAction::dryRunLabel()}, which
-     * shares the committed action's colour. UNCHANGED and ERROR label their dry
-     * run exactly as their commit, so those collapse onto a single key.
+     * {@see ItemAction} and {@see ChildAction} value plus its `dryRunLabel()`,
+     * which shares the committed action's colour. UNCHANGED and ERROR label
+     * their dry run exactly as their commit, so those collapse onto a single
+     * key, as does every key the two enums have in common — they agree on the
+     * colour by construction, so the merge order only decides where a shared key
+     * sits in the map.
      *
      * @return array<string, string>
      */
@@ -40,6 +44,11 @@ class Vocabulary
         $colors = [];
 
         foreach (ItemAction::cases() as $case) {
+            $colors[$case->value] = $case->color();
+            $colors[$case->dryRunLabel()] = $case->color();
+        }
+
+        foreach (ChildAction::cases() as $case) {
             $colors[$case->value] = $case->color();
             $colors[$case->dryRunLabel()] = $case->color();
         }

@@ -15,7 +15,11 @@
         "deleted": "expired",
         "would-delete": "expired",
         "deleted-for-site": "expired",
-        "would-delete-for-site": "expired"
+        "would-delete-for-site": "expired",
+        "added": "live",
+        "would-add": "live",
+        "removed": "expired",
+        "would-remove": "expired"
     },
     "counters": [
         {
