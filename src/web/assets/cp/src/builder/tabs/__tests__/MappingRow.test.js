@@ -15,6 +15,7 @@ vi.mock('../../api.js', () => ({
 import * as api from '../../api.js';
 import { store } from '../../store.js';
 import MappingRow from '../MappingRow.vue';
+import SchemaForm from '../../schema/SchemaForm.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
 import fixture from '../../../../tests/fixtures/mappable-field.json';
 
@@ -164,9 +165,10 @@ describe('MappingRow element default', () => {
 
 /**
  * The row-level "Clear": one press wipes the field's whole mapping, extras
- * included. The row is the largest scope this can work at — it owns the
- * extras models it re-seeds, which sibling rows (seeded once in data()) do
- * not, hence no group- or link-level equivalent.
+ * included. Nothing but a store write — the extras models are computed off
+ * the store, so the cards below redraw from it. The last spec here pins that
+ * property from the other side (a wipe the row didn't perform), because it
+ * is what lets the group header carry a Clear of its own.
  */
 describe('MappingRow clear', () => {
     beforeEach(() => {
@@ -198,7 +200,7 @@ describe('MappingRow clear', () => {
         expect(store.link.mappings).toEqual({ title: { node: 'meta.title' } });
     });
 
-    it('re-seeds the extras models so the sub-field cards redraw empty', async () => {
+    it('redraws the sub-field cards empty', async () => {
         await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
         const wrapper = mountRow();
 
@@ -206,7 +208,26 @@ describe('MappingRow clear', () => {
 
         await clearBtn(wrapper).trigger('click');
 
-        expect(wrapper.vm.extrasFields).toEqual({});
+        expect(wrapper.findComponent(SchemaForm).props('fields')).toEqual({});
+        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('');
+    });
+
+    it('redraws them for a wipe the row did not perform either', async () => {
+        // The regression the group header's Clear rests on: it rewrites
+        // `mappings` for handles other than the pressed row's, so every OTHER
+        // row has to redraw off the store on its own. Seeding the extras
+        // models in data() — as this row used to — left them rendering
+        // sub-field handles the wipe had already dropped.
+        await loadStore({
+            specs: { options: { format: 'raw' }, fields: { col1: { node: 'specs.label' } } },
+        });
+        const wrapper = mountRow();
+
+        store.link.mappings = {};
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.findComponent(SchemaForm).props('fields')).toEqual({});
+        expect(wrapper.findComponent(SchemaForm).props('options')).toEqual({});
         expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('');
     });
 

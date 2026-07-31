@@ -74,6 +74,25 @@ export function clearMapping(mappings, handle) {
 }
 
 /**
+ * Drop a whole list of field mappings in one write — the group-level "Clear"
+ * affordance, which has to land as a single store assignment so the rows it
+ * wipes re-render once. Same rules as clearMapping per handle: pure, never
+ * mutates, and an unknown handle is a no-op.
+ *
+ * @param {Object<string, import('../types.js').Mapping>} mappings
+ * @param {string[]} handles
+ * @returns {Object<string, import('../types.js').Mapping>}
+ */
+export function clearMappings(mappings, handles) {
+    const next = { ...mappings };
+    for (const handle of handles || []) {
+        delete next[handle];
+    }
+
+    return next;
+}
+
+/**
  * Render a node path as a select option. The label keeps the raw dot
  * syntax ('meta.id') so typing a dot-path into the dropdown search matches.
  *

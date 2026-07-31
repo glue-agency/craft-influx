@@ -137,6 +137,8 @@ class LinkBuilderTranslations
                 'Fields with an active source node',
                 'mapped',
                 'Total fields in this group',
+                'Clear every mapping in this group',
+                'Clear',
                 'Field',
                 'Source node',
                 'Default value',

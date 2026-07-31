@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearMapping, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { clearMapping, clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -86,6 +86,36 @@ describe('clearMapping', () => {
         clearMapping(before, 'title');
 
         expect(before).toEqual({ title: { node: 'name' } });
+    });
+});
+
+describe('clearMappings', () => {
+    it('drops every listed handle in one pass and keeps the rest', () => {
+        const before = {
+            title: { node: 'name' },
+            slug: { node: 'meta.slug' },
+            author: { default: '12' },
+        };
+
+        expect(clearMappings(before, ['title', 'author']))
+            .toEqual({ slug: { node: 'meta.slug' } });
+    });
+
+    it('ignores handles that carry no mapping', () => {
+        expect(clearMappings({ title: { node: 'name' } }, ['slug', 'postDate']))
+            .toEqual({ title: { node: 'name' } });
+    });
+
+    it('handles an empty handle list and empty mappings', () => {
+        expect(clearMappings({ title: { node: 'name' } }, [])).toEqual({ title: { node: 'name' } });
+        expect(clearMappings({}, ['title'])).toEqual({});
+    });
+
+    it('never mutates the input', () => {
+        const before = { title: { node: 'name' }, slug: { node: 'meta.slug' } };
+        clearMappings(before, ['title', 'slug']);
+
+        expect(before).toEqual({ title: { node: 'name' }, slug: { node: 'meta.slug' } });
     });
 });
 

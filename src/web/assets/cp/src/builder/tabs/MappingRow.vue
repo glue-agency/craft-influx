@@ -35,7 +35,11 @@
                   :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
                   v-text="$t('missing mapping')"></span>
 
-            <!-- `.stop` keeps the press off the cell's extras toggle. The
+            <!-- Rendered but not shown until the row is hovered or focused
+                 (mapping-row.css) — the group header carries the always-on
+                 Clear, this one is the per-field shortcut.
+
+                 `.stop` keeps the press off the cell's extras toggle. The
                  cell listens for click only, so a keyboard press — which
                  reaches the button as a native Enter → click — is covered
                  by the same modifier. -->
@@ -115,19 +119,19 @@
              :data-expanded="extrasExpanded ? 'true' : 'false'"
         >
             <div v-show="extrasExpanded" class="extras-body">
+                <!-- The four value models are computed off the store (see
+                     their get/set pair below), so a v-model binding is the
+                     whole write path: the setter prunes and writes the
+                     matching mapping channel. -->
                 <v-schema-form
                     :schema="extrasSchema"
-                    :options="extrasOptions"
-                    :fields="extrasFields"
-                    :native-fields="extrasNativeFields"
-                    :blocks="extrasBlocks"
+                    v-model:options="extrasOptions"
+                    v-model:fields="extrasFields"
+                    v-model:native-fields="extrasNativeFields"
+                    v-model:blocks="extrasBlocks"
                     :node-options="extrasNodeOptions"
                     :discovered-nodes="discoveredNodes"
                     :read-only="readOnly"
-                    @update:options="onOptionsUpdate"
-                    @update:fields="onFieldsUpdate"
-                    @update:native-fields="onNativeFieldsUpdate"
-                    @update:blocks="onBlocksUpdate"
                 />
             </div>
         </div>
@@ -166,10 +170,12 @@ import { clearMapping, discoveredNodes as reportNodes, mergeNodeOptions, pruneEm
  * straight back into `link.mappings[handle]` on the reactive store; the
  * parent watches the store via the dirty flag.
  *
- * The row owns the extras' local `extrasOptions` / `extrasFields` /
- * `extrasNativeFields` / `extrasBlocks` models (seeded from the saved
- * mapping) and writes them pruned via writeMapping(), which is the shape
- * that lands in Project Config.
+ * The extras' `extrasOptions` / `extrasFields` / `extrasNativeFields` /
+ * `extrasBlocks` models are computed straight off the saved mapping, with
+ * setters that write them pruned via writeMapping() — the shape that lands
+ * in Project Config. Nothing is cached in data(), which is what lets code
+ * OUTSIDE the row (a group-level clear) rewrite this handle and have the
+ * cards below redraw from the store.
  */
 export default {
     name: 'MappingRow',
@@ -182,21 +188,11 @@ export default {
     },
 
     data() {
-        const saved = store.link.mappings?.[this.field.handle] || {};
-
         return {
-            // Rows with a saved mapping start with their extras open.
-            extrasExpanded: Object.keys(saved).length > 0,
-            // Local extras models, seeded once from the saved mapping —
-            // SchemaForm edits land here first, then flow to the store
-            // pruned via writeMapping(). `extrasFields` /
-            // `extrasNativeFields` / `extrasBlocks` re-hydrate saved
-            // sub-field mappings (Table columns, asset alt/title, Matrix
-            // per-block-type children) on edit.
-            extrasOptions: { ...(saved.options || {}) },
-            extrasFields: { ...(saved.fields || {}) },
-            extrasNativeFields: { ...(saved.nativeFields || {}) },
-            extrasBlocks: { ...(saved.blocks || {}) },
+            // Rows with a saved mapping start with their extras open. Panel
+            // state, not value state — the one thing here that IS local, and
+            // that a wipe of the mapping deliberately leaves alone.
+            extrasExpanded: Object.keys(store.link.mappings?.[this.field.handle] || {}).length > 0,
         };
     },
 
@@ -214,6 +210,47 @@ export default {
         // into the same handle's sub-tree.
         mapping() {
             return this.link.mappings?.[this.field.handle] || {};
+        },
+
+        /**
+         * The four extras value models — one per mapping channel, each
+         * DERIVED from the saved mapping rather than cached in data(). That
+         * is the whole reason a clear from outside this row (the group
+         * header's) redraws the SchemaForm cards below: there is no local
+         * copy left holding handles the wipe already dropped.
+         *
+         * Every getter hands back a fresh shallow copy so SchemaForm's props
+         * never alias the store object it is about to emit a replacement for.
+         *
+         * Round-tripping through the pruned store is behaviour-neutral:
+         * SchemaForm.valueFor() falls back to a node's declared `default`
+         * for keys the store doesn't carry, and every option pruning drops
+         * (`''` / `false`) is falsy — matching the falsy-or-absent default
+         * of every node that can produce one.
+         */
+        extrasOptions: {
+            get() { return { ...(this.mapping.options || {}) }; },
+            set(options) { this.writeMapping('options', pruneEmpty(options)); },
+        },
+
+        // `extrasFields` / `extrasNativeFields` / `extrasBlocks` carry the
+        // saved sub-field mappings (Table columns, asset alt/title, Matrix
+        // per-block-type children). Their sub-components already emit fully
+        // merged, self-pruned maps, so writeMapping's own empty-slot rule is
+        // all the pruning they need.
+        extrasFields: {
+            get() { return { ...(this.mapping.fields || {}) }; },
+            set(fields) { this.writeMapping('fields', fields); },
+        },
+
+        extrasNativeFields: {
+            get() { return { ...(this.mapping.nativeFields || {}) }; },
+            set(nativeFields) { this.writeMapping('nativeFields', nativeFields); },
+        },
+
+        extrasBlocks: {
+            get() { return { ...(this.mapping.blocks || {}) }; },
+            set(blocks) { this.writeMapping('blocks', blocks); },
         },
 
         // The node schema the PHP strategy declared for this field type.
@@ -317,17 +354,13 @@ export default {
     methods: {
         /**
          * Wipe the whole field mapping — every slot and sub-field channel at
-         * once. A ROW-level clear is safe precisely because the row owns the
-         * extras models: re-seeding them here is what redraws the SchemaForm
-         * cards below empty. A group- or link-level clear couldn't — sibling
-         * rows seed their models once in data(), so they'd keep rendering
-         * handles the wipe already removed from the store.
+         * once. One store write is the entire operation: the extras models
+         * are computed off that store, so the SchemaForm cards below redraw
+         * empty on their own. The same holds for a wipe coming from OUTSIDE
+         * the row (the group header's Clear), which is what makes a
+         * group-level clear safe.
          */
         clearRow() {
-            this.extrasOptions = {};
-            this.extrasFields = {};
-            this.extrasNativeFields = {};
-            this.extrasBlocks = {};
             this.link.mappings = clearMapping(this.link.mappings, this.field.handle);
         },
 
@@ -363,29 +396,6 @@ export default {
             // single-element field, the list for a multi-relation one, null on
             // clear (which writeMapping prunes away).
             this.writeMapping('default', value);
-        },
-
-        // SchemaForm emits land here directly: keep the local model in
-        // sync, then write the store — pruned for `options`, so Project
-        // Config YAML doesn't fill up with noise keys.
-        onOptionsUpdate(options) {
-            this.extrasOptions = options;
-            this.writeMapping('options', pruneEmpty(options));
-        },
-
-        onFieldsUpdate(fields) {
-            this.extrasFields = fields;
-            this.writeMapping('fields', fields);
-        },
-
-        onNativeFieldsUpdate(nativeFields) {
-            this.extrasNativeFields = nativeFields;
-            this.writeMapping('nativeFields', nativeFields);
-        },
-
-        onBlocksUpdate(blocks) {
-            this.extrasBlocks = blocks;
-            this.writeMapping('blocks', blocks);
         },
 
         /**
