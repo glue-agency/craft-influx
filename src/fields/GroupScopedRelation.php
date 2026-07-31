@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\fields;
 
-use Craft;
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
@@ -69,6 +68,14 @@ abstract class GroupScopedRelation extends Relation
      * Create the element in the field's configured group. An unresolvable group
      * means there's nowhere to put it, so nothing is created — bailing beats
      * guessing a group.
+     *
+     * A REFUSED save is the other kind of "no element" entirely, and it throws
+     * ({@see Relation::persistNewElement()}): a taken title is the everyday case
+     * here — the very tag the feed asks for already exists, just not where this
+     * lookup looked — and handing back null for it detached the entry's tags.
+     *
+     * @throws \GlueAgency\Influx\exceptions\MappingValueException when the new
+     * element refuses to save
      */
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
@@ -84,7 +91,7 @@ abstract class GroupScopedRelation extends Relation
         $element->groupId = $groupId;
         $element->title = (string) $value;
 
-        return Craft::$app->getElements()->saveElement($element, true) ? $element : null;
+        return $this->persistNewElement($element, $value);
     }
 
     /** Group id (this environment) from a `<prefix>:UID` source key, or null. */

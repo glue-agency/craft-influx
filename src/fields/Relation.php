@@ -9,6 +9,7 @@ use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
 use craft\helpers\Db;
 use craft\models\FieldLayout;
+use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
@@ -180,7 +181,18 @@ abstract class Relation extends RelationalField
      *
      * A freshly created element is written back into the run's lookup cache to
      * flip the cached miss to a hit — otherwise later items carrying the same
-     * reference re-create it and produce duplicates.
+     * reference re-create it and produce duplicates. Only a create that RETURNED
+     * reaches that write: one that threw takes the whole parse with it, so
+     * nothing half-created is ever cached.
+     *
+     * A REFUSED creation throws instead of contributing nothing
+     * ({@see persistNewElement()}). It has to: a reference that silently resolves
+     * to nothing leaves the parse with fewer ids than the feed asked for — with
+     * every reference in that boat, none at all, which returns null and lets
+     * {@see RelationalField::apply()} write [] and DETACH the relations the entry
+     * already had. The throw lands on the mapping's row
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyCustomField()})
+     * and the field is left exactly as it was.
      *
      * Ids are de-duplicated, keeping first-seen order. A collapsed node path
      * repeats its value once per parent row — `sessions.…room.location.id` on an
@@ -188,6 +200,9 @@ abstract class Relation extends RelationalField
      * relates an element once however many times it is passed, so leaving the
      * repeats in would both write a pointless list and leave the field reading
      * as changed against the stored ids on every sync.
+     *
+     * @throws MappingValueException when a reference the feed carries can't be
+     * created
      */
     public function parse(FieldContext $context): mixed
     {
@@ -349,9 +364,60 @@ abstract class Relation extends RelationalField
      * Create the element when no match was found and `options.create` is on.
      * Never called under dry-run. Default: return null (no create). Override
      * per subclass.
+     *
+     * Contract for implementations: null means "nothing was created, and that's
+     * fine" — this flavour doesn't create at all (the base), or the precondition
+     * for creating isn't met (no resolvable group / section to put the element
+     * in). A save the element REFUSED is emphatically not that case: it must
+     * throw a {@see MappingValueException} ({@see persistNewElement()} does), so
+     * the mapping errors out instead of quietly handing back one element short.
+     *
+     * @throws MappingValueException when an implementation's save is refused
      */
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
         return null;
+    }
+
+    /**
+     * Persist an element a {@see createMissing()} implementation just built, or
+     * fail the mapping. Craft returning false is a validation failure that did NOT
+     * persist, and the same discipline
+     * {@see RelationalField::persistSubElement()} holds for sub-element saves
+     * applies here: "a save that returns false WITHOUT throwing is an ERROR row,
+     * never a success row". Returning null instead cost the entry its existing
+     * relations ({@see parse()}).
+     *
+     * @throws MappingValueException when the new element refuses to save
+     */
+    protected function persistNewElement(ElementInterface $element, mixed $value): ElementInterface
+    {
+        if (! $this->saveNewElement($element)) {
+            throw new MappingValueException($this->createFailureMessage($element, $value));
+        }
+
+        return $element;
+    }
+
+    /**
+     * The create-time save, extracted so tests can stub persistence without
+     * booting Craft (as {@see RelationalField::saveSubElement()} does for
+     * sub-elements). Validation stays ON: an element the feed conjures has to
+     * clear the same bar as one made in the CP.
+     */
+    protected function saveNewElement(ElementInterface $element): bool
+    {
+        return Craft::$app->getElements()->saveElement($element, true);
+    }
+
+    /**
+     * Name the reference that couldn't be created, with the element's validation
+     * errors. The FEED VALUE is the "who" here — a never-saved element has no id
+     * and its label is just the value again — because that's what ties the row
+     * back to the remote item the operator has to go fix.
+     */
+    protected function createFailureMessage(ElementInterface $element, mixed $value): string
+    {
+        return $this->withValidationErrors("Failed to create related element '" . (string) $value . "'.", $element);
     }
 }

@@ -32,6 +32,13 @@ use Throwable;
  * Only a handle with no mapping at all ({@see FieldMapping::isActive()} false)
  * is left untouched.
  *
+ * The clearing policy covers empty and unresolved values — NOT failed writes. A
+ * relation whose referenced element could not be created throws
+ * ({@see \GlueAgency\Influx\fields\Relation::persistNewElement()}), so the row
+ * lands under the error policy above and the field keeps what it had; only the
+ * feed genuinely going empty clears it. An empty write is a decision; a refused
+ * one is an error, and the two must never look alike.
+ *
  * Change detection: a row counts as "changed" only when the value it writes
  * differs from what the element already holds — custom fields via
  * {@see \GlueAgency\Influx\fields\Field::hasChanged()}, native attributes via

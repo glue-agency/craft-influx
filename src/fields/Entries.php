@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\fields;
 
-use Craft;
 use craft\base\ElementInterface;
 use craft\db\Table as CraftTable;
 use craft\elements\db\ElementQueryInterface;
@@ -103,6 +102,13 @@ class Entries extends Relation
     /**
      * Without an explicit, resolvable create target nothing is created — bailing
      * beats guessing a section.
+     *
+     * A REFUSED save throws instead ({@see Relation::persistNewElement()}):
+     * resolving to nothing would thin the relation the feed spelled out, or clear
+     * it when no reference survives.
+     *
+     * @throws \GlueAgency\Influx\exceptions\MappingValueException when the new
+     * entry refuses to save
      */
     protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
     {
@@ -112,16 +118,14 @@ class Entries extends Relation
             return null;
         }
 
-        $entry = new CraftEntryElement();
+        $class = $this->elementType();
+        /** @var CraftEntryElement $entry */
+        $entry = new $class();
         $entry->sectionId = $sectionId;
         $entry->typeId = $typeId;
         $entry->title = (string) $value;
 
-        if (! Craft::$app->getElements()->saveElement($entry, true)) {
-            return null;
-        }
-
-        return $entry;
+        return $this->persistNewElement($entry, $value);
     }
 
     /**

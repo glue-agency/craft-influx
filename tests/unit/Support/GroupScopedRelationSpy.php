@@ -14,6 +14,9 @@ use GlueAgency\Influx\sync\FieldContext;
  * protected hooks. Stubs the two halves that need a booted Craft — the UID →
  * row-id lookup and the group service call — recording what the shared base
  * asked for.
+ *
+ * Pair it with {@see RelationCreateSpy} to drive a whole parse(): that one stubs
+ * the element lookup, the element class and the create-time save.
  */
 trait GroupScopedRelationSpy
 {

@@ -53,6 +53,13 @@ abstract class RelationalField extends Field
      * applier only reaches apply() for a field the feed addresses, so an empty
      * value here always means "the feed cleared this" — coerce it to [] so the
      * related elements are actually detached on save.
+     *
+     * "The feed cleared this" is the ONLY way an empty value reaches here: a
+     * reference the feed did carry but whose element could not be CREATED throws
+     * out of the parse instead of resolving to nothing
+     * ({@see Relation::persistNewElement()}), so this method never runs for that
+     * row and the stored relations survive. Clearing is always a decision the
+     * feed made, never a failure wearing an empty value's clothes.
      */
     public function apply(FieldContext $context, mixed $value): bool
     {
@@ -170,8 +177,7 @@ abstract class RelationalField extends Field
     /**
      * Name the sub-element that refused to save, with its validation errors when
      * it carries any — a bare "save failed" on a nested element the feed also
-     * fills is unactionable. Errors are read through {@see Model} rather than
-     * ElementInterface, which declares no error API of its own.
+     * fills is unactionable.
      */
     protected function saveFailureMessage(ElementInterface $element): string
     {
@@ -182,7 +188,22 @@ abstract class RelationalField extends Field
             $label !== '' ? "'{$label}'" : null,
         ]);
 
-        $message = rtrim('Failed to save related element ' . implode(' ', $who)) . '.';
+        return $this->withValidationErrors(rtrim('Failed to save related element ' . implode(' ', $who)) . '.', $element);
+    }
+
+    /**
+     * Append an element's validation errors to a refused-write message when it
+     * carries any — they're the whole story of why Craft said no. Errors are read
+     * through {@see Model} rather than ElementInterface, which declares no error
+     * API of its own.
+     *
+     * Split out from {@see saveFailureMessage()} because a refused CREATE
+     * ({@see Relation::createFailureMessage()}) needs the same tail under a
+     * different "who": the element it names doesn't exist yet, so it has neither
+     * an id nor a trustworthy UI label — only the feed value it was built from.
+     */
+    protected function withValidationErrors(string $message, ElementInterface $element): string
+    {
         $errors = $element instanceof Model ? $element->getFirstErrors() : [];
 
         if ($errors === []) {
