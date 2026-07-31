@@ -83,6 +83,7 @@
  * @property {?Object} sampleItem
  * @property {Array<{field: string, type: string, node: string}>} mappingSuggestions
  * @property {SelectOption[]} flatNodes
+ * @property {?string} warning Server-translated reason the report is partial (no list of items resolved); the candidates are still populated so the root node can be picked.
  */
 
 /**

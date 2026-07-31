@@ -36,6 +36,7 @@
 import MappingRow from './MappingRow.vue';
 import MappingGroupCard from '../../components/MappingGroupCard.vue';
 import { store } from '../store.js';
+import { discoveredNodes } from '../lib/mappings.js';
 
 export default {
     name: 'MappingGroup',
@@ -72,9 +73,10 @@ export default {
         },
 
         // Saved source nodes that are no longer present in the latest
-        // fetched sample. Only meaningful once a sample has been run.
+        // fetched sample. Only meaningful once a sample with an item in it
+        // has been run.
         missingCount() {
-            const discovered = this.ui.sample?.flatNodes;
+            const discovered = discoveredNodes(this.ui.sample);
             if (! discovered) return 0;
             const available = new Set(discovered.map(o => o.value));
             return this.group.fields.reduce((count, f) => {

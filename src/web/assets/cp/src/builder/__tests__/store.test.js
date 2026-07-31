@@ -163,6 +163,33 @@ describe('store', () => {
         expect(store.ui.sampleError).toBe(null);
     });
 
+    it('keeps a partial report and its warning — a partial sample is not a failure', async () => {
+        api.fetchSample.mockResolvedValue({
+            success: true,
+            report: {
+                rootNodeCandidates: ['data'],
+                flatNodes: [],
+                warning: 'The response isn’t a list of items — pick the root node that holds the list.',
+            },
+        });
+        await store.fetchSample();
+
+        // The candidates still land, so the Root node select can offer them.
+        expect(store.ui.sample.rootNodeCandidates).toEqual(['data']);
+        expect(store.ui.sampleWarning).toContain('pick the root node');
+        expect(store.ui.sampleError).toBe(null);
+    });
+
+    it('clears a prior sample warning on the next complete fetch', async () => {
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [], warning: 'Partial.' } });
+        await store.fetchSample();
+        expect(store.ui.sampleWarning).toBe('Partial.');
+
+        api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
+        await store.fetchSample();
+        expect(store.ui.sampleWarning).toBe(null);
+    });
+
     it('auto-fetches the sample when the endpoint field settles (blur)', async () => {
         api.fetchSample.mockResolvedValue({ success: true, report: { flatNodes: [] } });
 

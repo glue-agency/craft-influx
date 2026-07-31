@@ -7,6 +7,10 @@
                            (button disabled).
                  Fetched: green check icon, "Sample fetched"; hovering
                           swaps the label to "Refetch sample".
+                 Partial: amber alert icon, "Sample incomplete" — the
+                          response came back but no list of items resolved
+                          from it (pick a root node on the Pagination tab);
+                          hovering swaps the label to "Refetch sample".
                  Error: red cross icon, "Fetch failed"; hovering swaps the
                         label to "Refetch sample", error message in the
                         title tooltip. -->
@@ -149,21 +153,25 @@ export default {
             return typeof ep === 'string' && ep.trim() !== '';
         },
 
+        // The store only ever sets sampleWarning off a report it stored, so
+        // it doubles as "a sample exists, but a partial one" here.
         fetchBtnClass() {
             if (this.ui.sampling) return 'is-fetching';
             if (this.ui.sampleError) return 'is-error';
+            if (this.ui.sampleWarning) return 'is-partial';
             if (this.ui.sample) return 'is-fetched';
             return 'is-idle';
         },
 
         // Ligature names that exist in both the Craft 4 and Craft 5 icon
         // fonts ("refresh"/"remove" are legacy aliases in Craft 5). The
-        // fonts have no cloud-check/cloud-cross glyph, so the fetched and
-        // error states fall back to a plain check/cross, colored via the
-        // is-fetched / is-error classes.
+        // fonts have no cloud-check/cloud-cross glyph, so the fetched, partial
+        // and error states fall back to a plain check/alert/cross, colored via
+        // the is-fetched / is-partial / is-error classes.
         fetchIcon() {
             if (this.ui.sampling) return 'refresh';
             if (this.ui.sampleError) return 'remove';
+            if (this.ui.sampleWarning) return 'alert';
             if (this.ui.sample) return 'check';
             return 'download';
         },
@@ -172,6 +180,9 @@ export default {
             if (this.ui.sampling) return this.$t('Fetching sample');
             if (this.ui.sampleError) {
                 return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Fetch failed');
+            }
+            if (this.ui.sampleWarning) {
+                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Sample incomplete');
             }
             if (this.ui.sample) {
                 return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Sample fetched');
@@ -183,6 +194,7 @@ export default {
             if (! this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
             if (this.ui.sampling) return this.$t('Fetching sample…');
             if (this.ui.sampleError) return this.$t('Last attempt failed: {message}', { message: this.ui.sampleError });
+            if (this.ui.sampleWarning) return this.$t('Sample incomplete: {message}', { message: this.ui.sampleWarning });
             if (this.ui.sample?.url) return this.$t('Last fetched from {url}', { url: this.ui.sample.url });
             return this.$t('Hit the configured endpoint and inspect the response');
         },

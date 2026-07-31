@@ -68,6 +68,22 @@ export function nodeOption(value) {
 }
 
 /**
+ * The item-level nodes a report discovered, or null for "can't know" — which
+ * is what every missing-mapping check treats as "flag nothing".
+ *
+ * A partial report (no list of items resolved from the response) carries an
+ * EMPTY flatNodes list, not a missing one, and an empty list would otherwise
+ * read as "the sample has none of your saved nodes" and light up every mapped
+ * row. No sample and a sample with no item are the same state here.
+ *
+ * @param {?import('../types.js').SampleReport} sample
+ * @returns {?import('../types.js').SelectOption[]}
+ */
+export function discoveredNodes(sample) {
+    return sample?.flatNodes?.length ? sample.flatNodes : null;
+}
+
+/**
  * Merge sample-discovered node options with saved-but-not-discovered node
  * paths, deduplicated, discovered first. Saved nodes stay listed so a row
  * whose node fell out of the latest sample still renders a legible selected

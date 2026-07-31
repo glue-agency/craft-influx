@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -78,5 +78,19 @@ describe('mergeNodeOptions', () => {
     it('handles empty inputs', () => {
         expect(mergeNodeOptions(null, null)).toEqual([]);
         expect(mergeNodeOptions(undefined, ['a'])).toEqual([{ value: 'a', label: 'a' }]);
+    });
+});
+
+describe('discoveredNodes', () => {
+    it('reads a partial report as "can\'t know", exactly like no sample at all', () => {
+        // A partial report carries an empty flatNodes list; taken literally
+        // that would flag every saved mapping as missing.
+        expect(discoveredNodes({ flatNodes: [], warning: 'No list of items.' })).toBe(null);
+        expect(discoveredNodes(null)).toBe(null);
+    });
+
+    it('passes a full report’s nodes through', () => {
+        const flatNodes = [{ value: 'id', label: 'id' }];
+        expect(discoveredNodes({ flatNodes, warning: null })).toBe(flatNodes);
     });
 });

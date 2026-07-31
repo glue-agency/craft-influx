@@ -37,6 +37,8 @@ const initial = () => ({
     sample: null,          // last successful Fetch-sample report
     sampling: false,
     sampleError: null,
+    sampleWarning: null,   // the report came back partial (no list of items
+                           // resolved) — its candidates still drive the selects
     loading: false,
     loadError: null,       // fatal error from the bootstrap fetch
     saving: false,
@@ -266,12 +268,18 @@ async function refreshMappableFields() {
  * paginator candidates, flat node list, mapping suggestions. The
  * Pagination and Mapping tabs read from the same report so a single
  * fetch primes both.
+ *
+ * A report can come back partial: the response was fetched and decoded, but
+ * no list of items resolved from it (typically an enveloped feed with no
+ * root node picked yet). That's a notice, not an error — the report's
+ * candidates are what lets the user pick the root node that completes it.
  */
 async function fetchSample() {
     if (!root.link || root.sampling) return;
     const key = sampleKey();
     root.sampling = true;
     root.sampleError = null;
+    root.sampleWarning = null;
     try {
         const result = await api.fetchSample({
             endpoint:      sampleEndpoint() || null,
@@ -280,6 +288,11 @@ async function fetchSample() {
             auth:          root.link.auth,
         });
         root.sample = result.report;
+        root.sampleWarning = result.report?.warning ?? null;
+
+        if (root.sampleWarning) {
+            notifyNotice(t('Sample incomplete: {message}', { message: root.sampleWarning }));
+        }
     } catch (e) {
         root.sampleError = errorText(e, 'Sample fetch failed.');
         // No inline error block anywhere — failures surface as a native CP

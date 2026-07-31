@@ -138,7 +138,7 @@ import ElementPicker from '../ElementPicker.vue';
 import SearchableSelect from '../SearchableSelect.vue';
 import SchemaForm from '../schema/SchemaForm.vue';
 import { store } from '../store.js';
-import { mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
+import { discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab. Renders the field name, source-node select,
@@ -238,10 +238,11 @@ export default {
         /**
          * The raw discovered nodes — sub-field rows compare their saved
          * node against these for their own missing-mapping state. Null
-         * (no sample yet) means "can't know", so nothing reads as missing.
+         * (no sample, or a partial one) means "can't know", so nothing
+         * reads as missing.
          */
         discoveredNodes() {
-            return store.ui.sample?.flatNodes ?? null;
+            return reportNodes(store.ui.sample);
         },
 
         // The saved source node is no longer in the fetched sample. Compares
@@ -252,7 +253,7 @@ export default {
         isMissing() {
             const saved = this.mapping.node;
             if (! saved) return false;
-            const discovered = store.ui.sample?.flatNodes;
+            const discovered = this.discoveredNodes;
             if (! discovered) return false;
             return ! discovered.some(o => o.value === saved);
         },

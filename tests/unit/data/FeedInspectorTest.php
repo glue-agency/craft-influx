@@ -3,17 +3,25 @@
 namespace GlueAgency\Influx\Tests\unit\data;
 
 use Codeception\Test\Unit;
+use craft\elements\Entry;
 use GlueAgency\Influx\data\FeedInspector;
+use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use ReflectionClass;
 
 /**
- * Node-discovery spec for `FeedInspector::flattenLeafPaths()` — the source of
- * the mapping dropdowns' flatNodes. Locks in the nested-shape rules: object
- * children contribute leaves only, list children are nodes themselves AND
- * (when they hold objects) expose their first element's leaves under the
- * parent key with the index collapsed away — `RemoteItem::get()` fans those
- * reads out over every list element at sync time.
+ * Two specs in one, both about what the "Fetch sample" report offers the user.
+ *
+ * `flattenLeafPaths()` — the source of the mapping dropdowns' flatNodes. Locks
+ * in the nested-shape rules: object children contribute leaves only, list
+ * children are nodes themselves AND (when they hold objects) expose their first
+ * element's leaves under the parent key with the index collapsed away —
+ * `RemoteItem::get()` fans those reads out over every list element at sync time.
+ *
+ * `report()` — and specifically its partial variant: a response no list of
+ * items resolves from still reports its candidates plus a warning, because
+ * those candidates are the only way the user can pick the root node that fixes
+ * it. Throwing there would strand a new link against an enveloped feed.
  */
 class FeedInspectorTest extends Unit
 {
@@ -70,6 +78,76 @@ class FeedInspectorTest extends Unit
         ]);
 
         $this->assertSame(['tags', 'genres'], $paths);
+    }
+
+    public function testAnEnvelopedResponseWithoutARootNodeReportsCandidatesAndAWarning(): void
+    {
+        $report = (new FeedInspector())->report(
+            $this->link(),
+            ['data' => [['id' => 1, 'title' => 'x']], 'meta' => ['total' => 5]],
+            'https://example.test/feed',
+        );
+
+        // The remedy is in the report: 'data' is pickable as the root node.
+        $this->assertContains('data', $report['rootNodeCandidates']);
+        $this->assertNotNull($report['warning']);
+        // Nothing item-derived can be computed without a list…
+        $this->assertNull($report['sampleItem']);
+        $this->assertSame([], $report['flatNodes']);
+        $this->assertSame([], $report['mappingSuggestions']);
+        // …but the response-level walks are unaffected.
+        $this->assertContains('meta.total', $report['countNodeCandidates']);
+    }
+
+    public function testARootNodeThatDoesNotResolveDegradesTheSameWay(): void
+    {
+        $report = (new FeedInspector())->report(
+            $this->link('items'),
+            ['data' => [['id' => 1]]],
+            'https://example.test/feed',
+        );
+
+        $this->assertStringContainsString('items', (string) $report['warning']);
+        // A wrong pick has to stay re-pickable, so the candidates survive it.
+        $this->assertContains('data', $report['rootNodeCandidates']);
+        $this->assertNull($report['sampleItem']);
+    }
+
+    public function testAResolvingRootNodeReportsAFullSample(): void
+    {
+        $report = (new FeedInspector())->report(
+            $this->link('data'),
+            ['data' => [['id' => 1, 'title' => 'x']]],
+            'https://example.test/feed',
+        );
+
+        $this->assertNull($report['warning']);
+        $this->assertSame(['id' => 1, 'title' => 'x'], $report['sampleItem']);
+        $this->assertSame(['id', 'title'], array_column($report['flatNodes'], 'value'));
+    }
+
+    public function testATopLevelListNeedsNoRootNode(): void
+    {
+        $report = (new FeedInspector())->report(
+            $this->link(),
+            [['id' => 1, 'title' => 'x']],
+            'https://example.test/feed',
+        );
+
+        $this->assertNull($report['warning']);
+        $this->assertSame(['id' => 1, 'title' => 'x'], $report['sampleItem']);
+    }
+
+    protected function link(?string $rootNode = null): Link
+    {
+        $link = new Link();
+        $link->handle = 'articles';
+        $link->name = 'Articles';
+        $link->elementType = Entry::class;
+        $link->endpoint = 'https://example.test/feed';
+        $link->rootNode = $rootNode;
+
+        return $link;
     }
 
     /**

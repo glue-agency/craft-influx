@@ -17,6 +17,10 @@
                     @update:model-value="link.rootNode = $event || null"
                 />
             </div>
+            <!-- The sample came back without a list of items. This select is
+                 the remedy, so the warning belongs right under it; picking a
+                 candidate refetches and clears it. Server-translated. -->
+            <p v-if="ui.sampleWarning" class="warning with-icon" v-text="ui.sampleWarning"></p>
         </div>
 
         <hr>

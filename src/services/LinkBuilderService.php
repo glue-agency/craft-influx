@@ -327,8 +327,11 @@ class LinkBuilderService extends Component
      * having to save first.
      *
      * Returns `{success: true, report: ...}` on success or `{success: false, message: ...}`
-     * on failure (network, bad JSON, missing rootNode, ...). Never throws — the
-     * UI surface needs the message inline.
+     * when the fetch itself fails (no endpoint, network, bad JSON). Never throws
+     * — the UI surface needs the message inline. A response Influx can't read a
+     * list of items out of still succeeds: the report comes back partial, with a
+     * `warning` and the root-node candidates that fix it
+     * ({@see \GlueAgency\Influx\data\FeedInspector::report()}).
      *
      * @return array{success: true, report: array}|array{success: false, message: string}
      */

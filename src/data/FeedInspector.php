@@ -3,7 +3,7 @@
 namespace GlueAgency\Influx\data;
 
 use Cake\Utility\Hash;
-use GlueAgency\Influx\exceptions\InfluxException;
+use Craft;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
 
@@ -24,8 +24,13 @@ class FeedInspector
      * Build the sample report for a link from an already-fetched response.
      *
      * The root node is never auto-guessed: the link must have one configured,
-     * or the response itself must be the list of items — anything else errors
-     * out rather than picking a candidate on the user's behalf.
+     * or the response itself must be the list of items. When neither holds,
+     * the report degrades to a partial one — candidates plus a `warning`, with
+     * `sampleItem`, `flatNodes` and `mappingSuggestions` empty — instead of
+     * failing. The candidate lists walk the response rather than the item, so
+     * they survive the miss, and they are exactly the remedy the user needs:
+     * refusing the report would withhold the root-node choice that fixes it,
+     * and a wrong pick has to stay re-pickable for the same reason.
      * `countNodeCandidates` holds the response-level scalar leaves, offered as
      * total-count / page-count nodes.
      *
@@ -40,8 +45,8 @@ class FeedInspector
      *   sampleItem: ?array,
      *   mappingSuggestions: list<array{field: string, type: string, node: string}>,
      *   flatNodes: list<array{value: string, label: string}>,
+     *   warning: ?string,
      * }
-     * @throws InfluxException when the response shape can't yield a list of items.
      */
     public function report(Link $link, array $response, string $url): array
     {
@@ -51,23 +56,7 @@ class FeedInspector
         $rootNode = $link->rootNode;
         $paginatorNode = $link->paginatorNode;
 
-        if ($rootNode === null) {
-            if (! is_array($response) || ! array_is_list($response)) {
-                throw new InfluxException(
-                    "Configure a root node before fetching a sample — the response is not a top-level array, so Influx needs to know which key inside the response holds the list of items."
-                );
-            }
-            $list = $response;
-        } else {
-            $listSource = Hash::get($response, $rootNode);
-
-            if (! is_array($listSource)) {
-                throw new InfluxException(
-                    "Root node '{$rootNode}' does not resolve to an array in the response."
-                );
-            }
-            $list = array_values($listSource);
-        }
+        [$list, $warning] = $this->resolveList($response, $rootNode);
 
         $sampleItem = $list[0] ?? null;
 
@@ -112,7 +101,35 @@ class FeedInspector
             'sampleItem'              => is_array($sampleItem) ? $sampleItem : null,
             'mappingSuggestions'      => $mappingSuggestions,
             'flatNodes'               => $flatNodes,
+            'warning'                 => $warning,
         ];
+    }
+
+    /**
+     * The list of items to sample from, plus the message explaining an empty
+     * one. Both misses are recoverable in the UI — the Pagination tab's root
+     * node select is right next to where the warning surfaces — so neither
+     * throws.
+     *
+     * @return array{0: list<mixed>, 1: ?string}
+     */
+    protected function resolveList(array $response, ?string $rootNode): array
+    {
+        if ($rootNode === null) {
+            if (! array_is_list($response)) {
+                return [[], Craft::t('influx', 'The response isn’t a list of items — pick the root node that holds the list, then the sample refetches.')];
+            }
+
+            return [$response, null];
+        }
+
+        $listSource = Hash::get($response, $rootNode);
+
+        if (! is_array($listSource)) {
+            return [[], Craft::t('influx', 'Root node “{node}” doesn’t resolve to a list in this response — pick another one.', ['node' => $rootNode])];
+        }
+
+        return [array_values($listSource), null];
     }
 
     /**

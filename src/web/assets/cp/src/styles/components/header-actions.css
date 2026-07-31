@@ -11,8 +11,8 @@
 
 /* Fetch sample button — standard Craft button whose data-icon carries the
    state: download (idle), spinning refresh (fetching), green check
-   (fetched), red cross (error). The label updates alongside; see
-   HeaderActions.vue. */
+   (fetched), amber alert (partial), red cross (error). The label updates
+   alongside; see HeaderActions.vue. */
 .influx-fetch-btn.is-fetching {
     color: var(--medium-text-color, #6b7280);
     cursor: progress;
@@ -21,6 +21,7 @@
     animation: influx-fetch-spin 1s linear infinite;
 }
 .influx-fetch-btn.is-fetched::before { color: #008549; }
+.influx-fetch-btn.is-partial::before { color: #cb6e17; }
 .influx-fetch-btn.is-error::before { color: #cf1124; }
 
 @keyframes influx-fetch-spin {
