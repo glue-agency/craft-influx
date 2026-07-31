@@ -72,16 +72,21 @@ describe('Inspector row wire contract', () => {
         }
     });
 
-    it('pins both child flavours — a block with no identity and a related element with one', () => {
+    it('pins both child flavours — one standing for a saved element, one the sync would only add', () => {
         const children = childrenOf(fixture.mappings);
-        const block = children.find((c) => c.blockType !== null);
-        const related = children.find((c) => c.element !== null);
+        const blocks = children.filter((c) => c.blockType !== null);
+        const related = children.find((c) => c.blockType === null);
 
-        expect(block.element).toBe(null);
-        expect(typeof block.title).toBe('string');
-        expect(typeof block.action).toBe('string');
+        // A block that already exists is a saved element, chip and all.
+        expect(typeof blocks[0].element.chipHtml).toBe('string');
+        expect(typeof blocks[0].title).toBe('string');
+        expect(typeof blocks[0].action).toBe('string');
 
-        expect(related.blockType).toBe(null);
+        // One the sync would add has neither yet — the pane labels it by its
+        // ordinal, so both keys have to be nullable.
+        expect(blocks[1].element).toBe(null);
+        expect(blocks[1].title).toBe(null);
+
         expect(typeof related.element.chipHtml).toBe('string');
         expect(typeof related.element.id).toBe('number');
     });

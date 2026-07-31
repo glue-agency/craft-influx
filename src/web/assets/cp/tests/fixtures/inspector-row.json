@@ -94,9 +94,15 @@
             "error": null,
             "children": [
                 {
-                    "title": "Tekst",
+                    "title": "Werfkelder",
                     "blockType": "text",
-                    "element": null,
+                    "element": {
+                        "id": 512,
+                        "title": "Werfkelder",
+                        "cpEditUrl": "https://example.test/admin/edit/512",
+                        "siteId": 1,
+                        "chipHtml": "<a class=\"chip small\" href=\"https://example.test/admin/edit/512\">Werfkelder</a>"
+                    },
                     "action": "unchanged",
                     "mappings": [
                         {
@@ -138,7 +144,7 @@
                     ]
                 },
                 {
-                    "title": "Afbeelding",
+                    "title": null,
                     "blockType": "image",
                     "element": null,
                     "action": "would-add",

@@ -418,15 +418,33 @@ describe('DebugItemDetail', () => {
             expect(w.find('.influx-detail-raw').exists()).toBe(false);
         });
 
-        it('pills the index label before the header title', () => {
-            expect(mountDetail().find('.influx-drill-index').exists()).toBe(false);
-            expect(mountDetail({ indexLabel: '02' }).find('.influx-drill-index').text()).toBe('02');
+        it('never pills an ordinal before the header label', () => {
+            expect(mountDetail({ drilled: true, fallbackLabel: '02' }).find('.influx-drill-index').exists()).toBe(false);
         });
 
-        it('heads a child row by its own title — children carry no match value', () => {
+        it('heads a child that stands for a real element with its chip', () => {
+            const row = {
+                action: 'unchanged',
+                title: 'Werfkelder',
+                element: { id: 512, title: 'Werfkelder', chipHtml: '<a class="chip" href="/cp/edit/512">Werfkelder</a>' },
+                mappings: [],
+            };
+            const w = mountDetail({ row, drilled: true, fallbackLabel: '01' });
+
+            expect(w.find('.influx-detail-chip').html()).toContain('/cp/edit/512');
+            expect(w.find('.influx-detail-title').exists()).toBe(false);
+        });
+
+        it('heads a chipless child row by its own title — children carry no match value', () => {
             const row = { action: 'would-add', title: 'Afbeelding', element: null, mappings: [] };
 
-            expect(mountDetail({ row, drilled: true }).find('.influx-detail-title').text()).toBe('Afbeelding');
+            expect(mountDetail({ row, drilled: true, fallbackLabel: '02' }).find('.influx-detail-title').text()).toBe('Afbeelding');
+        });
+
+        it('falls back to the label the host hands down when there is neither chip nor title', () => {
+            const row = { action: 'would-add', title: null, element: null, mappings: [] };
+
+            expect(mountDetail({ row, drilled: true, fallbackLabel: '02' }).find('.influx-detail-title').text()).toBe('02');
         });
     });
 

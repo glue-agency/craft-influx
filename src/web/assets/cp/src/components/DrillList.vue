@@ -30,8 +30,7 @@
                 :class="{ 'is-selected': i === selectedIndex }"
                 @click="$emit('select', i)"
             >
-                <span class="influx-drill-index" v-text="indexLabel(i)"></span>
-                <span class="influx-drill-item-title" v-text="child.title"></span>
+                <span class="influx-drill-item-title" v-text="label(child, i)"></span>
                 <v-action-badge :action="child.action" class="influx-drill-item-badge" />
             </button>
         </div>
@@ -143,8 +142,8 @@
     overflow-y: auto;
 }
 
-/* One line, like the item list's own rows — the ordinal, the title and the
-   badge, nothing under it. */
+/* One line, like the item list's own rows — the label and the badge, nothing
+   under it. */
 .influx-drill-item {
     display: flex;
     align-items: center;
@@ -177,22 +176,6 @@
 }
 
 .influx-drill-item-badge { flex: none; }
-
-/* The row's ordinal. Shares its look — and its class name — with the pill
-   DebugItemDetail puts in its drilled header; scoped CSS doesn't cross
-   components, so the declaration lives in both. */
-.influx-drill-index {
-    flex: none;
-    box-sizing: border-box;
-    min-width: 20px;
-    padding: 0 5px;
-    border-radius: 3px;
-    background: var(--gray-100);
-    color: var(--gray-500);
-    font-size: 10px;
-    font-weight: 700;
-    text-align: center;
-}
 </style>
 
 <script>
@@ -202,8 +185,12 @@ import ActionBadge from './ActionBadge.vue';
  * The left pane once a reader drills into a mapping row that nests elements —
  * it replaces the item list for as long as they're inside. A back header out to
  * the parent item, a strip naming the field they came in through, then one row
- * per child (ordinal, title, action badge), with the selected one rendered by
+ * per child (its label and an action badge), with the selected one rendered by
  * DebugItemDetail on the right.
+ *
+ * A child's label is its own title — a Matrix block's title, a related element's
+ * UI label — and, for a child that has none (a block the sync would add, whose
+ * feed maps no title), its zero-padded ordinal instead.
  *
  * A child row carries no note line under it, exactly like the item rows it
  * stands in for: what a run would do to the child is its badge's job, and the
@@ -236,10 +223,11 @@ export default {
     },
 
     methods: {
-        // Zero-padded ordinal, so single- and double-digit rows keep one column
-        // of titles.
-        indexLabel(i) {
-            return String(i + 1).padStart(2, '0');
+        // What the row is called: the child's own title, else its zero-padded
+        // ordinal — padded so single- and double-digit fallbacks line up with
+        // each other.
+        label(child, i) {
+            return child.title || String(i + 1).padStart(2, '0');
         },
 
         // How many children are in here, named by kind. One literal per noun so

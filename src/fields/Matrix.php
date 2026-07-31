@@ -483,6 +483,13 @@ class Matrix extends Field
      * drill-down purely from the two values it is handed is what keeps it
      * independent of whether — and how — the change check ran.
      *
+     * A child is labelled by the block's OWN title ({@see childTitle()}), not by
+     * its type — and carries that block as its element identity whenever one
+     * exists: an UNCHANGED child's partner and a REMOVED child's block are saved
+     * elements, so the drill-down can chip and link straight to them. An ADDED
+     * child has no saved element yet, even when a partner supplied its Current
+     * column, so it carries none.
+     *
      * @param mixed $incoming the parsed blocks array
      * @param mixed $current the field's value from before apply() — a block query
      * @return list<ChildResult>|null
@@ -507,7 +514,6 @@ class Matrix extends Field
         }
 
         $mapped = $this->mappedLeaves($context);
-        $names = $this->blockTypeNames($context);
         $pairing = $this->pairBlocks($rows, $blocks, $mapped);
 
         $children = [];
@@ -522,6 +528,7 @@ class Matrix extends Field
 
             $partnerIndex = $pairing['partners'][$i] ?? null;
             $partner = $partnerIndex !== null ? $blocks[$partnerIndex] : null;
+            $action = $pairing['actions'][$i];
             $typeMapping = $typeMappings[$type] ?? null;
             $results = [];
 
@@ -535,7 +542,7 @@ class Matrix extends Field
                     $row,
                     $this->rawSlice($lists[$type], $ordinal),
                     $partner,
-                    $pairing['actions'][$i],
+                    $action,
                     $mapped['leaves'][$type] ?? [],
                 );
             }
@@ -547,10 +554,11 @@ class Matrix extends Field
             }
 
             $children[] = new ChildResult(
-                title: $names[$type] ?? $type,
+                title: $this->childTitle($row, $partner),
                 blockType: $type,
+                element: $action === ChildAction::UNCHANGED ? $this->blockIdentity($partner) : null,
                 labelElement: $labels[$type],
-                action: $this->childActionLabel($context, $pairing['actions'][$i]),
+                action: $this->childActionLabel($context, $action),
                 mappingResults: $results,
             );
         }
@@ -559,13 +567,13 @@ class Matrix extends Field
             $block = $blocks[$index];
             $type = $block->getType()->handle;
             $typeMapping = $typeMappings[$type] ?? null;
+            $identity = $this->blockIdentity($block);
 
             $children[] = new ChildResult(
-                title: $names[$type] ?? $type,
+                title: $this->blockTitle($block),
                 blockType: $type,
-                // Narrowed for the slot's type: a current block travels as
-                // `object` here, for the reason {@see currentFingerprint()} gives.
-                labelElement: $block instanceof ElementInterface ? $block : null,
+                element: $identity,
+                labelElement: $identity,
                 action: $this->childActionLabel($context, ChildAction::REMOVED),
                 mappingResults: $typeMapping !== null ? $this->removedChildRows($typeMapping, $block) : [],
             );
@@ -925,21 +933,49 @@ class Matrix extends Field
     }
 
     /**
-     * The field's block types as handle → display name, for the drill-down
-     * titles. Extracted alongside {@see blockTypeHandles()} so tests can stub
-     * block-type discovery without booting Craft.
+     * One incoming block's label — the block's own title, never its type's name.
+     * A mapped native `title` sub-mapping puts the incoming title straight on the
+     * row ({@see appendTypeBlocks()}), so that wins; without one, the PARTNER
+     * block's stored title still names the very block the reader is looking at,
+     * and survives a feed that doesn't map titles at all.
      *
-     * @return array<string, string>
+     * Null when neither side has one — the drill-down then labels the child by
+     * its ordinal ({@see ChildResult::$title}).
+     *
+     * @param array<string, mixed> $row
+     * @param ?object $partner the current block this row compares against
      */
-    protected function blockTypeNames(FieldContext $context): array
+    protected function childTitle(array $row, ?object $partner): ?string
     {
-        $names = [];
+        return $this->nonEmptyTitle($row['title'] ?? null)
+            ?? ($partner !== null ? $this->blockTitle($partner) : null);
+    }
 
-        foreach (Compat::matrixBlockTypes($context->craftField) as $blockType) {
-            $names[$blockType['handle']] = $blockType['name'];
-        }
+    /**
+     * One current block's own title, or null when it holds none.
+     */
+    protected function blockTitle(object $block): ?string
+    {
+        return $this->nonEmptyTitle($block->title ?? null);
+    }
 
-        return $names;
+    /**
+     * A title only where there is one to show: a non-empty string, else null.
+     */
+    protected function nonEmptyTitle(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * The navigable identity behind a current block, narrowed for the slots that
+     * type it as an element: a current block travels as `object` through this
+     * class, for the reason {@see currentFingerprint()} gives, so a block that
+     * can't be narrowed simply carries no identity.
+     */
+    protected function blockIdentity(?object $block): ?ElementInterface
+    {
+        return $block instanceof ElementInterface ? $block : null;
     }
 
     /**

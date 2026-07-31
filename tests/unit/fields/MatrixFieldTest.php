@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\fields;
 
 use Cake\Utility\Hash;
 use Codeception\Test\Unit;
+use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\models\FieldLayout;
@@ -509,22 +510,25 @@ class MatrixFieldTest extends Unit
     {
         $item = new RemoteItem(['seasons' => [['year' => 2020], ['year' => 2021]]]);
         $context = $this->context($item, ['season' => ['fields' => ['year' => ['node' => 'seasons.year']]]]);
-        $strategy = $this->strategy(['season' => ['year']], typeNames: ['season' => 'Season']);
+        $strategy = $this->strategy(['season' => ['year']]);
 
         $incoming = $strategy->parse($context);
-        $current = $this->fakeQuery([
-            $this->fakeBlock('season', ['year' => 'coerced:2020']),
-            $this->fakeBlock('season', ['year' => 'coerced:2021']),
-        ]);
+        $blocks = [
+            $this->fakeBlock('season', ['year' => 'coerced:2020'], ['title' => 'Winter 2020']),
+            $this->fakeBlock('season', ['year' => 'coerced:2021'], ['title' => 'Winter 2021']),
+        ];
+        $current = $this->fakeQuery($blocks);
 
         $children = $strategy->collectChildren($context, $incoming, $current);
 
         $this->assertCount(2, $children);
         $this->assertSame(['unchanged', 'unchanged'], array_column($children, 'action'));
-        $this->assertSame('Season', $children[0]->title);
+        // The feed maps no title, so the partner block's own one labels the row.
+        $this->assertSame('Winter 2020', $children[0]->title);
         $this->assertSame('season', $children[0]->blockType);
-        // A block is not a navigable identity — only a layout carrier.
-        $this->assertNull($children[0]->element);
+        // An untouched block is a saved element — the drill-down chips it.
+        $this->assertSame($blocks[0], $children[0]->element);
+        $this->assertSame($blocks[1], $children[1]->element);
         $this->assertNotNull($children[0]->labelElement);
 
         $rows = $this->rowsByHandle($children[1]);
@@ -563,6 +567,9 @@ class MatrixFieldTest extends Unit
 
         $this->assertCount(1, $children);
         $this->assertSame('would-add', $children[0]->action);
+        // A full-replace add is a block that doesn't exist yet — the partner only
+        // fills the Current column, it is not this child's identity.
+        $this->assertNull($children[0]->element);
 
         $rows = $this->rowsByHandle($children[0]);
         $this->assertTrue($rows['year']->changed);
@@ -599,18 +606,22 @@ class MatrixFieldTest extends Unit
         $context = $this->context($item, [
             'season' => ['fields' => ['year' => ['node' => 'seasons.year']]],
         ], dryRun: true);
-        $strategy = $this->strategy(['season' => ['year']], typeNames: ['season' => 'Season']);
+        $strategy = $this->strategy(['season' => ['year']]);
 
         $incoming = $strategy->parse($context);
+        $dropped = $this->fakeBlock('season', ['year' => 'coerced:1999'], ['title' => 'Winter 1999']);
         $current = $this->fakeQuery([
             $this->fakeBlock('season', ['year' => 'coerced:2020']),
-            $this->fakeBlock('season', ['year' => 'coerced:1999']),
+            $dropped,
         ]);
 
         $children = $strategy->collectChildren($context, $incoming, $current);
 
         $this->assertSame(['unchanged', 'would-remove'], array_column($children, 'action'));
-        $this->assertSame('Season', $children[1]->title);
+        $this->assertSame('Winter 1999', $children[1]->title);
+        // A dropped block still exists right now, so it stays navigable.
+        $this->assertSame($dropped, $children[1]->element);
+        $this->assertSame($dropped, $children[1]->labelElement);
 
         $rows = $this->rowsByHandle($children[1]);
         $this->assertSame('coerced:1999', $rows['year']->currentValue);
@@ -627,21 +638,18 @@ class MatrixFieldTest extends Unit
         $context = $this->context($item, [
             'season' => ['fields' => ['year' => ['node' => 'seasons.year']]],
         ], dryRun: true);
-        $strategy = $this->strategy(
-            ['season' => ['year'], 'quote' => ['text']],
-            typeNames: ['season' => 'Season', 'quote' => 'Quote'],
-        );
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
 
         $incoming = $strategy->parse($context);
         $current = $this->fakeQuery([
             $this->fakeBlock('season', ['year' => 'coerced:2020']),
-            $this->fakeBlock('quote', ['text' => 'leftover']),
+            $this->fakeBlock('quote', ['text' => 'leftover'], ['title' => 'Pull quote']),
         ]);
 
         $children = $strategy->collectChildren($context, $incoming, $current);
 
         $this->assertSame(['unchanged', 'would-remove'], array_column($children, 'action'));
-        $this->assertSame('Quote', $children[1]->title);
+        $this->assertSame('Pull quote', $children[1]->title);
         $this->assertSame('quote', $children[1]->blockType);
         $this->assertSame([], $children[1]->mappingResults);
     }
@@ -727,16 +735,39 @@ class MatrixFieldTest extends Unit
         $this->assertSame(['unchanged', 'would-add', 'would-remove'], array_column($children, 'action'));
     }
 
-    public function testTitleFallsBackToTheBlockTypeHandle(): void
+    public function testMappedNativeTitleOutranksThePartnerBlocksOwn(): void
     {
+        $item = new RemoteItem(['seasons' => [['year' => 2020, 'label' => 'Winter 2020']]]);
+        $context = $this->context($item, [
+            'season' => [
+                'fields'       => ['year' => ['node' => 'seasons.year']],
+                'nativeFields' => ['title' => ['node' => 'seasons.label']],
+            ],
+        ]);
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $current = $this->fakeQuery([
+            $this->fakeBlock('season', ['year' => 'coerced:2020'], ['title' => 'Stale title']),
+        ]);
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), $current);
+
+        $this->assertSame('Winter 2020', $children[0]->title, 'The feed title is what this sync writes.');
+    }
+
+    public function testChildWithNoTitleAnywhereCarriesNone(): void
+    {
+        // The feed maps no title and there is no partner to borrow one from, so
+        // the child has nothing to be labelled by — a null title is the
+        // drill-down's cue to fall back to the block's ordinal.
         $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
         $context = $this->context($item, ['season' => ['fields' => ['year' => ['node' => 'seasons.year']]]]);
-        // No display name for `season` — discovery no longer knows the type.
         $strategy = $this->strategy(['season' => ['year']]);
 
         $children = $strategy->collectChildren($context, $strategy->parse($context), $this->fakeQuery([]));
 
-        $this->assertSame('season', $children[0]->title);
+        $this->assertNull($children[0]->title);
+        $this->assertNull($children[0]->element);
     }
 
     public function testLabelBlockIsMemoizedPerType(): void
@@ -852,19 +883,15 @@ class MatrixFieldTest extends Unit
      * @param ?Field $realChild a REAL strategy standing in for every child, for
      * specs whose subject is the child strategy's own behaviour (a date leaf's
      * comparison normalisation) rather than the zip mechanics.
-     * @param array<string, string> $typeNames block-type handle → display name,
-     * as Compat's discovery reports it; an absent handle exercises the
-     * title-falls-back-to-the-handle path.
      */
     protected function strategy(
         array $typeLayouts,
         array $childValues = [],
         ?Field $realChild = null,
-        array $typeNames = [],
     ): Matrix {
         $test = $this;
 
-        return new class($typeLayouts, $childValues, $realChild, $typeNames, $test) extends Matrix {
+        return new class($typeLayouts, $childValues, $realChild, $test) extends Matrix {
             /** @var array<string, list<string>> */
             public array $typeLayouts = [];
 
@@ -872,9 +899,6 @@ class MatrixFieldTest extends Unit
             public array $childValues = [];
 
             public ?Field $realChild = null;
-
-            /** @var array<string, string> */
-            public array $typeNames = [];
 
             public MatrixFieldTest $test;
 
@@ -885,13 +909,11 @@ class MatrixFieldTest extends Unit
                 array $typeLayouts,
                 array $childValues,
                 ?Field $realChild,
-                array $typeNames,
                 MatrixFieldTest $test,
             ) {
                 $this->typeLayouts = $typeLayouts;
                 $this->childValues = $childValues;
                 $this->realChild = $realChild;
-                $this->typeNames = $typeNames;
                 $this->test = $test;
             }
 
@@ -903,11 +925,6 @@ class MatrixFieldTest extends Unit
             protected function blockTypeHandles(FieldContext $context): array
             {
                 return array_keys($this->typeLayouts);
-            }
-
-            protected function blockTypeNames(FieldContext $context): array
-            {
-                return $this->typeNames;
             }
 
             protected function blockElement(FieldContext $context, string $typeHandle): ?ElementInterface
@@ -969,16 +986,22 @@ class MatrixFieldTest extends Unit
 
     /**
      * A fake current block exposing getType()->handle and
-     * getSerializedFieldValues() the way currentFingerprint() reads them, plus
-     * native attributes through __isset/__get (the `$block->{$handle} ?? null`
-     * read both the fingerprint and the drill-down's native rows use). A plain
-     * object (not an ElementInterface mock) because those methods aren't on the
-     * interface — currentFingerprint() types its block as `object`.
+     * getSerializedFieldValues() the way currentFingerprint() reads them. A real
+     * {@see Element} subclass (constructor skipped, as elsewhere in the suite, so
+     * Element::init()'s Craft dependencies stay out of it), because a saved block
+     * IS an element: the drill-down narrows an unchanged or removed block to
+     * {@see ChildResult::$element} so the reader can chip and link straight to it.
+     * getType() is added rather than overridden — it lives on the concrete block
+     * classes (Craft 5 Entry, Craft 4 MatrixBlock), not on Element.
+     *
+     * Native attributes are assigned as element attributes (`title`), which is
+     * how the fingerprint and the drill-down's native rows read them
+     * (`$block->{$handle} ?? null`).
      *
      * @param array<string, mixed> $serialized
      * @param array<string, mixed> $natives
      */
-    public function fakeBlock(string $typeHandle, array $serialized, array $natives = []): object
+    public function fakeBlock(string $typeHandle, array $serialized, array $natives = []): ElementInterface
     {
         $type = new class($typeHandle) {
             public string $handle;
@@ -989,30 +1012,15 @@ class MatrixFieldTest extends Unit
             }
         };
 
-        return new class($type, $serialized, $natives) {
+        $block = new class() extends Element {
             public object $type;
 
             /** @var array<string, mixed> */
-            public array $serialized;
+            public array $serialized = [];
 
-            /** @var array<string, mixed> */
-            public array $natives;
-
-            public function __construct(object $type, array $serialized, array $natives)
+            public function __construct()
             {
-                $this->type = $type;
-                $this->serialized = $serialized;
-                $this->natives = $natives;
-            }
-
-            public function __isset(string $name): bool
-            {
-                return isset($this->natives[$name]);
-            }
-
-            public function __get(string $name): mixed
-            {
-                return $this->natives[$name] ?? null;
+                // Skip Element::init()'s Craft dependencies.
             }
 
             public function getType(): object
@@ -1021,18 +1029,27 @@ class MatrixFieldTest extends Unit
             }
 
             /**
-             * @param list<string>|null $handles
+             * @param list<string>|null $fieldHandles
              * @return array<string, mixed>
              */
-            public function getSerializedFieldValues(?array $handles = null): array
+            public function getSerializedFieldValues(?array $fieldHandles = null): array
             {
-                if ($handles === null) {
+                if ($fieldHandles === null) {
                     return $this->serialized;
                 }
 
-                return array_intersect_key($this->serialized, array_flip($handles));
+                return array_intersect_key($this->serialized, array_flip($fieldHandles));
             }
         };
+
+        $block->type = $type;
+        $block->serialized = $serialized;
+
+        foreach ($natives as $handle => $value) {
+            $block->{$handle} = $value;
+        }
+
+        return $block;
     }
 
     /**

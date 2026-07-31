@@ -269,7 +269,7 @@ describe('LogApp', () => {
 
             expect(detail.props('row').title).toBe('Tekst');
             expect(detail.props('drilled')).toBe(true);
-            expect(detail.props('indexLabel')).toBe('01');
+            expect(detail.props('fallbackLabel')).toBe('01');
         });
 
         it('switches the right pane to the child the drill list selects', async () => {
@@ -278,7 +278,7 @@ describe('LogApp', () => {
 
             const detail = w.findComponent({ name: 'DebugItemDetail' });
             expect(detail.props('row').title).toBe('Afbeelding');
-            expect(detail.props('indexLabel')).toBe('02');
+            expect(detail.props('fallbackLabel')).toBe('02');
         });
 
         it('restores the item list when the back header is used', async () => {

@@ -9,14 +9,18 @@ import { t } from '../../lib/installT.js';
  * through) and the child rows — plus the selection contract the host drives the
  * right pane from.
  *
- * A child row is one line, same as the item rows it stands in for: ordinal,
- * title, action badge. No note line under it — asserted, since that's a
- * deliberate match to the item list rather than an omission.
+ * A child row is one line, same as the item rows it stands in for: its label and
+ * an action badge. No note line under it — asserted, since that's a deliberate
+ * match to the item list rather than an omission.
+ *
+ * The label is the child's own title; the middle child has none (a block the
+ * sync would add, whose feed maps no title), which pins the zero-padded-ordinal
+ * fallback.
  */
 const children = [
-    { title: 'Tekst', blockType: 'text', element: null, action: 'unchanged', mappings: [{ changed: false }, { changed: false }] },
-    { title: 'Afbeelding', blockType: 'image', element: null, action: 'would-add', mappings: [{ changed: true }] },
-    { title: 'Video', blockType: 'video', element: null, action: 'would-remove', mappings: [] },
+    { title: 'Werfkelder', blockType: 'text', element: { id: 512, title: 'Werfkelder' }, action: 'unchanged', mappings: [{ changed: false }, { changed: false }] },
+    { title: null, blockType: 'image', element: null, action: 'would-add', mappings: [{ changed: true }] },
+    { title: 'Video', blockType: 'video', element: { id: 514, title: 'Video' }, action: 'would-remove', mappings: [] },
 ];
 
 const mountList = (props = {}) => mount(DrillList, {
@@ -80,26 +84,27 @@ describe('DrillList', () => {
     });
 
     describe('child rows', () => {
-        it('renders one row per child, ordinals zero-padded', () => {
-            const w = mountList();
-
-            expect(items(w)).toHaveLength(3);
-            expect(w.findAll('.influx-drill-index').map((p) => p.text())).toEqual(['01', '02', '03']);
+        it('renders one row per child', () => {
+            expect(items(mountList())).toHaveLength(3);
         });
 
-        it('heads each row with the child title and its action badge', () => {
+        it('labels each row by the child title, falling back to a zero-padded ordinal', () => {
             const w = mountList();
 
-            expect(w.findAll('.influx-drill-item-title').map((el) => el.text())).toEqual(['Tekst', 'Afbeelding', 'Video']);
+            expect(w.findAll('.influx-drill-item-title').map((el) => el.text())).toEqual(['Werfkelder', '02', 'Video']);
             expect(w.findAll('.influx-drill-item-badge').map((b) => b.text())).toEqual(['unchanged', 'would-add', 'would-remove']);
         });
 
-        it('says nothing under the title — a row is one line, like the item rows', () => {
+        it('never renders an ordinal pill beside the label', () => {
+            expect(mountList().find('.influx-drill-index').exists()).toBe(false);
+        });
+
+        it('says nothing under the label — a row is one line, like the item rows', () => {
             const removed = items(mountList())[2];
 
-            // The ordinal, the title and the badge, and nothing else: a removed
-            // child says it's not in the feed through its badge, not a note.
-            expect(removed.element.children).toHaveLength(3);
+            // The label and the badge, and nothing else: a removed child says
+            // it's not in the feed through its badge, not a note.
+            expect(removed.element.children).toHaveLength(2);
             expect(removed.find('.influx-drill-item-badge').text()).toBe('would-remove');
         });
     });

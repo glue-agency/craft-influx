@@ -29,8 +29,10 @@ use GlueAgency\Influx\web\ItemRowPresenter;
  * The fixture's children deliberately span BOTH drill-downs' vocabularies — the
  * Matrix blocks carry the dry run's `would-*` labels, the related entry the
  * committed `updated` a real run reports ({@see ChildResult::$action}) — because
- * the one shape serves both, and a single fixture has to pin both variants: a
- * block child (no element identity) and a relation child (a presented element).
+ * the one shape serves both, and a single fixture has to pin both identity
+ * variants: a child standing for a saved element (the unchanged block and the
+ * relation child, each with a presented element) and one the sync would only add,
+ * which carries neither an element nor a title.
  *
  * If this test fails after a deliberate shape change: update the fixture and the
  * JS contract test together.
@@ -131,15 +133,21 @@ class InspectorRowPayloadTest extends Unit
         }
     }
 
-    public function testBlockChildrenCarryNoElementAndRelationChildrenDo(): void
+    public function testSavedChildrenCarryAnElementAndAddedOnesDont(): void
     {
         $blocks = $this->childrenOf('content_blocks');
         $entries = $this->childrenOf('related_projects');
 
-        // A Matrix block is not a navigable identity — the drill-down heads it
-        // with its block type instead.
-        $this->assertNull($blocks[0]['element']);
+        // A block that already exists is a saved element — the drill-down heads
+        // it with its chip and links straight to it.
+        $this->assertSame(self::ELEMENT_KEYS, array_keys($blocks[0]['element']));
+        $this->assertSame(512, $blocks[0]['element']['id']);
         $this->assertSame('text', $blocks[0]['blockType']);
+
+        // A block the sync would add doesn't exist yet: no identity, and no title
+        // either — the drill-down labels it by its ordinal.
+        $this->assertNull($blocks[1]['element']);
+        $this->assertNull($blocks[1]['title']);
 
         $this->assertNull($entries[0]['blockType']);
         $this->assertSame(self::ELEMENT_KEYS, array_keys($entries[0]['element']));
@@ -287,17 +295,21 @@ class InspectorRowPayloadTest extends Unit
 
     /**
      * The two block children a Matrix drill-down shows: one already matching the
-     * feed, one the dry run would add.
+     * feed — a saved block, so it travels with its own title AND its element
+     * identity — and one the dry run would add, which has neither yet.
      *
      * @return list<ChildResult>
      */
     protected function blockChildren(): array
     {
+        $block = $this->fakeElement(71, ['body' => 'Body'], 512, 'Werfkelder', 'https://example.test/admin/edit/512');
+
         return [
             new ChildResult(
-                title: 'Tekst',
+                title: 'Werfkelder',
                 blockType: 'text',
-                labelElement: $this->fakeLabelElement(71, ['body' => 'Body']),
+                element: $block,
+                labelElement: $block,
                 action: 'unchanged',
                 mappingResults: [
                     new MappingResult(
@@ -322,8 +334,9 @@ class InspectorRowPayloadTest extends Unit
                     ),
                 ],
             ),
+            // No title anywhere — neither mapped by the feed nor borrowed from a
+            // partner block — so the drill-down labels it by its ordinal instead.
             new ChildResult(
-                title: 'Afbeelding',
                 blockType: 'image',
                 labelElement: $this->fakeLabelElement(72, ['caption' => 'Caption']),
                 action: 'would-add',
@@ -350,12 +363,13 @@ class InspectorRowPayloadTest extends Unit
      */
     protected function relationChild(): ChildResult
     {
-        $element = $this->createMock(Element::class);
-        $element->method('getFieldLayout')->willReturn($this->fakeLayout(73, ['summary' => 'Summary']));
-        $element->method('getCpEditUrl')->willReturn('https://example.test/admin/entries/projects/412');
-        $element->id = 412;
-        $element->title = 'Werfkelder Zuid';
-        $element->siteId = 1;
+        $element = $this->fakeElement(
+            73,
+            ['summary' => 'Summary'],
+            412,
+            'Werfkelder Zuid',
+            'https://example.test/admin/entries/projects/412',
+        );
 
         return new ChildResult(
             title: 'Werfkelder Zuid',
@@ -378,8 +392,29 @@ class InspectorRowPayloadTest extends Unit
     }
 
     /**
-     * A child's label source with no identity of its own — what a Matrix block
-     * travels with: a throwaway element exposing the block type's field layout.
+     * A saved element a child stands for: its own field layout (the label source
+     * for the child's rows) plus the identity {@see ItemRowPresenter::presentElement()}
+     * shapes. Serves both flavours that carry one — the current Matrix block an
+     * unchanged child stands for, and the related element a relation child wrote.
+     *
+     * @param array<string, string> $fields handle => field name
+     */
+    protected function fakeElement(int $layoutId, array $fields, int $id, string $title, string $cpEditUrl): Element
+    {
+        $element = $this->createMock(Element::class);
+        $element->method('getFieldLayout')->willReturn($this->fakeLayout($layoutId, $fields));
+        $element->method('getCpEditUrl')->willReturn($cpEditUrl);
+        $element->id = $id;
+        $element->title = $title;
+        $element->siteId = 1;
+
+        return $element;
+    }
+
+    /**
+     * A child's label source with no identity of its own — what a block the sync
+     * would only add travels with: a throwaway element exposing the block type's
+     * field layout.
      *
      * @param array<string, string> $fields handle => field name
      */

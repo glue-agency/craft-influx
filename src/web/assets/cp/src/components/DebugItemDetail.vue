@@ -3,8 +3,6 @@
         <!-- Header: what this item resolves to, the dry-run action, and the
              Parsed / Raw JSON switch. -->
         <div class="influx-detail-head">
-            <span v-if="indexLabel" class="influx-drill-index" v-text="indexLabel"></span>
-
             <span
                 v-if="row.element && row.element.chipHtml"
                 class="influx-detail-chip"
@@ -284,22 +282,6 @@
     color: var(--light-text-color);
 }
 
-/* The drilled header's index pill. Shares its look — and its class name — with
-   DrillList's row pill; scoped CSS doesn't cross components, so the declaration
-   lives in both. */
-.influx-drill-index {
-    flex: none;
-    box-sizing: border-box;
-    min-width: 20px;
-    padding: 0 5px;
-    border-radius: 3px;
-    background: var(--gray-100);
-    color: var(--gray-500);
-    font-size: 10px;
-    font-weight: 700;
-    text-align: center;
-}
-
 .influx-detail-field { min-width: 0; }
 
 .influx-detail-field-name {
@@ -507,7 +489,8 @@ import { drillCounts, drillState } from '../lib/drill.js';
  *
  * The host mounts the component again for the child a reader drills into, this
  * time with `drilled` (no Parsed / Raw switch — a child has no payload of its
- * own) and an `indexLabel` matching the child's place in the drill list.
+ * own) and a `fallbackLabel` matching the child's place in the drill list, for
+ * the case where the child has neither an element to chip nor a title.
  */
 export default {
     name: 'DebugItemDetail',
@@ -528,9 +511,11 @@ export default {
         // its own to show, so the Parsed / Raw switch goes away and the view
         // stays parsed.
         drilled: { type: Boolean, default: false },
-        // The child's place in the drill list ('01', '02', …), shown as a pill
-        // before the header title so the two panes read as one selection.
-        indexLabel: { type: String, default: '' },
+        // Last resort for the header label, filled by the host with the child's
+        // place in the drill list ('01', '02', …) — used only when there is
+        // neither an element chip nor a title, so the two panes still name the
+        // selection the same way.
+        fallbackLabel: { type: String, default: '' },
     },
 
     data() {
@@ -544,12 +529,14 @@ export default {
 
     computed: {
         // Header label when there's no element chip (a would-create or
-        // would-skip item): the match value, else the child node's own title
-        // (children carry no match value), else blank.
+        // would-skip item, or a child the sync hasn't created yet): the match
+        // value, else the row's own title (children carry no match value), else
+        // whatever the host handed down as a last resort — the child's ordinal.
         title() {
             return (this.row.element && this.row.element.title)
                 || this.row.matchValue
                 || this.row.title
+                || this.fallbackLabel
                 || '';
         },
 

@@ -121,7 +121,7 @@
                     :row="drillChild || selectedItem"
                     :match-attribute="drillStack.length ? '' : (meta && meta.matchAttribute || '')"
                     :drilled="drillStack.length > 0"
-                    :index-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
+                    :fallback-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
                     @drill="pushDrill"
                 />
                 <p v-else-if="! loading" class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
@@ -391,14 +391,18 @@ export default {
         },
 
         // What the back header points at: the level below, which is the item
-        // itself at depth 1 and the previous frame's selected child deeper in.
+        // itself at depth 1 and the previous frame's selected child deeper in —
+        // a title-less child named by its ordinal, as the drill list named it.
         drillParent() {
             const below = this.drillStack[this.drillStack.length - 2];
 
             if (below) {
                 const child = below.mapping.children[below.childIndex] || {};
 
-                return { title: child.title || '', action: child.action || '' };
+                return {
+                    title: child.title || this.indexLabel(below.childIndex),
+                    action: child.action || '',
+                };
             }
 
             return {
@@ -456,7 +460,8 @@ export default {
             return changed === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changed });
         },
 
-        // Zero-padded ordinal, the same pill DrillList marks its rows with.
+        // Zero-padded ordinal, the label the drilled panes fall back to for a
+        // child with no title of its own.
         indexLabel(i) {
             return String(i + 1).padStart(2, '0');
         },

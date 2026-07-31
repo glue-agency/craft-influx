@@ -166,7 +166,7 @@ describe('DebugApp', () => {
 
             expect(detail.props('row').title).toBe('Tekst');
             expect(detail.props('drilled')).toBe(true);
-            expect(detail.props('indexLabel')).toBe('01');
+            expect(detail.props('fallbackLabel')).toBe('01');
             // The match key belongs to the item, not to a child of it.
             expect(detail.props('matchAttribute')).toBe('');
         });
@@ -177,7 +177,7 @@ describe('DebugApp', () => {
 
             const detail = w.findComponent({ name: 'DebugItemDetail' });
             expect(detail.props('row').title).toBe('Afbeelding');
-            expect(detail.props('indexLabel')).toBe('02');
+            expect(detail.props('fallbackLabel')).toBe('02');
         });
 
         it('descends again from a child’s own nesting row, and pops back one level at a time', async () => {

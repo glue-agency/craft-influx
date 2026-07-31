@@ -16,8 +16,10 @@ use craft\base\ElementInterface;
 class ChildResult
 {
     /**
-     * Display title for the child row: the block type's display name (Matrix),
-     * or the related element's UI label.
+     * Display title for the child row: the nested element's OWN title — the
+     * Matrix block's title, or the related element's UI label. Null when it has
+     * none, which is the drill-down's cue to label the child by its ordinal
+     * ("01", "02", …) instead.
      */
     public ?string $title = null;
 
@@ -25,9 +27,12 @@ class ChildResult
     public ?string $blockType = null;
 
     /**
-     * The persisted related element this child stands for (relation/asset
-     * children). Null for a Matrix block — a block is not a navigable identity
-     * in the drill-down.
+     * The real element behind this child, when one exists: the related element a
+     * relation child wrote, or the current Matrix block an unchanged/removed
+     * child stands for (Craft 5 nested entries, Craft 4 MatrixBlocks — both saved
+     * elements). Null for a child the sync would only ADD, which has no saved
+     * element at derivation time; the drill-down then heads it with its title (or
+     * ordinal) rather than an element chip.
      */
     public ?ElementInterface $element = null;
 
