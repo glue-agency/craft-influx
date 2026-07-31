@@ -5,30 +5,9 @@
  * without mounting components.
  *
  * Deliberately free of `$t`: the labels these counts feed are literals in the
- * components that render them, which is what lets the PHP catalogue be scanned
+ * component that renders them, which is what lets the PHP catalogue be scanned
  * per component file.
  */
-
-/**
- * Roll up one child node's own field table, for the drill list's note line.
- *
- * A field row that itself drills counts as a change whenever anything inside it
- * is off the no-change baseline — a nested error or missing node included.
- * Deliberately coarse: the note line is a "there's something in here" hint, not
- * a breakdown.
- *
- * @param {Object} child A `children[]` entry: `{ title, action, mappings }`.
- * @returns {{fields: number, changes: number, errors: number}}
- */
-export function childCounts(child) {
-    const rows = (child && child.mappings) || [];
-
-    return {
-        fields: rows.length,
-        changes: rows.filter((row) => row.changed === true || drillState(row) !== null).length,
-        errors: rows.filter((row) => !! row.error).length,
-    };
-}
 
 /**
  * Roll up every child of one children-bearing mapping row: the errors, missing

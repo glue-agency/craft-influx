@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { childCounts, drillCounts, drillState } from '../drill.js';
+import { drillCounts, drillState } from '../drill.js';
 import fixture from '../../../tests/fixtures/inspector-row.json';
 
 /**
- * The drill-down's counting rules. They decide two visible things: the note line
- * under a child in DrillList (childCounts) and the wash + label on the mapping
- * row that drills into it (drillCounts / drillState), so the priority order and
- * the "no children" cases are pinned here rather than in either component.
+ * The drill-down's counting rules. They decide what a children-bearing mapping
+ * row says about itself — its state label and its wash — so the priority order
+ * and the "no children" cases are pinned here rather than in the component.
  */
 
 const row = (overrides = {}) => ({
@@ -26,33 +25,6 @@ const child = (action, mappings = []) => ({
     element: null,
     action,
     mappings,
-});
-
-describe('childCounts', () => {
-    it('counts every mapped field, the changed ones and the errored ones', () => {
-        const counts = childCounts(child('would-update', [
-            row({ changed: true }),
-            row({ changed: false }),
-            row({ changed: false, error: 'Relation lookup failed.' }),
-        ]));
-
-        expect(counts).toEqual({ fields: 3, changes: 1, errors: 1 });
-    });
-
-    it('counts a row that itself drills as a change whenever anything is in there', () => {
-        const nested = (children) => row({ changed: false, children, childrenType: 'blocks' });
-
-        expect(childCounts(child('unchanged', [nested([child('would-add')])])).changes).toBe(1);
-        expect(childCounts(child('unchanged', [nested([child('unchanged', [row({ unaddressed: true })])])])).changes).toBe(1);
-        expect(childCounts(child('unchanged', [nested([child('unchanged', [row({ error: 'Boom' })])])])).changes).toBe(1);
-        // Nothing of note inside stays no change.
-        expect(childCounts(child('unchanged', [nested([child('unchanged')])])).changes).toBe(0);
-    });
-
-    it('reads a child with no fields, and no child at all, as zeroes', () => {
-        expect(childCounts(child('would-remove'))).toEqual({ fields: 0, changes: 0, errors: 0 });
-        expect(childCounts(null)).toEqual({ fields: 0, changes: 0, errors: 0 });
-    });
 });
 
 describe('drillCounts', () => {
@@ -129,16 +101,14 @@ describe('the wire fixture', () => {
 
         expect(drillCounts(blocks)).toEqual({ errors: 0, missing: 0, changes: 1 });
         expect(drillState(blocks)).toBe('changed');
-        expect(childCounts(blocks.children[0])).toEqual({ fields: 2, changes: 0, errors: 0 });
-        expect(childCounts(blocks.children[1])).toEqual({ fields: 1, changes: 1, errors: 0 });
     });
 
     it('reads the relation row as a change even though the row itself is unchanged', () => {
         const related = byHandle('related_projects');
 
         expect(related.changed).toBe(false);
+        expect(drillCounts(related)).toEqual({ errors: 0, missing: 0, changes: 1 });
         expect(drillState(related)).toBe('changed');
-        expect(childCounts(related.children[0])).toEqual({ fields: 1, changes: 1, errors: 0 });
     });
 
     it('reads a plain row as no drill at all', () => {

@@ -83,6 +83,7 @@ class SharedComponentTranslations
             ],
             'DrillList.vue' => [
                 'Back to parent',
+                // Its sub-strip's count summary, same nouns as the drill row's.
                 '{n} blocks',
                 '{n} assets',
                 '{n} entries',
@@ -90,11 +91,6 @@ class SharedComponentTranslations
                 '{n} categories',
                 '{n} tags',
                 '{n} elements',
-                'In element, not in feed',
-                '1 field',
-                '{n} fields',
-                '1 change',
-                '{n} changes',
             ],
         ];
     }

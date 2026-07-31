@@ -4,10 +4,14 @@ import DrillList from '../DrillList.vue';
 import { t } from '../../lib/installT.js';
 
 /**
- * The drilled left pane. Locks in the three things a reader navigates by: the
- * back header (whose parent they're inside), the sub-strip (which field they
- * came in through) and the child rows' note lines (how much is in each) — plus
- * the selection contract the host drives the right pane from.
+ * The drilled left pane. Locks in what a reader navigates by: the back header
+ * (whose parent they're inside), the sub-strip (which field they came in
+ * through) and the child rows — plus the selection contract the host drives the
+ * right pane from.
+ *
+ * A child row is one line, same as the item rows it stands in for: ordinal,
+ * title, action badge. No note line under it — asserted, since that's a
+ * deliberate match to the item list rather than an omission.
  */
 const children = [
     { title: 'Tekst', blockType: 'text', element: null, action: 'unchanged', mappings: [{ changed: false }, { changed: false }] },
@@ -30,7 +34,6 @@ const mountList = (props = {}) => mount(DrillList, {
 });
 
 const items = (w) => w.findAll('.influx-drill-item');
-const notes = (w) => w.findAll('.influx-drill-item-sub').map((s) => s.text());
 
 describe('DrillList', () => {
     describe('back header', () => {
@@ -91,25 +94,13 @@ describe('DrillList', () => {
             expect(w.findAll('.influx-drill-item-badge').map((b) => b.text())).toEqual(['unchanged', 'would-add', 'would-remove']);
         });
 
-        it('notes the field count, appending the change count only when there is one', () => {
-            const [unchanged, added] = notes(mountList());
+        it('says nothing under the title — a row is one line, like the item rows', () => {
+            const removed = items(mountList())[2];
 
-            expect(unchanged).toBe('2 fields');
-            expect(added).toBe('1 field · 1 change');
-        });
-
-        it('notes a removed child as belonging to the element, not the feed', () => {
-            expect(notes(mountList())[2]).toBe('In element, not in feed');
-
-            const committed = [{ ...children[2], action: 'removed' }];
-
-            expect(notes(mountList({ children: committed }))[0]).toBe('In element, not in feed');
-        });
-
-        it('pluralises the counts', () => {
-            const many = [{ ...children[1], mappings: [{ changed: true }, { changed: true }, { changed: false }] }];
-
-            expect(notes(mountList({ children: many }))[0]).toBe('3 fields · 2 changes');
+            // The ordinal, the title and the badge, and nothing else: a removed
+            // child says it's not in the feed through its badge, not a note.
+            expect(removed.element.children).toHaveLength(3);
+            expect(removed.find('.influx-drill-item-badge').text()).toBe('would-remove');
         });
     });
 

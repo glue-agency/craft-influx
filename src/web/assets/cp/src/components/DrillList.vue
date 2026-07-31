@@ -30,12 +30,9 @@
                 :class="{ 'is-selected': i === selectedIndex }"
                 @click="$emit('select', i)"
             >
-                <span class="influx-drill-item-top">
-                    <span class="influx-drill-index" v-text="indexLabel(i)"></span>
-                    <span class="influx-drill-item-title" v-text="child.title"></span>
-                    <v-action-badge :action="child.action" class="influx-drill-item-badge" />
-                </span>
-                <span class="influx-drill-item-sub" v-text="childNote(child)"></span>
+                <span class="influx-drill-index" v-text="indexLabel(i)"></span>
+                <span class="influx-drill-item-title" v-text="child.title"></span>
+                <v-action-badge :action="child.action" class="influx-drill-item-badge" />
             </button>
         </div>
     </div>
@@ -146,10 +143,12 @@
     overflow-y: auto;
 }
 
+/* One line, like the item list's own rows — the ordinal, the title and the
+   badge, nothing under it. */
 .influx-drill-item {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    align-items: center;
+    gap: 8px;
     width: 100%;
     padding: 10px 14px;
     border: 0;
@@ -166,13 +165,6 @@
     box-shadow: inset 3px 0 0 hsl(208, 100%, 42%);
 }
 
-.influx-drill-item-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
 .influx-drill-item-title {
     overflow: hidden;
     flex: 1 1 auto;
@@ -185,11 +177,6 @@
 }
 
 .influx-drill-item-badge { flex: none; }
-
-.influx-drill-item-sub {
-    font-size: 11px;
-    color: var(--light-text-color);
-}
 
 /* The row's ordinal. Shares its look — and its class name — with the pill
    DebugItemDetail puts in its drilled header; scoped CSS doesn't cross
@@ -210,14 +197,17 @@
 
 <script>
 import ActionBadge from './ActionBadge.vue';
-import { childCounts } from '../lib/drill.js';
 
 /**
  * The left pane once a reader drills into a mapping row that nests elements —
  * it replaces the item list for as long as they're inside. A back header out to
  * the parent item, a strip naming the field they came in through, then one row
- * per child (ordinal, title, action badge, and a note line saying how much is
- * in there), with the selected one rendered by DebugItemDetail on the right.
+ * per child (ordinal, title, action badge), with the selected one rendered by
+ * DebugItemDetail on the right.
+ *
+ * A child row carries no note line under it, exactly like the item rows it
+ * stands in for: what a run would do to the child is its badge's job, and the
+ * field-level detail is the right pane's.
  *
  * Shared by both split inspectors, same as DebugItemDetail: the `children`
  * payload is identical in the live dry-run and the run log, so the pane is too.
@@ -271,24 +261,6 @@ export default {
                 default:
                     return this.$t('{n} elements', { n });
             }
-        },
-
-        // A child's note line: what's inside it, or — for one the feed no longer
-        // carries — why it's listed at all. A removed child has no mapped fields
-        // to count, so it says where it came from instead.
-        childNote(child) {
-            if (child.action === 'removed' || child.action === 'would-remove') {
-                return this.$t('In element, not in feed');
-            }
-
-            const { fields, changes } = childCounts(child);
-            const summary = fields === 1 ? this.$t('1 field') : this.$t('{n} fields', { n: fields });
-
-            if (! changes) {
-                return summary;
-            }
-
-            return summary + ' · ' + (changes === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changes }));
         },
     },
 
