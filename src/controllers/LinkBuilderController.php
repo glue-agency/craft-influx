@@ -128,16 +128,28 @@ class LinkBuilderController extends AbstractController
      * the jsSettings — that gives users the same element chip + modal UX
      * as everywhere else in the CP without re-implementing it in Vue.
      *
-     *   GET influx/link-builder/render-element-select?elementType=...&ids[]=...
+     * `fieldHandle` is optional and names the custom field the default belongs
+     * to, which shapes the picker after that field's own sources and relation
+     * limit ({@see \GlueAgency\Influx\services\LinkBuilderService::elementSelectConfigFor()}).
+     * The SPA sends it for custom-field rows only.
+     *
+     *   GET influx/link-builder/render-element-select?elementType=...&ids[]=...&fieldHandle=...
      */
     public function actionRenderElementSelect(): Response
     {
         $this->requireAcceptsJson();
 
-        $ids = Craft::$app->getRequest()->getQueryParam('ids', []);
+        $request = Craft::$app->getRequest();
+        $ids = $request->getQueryParam('ids', []);
+        $fieldHandle = $request->getQueryParam('fieldHandle');
 
         return $this->asJson(
-            Influx::getInstance()->linkBuilder->renderElementSelect($this->requiredElementType(), $ids, $this->readOnly()),
+            Influx::getInstance()->linkBuilder->renderElementSelect(
+                $this->requiredElementType(),
+                $ids,
+                $this->readOnly(),
+                is_string($fieldHandle) && $fieldHandle !== '' ? $fieldHandle : null,
+            ),
         );
     }
 

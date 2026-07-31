@@ -16,6 +16,7 @@ import * as api from '../../api.js';
 import { store } from '../../store.js';
 import MappingRow from '../MappingRow.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
+import fixture from '../../../../tests/fixtures/mappable-field.json';
 
 /**
  * The extras' write path: a schema card's edits land in the right channel of
@@ -65,10 +66,14 @@ const loadStore = async (mappings = {}, meta = {}) => {
     await store.load(1);
 };
 
-const mountRow = () => mount(MappingRow, {
-    props: { field: tableField, nodeOptions: [{ value: 'specs.label', label: 'specs.label' }] },
-    global: { mocks: { $t: (s) => s } },
+const mountRow = (field = tableField) => mount(MappingRow, {
+    props: { field, nodeOptions: [{ value: 'specs.label', label: 'specs.label' }] },
+    global: { mocks: { $t: (s) => s }, stubs: { ElementPicker: true } },
 });
+
+const descriptor = (handle) => fixture.find((f) => f.handle === handle);
+
+const picker = (wrapper) => wrapper.findComponent({ name: 'ElementPicker' });
 
 describe('MappingRow fields extras', () => {
     beforeEach(() => {
@@ -109,6 +114,51 @@ describe('MappingRow fields extras', () => {
         // An emptied channel drops off the mapping, and a mapping with nothing
         // left drops out of `mappings` — no noise keys in Project Config.
         expect(store.link.mappings.specs).toBeUndefined();
+    });
+});
+
+/**
+ * The element default editor: which field the picker is shaped after, and what
+ * the row stores of what it picks.
+ *
+ * Only a CUSTOM descriptor names its field — `fieldClass` is what makes one
+ * custom — because the server looks the handle up among the real custom fields.
+ * A native row that sent its handle would let a custom field called 'author'
+ * reshape the native author's picker.
+ */
+describe('MappingRow element default', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('names the field for a custom descriptor', async () => {
+        await loadStore();
+
+        expect(picker(mountRow(descriptor('relatedArticles'))).props('fieldHandle')).toBe('relatedArticles');
+    });
+
+    it('names no field for a native descriptor', async () => {
+        await loadStore();
+
+        expect(picker(mountRow(descriptor('author'))).props('fieldHandle')).toBe(null);
+    });
+
+    it('stores a multi-relation pick as the list the picker emits', async () => {
+        await loadStore();
+        const wrapper = mountRow(descriptor('relatedArticles'));
+
+        picker(wrapper).vm.$emit('update:modelValue', ['12', '34']);
+
+        expect(store.link.mappings.relatedArticles).toEqual({ default: ['12', '34'] });
+    });
+
+    it('prunes the default away when the picker clears', async () => {
+        await loadStore({ relatedArticles: { default: ['12', '34'] } });
+        const wrapper = mountRow(descriptor('relatedArticles'));
+
+        picker(wrapper).vm.$emit('update:modelValue', null);
+
+        expect(store.link.mappings.relatedArticles).toBeUndefined();
     });
 });
 

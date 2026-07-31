@@ -21,6 +21,12 @@ import * as api from './api.js';
  * exact same chip + "Choose element" button they get on every other CP
  * field, including thumbnails, status dots, drag handles, and the full
  * element selector modal — no Vue re-implementation of any of it.
+ *
+ * The picker's SHAPE — which sources it offers, and whether it holds one
+ * element or a list — is the server's call, derived from the mapped field
+ * (LinkBuilderService::elementSelectConfigFor()). Hence `fieldHandle` going
+ * out and `single` coming back: this component doesn't know what an Entries
+ * field's maxRelations is, and shouldn't.
  */
 export default {
     name: 'ElementPicker',
@@ -28,23 +34,44 @@ export default {
     emits: ['update:modelValue'],
 
     props: {
-        modelValue:  { type: [String, Number, null], default: null },
+        // A single-element picker binds a bare id, a multi-element one the
+        // list of picked ids.
+        modelValue:  { type: [String, Number, Array, null], default: null },
         elementType: { type: String, required: true },
+        // Handle of the CUSTOM field this default belongs to, or null for a
+        // native row — see MappingRow for why natives send nothing.
+        fieldHandle: { type: String, default: null },
     },
 
     data() {
         return {
             instance: null,
-            // String form of whatever id we last rendered for — comparing
-            // against the next modelValue tells us when to re-render.
+            // Whether the server rendered a one-element picker. Until a payload
+            // says otherwise, assume it did — that's the historical shape.
+            single: true,
+            // The render key we last rendered for; comparing it against the
+            // current one tells us when a re-render is due.
             renderedFor: '',
         };
     },
 
+    computed: {
+        // The bound value as the id list the endpoint takes, whichever shape
+        // the picker stores in.
+        ids() {
+            const value = Array.isArray(this.modelValue) ? this.modelValue : [this.modelValue];
+
+            return value.filter(id => id != null && id !== '').map(String);
+        },
+
+        renderKey() {
+            return this.keyFor(this.ids);
+        },
+    },
+
     watch: {
-        modelValue(next) {
-            const want = next == null ? '' : String(next);
-            if (want === this.renderedFor) return;
+        renderKey(next) {
+            if (next === this.renderedFor) return;
             this.renderAndInit();
         },
         elementType() {
@@ -61,6 +88,12 @@ export default {
     },
 
     methods: {
+        // A re-render is due when the picked ids change OR the field they're
+        // picked for does — the field decides the picker's sources and limit.
+        keyFor(ids) {
+            return `${this.fieldHandle ?? ''}|${ids.join(',')}`;
+        },
+
         destroyInstance() {
             if (this.instance && typeof this.instance.destroy === 'function') {
                 try { this.instance.destroy(); } catch (_) { /* swallow — Craft is forgiving here */ }
@@ -75,10 +108,10 @@ export default {
                 return;
             }
 
-            const ids = this.modelValue ? [this.modelValue] : [];
+            const ids = this.ids;
             let payload;
             try {
-                payload = await api.renderElementSelect(this.elementType, ids);
+                payload = await api.renderElementSelect(this.elementType, ids, this.fieldHandle);
             } catch (e) {
                 console.error('[influx] render-element-select failed', e);
                 return;
@@ -86,7 +119,8 @@ export default {
 
             this.destroyInstance();
             this.$refs.host.innerHTML = payload.html;
-            this.renderedFor = this.modelValue == null ? '' : String(this.modelValue);
+            this.renderedFor = this.keyFor(ids);
+            this.single = payload.jsSettings?.single !== false;
 
             this.instance = new Craft.BaseElementSelectInput(payload.jsSettings);
             // BaseElementSelectInput triggers these on its own jQuery wrapper.
@@ -100,10 +134,20 @@ export default {
             let ids = [];
             try { ids = this.instance.getSelectedElementIds() ?? []; }
             catch (_) { ids = []; }
-            const next = ids[0] != null ? String(ids[0]) : null;
-            const current = this.modelValue == null ? null : String(this.modelValue);
-            if (next === current) return;
-            this.renderedFor = next ?? '';
+            ids = ids.filter(id => id != null && id !== '').map(String);
+
+            const key = this.keyFor(ids);
+            if (key === this.renderKey) return;
+
+            // A one-element picker keeps emitting the bare id every default
+            // saved so far is stored as; a multi one emits the list — but never
+            // an EMPTY list, which the mapping would read as a default that is
+            // set (FieldMapping::usesDefault()).
+            const next = this.single ? (ids[0] ?? null) : (ids.length ? ids : null);
+
+            // Craft owns the DOM this selection came from — re-rendering it
+            // would be pointless churn, so bank the key as already rendered.
+            this.renderedFor = key;
             this.$emit('update:modelValue', next);
         },
     },

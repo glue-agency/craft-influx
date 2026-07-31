@@ -83,9 +83,15 @@
                 />
             </template>
             <template v-else-if="field.defaultType === 'element'">
+                <!-- Only a CUSTOM field's handle is sent along to shape the
+                     picker after that field (sources, single vs multiple).
+                     `fieldClass` is what makes a descriptor custom; a native
+                     row must send nothing, or a real custom field handled
+                     'author' would reshape the native author's picker. -->
                 <v-element-picker
                     :model-value="mapping.default"
                     :element-type="field.elementType || 'craft\\elements\\Entry'"
+                    :field-handle="field.fieldClass ? field.handle : null"
                     @update:model-value="onDefaultElementChange"
                 />
             </template>
@@ -352,10 +358,11 @@ export default {
             this.writeMapping('default', value);
         },
 
-        onDefaultElementChange(elementId) {
-            // ElementPicker emits the raw id (or null on clear). Project
-            // Config stores it as a string to match the legacy Twig form.
-            this.writeMapping('default', elementId == null ? null : String(elementId));
+        onDefaultElementChange(value) {
+            // ElementPicker emits ids as strings already: one for a
+            // single-element field, the list for a multi-relation one, null on
+            // clear (which writeMapping prunes away).
+            this.writeMapping('default', value);
         },
 
         // SchemaForm emits land here directly: keep the local model in

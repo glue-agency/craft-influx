@@ -130,12 +130,17 @@ export async function fetchSample(payload) {
     });
 }
 
-export async function renderElementSelect(elementType, ids) {
+// `fieldHandle` names the custom field the default is picked for, and shapes
+// the picker after that field's own sources and relation limit. Only custom
+// field rows send it — a native row would risk colliding with a same-handled
+// custom field (see MappingRow).
+export async function renderElementSelect(elementType, ids, fieldHandle = null) {
     const url = Craft.getActionUrl('influx/link-builder/render-element-select');
     const params = new URLSearchParams({ elementType });
     for (const id of (ids || [])) {
         if (id != null && id !== '') params.append('ids[]', String(id));
     }
+    if (fieldHandle) params.set('fieldHandle', String(fieldHandle));
     return request(withQuery(url, params.toString()), { method: 'GET' });
 }
 

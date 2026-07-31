@@ -4,7 +4,9 @@ namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
+use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Entry;
+use craft\fields\BaseRelationField;
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
@@ -381,11 +383,17 @@ class LinkBuilderService extends Component
      * `$readOnly` is passed in rather than re-derived, so one request answers
      * from one read of `allowAdminChanges` (the controller's).
      *
+     * `$fieldHandle` names the CUSTOM field the default is being picked for, and
+     * shapes the picker after that field ({@see elementSelectConfigFor()}). The
+     * SPA only sends it for a custom-field row; a native one (the author) sends
+     * nothing, which is what keeps a real custom field that happens to be handled
+     * `author` from shaping the author picker.
+     *
      * @param string $elementType FQCN of the target element type.
      * @param int[]  $ids         Currently-selected element ids.
      * @return array{html: string, jsSettings: array}
      */
-    public function renderElementSelect(string $elementType, array $ids, bool $readOnly): array
+    public function renderElementSelect(string $elementType, array $ids, bool $readOnly, ?string $fieldHandle = null): array
     {
         $elements = [];
 
@@ -397,6 +405,51 @@ class LinkBuilderService extends Component
             }
         }
 
-        return Compat::elementSelectInput($elementType, $elements, $readOnly);
+        $field = $fieldHandle ? Craft::$app->getFields()->getFieldByHandle($fieldHandle) : null;
+
+        return Compat::elementSelectInput($elementType, $elements, $readOnly, $this->elementSelectConfigFor($field));
+    }
+
+    /**
+     * How the default-value picker for a given field should behave: which
+     * sources it may choose from, and how many elements it may hold.
+     *
+     * A default picked for a relation field has to obey that field's own
+     * configuration — offering sections the field can't relate, or a second
+     * element to a field that holds one, would let the CP save a default the
+     * sync then can't apply.
+     *
+     * Reads the field's public source settings rather than calling
+     * `BaseRelationField::getInputSources()`, for two reasons. It has side
+     * effects: the Assets override resolves an OWNING element's upload folder
+     * and authorizes an upload token on the session on its way to an answer,
+     * neither of which a config query should cause (and there's no owning
+     * element here to resolve against anyway). And these same two settings are
+     * what the SYNC scopes its lookups by — `$sources` in
+     * {@see \GlueAgency\Influx\fields\Entries::scopeBySources()} and
+     * {@see \GlueAgency\Influx\fields\Assets::allowedVolumeIds()}, `$source` in
+     * {@see \GlueAgency\Influx\fields\GroupScopedRelation::scopeBySources()} —
+     * so reading them here is what makes a pickable default a resolvable one.
+     *
+     * Single-source flavours (Categories, Tags) carry their one source in
+     * `$source`; the multi-source ones (Entries, Assets, Users) in `$sources`.
+     * All three settings are plain public data on Craft 4 and 5 alike.
+     *
+     * Anything that isn't a relation field — the native author row, a handle that
+     * no longer resolves — keeps the historical shape: every source, one element.
+     *
+     * @return array{sources: string|string[], limit: int|null, single: bool}
+     */
+    public function elementSelectConfigFor(?CraftFieldInterface $field): array
+    {
+        if (! $field instanceof BaseRelationField) {
+            return ['sources' => '*', 'limit' => 1, 'single' => true];
+        }
+
+        return [
+            'sources' => $field->source !== null ? [$field->source] : ($field->sources ?? '*'),
+            'limit'   => $field->maxRelations,
+            'single'  => $field->maxRelations === 1,
+        ];
     }
 }

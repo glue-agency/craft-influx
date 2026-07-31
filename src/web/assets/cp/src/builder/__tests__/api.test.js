@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, bootstrap, configureCsrf, deleteLink, save } from '../api.js';
+import { ApiError, bootstrap, configureCsrf, deleteLink, renderElementSelect, save } from '../api.js';
 
 const jsonResponse = (body, { status = 200 } = {}) => ({
     ok: status >= 200 && status < 300,
@@ -68,5 +68,23 @@ describe('request envelope', () => {
         const [, init] = fetch.mock.calls[0];
         expect(init.headers['X-CSRF-Token']).toBe('token-123');
         expect(init.method).toBe('POST');
+    });
+});
+
+describe('render-element-select query', () => {
+    it('carries every picked id, plus the field the picker is shaped after', async () => {
+        fetch.mockResolvedValue(jsonResponse({ html: '', jsSettings: {} }));
+        await renderElementSelect('craft\\elements\\Entry', ['12', '34'], 'relatedArticles');
+
+        const [url] = fetch.mock.calls[0];
+        expect(url).toContain('ids%5B%5D=12&ids%5B%5D=34');
+        expect(url).toContain('fieldHandle=relatedArticles');
+    });
+
+    it('names no field when the row is a native one', async () => {
+        fetch.mockResolvedValue(jsonResponse({ html: '', jsSettings: {} }));
+        await renderElementSelect('craft\\elements\\User', [], null);
+
+        expect(fetch.mock.calls[0][0]).not.toContain('fieldHandle');
     });
 });

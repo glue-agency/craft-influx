@@ -96,6 +96,46 @@ class RelationDefaultMatchTest extends Unit
         $this->assertSame(0, $strategy->createCalls);
     }
 
+    public function testAMultiElementDefaultLooksUpEveryPickedId(): void
+    {
+        // A default picked for a multi-relation field is a LIST of ids — the CP
+        // picker allows as many as the field's maxRelations
+        // ({@see \GlueAgency\Influx\services\LinkBuilderService::elementSelectConfigFor()}).
+        // Each id resolves on its own, still by id, and still without creating.
+        $strategy = $this->strategy();
+        $strategy->stubsByValue = ['77' => $this->relatedElement(77), '88' => $this->relatedElement(88)];
+        $context = $this->context(
+            feed: [],
+            mapping: [
+                'useDefault' => true,
+                'default'    => ['77', '88'],
+                'options'    => ['match' => 'slug', 'create' => true],
+            ],
+        );
+
+        $this->assertSame([77, 88], $strategy->parse($context));
+        $this->assertSame([['id', '77'], ['id', '88']], $strategy->calls);
+        $this->assertSame(0, $strategy->createCalls);
+    }
+
+    public function testAMultiElementDefaultKeepsThePicksThatStillResolve(): void
+    {
+        // One picked element has since been deleted. The relation still gets the
+        // others — dropping the whole default over one stale id would detach
+        // relations the entry legitimately had.
+        $strategy = $this->strategy(finds: false);
+        $strategy->stubsByValue = ['88' => $this->relatedElement(88)];
+        $context = $this->context(
+            feed: [],
+            mapping: [
+                'useDefault' => true,
+                'default'    => ['77', '88'],
+            ],
+        );
+
+        $this->assertSame([88], $strategy->parse($context));
+    }
+
     public function testAFeedValueThatMissesStillCreates(): void
     {
         $strategy = $this->strategy(finds: false);
@@ -116,7 +156,8 @@ class RelationDefaultMatchTest extends Unit
      * Anonymous Relation recording every (match, value) pair findOne() is asked
      * for and every createMissing() it reaches — the same no-boot seam
      * {@see RelationCacheTest} stubs. `$finds` decides whether the stubbed
-     * lookup resolves at all.
+     * lookup resolves at all; `$stubsByValue` overrides that per reference, so a
+     * multi-value default can resolve to distinct elements (or miss on one).
      */
     protected function strategy(bool $finds = true): Relation
     {
@@ -128,6 +169,9 @@ class RelationDefaultMatchTest extends Unit
 
             public ?ElementInterface $stub = null;
 
+            /** @var array<string, ElementInterface> */
+            public array $stubsByValue = [];
+
             protected function elementType(): string
             {
                 return CraftEntryElement::class;
@@ -137,7 +181,7 @@ class RelationDefaultMatchTest extends Unit
             {
                 $this->calls[] = [$match, $value];
 
-                return $this->stub;
+                return $this->stubsByValue[(string) $value] ?? $this->stub;
             }
 
             protected function createMissing(FieldContext $context, mixed $value): ?ElementInterface
@@ -152,10 +196,10 @@ class RelationDefaultMatchTest extends Unit
         return $strategy;
     }
 
-    protected function relatedElement(): ElementInterface
+    protected function relatedElement(int $id = 5): ElementInterface
     {
         $element = $this->createMock(ElementInterface::class);
-        $element->id = 5;
+        $element->id = $id;
 
         return $element;
     }

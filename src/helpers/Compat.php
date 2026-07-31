@@ -362,21 +362,36 @@ class Compat
      * A read-only environment renders the control disabled: chips stay visible,
      * choose/remove go dead.
      *
+     * `sortable` stays off whatever the picker's shape: a multi-relation default
+     * is an identity set — {@see \GlueAgency\Influx\fields\Relation::parse()}
+     * looks each picked id up on its own — so dragging them into an order would
+     * suggest a meaning the sync doesn't carry.
+     *
      * @param string $elementType FQCN of the target element type.
      * @param ElementInterface[] $elements Currently-selected elements.
+     * @param array{sources?: string|string[], limit?: int|null, single?: bool} $config
+     * The picker's shape, derived from the mapped field by
+     * {@see \GlueAgency\Influx\services\LinkBuilderService::elementSelectConfigFor()}.
+     * A null `limit` means unlimited — how Craft's own partial and
+     * `BaseElementSelectInput` both read it. Omitted keys fall back to the
+     * single-element-from-anywhere shape the native author row wants.
      * @return array{html: string, jsSettings: array}
      */
-    public static function elementSelectInput(string $elementType, array $elements, bool $readOnly): array
+    public static function elementSelectInput(string $elementType, array $elements, bool $readOnly, array $config = []): array
     {
         $hostId = 'influx-el-' . StringHelper::randomString(8);
+
+        // `+=` only fills keys the caller left out, so an explicit `limit => null`
+        // (unlimited) isn't overwritten the way `??` on each value would.
+        $config += ['sources' => '*', 'limit' => 1, 'single' => true];
 
         $shared = [
             'id'             => $hostId,
             'name'           => null,
             'elementType'    => $elementType,
-            'sources'        => '*',
-            'limit'          => 1,
-            'single'         => true,
+            'sources'        => $config['sources'],
+            'limit'          => $config['limit'],
+            'single'         => $config['single'],
             'sortable'       => false,
             'showActionMenu' => false,
             'disabled'       => $readOnly,
