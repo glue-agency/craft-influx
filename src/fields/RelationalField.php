@@ -4,8 +4,11 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\fields\BaseRelationField;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -76,6 +79,57 @@ abstract class RelationalField extends Field
     public function childrenKind(): ?string
     {
         return 'elements';
+    }
+
+    /**
+     * Field layouts of the elements this field points at, resolved from the
+     * field's configured sources. Subclasses know how to translate their own
+     * source keys into the right layouts — a relation's sections / groups
+     * (`section:UID`, `group:UID`, ...), an asset field's volumes — and
+     * override accordingly; the base returns nothing so a flavour that hasn't
+     * declared its sources still builds a sensible (built-ins-only) schema.
+     *
+     * @return iterable<FieldLayout|null>
+     */
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
+    {
+        return [];
+    }
+
+    /**
+     * One text sub-node per custom field across the related element's source
+     * layouts — the sub-fields a mapping's `fields` channel can address
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}
+     * resolves each handle on the related element's own field layout). Deduped
+     * by handle, first layout wins (mirrors {@see Relation::matchOptions()}'
+     * `$seen` set), because the union across sources is what the field may
+     * relate and the same handle means the same field wherever it appears.
+     *
+     * @return list<array>
+     */
+    protected function layoutCustomSubFields(BaseRelationField $field): array
+    {
+        $builder = SchemaBuilder::make();
+        $seen = [];
+
+        foreach ($this->sourceFieldLayouts($field) as $layout) {
+            if (! $layout instanceof FieldLayout) {
+                continue;
+            }
+
+            foreach ($layout->getCustomFields() as $customField) {
+                $handle = $customField->handle;
+
+                if (isset($seen[$handle])) {
+                    continue;
+                }
+
+                $seen[$handle] = true;
+                $builder->text(['handle' => $handle, 'label' => $customField->name]);
+            }
+        }
+
+        return $builder->toArray();
     }
 
     /**

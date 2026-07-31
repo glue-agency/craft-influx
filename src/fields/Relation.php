@@ -107,20 +107,6 @@ abstract class Relation extends RelationalField
         return $groups;
     }
 
-    /**
-     * Field layouts of the elements this relation field points at, resolved
-     * from the field's configured sources. Subclasses know how to translate
-     * source keys (`section:UID`, `group:UID`, ...) into the right layouts
-     * and override accordingly; the base returns nothing so unknown
-     * relation flavors still build a sensible (built-ins-only) matchOptions.
-     *
-     * @return iterable<FieldLayout|null>
-     */
-    protected function sourceFieldLayouts(BaseRelationField $field): iterable
-    {
-        return [];
-    }
-
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         /** @var BaseRelationField $field */

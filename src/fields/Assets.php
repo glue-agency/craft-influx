@@ -7,6 +7,8 @@ use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Asset;
 use craft\fields\Assets as CraftAssetsField;
+use craft\fields\BaseRelationField;
+use craft\models\FieldLayout;
 use craft\models\Volume;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\SchemaBuilder;
@@ -58,11 +60,26 @@ class Assets extends RelationalField
      * through {@see \GlueAgency\Influx\events\RegisterMappingOptionsEvent}.
      * `mode` is grouped so it renders via the shared SearchableSelect like the
      * relation "Match by"; its handle stays `mode` so saved configs round-trip.
+     *
+     * The matched asset's sub-fields come as TWO cards, because they're written
+     * through two different channels: "Sub-fields" holds the asset element's own
+     * attributes (alt / title), which are writable on any asset whatever its
+     * volume's layout says, and rides the `nativeFields` channel; "Asset fields"
+     * holds the custom fields of the volumes the field can relate, applied
+     * through the asset's field layout on the `fields` channel. A volume field
+     * that happens to use the handle `alt` therefore legitimately gets a row in
+     * both — they write different things, and each row shows its handle.
+     *
+     * Custom sub-fields are offered as plain text rows for now: the `fields`
+     * channel coerces per the target field's own strategy anyway, so the row
+     * only needs to supply a source node and an optional default.
      */
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
+        /** @var CraftAssetsField $field */
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
+        $customSubFields = $this->layoutCustomSubFields($field);
 
         return SchemaBuilder::make()
             ->select([
@@ -101,7 +118,11 @@ class Assets extends RelationalField
                     ->text(['handle' => 'alt', 'label' => Craft::t('influx', 'Alt text')])
                     ->text(['handle' => 'title', 'label' => Craft::t('influx', 'Title')])
                     ->toArray(),
-            ]);
+            ])
+            ->when($customSubFields, fn(SchemaBuilder $builder) => $builder->subFields([
+                'label'     => Craft::t('influx', 'Asset fields'),
+                'subFields' => $customSubFields,
+            ]));
     }
 
     /**
@@ -251,6 +272,69 @@ class Assets extends RelationalField
     }
 
     /**
+     * Field layouts the mapping's custom sub-fields are offered from: one per
+     * volume the field may relate. A volume without a layout contributes
+     * nothing rather than a null the caller has to filter.
+     *
+     * @return iterable<FieldLayout|null>
+     */
+    protected function sourceFieldLayouts(BaseRelationField $field): iterable
+    {
+        if (! $field instanceof CraftAssetsField) {
+            return;
+        }
+
+        foreach ($this->allowedVolumes($field) as $volume) {
+            $layout = $volume->getFieldLayout();
+
+            if ($layout) {
+                yield $layout;
+            }
+        }
+    }
+
+    /**
+     * Volumes the field may relate assets from: every volume when it accepts
+     * any source (`sources === '*'`), otherwise the ones its `volume:UID`
+     * sources decode to. The schema-side twin of {@see allowedVolumeIds()},
+     * which asks the same question of a running sync.
+     *
+     * @return list<Volume>
+     */
+    protected function allowedVolumes(CraftAssetsField $field): array
+    {
+        $sources = $field->sources ?? '*';
+
+        if (! is_array($sources)) {
+            return array_values(Craft::$app->getVolumes()->getAllVolumes());
+        }
+
+        return $this->volumesFromSources($sources);
+    }
+
+    /**
+     * Decode a field's source list into the volumes it names, dropping keys
+     * that aren't volume sources or whose UID doesn't resolve here.
+     *
+     * @param array<mixed> $sources
+     * @return list<Volume>
+     */
+    protected function volumesFromSources(array $sources): array
+    {
+        $volumes = [];
+
+        foreach ($sources as $source) {
+            $volume = $this->volumeFromSource($source);
+
+            if ($volume) {
+                $volumes[] = $volume;
+            }
+        }
+
+        return $volumes;
+    }
+
+    /**
      * Resolve a `volume:UID` field source key to its Volume in this
      * environment, or null when the key isn't a volume source or the UID
      * doesn't resolve. Both the upload destination and the allowed-volume
@@ -364,12 +448,8 @@ class Assets extends RelationalField
 
         $ids = [];
 
-        foreach ($sources as $source) {
-            $volume = $this->volumeFromSource($source);
-
-            if ($volume) {
-                $ids[] = $volume->id;
-            }
+        foreach ($this->volumesFromSources($sources) as $volume) {
+            $ids[] = $volume->id;
         }
 
         return $ids ?: null;
