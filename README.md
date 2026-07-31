@@ -120,6 +120,7 @@ Built-in strategies, keyed by Craft field class and registered via `FieldsServic
 - **`Assets`** — matches by id or by URL/filename, with best-effort fallback when a CDN host changes, and optional download-on-import when nothing matches. Sub-fields (alt, title, …) write back onto the matched asset.
 - **`RichText`** — CKEditor/Redactor-style fields.
 - **`Matrix`** — maps a remote sub-array to blocks, one child-mapping tree per block type. Every sync fully replaces the field's blocks from the feed (no per-block merge or reordering yet).
+- **`Table`** — one sub-mapping per column (keyed by column id, so a handle rename can't orphan it), values zipped by index into rows. Full-replace, like Matrix; change detection normalizes per column type so a checkbox or date column doesn't churn.
 
 `DefaultField` catches everything no strategy claims — plain-value fields (Plain Text, Number, Email, URL, …) and any Craft field type without a dedicated strategy: a direct `setFieldValue()`. It declares no Craft field class, so it isn't a registered strategy; the registry holds it apart as the fallback, and it never shows up in `->fields->all()`.
 
@@ -193,7 +194,7 @@ Anything in there treats the other plugin as optional: integrations read its tab
 
 ## Roadmap
 
-Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for relations, options, dates, assets, rich text, and Matrix.
+Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for relations, options, dates, assets, rich text, Matrix, and Table.
 
 Still open:
 
@@ -203,6 +204,13 @@ Still open:
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
+- [ ] **Strategies for the remaining native field types.** Anything without a strategy falls back to `DefaultField`'s raw write — fine for plain scalar types, wrong for richer ones:
+  - [ ] Time (`craft\fields\Time`) — the fallback re-writes the field on every sync: the stored `DateTime` and the feed's string never compare equal
+  - [ ] Money (`craft\fields\Money`) — the fallback never detects a change after the first write, so updates are silently skipped
+  - [ ] Link (`craft\fields\Link`, Craft ≥ 5.3) — bare URLs work through the fallback; no link-type, label or target support
+  - [ ] Addresses (`craft\fields\Addresses`) — nested address elements, unusable through a raw write; needs a Matrix-style strategy with address sub-fields
+  - [ ] Content Block (`craft\fields\ContentBlock`, Craft ≥ 5.8) — nested entry, same story; Craft-5-only gating
+  - [ ] Plain Text, Email, Icon, Country, Range, Number, Color, JSON — served acceptably by the fallback today; dedicated strategies would only tighten change detection (decimal formatting, un-normalized hex colors, JSON key order)
 - [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks).
 
 ## Acknowledgements
