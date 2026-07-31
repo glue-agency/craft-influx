@@ -43,7 +43,7 @@ const tableField = {
     },
 };
 
-const bootstrapPayload = (mappings = {}) => ({
+const bootstrapPayload = (mappings = {}, meta = {}) => ({
     link: {
         handle: 'articles',
         name: 'Articles',
@@ -55,11 +55,11 @@ const bootstrapPayload = (mappings = {}) => ({
         mappings,
     },
     options: { elementTypes: [], sections: [], sectionEntryTypes: {}, processingActions: [], sites: [] },
-    meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x', envSuggestions: [] },
+    meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x', envSuggestions: [], ...meta },
 });
 
-const loadStore = async (mappings = {}) => {
-    api.bootstrap.mockResolvedValue(bootstrapPayload(mappings));
+const loadStore = async (mappings = {}, meta = {}) => {
+    api.bootstrap.mockResolvedValue(bootstrapPayload(mappings, meta));
     api.mappableFields.mockResolvedValue({ fields: [], groups: [], matchOptions: [] });
     api.endpointTokenSuggestions.mockResolvedValue({ suggestions: [] });
     await store.load(1);
@@ -109,5 +109,65 @@ describe('MappingRow fields extras', () => {
         // An emptied channel drops off the mapping, and a mapping with nothing
         // left drops out of `mappings` — no noise keys in Project Config.
         expect(store.link.mappings.specs).toBeUndefined();
+    });
+});
+
+/**
+ * The row-level "Clear": one press wipes the field's whole mapping, extras
+ * included. The row is the largest scope this can work at — it owns the
+ * extras models it re-seeds, which sibling rows (seeded once in data()) do
+ * not, hence no group- or link-level equivalent.
+ */
+describe('MappingRow clear', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const clearBtn = (wrapper) => wrapper.find('.clear-mapping');
+
+    it('shows the button only for an editable row with something saved', async () => {
+        await loadStore();
+        expect(clearBtn(mountRow()).exists()).toBe(false);
+
+        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
+        expect(clearBtn(mountRow()).exists()).toBe(true);
+
+        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } }, { readOnly: true });
+        expect(clearBtn(mountRow()).exists()).toBe(false);
+    });
+
+    it('drops the whole handle out of the store', async () => {
+        await loadStore({
+            specs: { default: 'x', options: { format: 'raw' }, fields: { col1: { node: 'specs.label' } } },
+            title: { node: 'meta.title' },
+        });
+        const wrapper = mountRow();
+
+        await clearBtn(wrapper).trigger('click');
+
+        expect(store.link.mappings).toEqual({ title: { node: 'meta.title' } });
+    });
+
+    it('re-seeds the extras models so the sub-field cards redraw empty', async () => {
+        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
+        const wrapper = mountRow();
+
+        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('specs.label');
+
+        await clearBtn(wrapper).trigger('click');
+
+        expect(wrapper.vm.extrasFields).toEqual({});
+        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('');
+    });
+
+    it('leaves the extras panel open — the press is not a toggle', async () => {
+        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
+        const wrapper = mountRow();
+        expect(wrapper.vm.extrasExpanded).toBe(true);
+
+        await clearBtn(wrapper).trigger('click');
+
+        expect(wrapper.vm.extrasExpanded).toBe(true);
+        expect(wrapper.find('.influx-mapping-extras').attributes('data-expanded')).toBe('true');
     });
 });

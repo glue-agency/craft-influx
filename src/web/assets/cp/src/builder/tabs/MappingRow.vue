@@ -35,6 +35,17 @@
                   :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
                   v-text="$t('missing mapping')"></span>
 
+            <!-- `.stop` keeps the press off the cell's extras toggle. The
+                 cell listens for click only, so a keyboard press — which
+                 reaches the button as a native Enter → click — is covered
+                 by the same modifier. -->
+            <button v-if="hasMappingData && ! readOnly"
+                    type="button"
+                    class="btn small clear-mapping"
+                    :title="$t('Clear this field’s mapping, including its sub-fields')"
+                    v-text="$t('Clear')"
+                    @click.stop="clearRow"></button>
+
             <code class="handle light" v-text="field.handle"></code>
         </div>
 
@@ -140,7 +151,7 @@ import ElementPicker from '../ElementPicker.vue';
 import SearchableSelect from '../SearchableSelect.vue';
 import SchemaForm from '../schema/SchemaForm.vue';
 import { store } from '../store.js';
-import { discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
+import { clearMapping, discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab. Renders the field name, source-node select,
@@ -216,8 +227,8 @@ export default {
             return !!this.field.fieldMeta?.subfieldsOnly;
         },
 
-        // Rows the user hasn't mapped yet keep their extras collapsed —
-        // auto-expanding empty option panels just adds noise.
+        // Anything at all saved under this handle — any slot, any channel.
+        // Gates the Clear button: a row with nothing to clear shows none.
         hasMappingData() {
             return Object.keys(this.mapping).length > 0;
         },
@@ -298,6 +309,22 @@ export default {
     },
 
     methods: {
+        /**
+         * Wipe the whole field mapping — every slot and sub-field channel at
+         * once. A ROW-level clear is safe precisely because the row owns the
+         * extras models: re-seeding them here is what redraws the SchemaForm
+         * cards below empty. A group- or link-level clear couldn't — sibling
+         * rows seed their models once in data(), so they'd keep rendering
+         * handles the wipe already removed from the store.
+         */
+        clearRow() {
+            this.extrasOptions = {};
+            this.extrasFields = {};
+            this.extrasNativeFields = {};
+            this.extrasBlocks = {};
+            this.link.mappings = clearMapping(this.link.mappings, this.field.handle);
+        },
+
         toggleExtras() {
             if (! this.hasExtras) return;
             this.extrasExpanded = ! this.extrasExpanded;

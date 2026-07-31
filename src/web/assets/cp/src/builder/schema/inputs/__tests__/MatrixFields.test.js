@@ -290,6 +290,24 @@ describe('MatrixFields', () => {
         expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{}]);
     });
 
+    it('collapses both channels and the type entry when the card is cleared', async () => {
+        const wrapper = mountFields({
+            modelValue: {
+                quote: {
+                    fields:       { quote: { node: 'quotes.text' } },
+                    nativeFields: { title: { node: 'quotes.author' } },
+                },
+                stat: { fields: { number: { node: 'stats.value' } } },
+            },
+        });
+        await wrapper.find('.clear-rows').trigger('click');
+
+        // The card's Clear is just an empty rows map through the normal
+        // merge — so the same pruning that a row-by-row clear walks.
+        expect(wrapper.emitted('update:modelValue').at(-1))
+            .toEqual([{ stat: { fields: { number: { node: 'stats.value' } } } }]);
+    });
+
     it('round-trips a stale saved native handle back into nativeFields', () => {
         // `legacy` is no longer among the type's subFields (the block type
         // dropped it), so only where it was SAVED says which channel it

@@ -47,6 +47,13 @@
 .influx-mapping-row .meta.is-toggleable:hover .name { color: #0b69a3; }
 
 .influx-mapping-row .meta .name { font-weight: 600; }
+/* Sits inline after the field name (the meta cell is a plain block, and
+   the handle below it is display:block) — same 6px gutter as the missing
+   badge it follows. */
+.influx-mapping-row .meta .clear-mapping {
+    margin-left: 6px;
+    vertical-align: middle;
+}
 .influx-mapping-row .meta .handle {
     display: block;
     margin-top: 3px;

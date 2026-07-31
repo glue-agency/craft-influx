@@ -57,6 +57,23 @@ export function setMappingSlot(mappings, handle, key, value) {
 }
 
 /**
+ * Drop one field's whole mapping — every slot at once, sub-field channels
+ * included. The counterpart to setMappingSlot for the row-level "Clear"
+ * affordance. Pure: returns a new mappings object, never mutates, and an
+ * unknown handle yields an equal copy.
+ *
+ * @param {Object<string, import('../types.js').Mapping>} mappings
+ * @param {string} handle
+ * @returns {Object<string, import('../types.js').Mapping>}
+ */
+export function clearMapping(mappings, handle) {
+    const next = { ...mappings };
+    delete next[handle];
+
+    return next;
+}
+
+/**
  * Render a node path as a select option. The label keeps the raw dot
  * syntax ('meta.id') so typing a dot-path into the dropdown search matches.
  *

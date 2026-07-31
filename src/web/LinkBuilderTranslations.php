@@ -146,6 +146,8 @@ class LinkBuilderTranslations
                 'Configure',
                 'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
                 'missing mapping',
+                'Clear this field’s mapping, including its sub-fields',
+                'Clear',
                 '— no mapping —',
                 'Search options…',
                 '— use default —',
@@ -154,6 +156,8 @@ class LinkBuilderTranslations
                 'Sub-fields with an active source node',
                 'Sub-fields whose saved source node is no longer in the fetched sample',
                 'Total sub-fields in this group',
+                'Clear every source node and default in this group',
+                'Clear',
             ],
             'schema/inputs/MatrixFields.vue' => [
                 'This block type has no mappable sub-fields.',

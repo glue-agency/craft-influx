@@ -19,6 +19,18 @@
             </span>
 
             <span class="pill pill-count" :title="$t('Total sub-fields in this group')" v-text="subFieldList.length"></span>
+
+            <!-- Both .stop modifiers are load-bearing: the card header is its
+                 own toggle, on click AND on keydown.enter/.space — and those
+                 key handlers carry .prevent, which would swallow the button's
+                 native Enter → click before it ever fires. -->
+            <button v-if="! readOnly && hasSavedRows"
+                    type="button"
+                    class="btn small clear-rows"
+                    :title="$t('Clear every source node and default in this group')"
+                    v-text="$t('Clear')"
+                    @click.stop="clearRows"
+                    @keydown.stop></button>
         </template>
 
         <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
@@ -186,6 +198,14 @@ export default {
     },
 
     methods: {
+        // An empty rows map is a normal emit, so the consumer's own merge
+        // does the collapsing — MatrixFields drops the emptied channels and
+        // then the block type off `blocks`, ElementSubFields passes the {}
+        // straight up, and MappingRow.writeMapping() prunes from there.
+        clearRows() {
+            this.$emit('update:rows', {});
+        },
+
         // `__default__` round-trips to the row's `useDefault` flag — see
         // the sentinel note in the component docblock.
         rowFor(handle) {

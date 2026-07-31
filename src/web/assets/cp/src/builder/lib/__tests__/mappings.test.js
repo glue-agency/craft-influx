@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { clearMapping, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -50,6 +50,42 @@ describe('setMappingSlot', () => {
     it('treats empty objects as empty values', () => {
         expect(setMappingSlot({ title: { node: 'name' } }, 'title', 'options', {}))
             .toEqual({ title: { node: 'name' } });
+    });
+});
+
+describe('clearMapping', () => {
+    it('drops the handle and leaves every other one alone', () => {
+        expect(clearMapping({ title: { node: 'name' }, slug: { node: 'meta.slug' } }, 'title'))
+            .toEqual({ slug: { node: 'meta.slug' } });
+    });
+
+    it('takes the whole mapping, sub-field channels included', () => {
+        const before = {
+            specs: {
+                node: 'meta.specs',
+                default: 'x',
+                useDefault: true,
+                options: { format: 'raw' },
+                fields: { col1: { node: 'specs.label' } },
+                nativeFields: { alt: { node: 'images.0.alt' } },
+                blocks: { quote: { fields: { quote: { node: 'quotes.text' } } } },
+            },
+        };
+
+        expect(clearMapping(before, 'specs')).toEqual({});
+    });
+
+    it('no-ops on an absent handle', () => {
+        expect(clearMapping({ title: { node: 'name' } }, 'slug'))
+            .toEqual({ title: { node: 'name' } });
+        expect(clearMapping({}, 'slug')).toEqual({});
+    });
+
+    it('never mutates the input', () => {
+        const before = { title: { node: 'name' } };
+        clearMapping(before, 'title');
+
+        expect(before).toEqual({ title: { node: 'name' } });
     });
 });
 

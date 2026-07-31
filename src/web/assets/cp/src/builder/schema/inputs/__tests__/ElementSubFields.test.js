@@ -62,6 +62,15 @@ describe('ElementSubFields', () => {
         }]);
     });
 
+    it('passes the card\'s Clear straight through as an empty rows map', async () => {
+        const wrapper = mountFields({
+            modelValue: { alt: { node: 'images.0.alt' }, title: { default: 'Untitled' } },
+        });
+        await wrapper.find('.clear-rows').trigger('click');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual([{}]);
+    });
+
     it('keeps a row alive on unknown keys alone when node/default clear out', () => {
         const wrapper = mountFields({
             modelValue: { alt: { node: 'images.0.alt', options: { format: 'raw' } } },
