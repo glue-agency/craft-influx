@@ -9,3 +9,6 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Codeception scratch output.
+/tests/_output/
