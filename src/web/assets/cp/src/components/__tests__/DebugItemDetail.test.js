@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DebugItemDetail from '../DebugItemDetail.vue';
+import { t } from '../../lib/installT.js';
 
 /**
  * The shared drill-down pane. Locks in the two-context value-column contract:
@@ -8,10 +9,16 @@ import DebugItemDetail from '../DebugItemDetail.vue';
  * live Current value, while the log viewer (a historical run, no meaningful
  * "current") shows the raw Incoming value beside the feed's Parsed value —
  * rendered rich via `parsedHtml` (element chips, lightswitches) when present.
+ *
+ * Plus the drill affordance on a row that nests elements, and the `drilled`
+ * mode the host re-mounts the component in for the child a reader picks.
+ *
+ * `$t` is the real helper (setup.js stubs the Craft.t it delegates to), so the
+ * counted labels are asserted interpolated rather than as templates.
  */
 const mountDetail = (props = {}) => mount(DebugItemDetail, {
     props: { row: baseRow(), ...props },
-    global: { mocks: { $t: (s) => s } },
+    global: { mocks: { $t: t } },
 });
 
 const baseRow = (overrides = {}) => ({
@@ -34,6 +41,28 @@ const baseRow = (overrides = {}) => ({
 
 const headings = (w) => w.findAll('.influx-detail-headings > div').map((d) => d.text());
 const values = (w) => w.findAll('.influx-detail-row .influx-detail-val').map((d) => d.text());
+
+const child = (action, mappings = []) => ({ title: 'Tekst', blockType: 'text', element: null, action, mappings });
+
+// A row that nests elements: the value cells stay filled on purpose, so the
+// tests prove the drill presentation replaces them rather than filling a gap.
+const drillRow = (children, overrides = {}) => baseRow({
+    mappings: [
+        {
+            handle: 'content_blocks',
+            label: 'Content blocks',
+            node: 'blocks',
+            native: false,
+            rawValue: '{…}',
+            parsedValue: '{"new1":{"type":"text"}}',
+            currentValue: '(#512)',
+            changed: true,
+            children,
+            childrenType: 'blocks',
+            ...overrides,
+        },
+    ],
+});
 
 describe('DebugItemDetail', () => {
     describe('debug context (default)', () => {
@@ -293,6 +322,111 @@ describe('DebugItemDetail', () => {
 
             w.vm.onInfoKeydown({ key: 'Escape' });
             expect(w.vm.info).toBe(null);
+        });
+    });
+
+    describe('drill row', () => {
+        it('replaces both value cells with a count summary, a state label and a chevron', () => {
+            const w = mountDetail({ row: drillRow([child('unchanged'), child('would-add', [{ changed: true }])]) });
+            const row = w.find('.influx-detail-row');
+
+            expect(row.find('.influx-detail-drill-summary').text()).toBe('2 blocks');
+            expect(row.find('.influx-detail-drill-state').text()).toBe('1 change');
+            expect(row.find('[data-icon="rightangle"]').exists()).toBe(true);
+            // The nested blob and the element's current value are gone — the
+            // summary is the row's value now.
+            expect(row.findAll('.influx-detail-val')).toHaveLength(0);
+        });
+
+        it('names the count by children type', () => {
+            const row = drillRow([child('unchanged'), child('unchanged')], { childrenType: 'entries' });
+
+            expect(mountDetail({ row }).find('.influx-detail-drill-summary').text()).toBe('2 entries');
+        });
+
+        it('labels the worst state inside — error over missing node over change', () => {
+            const label = (children) => mountDetail({ row: drillRow(children) }).find('.influx-detail-drill-state');
+
+            expect(label([child('error', [{ error: 'Boom' }]), child('would-add')]).text()).toBe('2 errors');
+            expect(label([child('would-add', [{ unaddressed: true }])]).text()).toBe('1 missing node');
+            expect(label([child('would-add'), child('would-remove')]).text()).toBe('2 changes');
+            expect(label([child('unchanged')]).text()).toBe('No changes');
+        });
+
+        it('washes the row with that same worst state', () => {
+            const state = (children) => mountDetail({ row: drillRow(children) })
+                .find('.influx-detail-row').attributes('data-drill-state');
+
+            expect(state([child('error'), child('would-add', [{ unaddressed: true }])])).toBe('error');
+            expect(state([child('would-add', [{ unaddressed: true }])])).toBe('warn');
+            expect(state([child('would-add')])).toBe('changed');
+            expect(state([child('unchanged')])).toBe(undefined);
+        });
+
+        it('never also fires the plain changed tint', () => {
+            const row = mountDetail({ row: drillRow([child('would-add')]) }).find('.influx-detail-row');
+
+            expect(row.attributes('data-changed')).toBe(undefined);
+            expect(row.classes()).toContain('influx-detail-row--drill');
+        });
+
+        it('emits drill with the mapping on click and on Enter', async () => {
+            const row = drillRow([child('would-add')]);
+            const clicked = mountDetail({ row });
+            const keyed = mountDetail({ row });
+
+            await clicked.find('.influx-detail-row').trigger('click');
+            await keyed.find('.influx-detail-row').trigger('keyup.enter');
+
+            expect(clicked.emitted('drill')).toEqual([[row.mappings[0]]]);
+            expect(keyed.emitted('drill')).toEqual([[row.mappings[0]]]);
+        });
+
+        it('opens a status pill\'s popover without also drilling', async () => {
+            const row = drillRow([child('would-add')], { unaddressed: true });
+            const w = mountDetail({ row });
+
+            await w.find('.influx-detail-pill--untouched').trigger('click');
+
+            expect(w.vm.info).not.toBe(null);
+            expect(w.emitted('drill')).toBe(undefined);
+        });
+
+        it('leaves a plain row alone — no chevron, no drill', async () => {
+            const w = mountDetail();
+
+            expect(w.find('[data-icon="rightangle"]').exists()).toBe(false);
+            expect(w.find('.influx-detail-row').attributes('role')).toBe(undefined);
+
+            await w.find('.influx-detail-row').trigger('click');
+            expect(w.emitted('drill')).toBe(undefined);
+        });
+    });
+
+    describe('drilled mode', () => {
+        it('drops the Parsed / Raw switch — a child has no payload of its own', () => {
+            expect(mountDetail().find('.influx-detail-toggle').exists()).toBe(true);
+            expect(mountDetail({ drilled: true }).find('.influx-detail-toggle').exists()).toBe(false);
+        });
+
+        it('stays on the parsed table whatever the local view holds', async () => {
+            const w = mountDetail({ drilled: true });
+            w.vm.view = 'raw';
+            await w.vm.$nextTick();
+
+            expect(w.find('.influx-detail-body').exists()).toBe(true);
+            expect(w.find('.influx-detail-raw').exists()).toBe(false);
+        });
+
+        it('pills the index label before the header title', () => {
+            expect(mountDetail().find('.influx-drill-index').exists()).toBe(false);
+            expect(mountDetail({ indexLabel: '02' }).find('.influx-drill-index').text()).toBe('02');
+        });
+
+        it('heads a child row by its own title — children carry no match value', () => {
+            const row = { action: 'would-add', title: 'Afbeelding', element: null, mappings: [] };
+
+            expect(mountDetail({ row, drilled: true }).find('.influx-detail-title').text()).toBe('Afbeelding');
         });
     });
 

@@ -3,6 +3,8 @@
         <!-- Header: what this item resolves to, the dry-run action, and the
              Parsed / Raw JSON switch. -->
         <div class="influx-detail-head">
+            <span v-if="indexLabel" class="influx-drill-index" v-text="indexLabel"></span>
+
             <span
                 v-if="row.element && row.element.chipHtml"
                 class="influx-detail-chip"
@@ -12,7 +14,7 @@
 
             <v-action-badge :action="row.action" class="influx-detail-badge" />
 
-            <div class="btngroup influx-detail-toggle">
+            <div v-if="! drilled" class="btngroup influx-detail-toggle">
                 <button
                     type="button"
                     class="btn"
@@ -34,15 +36,16 @@
 
         <!-- Parsed: incoming vs current (or, in the log context, vs parsed),
              one row per mapped field. -->
-        <div v-if="view === 'parsed'" class="influx-detail-body">
+        <div v-if="activeView === 'parsed'" class="influx-detail-body">
             <p v-if="row.message" class="influx-debug-item-note" v-text="row.message"></p>
             <pre v-if="row.error" class="influx-debug-item-error" v-text="row.error"></pre>
 
             <template v-if="row.mappings && row.mappings.length">
-                <!-- Three columns; the "did it change" signal is the row's
-                     green tint (data-changed), not a column. Per-row status is
-                     carried by the pills beside the field label, each opening a
-                     popover with the full "why" on click. -->
+                <!-- Three labelled columns plus an unlabelled gutter for a drill
+                     row's chevron; the "did it change" signal is the row's green
+                     tint (data-changed), not a column. Per-row status is carried
+                     by the pills beside the field label, each opening a popover
+                     with the full "why" on click. -->
                 <div class="influx-detail-headings">
                     <div v-text="$t('Field')"></div>
                     <div v-text="$t('Incoming')"></div>
@@ -50,7 +53,20 @@
                 </div>
 
                 <template v-for="m in row.mappings" :key="m.handle">
-                    <div class="influx-detail-row" :data-changed="m.changed ? 'true' : null">
+                    <!-- A row whose value nests elements is the way into them:
+                         its two value cells give way to a count + state summary,
+                         and the whole row is the affordance (hence role/tabindex
+                         and the gutter chevron). -->
+                    <div
+                        class="influx-detail-row"
+                        :class="{ 'influx-detail-row--drill': hasChildren(m) }"
+                        :data-changed="! hasChildren(m) && m.changed ? 'true' : null"
+                        :data-drill-state="drillState(m)"
+                        :role="hasChildren(m) ? 'button' : null"
+                        :tabindex="hasChildren(m) ? 0 : null"
+                        @click="drill(m)"
+                        @keyup.enter="drill(m)"
+                    >
                         <div class="influx-detail-field">
                             <span class="influx-detail-field-name">
                                 {{ m.label }}
@@ -85,24 +101,40 @@
                             <code v-if="m.node" class="influx-detail-node" v-text="m.node"></code>
                         </div>
 
-                        <div class="influx-detail-val">
-                            <code v-if="! isNullish(incomingCell(m))" v-text="incomingCell(m)"></code>
-                        </div>
-
-                        <div class="influx-detail-val" :class="{ 'influx-detail-val--current': context !== 'log' }">
-                            <!-- Log context: a parsed value with a rich display
-                                 comes down as server-rendered markup — element
-                                 chips for relations, a lightswitch for booleans
-                                 (server-generated, same trust level as the
-                                 header chip). Everything else falls back to the
-                                 plain text. -->
+                        <!-- Drilling replaces the value cells outright: a
+                             nested value's own blob says nothing a reader can
+                             use, so the row summarises what's inside instead. -->
+                        <template v-if="hasChildren(m)">
+                            <div class="influx-detail-drill-summary" v-text="countSummary(m.childrenType, m.children.length)"></div>
                             <div
-                                v-if="context === 'log' && ! isNullish(m.parsedHtml)"
-                                class="influx-detail-rich"
-                                v-html="m.parsedHtml"
+                                class="influx-detail-drill-state"
+                                :class="'influx-detail-drill-state--' + (drillState(m) || 'none')"
+                                v-text="drillLabel(m)"
                             ></div>
-                            <code v-else-if="! isNullish(middleCell(m))" v-text="middleCell(m)"></code>
-                        </div>
+                            <span class="influx-detail-drill-chevron" data-icon="rightangle" aria-hidden="true"></span>
+                        </template>
+
+                        <template v-else>
+                            <div class="influx-detail-val">
+                                <code v-if="! isNullish(incomingCell(m))" v-text="incomingCell(m)"></code>
+                            </div>
+
+                            <div class="influx-detail-val" :class="{ 'influx-detail-val--current': context !== 'log' }">
+                                <!-- Log context: a parsed value with a rich
+                                     display comes down as server-rendered
+                                     markup — element chips for relations, a
+                                     lightswitch for booleans (server-generated,
+                                     same trust level as the header chip).
+                                     Everything else falls back to the plain
+                                     text. -->
+                                <div
+                                    v-if="context === 'log' && ! isNullish(m.parsedHtml)"
+                                    class="influx-detail-rich"
+                                    v-html="m.parsedHtml"
+                                ></div>
+                                <code v-else-if="! isNullish(middleCell(m))" v-text="middleCell(m)"></code>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- A field whose strategy errored: a full-width red band
@@ -166,13 +198,15 @@
 .influx-detail-badge { flex: none; }
 .influx-detail-toggle { margin-left: auto; flex: none; }
 
-/* Field-comparison grid — three columns shared by the headings, rows and the
-   per-field error band so everything lines up. */
+/* Field-comparison grid — four columns shared by the headings, rows and the
+   per-field error band so everything lines up. The narrow last one is the drill
+   gutter (a chevron on rows that nest elements); every other row simply leaves
+   it empty, so nothing renders a filler cell for it. */
 .influx-detail-headings,
 .influx-detail-row,
 .influx-detail-field-error {
     display: grid;
-    grid-template-columns: minmax(130px, .8fr) minmax(160px, 1.2fr) minmax(160px, 1.2fr);
+    grid-template-columns: minmax(130px, .8fr) minmax(160px, 1.2fr) minmax(160px, 1.2fr) 24px;
     gap: 12px;
 }
 
@@ -205,6 +239,65 @@
 .influx-detail-row[data-changed="true"] {
     background: #eef9f1;
     box-shadow: inset 3px 0 0 #45a35e;
+}
+
+/* A row that drills reads as one affordance — the whole row is the button. */
+.influx-detail-row--drill { cursor: pointer; }
+
+/* Its wash is the worst state inside it, a shade lighter than the flat
+   data-changed green so a drill row is legible as its own kind of row. */
+.influx-detail-row[data-drill-state="changed"] {
+    background: #f2faf4;
+    box-shadow: inset 2px 0 0 #45a35e;
+}
+
+.influx-detail-row[data-drill-state="warn"] {
+    background: #fff9ea;
+    box-shadow: inset 2px 0 0 #ed8936;
+}
+
+.influx-detail-row[data-drill-state="error"] {
+    background: #fdeeee;
+    box-shadow: inset 2px 0 0 #d64242;
+}
+
+.influx-detail-drill-summary {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--fg-subtle);
+}
+
+.influx-detail-drill-state {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.influx-detail-drill-state--error { color: #a52121; }
+.influx-detail-drill-state--warn { color: #8a6116; }
+.influx-detail-drill-state--changed { color: #1f7a38; }
+.influx-detail-drill-state--none { color: var(--light-text-color); }
+
+.influx-detail-drill-chevron {
+    align-self: center;
+    justify-self: end;
+    color: var(--light-text-color);
+}
+
+/* The drilled header's index pill. Shares its look — and its class name — with
+   DrillList's row pill; scoped CSS doesn't cross components, so the declaration
+   lives in both. */
+.influx-drill-index {
+    flex: none;
+    box-sizing: border-box;
+    min-width: 20px;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
 }
 
 .influx-detail-field { min-width: 0; }
@@ -378,6 +471,7 @@
 
 <script>
 import ActionBadge from './ActionBadge.vue';
+import { drillCounts, drillState } from '../lib/drill.js';
 
 /**
  * The right pane of the split debug inspector: the drill-down for one selected
@@ -401,9 +495,24 @@ import ActionBadge from './ActionBadge.vue';
  * tint (data-changed). Per-row status — match key, missing node, used default,
  * managed by the target — shows as pills beside the field label, each opening a
  * short popover explaining the "why" on click.
+ *
+ * A row whose value nests elements (Matrix blocks, relations — anything the
+ * server sent `children` for) is the way into them instead of a value: its two
+ * value cells become a count summary ("4 blocks") and a state-coloured label
+ * ("2 changes"), a chevron lands in the grid's gutter column, and the row as a
+ * whole emits `drill` with that mapping on click or Enter. Its wash comes from
+ * `data-drill-state` — the worst state inside it (error > missing node > change,
+ * see lib/drill.js) — and never from `data-changed`, so the two signals can't
+ * fight over one row.
+ *
+ * The host mounts the component again for the child a reader drills into, this
+ * time with `drilled` (no Parsed / Raw switch — a child has no payload of its
+ * own) and an `indexLabel` matching the child's place in the drill list.
  */
 export default {
     name: 'DebugItemDetail',
+
+    emits: ['drill'],
 
     props: {
         row: { type: Object, required: true },
@@ -415,6 +524,13 @@ export default {
         // historical run, where it's the feed's Parsed value instead — rendered
         // rich via a mapping's `parsedHtml` when present).
         context: { type: String, default: 'debug' },
+        // Rendering a child node rather than a feed item: there's no payload of
+        // its own to show, so the Parsed / Raw switch goes away and the view
+        // stays parsed.
+        drilled: { type: Boolean, default: false },
+        // The child's place in the drill list ('01', '02', …), shown as a pill
+        // before the header title so the two panes read as one selection.
+        indexLabel: { type: String, default: '' },
     },
 
     data() {
@@ -428,11 +544,19 @@ export default {
 
     computed: {
         // Header label when there's no element chip (a would-create or
-        // would-skip item): the match value, else blank.
+        // would-skip item): the match value, else the child node's own title
+        // (children carry no match value), else blank.
         title() {
             return (this.row.element && this.row.element.title)
                 || this.row.matchValue
+                || this.row.title
                 || '';
+        },
+
+        // A drilled child has no raw payload, so the toggle is gone and the
+        // view is pinned — whatever the local `view` last held.
+        activeView() {
+            return this.drilled ? 'parsed' : this.view;
         },
 
         rawJson() {
@@ -470,6 +594,64 @@ export default {
 
         isMatch(m) {
             return this.matchAttribute !== '' && m.handle === this.matchAttribute;
+        },
+
+        hasChildren(m) {
+            return !! (m.children && m.children.length);
+        },
+
+        // Re-exported so the template can read a row's worst-state roll-up.
+        drillState,
+
+        // Ask the host to drill into this row. A plain row's click falls
+        // through here and does nothing (the status pills @click.stop before
+        // this anyway, so their popovers don't also drill).
+        drill(m) {
+            if (this.hasChildren(m)) {
+                this.$emit('drill', m);
+            }
+        },
+
+        // What a drill row shows in place of the Incoming value: how many
+        // children are in there, named by kind. One literal per noun so the
+        // strings are scannable for the translation catalogue.
+        countSummary(type, n) {
+            switch (type) {
+                case 'blocks':
+                    return this.$t('{n} blocks', { n });
+                case 'assets':
+                    return this.$t('{n} assets', { n });
+                case 'entries':
+                    return this.$t('{n} entries', { n });
+                case 'users':
+                    return this.$t('{n} users', { n });
+                case 'categories':
+                    return this.$t('{n} categories', { n });
+                case 'tags':
+                    return this.$t('{n} tags', { n });
+                default:
+                    return this.$t('{n} elements', { n });
+            }
+        },
+
+        // The middle cell of a drill row: the worst state inside it, counted.
+        // Same priority as the row's wash, so label and colour never disagree.
+        drillLabel(m) {
+            const { errors, missing, changes } = drillCounts(m);
+
+            if (errors) {
+                return errors === 1 ? this.$t('1 error') : this.$t('{n} errors', { n: errors });
+            }
+
+            if (missing) {
+                return missing === 1 ? this.$t('1 missing node') : this.$t('{n} missing nodes', { n: missing });
+            }
+
+            if (changes) {
+                return changes === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changes });
+            }
+
+            return this.$t('No changes');
         },
 
         // Values arrive already stringified + truncated by describeValue();

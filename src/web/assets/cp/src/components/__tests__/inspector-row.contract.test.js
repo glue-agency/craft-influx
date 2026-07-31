@@ -122,8 +122,9 @@ describe('DebugItemDetail renders the contract', () => {
         expect(w.findAll('.influx-detail-row')).toHaveLength(fixture.mappings.length);
         // The pills read `matchAttribute` against each row's handle, plus the
         // row's own unaddressed / usedDefault / managedByTarget flags. The
-        // children-bearing rows render as plain rows today — the drill-down into
-        // them is the component's own concern, not the contract's.
+        // children-bearing rows keep their field cell too — what changes is
+        // their value cells, which is the component's own concern (see
+        // DebugItemDetail.test.js), not the contract's.
         expect(w.findAll('.influx-detail-field-name').map((n) => n.text())).toEqual([
             'Import ID match by',
             'Title',

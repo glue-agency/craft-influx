@@ -7,7 +7,7 @@ namespace GlueAgency\Influx\web;
  * `src/web/assets/cp/src/components/**` pass through their `$t` helper — the
  * tree every Influx Vue app mounts from (the link builder takes
  * MappingGroupCard, the log viewer and debug inspector take DebugItemDetail,
- * ActionBadge and ErrorPanel).
+ * DrillList, ActionBadge and ErrorPanel).
  *
  * Its own catalogue rather than a copy inside each app's, for two reasons: a
  * shared component's strings are then maintained in one place, and every
@@ -41,6 +41,9 @@ class SharedComponentTranslations
      * maintained together. ActionBadge, ErrorPanel and MappingGroupCard render
      * only server-supplied values, so they contribute none.
      *
+     * DebugItemDetail and DrillList both summarise a drill-down's child count,
+     * so they list the same count nouns; {@see self::strings()} deduplicates.
+     *
      * @return array<string, string[]>
      */
     protected static function byComponent(): array
@@ -61,6 +64,37 @@ class SharedComponentTranslations
                 'not managed by element',
                 "This value isn't written during the element save — Influx reconciles it separately after each item is imported.",
                 'No mapped fields.',
+                // A drill row's count summary, one noun per children type.
+                '{n} blocks',
+                '{n} assets',
+                '{n} entries',
+                '{n} users',
+                '{n} categories',
+                '{n} tags',
+                '{n} elements',
+                // …and its state label: the worst state inside, counted.
+                '1 error',
+                '{n} errors',
+                '1 missing node',
+                '{n} missing nodes',
+                '1 change',
+                '{n} changes',
+                'No changes',
+            ],
+            'DrillList.vue' => [
+                'Back to parent',
+                '{n} blocks',
+                '{n} assets',
+                '{n} entries',
+                '{n} users',
+                '{n} categories',
+                '{n} tags',
+                '{n} elements',
+                'In element, not in feed',
+                '1 field',
+                '{n} fields',
+                '1 change',
+                '{n} changes',
             ],
         ];
     }
