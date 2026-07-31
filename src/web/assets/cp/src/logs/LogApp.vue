@@ -66,63 +66,88 @@
         <!-- Split inspector, same pattern as the Debug view. -->
         <div class="influx-split">
             <div class="influx-split-list">
-                <div class="influx-split-list-head">
-                    <span class="influx-split-list-title">
-                        {{ $t('Items') }}
-                        <span class="light" v-text="$t('{n} processed', { n: itemTotal })"></span>
-                    </span>
-                    <span
-                        class="influx-split-list-hint"
-                        v-text="activeAction ? $t('showing {label}', { label: activeLabel }) : $t('filter with the counters above')"
-                    ></span>
-                </div>
+                <template v-if="! drillStack.length">
+                    <div class="influx-split-list-head">
+                        <span class="influx-split-list-title">
+                            {{ $t('Items') }}
+                            <span class="light" v-text="$t('{n} processed', { n: itemTotal })"></span>
+                        </span>
+                        <span
+                            class="influx-split-list-hint"
+                            v-text="activeAction ? $t('showing {label}', { label: activeLabel }) : $t('filter with the counters above')"
+                        ></span>
+                    </div>
 
-                <div class="influx-split-list-scroll">
-                    <p v-if="loadingItems && ! items.length" class="influx-split-loading"><span class="spinner" /> {{ $t('Loading…') }}</p>
+                    <div class="influx-split-list-scroll">
+                        <p v-if="loadingItems && ! items.length" class="influx-split-loading"><span class="spinner" /> {{ $t('Loading…') }}</p>
 
-                    <template v-else>
-                        <button
-                            v-for="item in items"
-                            :key="item.id"
-                            type="button"
-                            class="influx-split-item"
-                            :class="{ 'is-selected': item.id === selectedId }"
-                            @click="select(item.id)"
-                        >
-                            <span class="influx-split-item-top">
-                                <span class="influx-split-item-title" v-text="item.title"></span>
-                                <span
-                                    v-if="item.errorCount"
-                                    class="influx-log-haserror"
-                                    data-icon="alert"
-                                    :title="$t('Saved despite {n} field error(s)', { n: item.errorCount })"
-                                    v-text="item.errorCount"
-                                ></span>
-                                <v-action-badge :action="item.action" class="influx-split-item-badge" />
-                            </span>
-                            <span v-if="item.message" class="influx-split-item-sub" v-text="item.message"></span>
-                        </button>
+                        <template v-else>
+                            <button
+                                v-for="item in items"
+                                :key="item.id"
+                                type="button"
+                                class="influx-split-item"
+                                :class="{ 'is-selected': item.id === selectedId }"
+                                @click="select(item.id)"
+                            >
+                                <span class="influx-split-item-top">
+                                    <span class="influx-split-item-title" v-text="item.title"></span>
+                                    <span
+                                        v-if="item.errorCount"
+                                        class="influx-log-haserror"
+                                        data-icon="alert"
+                                        :title="$t('Saved despite {n} field error(s)', { n: item.errorCount })"
+                                        v-text="item.errorCount"
+                                    ></span>
+                                    <v-action-badge :action="item.action" class="influx-split-item-badge" />
+                                </span>
+                                <span v-if="item.message" class="influx-split-item-sub" v-text="item.message"></span>
+                            </button>
 
-                        <p v-if="! items.length" class="influx-split-empty light" v-text="emptyLabel"></p>
-                    </template>
-                </div>
+                            <p v-if="! items.length" class="influx-split-empty light" v-text="emptyLabel"></p>
+                        </template>
+                    </div>
 
-                <nav v-if="totalPages > 1" class="influx-split-pager">
-                    <button type="button" class="btn" :disabled="currentPage <= 1 || loadingItems" @click="fetchPage(currentPage - 1)">&larr;</button>
-                    <span class="light" v-text="$t('Page {n} of {total}', { n: currentPage, total: totalPages })"></span>
-                    <button type="button" class="btn" :disabled="currentPage >= totalPages || loadingItems" @click="fetchPage(currentPage + 1)">&rarr;</button>
-                </nav>
+                    <nav v-if="totalPages > 1" class="influx-split-pager">
+                        <button type="button" class="btn" :disabled="currentPage <= 1 || loadingItems" @click="fetchPage(currentPage - 1)">&larr;</button>
+                        <span class="light" v-text="$t('Page {n} of {total}', { n: currentPage, total: totalPages })"></span>
+                        <button type="button" class="btn" :disabled="currentPage >= totalPages || loadingItems" @click="fetchPage(currentPage + 1)">&rarr;</button>
+                    </nav>
+                </template>
+
+                <!-- Drilled: the children of the row the reader went into take
+                     the pane over — item list, pager and all — until they pop
+                     back out. -->
+                <v-drill-list
+                    v-else
+                    :parent-title="drillParent.title"
+                    :parent-action="drillParent.action"
+                    :field-label="drillFrame.mapping.label"
+                    :field-node="drillFrame.mapping.node || ''"
+                    :children-type="drillFrame.mapping.childrenType || ''"
+                    :children="drillFrame.mapping.children"
+                    :selected-index="drillFrame.childIndex"
+                    @back="popDrill"
+                    @select="selectDrillChild"
+                />
             </div>
 
             <div class="influx-split-detail">
                 <p v-if="loadingRow" class="influx-split-loading"><span class="spinner" /> {{ $t('Loading…') }}</p>
                 <p v-else-if="selectedError" class="error influx-split-placeholder" v-text="selectedError"></p>
+                <!-- Drilled, the pane renders the selected child instead of the
+                     item: the key carries the drill position so each level (and
+                     each child) gets a fresh mount, and the match key is dropped
+                     because it belongs to the top-level element, not a child. -->
                 <v-debug-item-detail
                     v-else-if="selectedRow"
-                    :key="selectedId"
-                    :row="selectedRow"
-                    :match-attribute="selectedRow.matchAttribute || ''"
+                    :key="`${selectedId}:${drillStack.length}:${drillFrame ? drillFrame.childIndex : 0}`"
+                    :row="drillChild || selectedRow"
+                    :match-attribute="drillStack.length ? '' : (selectedRow.matchAttribute || '')"
                     context="log"
+                    :drilled="drillStack.length > 0"
+                    :index-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
+                    @drill="pushDrill"
                 />
                 <p v-else class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
             </div>
@@ -409,6 +434,7 @@
 
 <script>
 import DebugItemDetail from '../components/DebugItemDetail.vue';
+import DrillList from '../components/DrillList.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
 import { requestErrorMessage } from '../lib/requestError.js';
@@ -420,6 +446,12 @@ import { counterDefs } from '../lib/vocabulary.js';
  * its drill-down (the same row DebugItemDetail renders on the right). A live
  * run polls on an interval (Craft's queue-runner pattern) to append rows and
  * refresh counters, with a pause control in the page header.
+ *
+ * Drilling into a row that nests elements pushes a frame onto `drillStack`: the
+ * left pane becomes that row's child list and the right pane the selected
+ * child, whose own nesting rows drill on in turn. It all comes out of the row
+ * already in `rowCache`, so descending never hits the network — and a poll that
+ * leaves the selection alone leaves the drill standing too.
  */
 export default {
     name: 'LogApp',
@@ -450,6 +482,9 @@ export default {
             streamDone: false,
             actionTarget: '#influx-log-actions',
             hasActionTarget: false,
+            // How deep into the selected item's nested elements the reader is:
+            // one `{ mapping, childIndex }` frame per level, empty at the top.
+            drillStack: [],
         };
     },
 
@@ -512,6 +547,12 @@ export default {
             return counterDefs().find((d) => d.action === this.activeAction)?.label || '';
         },
 
+        // The selected item's list row, for the identity the drilled back header
+        // points back at.
+        selectedItem() {
+            return this.items.find((i) => i.id === this.selectedId) || null;
+        },
+
         selectedRow() {
             const entry = this.rowCache[this.selectedId];
 
@@ -522,6 +563,33 @@ export default {
             const entry = this.rowCache[this.selectedId];
 
             return entry ? entry.error || '' : '';
+        },
+
+        // The level currently on screen, or null at the top.
+        drillFrame() {
+            return this.drillStack[this.drillStack.length - 1] || null;
+        },
+
+        // The child the right pane renders while drilled.
+        drillChild() {
+            return this.drillFrame ? this.drillFrame.mapping.children[this.drillFrame.childIndex] || null : null;
+        },
+
+        // What the back header points at: the level below, which is the item
+        // itself at depth 1 and the previous frame's selected child deeper in.
+        drillParent() {
+            const below = this.drillStack[this.drillStack.length - 2];
+
+            if (below) {
+                const child = below.mapping.children[below.childIndex] || {};
+
+                return { title: child.title || '', action: child.action || '' };
+            }
+
+            return {
+                title: (this.selectedItem && this.selectedItem.title) || '',
+                action: (this.selectedItem && this.selectedItem.action) || '',
+            };
         },
 
         // A run-info line for the summary bar: trigger, site/offset, started.
@@ -547,6 +615,15 @@ export default {
             if (! this.itemTotal && ! this.isLive) return this.$t('No data to process');
 
             return this.$t('No items');
+        },
+    },
+
+    watch: {
+        // Another item is another tree — never keep a drill from the last one.
+        // A poll that leaves the selection alone doesn't come through here, so
+        // the drill survives live updates.
+        selectedId() {
+            this.resetDrill();
         },
     },
 
@@ -644,6 +721,35 @@ export default {
             }
         },
 
+        // Zero-padded ordinal, the same pill DrillList marks its rows with.
+        indexLabel(i) {
+            return String(i + 1).padStart(2, '0');
+        },
+
+        // Descend into a row's children, opening the first of them. A row that
+        // nests nothing isn't a way in.
+        pushDrill(mapping) {
+            if (! mapping || ! mapping.children || ! mapping.children.length) {
+                return;
+            }
+
+            this.drillStack.push({ mapping, childIndex: 0 });
+        },
+
+        popDrill() {
+            this.drillStack.pop();
+        },
+
+        selectDrillChild(i) {
+            if (this.drillFrame) {
+                this.drillFrame.childIndex = i;
+            }
+        },
+
+        resetDrill() {
+            this.drillStack = [];
+        },
+
         pauseStream() {
             this.paused = true;
             this.stopPolling();
@@ -721,6 +827,6 @@ export default {
         },
     },
 
-    components: { 'v-debug-item-detail': DebugItemDetail, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
+    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
 };
 </script>

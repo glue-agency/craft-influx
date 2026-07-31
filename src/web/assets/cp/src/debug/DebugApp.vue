@@ -59,44 +59,68 @@
              selected one right. -->
         <div v-else class="influx-split">
             <div class="influx-split-list">
-                <div class="influx-split-list-head">
-                    <span class="influx-split-list-title">
-                        {{ $t('Items') }}
-                        <span class="light" v-text="$t('{n} fetched', { n: items.length })"></span>
-                    </span>
-                    <code v-if="meta && meta.url" class="influx-split-endpoint" :title="meta.url" v-text="meta.url"></code>
-                </div>
+                <template v-if="! drillStack.length">
+                    <div class="influx-split-list-head">
+                        <span class="influx-split-list-title">
+                            {{ $t('Items') }}
+                            <span class="light" v-text="$t('{n} fetched', { n: items.length })"></span>
+                        </span>
+                        <code v-if="meta && meta.url" class="influx-split-endpoint" :title="meta.url" v-text="meta.url"></code>
+                    </div>
 
-                <div class="influx-split-list-scroll">
-                    <p v-if="loading" class="influx-split-loading"><span class="spinner" /> {{ $t('Fetching feed…') }}</p>
+                    <div class="influx-split-list-scroll">
+                        <p v-if="loading" class="influx-split-loading"><span class="spinner" /> {{ $t('Fetching feed…') }}</p>
 
-                    <template v-else>
-                        <button
-                            v-for="(item, i) in items"
-                            :key="`${inspectRun}:${i}`"
-                            type="button"
-                            class="influx-split-item"
-                            :class="{ 'is-selected': i === selectedIndex }"
-                            @click="selectedIndex = i"
-                        >
-                            <span class="influx-split-item-top">
-                                <span class="influx-split-item-title" v-text="itemTitle(item)"></span>
-                                <v-action-badge :action="item.action" class="influx-split-item-badge" />
-                            </span>
-                            <span class="influx-split-item-sub" v-text="changesSummary(item)"></span>
-                        </button>
+                        <template v-else>
+                            <button
+                                v-for="(item, i) in items"
+                                :key="`${inspectRun}:${i}`"
+                                type="button"
+                                class="influx-split-item"
+                                :class="{ 'is-selected': i === selectedIndex }"
+                                @click="selectedIndex = i"
+                            >
+                                <span class="influx-split-item-top">
+                                    <span class="influx-split-item-title" v-text="itemTitle(item)"></span>
+                                    <v-action-badge :action="item.action" class="influx-split-item-badge" />
+                                </span>
+                                <span class="influx-split-item-sub" v-text="changesSummary(item)"></span>
+                            </button>
 
-                        <p v-if="! items.length" class="influx-split-empty light" v-text="$t('No items on this page.')"></p>
-                    </template>
-                </div>
+                            <p v-if="! items.length" class="influx-split-empty light" v-text="$t('No items on this page.')"></p>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Drilled: the children of the row the reader went into take
+                     the pane over — item list and all — until they pop back out. -->
+                <v-drill-list
+                    v-else
+                    :parent-title="drillParent.title"
+                    :parent-action="drillParent.action"
+                    :field-label="drillFrame.mapping.label"
+                    :field-node="drillFrame.mapping.node || ''"
+                    :children-type="drillFrame.mapping.childrenType || ''"
+                    :children="drillFrame.mapping.children"
+                    :selected-index="drillFrame.childIndex"
+                    @back="popDrill"
+                    @select="selectDrillChild"
+                />
             </div>
 
             <div class="influx-split-detail">
+                <!-- Drilled, the pane renders the selected child instead of the
+                     item: the key carries the drill position so each level (and
+                     each child) gets a fresh mount, and the match key is dropped
+                     because it belongs to the top-level element, not a child. -->
                 <v-debug-item-detail
                     v-if="selectedItem"
-                    :key="`${inspectRun}:${selectedIndex}`"
-                    :row="selectedItem"
-                    :match-attribute="meta && meta.matchAttribute || ''"
+                    :key="`${inspectRun}:${selectedIndex}:${drillStack.length}:${drillFrame ? drillFrame.childIndex : 0}`"
+                    :row="drillChild || selectedItem"
+                    :match-attribute="drillStack.length ? '' : (meta && meta.matchAttribute || '')"
+                    :drilled="drillStack.length > 0"
+                    :index-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
+                    @drill="pushDrill"
                 />
                 <p v-else-if="! loading" class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
             </div>
@@ -288,6 +312,7 @@
 
 <script>
 import DebugItemDetail from '../components/DebugItemDetail.vue';
+import DrillList from '../components/DrillList.vue';
 import ActionBadge from '../components/ActionBadge.vue';
 import ErrorPanel from '../components/ErrorPanel.vue';
 import { requestErrorMessage } from '../lib/requestError.js';
@@ -298,6 +323,11 @@ import { requestErrorMessage } from '../lib/requestError.js';
  * ever reads the first page) fills the left item list, and the selected item's
  * drill-down renders on the right via DebugItemDetail. Inspecting again
  * re-fetches in place; changing the link navigates to that link's page.
+ *
+ * Drilling into a row that nests elements pushes a frame onto `drillStack`: the
+ * left pane becomes that row's child list and the right pane the selected
+ * child, whose own nesting rows drill on in turn. Everything a drill reads is
+ * already in the inspect response, so descending never hits the network.
  */
 export default {
     name: 'DebugApp',
@@ -328,12 +358,42 @@ export default {
             // responses (rapid re-clicks) AND keys the list rows + detail so a
             // fresh inspect remounts them rather than patching stale state in.
             inspectRun: 0,
+            // How deep into the selected item's nested elements the reader is:
+            // one `{ mapping, childIndex }` frame per level, empty at the top.
+            drillStack: [],
         };
     },
 
     computed: {
         selectedItem() {
             return this.items[this.selectedIndex] || null;
+        },
+
+        // The level currently on screen, or null at the top.
+        drillFrame() {
+            return this.drillStack[this.drillStack.length - 1] || null;
+        },
+
+        // The child the right pane renders while drilled.
+        drillChild() {
+            return this.drillFrame ? this.drillFrame.mapping.children[this.drillFrame.childIndex] || null : null;
+        },
+
+        // What the back header points at: the level below, which is the item
+        // itself at depth 1 and the previous frame's selected child deeper in.
+        drillParent() {
+            const below = this.drillStack[this.drillStack.length - 2];
+
+            if (below) {
+                const child = below.mapping.children[below.childIndex] || {};
+
+                return { title: child.title || '', action: child.action || '' };
+            }
+
+            return {
+                title: this.selectedItem ? this.itemTitle(this.selectedItem) : '',
+                action: (this.selectedItem && this.selectedItem.action) || '',
+            };
         },
 
         // The feed's reported total (or items-on-page) for the "of N" hint next
@@ -344,6 +404,13 @@ export default {
             }
 
             return this.meta.totalCount != null ? this.meta.totalCount : (this.meta.itemsOnPage ?? null);
+        },
+    },
+
+    watch: {
+        // Another item is another tree — never keep a drill from the last one.
+        selectedIndex() {
+            this.resetDrill();
         },
     },
 
@@ -378,6 +445,35 @@ export default {
             return changed === 1 ? this.$t('1 change') : this.$t('{n} changes', { n: changed });
         },
 
+        // Zero-padded ordinal, the same pill DrillList marks its rows with.
+        indexLabel(i) {
+            return String(i + 1).padStart(2, '0');
+        },
+
+        // Descend into a row's children, opening the first of them. A row that
+        // nests nothing isn't a way in.
+        pushDrill(mapping) {
+            if (! mapping || ! mapping.children || ! mapping.children.length) {
+                return;
+            }
+
+            this.drillStack.push({ mapping, childIndex: 0 });
+        },
+
+        popDrill() {
+            this.drillStack.pop();
+        },
+
+        selectDrillChild(i) {
+            if (this.drillFrame) {
+                this.drillFrame.childIndex = i;
+            }
+        },
+
+        resetDrill() {
+            this.drillStack = [];
+        },
+
         goToLink(e) {
             const link = this.links.find((l) => l.handle === e.target.value);
 
@@ -390,6 +486,7 @@ export default {
             this.meta = null;
             this.items = [];
             this.selectedIndex = 0;
+            this.resetDrill();
             this.loading = true;
 
             // Ignore a response that a newer inspect has superseded (rapid
@@ -420,6 +517,6 @@ export default {
         },
     },
 
-    components: { 'v-debug-item-detail': DebugItemDetail, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
+    components: { 'v-debug-item-detail': DebugItemDetail, 'v-drill-list': DrillList, 'v-action-badge': ActionBadge, 'v-error-panel': ErrorPanel },
 };
 </script>

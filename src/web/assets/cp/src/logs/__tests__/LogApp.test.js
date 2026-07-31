@@ -27,6 +27,27 @@ const mountApp = (over = {}) => mount(LogApp, {
     global: { mocks: { $t } },
 });
 
+// A fetched drill-down whose single mapping nests elements — the way into the
+// drill stack.
+const nestedRow = () => ({
+    action: 'updated',
+    matchValue: 'B',
+    matchAttribute: 'external_id',
+    mappings: [
+        {
+            handle: 'content_blocks',
+            label: 'Content blocks',
+            node: 'blocks',
+            childrenType: 'blocks',
+            children: [
+                { title: 'Tekst', element: null, action: 'unchanged', mappings: [{ handle: 'body', label: 'Body', changed: false }] },
+                { title: 'Afbeelding', element: null, action: 'would-add', mappings: [{ handle: 'image', label: 'Image', changed: true }] },
+            ],
+        },
+    ],
+    raw: {},
+});
+
 describe('LogApp', () => {
     afterEach(() => {
         window.Craft.sendActionRequest = () => Promise.resolve({ data: {} });
@@ -201,5 +222,81 @@ describe('LogApp', () => {
         expect(listCall).toBeTruthy();
         expect(listCall[1]).toContain('/items');
         expect(w.findAll('.influx-counter')[0].text()).toContain('3');
+    });
+
+    describe('drill-down', () => {
+        // Mount, auto-select the first item (whose row nests elements), and go
+        // into its nesting row.
+        const drilled = async () => {
+            window.Craft.sendActionRequest = vi.fn((m, url) => (url.includes('/items/')
+                ? Promise.resolve({ data: { row: nestedRow() } })
+                : Promise.resolve({ data: { items: baseConfig().items, total: 2, counters: {}, done: false } })));
+
+            const w = mountApp();
+            await flushPromises();
+            await w.find('.influx-detail-row--drill').trigger('click');
+
+            return w;
+        };
+
+        it('swaps the item list for the child list, without a further request', async () => {
+            const w = await drilled();
+
+            expect(w.findComponent({ name: 'DrillList' }).exists()).toBe(true);
+            expect(w.findAll('.influx-split-item').length).toBe(0);
+            expect(w.findAll('.influx-drill-item').length).toBe(2);
+            // The back header names the item drilled out of.
+            expect(w.find('.influx-drill-back-title').text()).toBe('Item B');
+            // Only the one drill-down fetch the selection made.
+            expect(window.Craft.sendActionRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('renders the selected child on the right, as a drilled detail', async () => {
+            const detail = (await drilled()).findComponent({ name: 'DebugItemDetail' });
+
+            expect(detail.props('row').title).toBe('Tekst');
+            expect(detail.props('drilled')).toBe(true);
+            expect(detail.props('indexLabel')).toBe('01');
+        });
+
+        it('switches the right pane to the child the drill list selects', async () => {
+            const w = await drilled();
+            await w.findAll('.influx-drill-item')[1].trigger('click');
+
+            const detail = w.findComponent({ name: 'DebugItemDetail' });
+            expect(detail.props('row').title).toBe('Afbeelding');
+            expect(detail.props('indexLabel')).toBe('02');
+        });
+
+        it('restores the item list when the back header is used', async () => {
+            const w = await drilled();
+            await w.find('.influx-drill-back').trigger('click');
+
+            expect(w.findComponent({ name: 'DrillList' }).exists()).toBe(false);
+            expect(w.findAll('.influx-split-item').length).toBe(2);
+            const detail = w.findComponent({ name: 'DebugItemDetail' });
+            expect(detail.props('row').matchValue).toBe('B');
+            expect(detail.props('drilled')).toBe(false);
+        });
+
+        it('drops the drill when the selection moves to another item', async () => {
+            const w = await drilled();
+
+            w.vm.select(1);
+            await flushPromises();
+
+            expect(w.findComponent({ name: 'DrillList' }).exists()).toBe(false);
+            expect(w.findAll('.influx-split-item').length).toBe(2);
+        });
+
+        it('keeps the drill through a poll that leaves the selection alone', async () => {
+            const w = await drilled();
+
+            w.vm.fetchPage(1);
+            await flushPromises();
+
+            expect(w.findComponent({ name: 'DrillList' }).exists()).toBe(true);
+            expect(w.findComponent({ name: 'DebugItemDetail' }).props('row').title).toBe('Tekst');
+        });
     });
 });
