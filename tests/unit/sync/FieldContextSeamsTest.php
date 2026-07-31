@@ -10,7 +10,9 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\MappingApplier;
+use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\sync\item\SubMappingOutcome;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -67,7 +69,7 @@ class FieldContextSeamsTest extends Unit
         $context = $this->context(null, $applier);
         $subElement = $this->createMock(ElementInterface::class);
 
-        $this->assertTrue($context->applySubMappings($subElement));
+        $this->assertTrue($context->applySubMappings($subElement)->changed());
         $this->assertSame([[$context, $subElement]], $applier->calls);
     }
 
@@ -86,7 +88,7 @@ class FieldContextSeamsTest extends Unit
 
     /**
      * An applier that records the context + element each sub-mapping walk was
-     * asked for, and always reports a change.
+     * asked for, and reports one changed sub-field row.
      */
     protected function spyApplier(): MappingApplier
     {
@@ -94,11 +96,20 @@ class FieldContextSeamsTest extends Unit
             /** @var list<array{0: FieldContext, 1: ElementInterface}> */
             public array $calls = [];
 
-            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): bool
+            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
             {
                 $this->calls[] = [$parentContext, $element];
 
-                return true;
+                return new SubMappingOutcome([
+                    new MappingResult(
+                        handle: 'sub',
+                        node: 'sub',
+                        default: null,
+                        native: true,
+                        rawValue: 'value',
+                        changed: true,
+                    ),
+                ]);
             }
         };
     }

@@ -59,6 +59,22 @@ class MappingResult
 
     public ?string $error = null;
 
+    /**
+     * Per-child drill-down entries for a mapping that nests elements (Matrix
+     * blocks, related elements written through sub-mappings). Null = this
+     * mapping nests nothing.
+     *
+     * @var list<ChildResult>|null
+     */
+    public ?array $children = null;
+
+    /**
+     * Noun key for the drill count summary ("3 blocks", "2 assets"):
+     * `'blocks'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
+     * Set only alongside {@see $children}.
+     */
+    public ?string $childrenType = null;
+
     public function __construct(
         string $handle,
         ?string $node,
@@ -72,6 +88,8 @@ class MappingResult
         bool $usedDefault = false,
         bool $managedByTarget = false,
         ?string $error = null,
+        ?array $children = null,
+        ?string $childrenType = null,
     ) {
         $this->handle = $handle;
         $this->node = $node;
@@ -85,5 +103,7 @@ class MappingResult
         $this->usedDefault = $usedDefault;
         $this->managedByTarget = $managedByTarget;
         $this->error = $error;
+        $this->children = $children;
+        $this->childrenType = $childrenType;
     }
 }

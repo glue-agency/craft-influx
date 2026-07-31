@@ -85,7 +85,9 @@ abstract class RelationalField extends Field
             return;
         }
 
-        if (! $context->applySubMappings($element)) {
+        $outcome = $context->applySubMappings($element);
+
+        if (! $outcome->changed()) {
             return;
         }
 

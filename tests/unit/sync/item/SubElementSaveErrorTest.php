@@ -13,6 +13,7 @@ use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\MappingApplier;
 use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\sync\item\SubMappingOutcome;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
@@ -152,9 +153,9 @@ class SubElementSaveErrorTest extends Unit
 
     /**
      * A real applier with applyCustomField() exposed (the top-level row path,
-     * error catch included) and the sub-mapping walk stubbed to a verdict — the
-     * walk itself is specced elsewhere; what matters here is whether it reports
-     * a change.
+     * error catch included) and the sub-mapping walk stubbed to an outcome — the
+     * walk itself is specced elsewhere; what matters here is whether its rows
+     * report a change.
      */
     protected function applier(Field $strategy, bool $subMappingChanged): MappingApplier
     {
@@ -172,9 +173,18 @@ class SubElementSaveErrorTest extends Unit
                 return $this->applyCustomField($context);
             }
 
-            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): bool
+            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
             {
-                return $this->subMappingChanged;
+                return new SubMappingOutcome($this->subMappingChanged ? [
+                    new MappingResult(
+                        handle: 'title',
+                        node: 'name',
+                        default: null,
+                        native: true,
+                        rawValue: 'Draft title',
+                        changed: true,
+                    ),
+                ] : []);
             }
         };
     }

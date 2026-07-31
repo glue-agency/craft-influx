@@ -93,6 +93,10 @@ class MappingApplier
 
         $results = [];
 
+        // One collector for the whole walk; descend() hands it to every
+        // sub-mapping, so children attach to the row that opened their frame.
+        $collector = new ChildResultCollector();
+
         foreach ($link->getMappingCollection() as $handle => $mapping) {
             if ($target->ownsAttribute($link, $handle)) {
                 $results[] = new MappingResult(
@@ -123,6 +127,7 @@ class MappingApplier
                     lookups: $syncContext->lookups,
                     strategyResolver: $this->strategyResolver,
                     applier: $this,
+                    childCollector: $collector,
                 );
                 $result = $this->applyCustomField($context);
             }
@@ -151,21 +156,25 @@ class MappingApplier
      * throwing sub-strategy propagates to the parent relation's row, the only
      * row it has.
      *
-     * @return bool Whether any sub-mapping wrote a differing value — the signal
-     * the caller uses to decide whether the related element is worth saving.
+     * @return SubMappingOutcome The walk's per-sub-field rows —
+     * {@see SubMappingOutcome::changed()} is the signal the caller uses to decide
+     * whether the related element is worth saving, and the rows themselves are
+     * what a {@see ChildResult} presents in the inspectors' drill-down.
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException on runaway recursion
      */
-    public function applySubMappings(FieldContext $parentContext, ElementInterface $element): bool
+    public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
     {
         if (! $parentContext->mapping->hasSubMappings()) {
-            return false;
+            return new SubMappingOutcome();
         }
 
-        $changed = false;
+        $results = [];
 
         foreach ($parentContext->mapping->nativeSubMappings() as $sub) {
-            if ($this->applyNativeSubField($element, $parentContext->item, $sub)) {
-                $changed = true;
+            $result = $this->applyNativeSubField($element, $parentContext->item, $sub);
+
+            if ($result !== null) {
+                $results[] = $result;
             }
         }
 
@@ -176,12 +185,10 @@ class MappingApplier
                 continue;
             }
 
-            if ($this->mapCustomField($parentContext->descend($element, $sub, $craftField))->changed === true) {
-                $changed = true;
-            }
+            $results[] = $this->mapCustomField($parentContext->descend($element, $sub, $craftField));
         }
 
-        return $changed;
+        return new SubMappingOutcome($results);
     }
 
     /**
@@ -251,23 +258,47 @@ class MappingApplier
      * title/slug strings, so a null-aware string compare suffices for change
      * detection.
      *
-     * @return bool Whether the attribute's value actually changed.
+     * @return MappingResult|null The sub-field's row for the drill-down, or null
+     * when the related element has no such attribute — skipped silently, as it
+     * always has been.
      */
-    protected function applyNativeSubField(ElementInterface $element, RemoteItem $item, FieldMapping $sub): bool
+    protected function applyNativeSubField(ElementInterface $element, RemoteItem $item, FieldMapping $sub): ?MappingResult
     {
         if (! ($element->hasAttribute($sub->handle) || property_exists($element, $sub->handle))) {
-            return false;
+            return null;
         }
 
+        $rawValue = $sub->rawValue($item);
+
         if (! $sub->addressedBy($item)) {
-            return false;
+            return new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: true,
+                rawValue: $rawValue,
+                currentValue: $this->safeAttribute($element, $sub->handle),
+                changed: false,
+                unaddressed: true,
+            );
         }
 
         $before = $this->safeAttribute($element, $sub->handle);
-        $element->{$sub->handle} = $sub->resolve($item);
+        $value = $sub->resolve($item);
+        $element->{$sub->handle} = $value;
         $after = $this->safeAttribute($element, $sub->handle);
 
-        return (string) ($before ?? '') !== (string) ($after ?? '');
+        return new MappingResult(
+            handle: $sub->handle,
+            node: $sub->node,
+            default: $sub->default,
+            native: true,
+            rawValue: $rawValue,
+            parsedValue: $value,
+            currentValue: $before,
+            changed: (string) ($before ?? '') !== (string) ($after ?? ''),
+            usedDefault: $sub->usesDefault($item),
+        );
     }
 
     /**
@@ -308,6 +339,15 @@ class MappingApplier
      * is authoritative, and the row counts as changed only when the written
      * value differs from what's already there — so clearing an already-empty
      * field is not a change (a new element still saves regardless).
+     *
+     * The row's drill-down children come from two channels: a strategy that
+     * walks sub-elements reports them as it goes, through the collector frame
+     * this method opens; a strategy that derives them from its parsed value
+     * reports them afterwards, through
+     * {@see \GlueAgency\Influx\fields\Field::collectChildren()}. The hook wins
+     * when both spoke. Children are decoration, so a throwing derivation is
+     * swallowed — but a throwing parse/apply still propagates, and its walk's
+     * children are dropped with it.
      */
     protected function mapCustomField(FieldContext $context): MappingResult
     {
@@ -328,10 +368,25 @@ class MappingApplier
             );
         }
 
-        $value = $strategy->parse($context);
-        $rowChanged = $strategy->hasChanged($context, $value);
+        $context->childCollector?->open();
+        $hookChildren = null;
 
-        $strategy->apply($context, $value);
+        try {
+            $value = $strategy->parse($context);
+            $rowChanged = $strategy->hasChanged($context, $value);
+
+            $strategy->apply($context, $value);
+
+            try {
+                $hookChildren = $strategy->collectChildren($context, $value, $currentValue);
+            } catch (Throwable) {
+                // Children are decoration — a throwing derivation must not fail the row.
+            }
+        } finally {
+            $collected = $context->childCollector?->close();
+        }
+
+        $children = $hookChildren ?? $collected;
 
         return new MappingResult(
             handle: $context->handle,
@@ -343,6 +398,8 @@ class MappingApplier
             currentValue: $currentValue,
             changed: $rowChanged,
             usedDefault: $context->mapping->usesDefault($context->item),
+            children: $children,
+            childrenType: $children !== null ? $strategy->childrenKind() : null,
         );
     }
 

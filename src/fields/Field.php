@@ -6,6 +6,7 @@ use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\item\ChildResult;
 use Throwable;
 
 /**
@@ -148,6 +149,34 @@ abstract class Field
     public function addressed(FieldContext $context): bool
     {
         return $context->mapping->addressedBy($context->item);
+    }
+
+    /**
+     * Per-child drill-down entries for this row, derived AFTER parse/apply from
+     * the value the field is receiving and the one it held. The channel for a
+     * strategy whose children fall out of its parsed value (Matrix blocks);
+     * a strategy that walks sub-elements instead reports each child as it goes,
+     * through {@see FieldContext::$childCollector}.
+     *
+     * Called on dry runs and real runs alike, so it must be side-effect free —
+     * it's the inspectors' presentation of what the row did, not part of doing
+     * it.
+     *
+     * @return list<ChildResult>|null Null = this strategy nests nothing.
+     */
+    public function collectChildren(FieldContext $context, mixed $incoming, mixed $current): ?array
+    {
+        return null;
+    }
+
+    /**
+     * Noun key for the drill count summary ("3 blocks", "2 assets"):
+     * `'blocks'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
+     * Null for a strategy that nests nothing.
+     */
+    public function childrenKind(): ?string
+    {
+        return null;
     }
 
     /**

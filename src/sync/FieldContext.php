@@ -10,9 +10,11 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\sync\item\ChildResultCollector;
 use GlueAgency\Influx\sync\item\ElementLookupCache;
 use GlueAgency\Influx\sync\item\MappingApplier;
 use GlueAgency\Influx\sync\item\RemoteItem;
+use GlueAgency\Influx\sync\item\SubMappingOutcome;
 
 /**
  * Everything a field strategy needs to parse one mapping for one remote item.
@@ -78,6 +80,14 @@ class FieldContext
      */
     public ?MappingApplier $applier = null;
 
+    /**
+     * The walk's child-result collector, carried down so a strategy that writes
+     * nested elements can report them for the inspectors' drill-down. One lives
+     * per item walk. Null when a context is built directly (e.g. in tests)
+     * without a walk behind it — collection then simply doesn't happen.
+     */
+    public ?ChildResultCollector $childCollector = null;
+
     public function __construct(
         ?CraftFieldInterface $craftField,
         string $handle,
@@ -90,6 +100,7 @@ class FieldContext
         ?ElementLookupCache $lookups = null,
         ?Closure $strategyResolver = null,
         ?MappingApplier $applier = null,
+        ?ChildResultCollector $childCollector = null,
     ) {
         $this->craftField = $craftField;
         $this->handle = $handle;
@@ -102,6 +113,7 @@ class FieldContext
         $this->lookups = $lookups;
         $this->strategyResolver = $strategyResolver;
         $this->applier = $applier;
+        $this->childCollector = $childCollector;
     }
 
     /**
@@ -143,10 +155,12 @@ class FieldContext
      * throwaway one, so the call still behaves like the real walk. Not memoized:
      * a context is read-only and an applier holds no per-call state.
      *
-     * @return bool Whether any sub-mapping wrote a differing value.
+     * @return SubMappingOutcome The walk's per-sub-field rows;
+     * {@see SubMappingOutcome::changed()} is the "any sub-mapping wrote a
+     * differing value" verdict this used to return on its own.
      * @throws MappingDepthException on runaway recursion
      */
-    public function applySubMappings(ElementInterface $subElement): bool
+    public function applySubMappings(ElementInterface $subElement): SubMappingOutcome
     {
         return ($this->applier ?? new MappingApplier())->applySubMappings($this, $subElement);
     }
@@ -162,9 +176,10 @@ class FieldContext
      * single-value item so a child strategy's own resolve() yields exactly one
      * block's value.
      *
-     * The strategy resolver and the applier carry over too — a sub-mapping is
-     * part of the same walk, so it must resolve child strategies and nested
-     * sub-mappings through the same seams the top level got.
+     * The strategy resolver, the applier and the child collector carry over too
+     * — a sub-mapping is part of the same walk, so it must resolve child
+     * strategies, nested sub-mappings and nested children through the same seams
+     * the top level got.
      *
      * @throws MappingDepthException past MAX_DEPTH
      */
@@ -193,6 +208,7 @@ class FieldContext
             lookups: $this->lookups,
             strategyResolver: $this->strategyResolver,
             applier: $this->applier,
+            childCollector: $this->childCollector,
         );
     }
 }
