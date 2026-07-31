@@ -4,9 +4,11 @@ namespace GlueAgency\Influx\sync\item;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\events\SyncItemEvent;
+use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -143,6 +145,10 @@ class ItemRunner
      * off, so no row is written, or the outcome carries no element, which the
      * presenter needs to normalize values for display parity.
      *
+     * Runs {@see attachSavedChildren()} first, so the nested rows present the
+     * identities this run's commit actually created rather than the nulls the
+     * pre-save derivation could only leave there.
+     *
      * Guarded, because a snapshot is a nicety and the item's outcome is not:
      * unlike the CP drill-down this rendering used to happen in, a real run
      * presents from a console or queue request, where the rich cells build CP
@@ -153,11 +159,13 @@ class ItemRunner
      */
     protected function mappingSnapshot(SyncContext $context, ItemSyncResult $result): ?array
     {
-        if ($result->element === null || ! Influx::getInstance()->logs->loggingEnabled()) {
+        if ($result->element === null || ! $this->loggingEnabled()) {
             return null;
         }
 
         try {
+            $this->attachSavedChildren($result);
+
             return $this->rows->presentMappingResults(
                 $result->mappingResults,
                 $result->element,
@@ -169,6 +177,88 @@ class ItemRunner
 
             return null;
         }
+    }
+
+    /**
+     * Post-commit identity pass: hand each mapping row's children to the strategy
+     * that produced them, so the ones that could only become elements at save
+     * time get their saved element zipped back on
+     * ({@see \GlueAgency\Influx\fields\Field::attachSavedChildren()}). Without it
+     * a Matrix block this run ADDED shows in the log drill-down with an ordinal
+     * and no chip, even though the block exists by the time the snapshot is
+     * captured — the children were derived during populate, before the owner had
+     * an id to hang them off.
+     *
+     * Called from inside {@see mappingSnapshot()}'s guard, right before
+     * presentation: the last moment the results are still raw, which is what makes
+     * mutating them here the sanctioned exception to
+     * {@see ChildResult}'s read-only rule. A strategy that throws takes the
+     * snapshot down with it, no further — same guarantee the presentation has.
+     *
+     * Only for an outcome that WROTE: CREATED and UPDATED are the only actions
+     * {@see ItemProcessor::commit()} leaves a save behind. UNCHANGED skipped the
+     * save and its children all carry the blocks they stand for already; SKIPPED
+     * and ERROR persisted nothing at all. The pass would be harmless on those, but
+     * reading a field value back for children that cannot have gained anything is
+     * work for nothing.
+     *
+     * Top-level rows only, per the hook's documented boundary. A native row has no
+     * craft field on the layout, so there is no strategy to ask, and a row whose
+     * children are empty has nothing to fill.
+     */
+    protected function attachSavedChildren(ItemSyncResult $result): void
+    {
+        if ($result->element === null || ! $this->wroteElement($result->action)) {
+            return;
+        }
+
+        $layout = $result->element->getFieldLayout();
+
+        foreach ($result->mappingResults as $row) {
+            if ($row->children === null || $row->children === []) {
+                continue;
+            }
+
+            $craftField = $layout?->getFieldByHandle($row->handle);
+
+            if ($craftField === null) {
+                continue;
+            }
+
+            $this->strategyFor($craftField)->attachSavedChildren($result->element, $row->handle, $row->children);
+        }
+    }
+
+    /**
+     * Whether this outcome persisted the element — {@see attachSavedChildren()}
+     * says why only these two qualify. The sweep-only actions (disabled/deleted)
+     * never come out of an item run at all, and write no mapped values when they
+     * do run.
+     */
+    protected function wroteElement(ItemAction $action): bool
+    {
+        return match ($action) {
+            ItemAction::CREATED, ItemAction::UPDATED => true,
+            default => false,
+        };
+    }
+
+    /**
+     * The mapping strategy behind one of the element's craft fields. Extracted so
+     * the snapshot's back-fill can be exercised without a booted plugin.
+     */
+    protected function strategyFor(CraftFieldInterface $craftField): Field
+    {
+        return Influx::getInstance()->fields->forCraftField($craftField);
+    }
+
+    /**
+     * Whether run logging is on — the gate {@see mappingSnapshot()} opens with.
+     * Extracted for the same reason as {@see strategyFor()}.
+     */
+    protected function loggingEnabled(): bool
+    {
+        return Influx::getInstance()->logs->loggingEnabled();
     }
 
     protected function fireAfterItem(

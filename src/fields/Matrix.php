@@ -70,7 +70,9 @@ use Throwable;
  * (the feed is authoritative; the replace that drops it converges on the next
  * run). Those same fingerprints drive the inspectors' per-block drill-down
  * ({@see collectChildren()}) — a read-only derivation ALONGSIDE change
- * detection, never part of it.
+ * detection, never part of it. A real run then zips the blocks its save created
+ * back onto those children ({@see attachSavedChildren()}), which is the only way
+ * an added block can be chipped: at derivation time it isn't an element yet.
  *
  * Known v1 limitation — array-valued child nodes mis-fan: a child node that
  * resolves to a flat array for ONE block is indistinguishable from per-block
@@ -580,6 +582,134 @@ class Matrix extends Field
         }
 
         return array_slice($children, 0, self::CHILD_RESULT_LIMIT);
+    }
+
+    /**
+     * Zip the blocks the owner's save persisted back onto the children that had
+     * no identity when they were derived. The sync is full-replace, so every
+     * incoming block is built as `newN` and an ADDED child is element-less — and
+     * often title-less — at derivation time ({@see collectChildren()}); after the
+     * save those very blocks exist, and the log snapshot can chip and link them.
+     *
+     * Pairing leans on the block-ordering guarantees the class docblock states:
+     * blocks are grouped by type, so the nth non-removed child OF A TYPE is the
+     * nth saved block of that type. A REMOVED child stands for a block the
+     * replace dropped — it isn't in the saved set, so it neither pairs nor
+     * consumes a slot; an already-identified one does stay in the walk, because
+     * it occupies a slot and dropping it would shift every later pairing of its
+     * type.
+     *
+     * Per type all-or-nothing: a type whose non-removed child count doesn't match
+     * its saved block count is skipped whole. The two only diverge when something
+     * the derivation can't see happened — the {@see CHILD_RESULT_LIMIT} cap
+     * truncated the children, a listener rewrote the field, the save dropped a
+     * block — and a shifted pairing would chip the WRONG element onto a row,
+     * which is worse than no chip at all.
+     *
+     * @param list<ChildResult> $children mutated in place, nulls only
+     */
+    public function attachSavedChildren(ElementInterface $element, string $handle, array $children): void
+    {
+        $saved = $this->savedBlocksByType($element, $handle);
+
+        if ($saved === []) {
+            return;
+        }
+
+        foreach ($this->pairableChildrenByType($children) as $type => $typeChildren) {
+            $blocks = $saved[$type] ?? [];
+
+            if (count($typeChildren) !== count($blocks)) {
+                continue;
+            }
+
+            foreach ($typeChildren as $i => $child) {
+                $this->attachSavedBlock($child, $blocks[$i]);
+            }
+        }
+    }
+
+    /**
+     * The blocks the element holds NOW, grouped by block-type handle in query
+     * order. Walked through the same guard the derivation reads its current
+     * blocks with ({@see currentBlocks()}), with the field read itself inside it:
+     * this runs against a just-saved element on a console or queue request, and a
+     * snapshot nicety must never be the thing that takes the item's log row down.
+     *
+     * @return array<string, list<object>>
+     */
+    protected function savedBlocksByType(ElementInterface $element, string $handle): array
+    {
+        try {
+            $grouped = [];
+
+            foreach ($this->currentBlocks($element->getFieldValue($handle)) as $block) {
+                $grouped[$block->getType()->handle][] = $block;
+            }
+
+            return $grouped;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * The children a saved block can pair with, grouped by block type and kept in
+     * derivation order: everything the replace wrote, which is every child but
+     * the removed ones.
+     *
+     * @param list<ChildResult> $children
+     * @return array<string, list<ChildResult>>
+     */
+    protected function pairableChildrenByType(array $children): array
+    {
+        $grouped = [];
+
+        foreach ($children as $child) {
+            if ($this->isRemovedChild($child)) {
+                continue;
+            }
+
+            $grouped[(string) $child->blockType][] = $child;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * Whether a child stands for a block the replace dropped. Both label
+     * flavours, because a child carries the committed value on a real run and the
+     * hypothetical one on a dry run ({@see childActionLabel()}) — only committed
+     * labels ever reach the back-fill, but reading the flavours off the enum keeps
+     * the check honest wherever it's called from.
+     */
+    protected function isRemovedChild(ChildResult $child): bool
+    {
+        return $child->action === ChildAction::REMOVED->value
+            || $child->action === ChildAction::REMOVED->dryRunLabel();
+    }
+
+    /**
+     * Fill one child's missing identity from the block it paired with — element,
+     * label carrier and title, each only where the derivation left a null. A
+     * value it did resolve stands: a mapped native title is what this sync wrote
+     * and outranks the stored one ({@see childTitle()}).
+     */
+    protected function attachSavedBlock(ChildResult $child, object $block): void
+    {
+        $identity = $this->blockIdentity($block);
+
+        if ($child->element === null) {
+            $child->element = $identity;
+        }
+
+        if ($child->labelElement === null) {
+            $child->labelElement = $identity;
+        }
+
+        if ($child->title === null) {
+            $child->title = $this->blockTitle($block);
+        }
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace GlueAgency\Influx\fields;
 
+use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\schema\SchemaBuilder;
@@ -167,6 +168,36 @@ abstract class Field
     public function collectChildren(FieldContext $context, mixed $incoming, mixed $current): ?array
     {
         return null;
+    }
+
+    /**
+     * Back-fill identity onto the children a mapping row already carries, once
+     * the owner element has been committed — the real run's counterpart to
+     * {@see collectChildren()}, which derives them BEFORE the save. The seam
+     * exists for a strategy whose children only become elements at save time: a
+     * Matrix block the sync adds has no element (and often no title) at
+     * derivation time because nothing is persisted yet, so the log snapshot would
+     * head it with an ordinal instead of a chip. By the time the snapshot is
+     * presented those blocks ARE saved elements, and this is where they get
+     * zipped back on.
+     *
+     * Default: nothing to fill. A strategy that implements it must be
+     * read-tolerant — the value is read back off a live element right after its
+     * save, and a failed read degrades to "no back-fill", never to a thrown row —
+     * and must leave every already-identified child exactly as it is: what the
+     * derivation resolved is its verdict.
+     *
+     * Level 1 only, by design: a child row may itself carry children (a relation
+     * nested inside a block), but those are already-saved related elements, and a
+     * second level down has no ordering guarantee left to pair on. The caller
+     * ({@see \GlueAgency\Influx\sync\item\ItemRunner}) walks the top-level rows
+     * and stops there.
+     *
+     * @param string $handle the owner element's field handle for this row
+     * @param list<ChildResult> $children the row's raw children, mutated in place
+     */
+    public function attachSavedChildren(ElementInterface $element, string $handle, array $children): void
+    {
     }
 
     /**

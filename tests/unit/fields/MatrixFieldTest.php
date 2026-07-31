@@ -22,6 +22,7 @@ use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
+use Throwable;
 
 /**
  * Behaviour spec for the Matrix mapping strategy — the no-boot half. Compat's
@@ -844,6 +845,162 @@ class MatrixFieldTest extends Unit
         $this->assertCount(100, $children);
     }
 
+    // -- post-commit identity back-fill ---------------------------------------
+
+    public function testChildrenPairWithTheSavedBlocksOfTheirTypeInOrder(): void
+    {
+        // What an added child looks like when the owner's save has run: no
+        // element (it had no id at derivation time), and a title only where the
+        // feed mapped one.
+        $children = [
+            new ChildResult(title: null, blockType: 'season', action: 'added'),
+            new ChildResult(title: 'Winter 2021', blockType: 'season', action: 'added'),
+            new ChildResult(title: null, blockType: 'quote', action: 'added'),
+        ];
+
+        $saved = [
+            $this->fakeBlock('season', [], ['title' => 'Winter 2020']),
+            $this->fakeBlock('season', [], ['title' => 'Stale 2021']),
+            $this->fakeBlock('quote', [], ['title' => 'Pull quote']),
+        ];
+
+        (new Matrix())->attachSavedChildren($this->owner($this->fakeQuery($saved)), 'seasons', $children);
+
+        $this->assertSame($saved[0], $children[0]->element);
+        $this->assertSame($saved[1], $children[1]->element);
+        $this->assertSame($saved[2], $children[2]->element);
+
+        $this->assertSame('Winter 2020', $children[0]->title, 'A title-less child takes the saved block title.');
+        $this->assertSame('Winter 2021', $children[1]->title, 'A resolved title is the derivation verdict and stands.');
+        $this->assertSame('Pull quote', $children[2]->title);
+
+        // The label carrier was null here (a type whose throwaway block failed to
+        // build), so the saved block stands in for it too.
+        $this->assertSame($saved[0], $children[0]->labelElement);
+    }
+
+    public function testPairingCountsPerTypeRatherThanPositionally(): void
+    {
+        // The children arrive interleaved while the saved blocks are grouped by
+        // type — pairing by position would chip the wrong element onto every row.
+        $children = [
+            new ChildResult(blockType: 'quote', action: 'added'),
+            new ChildResult(blockType: 'season', action: 'added'),
+            new ChildResult(blockType: 'season', action: 'added'),
+        ];
+
+        $saved = [
+            $this->fakeBlock('season', [], ['title' => 'S1']),
+            $this->fakeBlock('season', [], ['title' => 'S2']),
+            $this->fakeBlock('quote', [], ['title' => 'Q1']),
+        ];
+
+        (new Matrix())->attachSavedChildren($this->owner($this->fakeQuery($saved)), 'seasons', $children);
+
+        $this->assertSame(['Q1', 'S1', 'S2'], array_column($children, 'title'));
+        $this->assertSame($saved[2], $children[0]->element);
+        $this->assertSame($saved[0], $children[1]->element);
+        $this->assertSame($saved[1], $children[2]->element);
+    }
+
+    public function testACountMismatchSkipsThatTypeWhole(): void
+    {
+        // Two season children but one saved season block — the type is skipped
+        // rather than mislabelled, while a type whose counts DO match still fills.
+        $children = [
+            new ChildResult(blockType: 'season', action: 'added'),
+            new ChildResult(blockType: 'season', action: 'added'),
+            new ChildResult(blockType: 'quote', action: 'added'),
+        ];
+
+        $saved = [
+            $this->fakeBlock('season', [], ['title' => 'S1']),
+            $this->fakeBlock('quote', [], ['title' => 'Q1']),
+        ];
+
+        (new Matrix())->attachSavedChildren($this->owner($this->fakeQuery($saved)), 'seasons', $children);
+
+        $this->assertNull($children[0]->element);
+        $this->assertNull($children[0]->title);
+        $this->assertNull($children[1]->element);
+        $this->assertSame($saved[1], $children[2]->element, 'A type whose counts line up still pairs.');
+        $this->assertSame('Q1', $children[2]->title);
+    }
+
+    public function testRemovedChildrenNeitherPairNorConsumeASavedBlock(): void
+    {
+        // A removed block is out of the element, so it is not in the saved set:
+        // the ONE saved season block belongs to the added child behind it.
+        foreach (['removed', 'would-remove'] as $label) {
+            $dropped = $this->fakeBlock('season', [], ['title' => 'Winter 1999']);
+            $children = [
+                new ChildResult(title: 'Winter 1999', blockType: 'season', element: $dropped, action: $label),
+                new ChildResult(blockType: 'season', action: 'added'),
+            ];
+
+            $saved = [$this->fakeBlock('season', [], ['title' => 'Winter 2020'])];
+
+            (new Matrix())->attachSavedChildren($this->owner($this->fakeQuery($saved)), 'seasons', $children);
+
+            $this->assertSame($dropped, $children[0]->element, "The {$label} child keeps the block it stands for.");
+            $this->assertSame('Winter 1999', $children[0]->title);
+            $this->assertSame($saved[0], $children[1]->element);
+            $this->assertSame('Winter 2020', $children[1]->title);
+        }
+    }
+
+    public function testAlreadyIdentifiedChildrenAreLeftExactlyAsTheyAre(): void
+    {
+        // An unchanged child was paired with a real block at derivation time; the
+        // back-fill must not re-point it at whatever now sits in that slot.
+        $partner = $this->fakeBlock('season', [], ['title' => 'Winter 2020']);
+        $children = [
+            new ChildResult(
+                title: 'Winter 2020',
+                blockType: 'season',
+                element: $partner,
+                labelElement: $partner,
+                action: 'unchanged',
+            ),
+        ];
+
+        $saved = [$this->fakeBlock('season', [], ['title' => 'Rebuilt 2020'])];
+
+        (new Matrix())->attachSavedChildren($this->owner($this->fakeQuery($saved)), 'seasons', $children);
+
+        $this->assertSame($partner, $children[0]->element);
+        $this->assertSame($partner, $children[0]->labelElement);
+        $this->assertSame('Winter 2020', $children[0]->title);
+    }
+
+    public function testAnUnreadableFieldValueIsANoOp(): void
+    {
+        $children = [new ChildResult(blockType: 'season', action: 'added')];
+
+        // A field read that throws outright…
+        (new Matrix())->attachSavedChildren(
+            $this->owner(new MappingValueException('no owner')),
+            'seasons',
+            $children,
+        );
+        $this->assertNull($children[0]->element);
+
+        // …a value that is no walkable block query at all…
+        (new Matrix())->attachSavedChildren($this->owner('not-a-query'), 'seasons', $children);
+        $this->assertNull($children[0]->element);
+
+        // …and a query whose walk throws.
+        $throwing = new class() {
+            public function all(): array
+            {
+                throw new MappingValueException('no owner');
+            }
+        };
+        (new Matrix())->attachSavedChildren($this->owner($throwing), 'seasons', $children);
+        $this->assertNull($children[0]->element);
+        $this->assertNull($children[0]->title);
+    }
+
     public function testDescendPastMaxDepthThrows(): void
     {
         $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
@@ -1050,6 +1207,25 @@ class MatrixFieldTest extends Unit
         }
 
         return $block;
+    }
+
+    /**
+     * An owner element handing back one value for every field read — the
+     * post-save read {@see Matrix::attachSavedChildren()} pairs its children
+     * against. A Throwable value is thrown instead of returned, standing in for a
+     * field that can't be read at all.
+     */
+    public function owner(mixed $value): ElementInterface
+    {
+        $owner = $this->createMock(ElementInterface::class);
+
+        if ($value instanceof Throwable) {
+            $owner->method('getFieldValue')->willThrowException($value);
+        } else {
+            $owner->method('getFieldValue')->willReturn($value);
+        }
+
+        return $owner;
     }
 
     /**

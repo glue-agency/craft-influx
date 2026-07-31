@@ -11,7 +11,12 @@ use craft\base\ElementInterface;
  * inspectors' drill-down is by construction what the sync would do.
  *
  * Values are raw (un-truncated, un-stringified); presentation belongs to the
- * consumer. Treat as read-only.
+ * consumer. Treat as read-only — with one sanctioned exception at the very end
+ * of the lifecycle: after a real run has committed the owner element, the
+ * strategy that produced a child may back-fill the identity it could not have
+ * before the save ({@see \GlueAgency\Influx\fields\Field::attachSavedChildren()},
+ * driven by {@see ItemRunner::attachSavedChildren()}), once, just before the
+ * snapshot is presented.
  */
 class ChildResult
 {
@@ -32,7 +37,9 @@ class ChildResult
      * child stands for (Craft 5 nested entries, Craft 4 MatrixBlocks — both saved
      * elements). Null for a child the sync would only ADD, which has no saved
      * element at derivation time; the drill-down then heads it with its title (or
-     * ordinal) rather than an element chip.
+     * ordinal) rather than an element chip. On a real run the post-commit
+     * back-fill puts the saved block here before the snapshot is presented, so a
+     * would-add child in a dry run is the case that genuinely stays element-less.
      */
     public ?ElementInterface $element = null;
 
