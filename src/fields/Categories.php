@@ -23,6 +23,11 @@ class Categories extends GroupScopedRelation
         return CraftCategoriesField::class;
     }
 
+    public function childrenKind(): ?string
+    {
+        return 'categories';
+    }
+
     protected function elementType(): string
     {
         return CraftCategoryElement::class;

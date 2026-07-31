@@ -47,6 +47,11 @@ class Assets extends RelationalField
         return CraftAssetsField::class;
     }
 
+    public function childrenKind(): ?string
+    {
+        return 'assets';
+    }
+
     /**
      * The `mode` and `conflict` values each map to a fixed {@see parse()}
      * branch, so both lists are intentionally closed — deliberately NOT routed
@@ -104,6 +109,11 @@ class Assets extends RelationalField
      * needed. A source node may carry many values (a list of URLs or ids); each
      * is resolved to an asset, the way a relation field maps a list of
      * references.
+     *
+     * A freshly uploaded asset is reported as a plain touched child, never
+     * `created`: {@see resolveByUrl()} hands back a match and an upload the same
+     * way, so uploadedness isn't knowable here (unlike {@see Relation::parse()},
+     * which creates the element itself).
      */
     public function parse(FieldContext $context): mixed
     {

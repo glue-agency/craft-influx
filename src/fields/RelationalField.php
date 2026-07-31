@@ -4,8 +4,11 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\item\ChildResult;
+use GlueAgency\Influx\sync\item\MappingResult;
 use yii\base\Model;
 
 /**
@@ -59,6 +62,16 @@ abstract class RelationalField extends Field
     }
 
     /**
+     * Every relational flavour nests the elements it relates, so the noun is the
+     * generic one here; concrete flavours narrow it to their own ({@see Assets},
+     * {@see Entries}, ...).
+     */
+    public function childrenKind(): ?string
+    {
+        return 'elements';
+    }
+
+    /**
      * Apply this mapping's sub-mappings to a related element and persist it,
      * but only when a sub-mapping actually changed a value. Skipped under dry-
      * run: the related element is a real, saved element the debug inspector
@@ -68,6 +81,15 @@ abstract class RelationalField extends Field
      * ({@see FieldContext::applySubMappings()}) so this class never builds an
      * applier of its own.
      *
+     * Also REPORTS what happened: every related element this touches becomes a
+     * child of the parent row — created / updated / unchanged — for the run log's
+     * drill-down. Unchanged ones are reported too, because the drill-down shows
+     * every element the feed addressed, not only the ones it rewrote: "nothing to
+     * write" is an answer the log has to be able to give. A $created element with
+     * no sub-mappings at all still reports (creation is itself a nested write);
+     * one that merely got linked doesn't — nothing happened to it beyond the
+     * relation, which is the parent row's own business.
+     *
      * A REFUSED save throws. The sweeper's discipline holds for related elements
      * too — "a save that returns false WITHOUT throwing (a validation failure
      * that didn't persist) is an ERROR row, never a success row"
@@ -75,25 +97,65 @@ abstract class RelationalField extends Field
      * discarding the return here was exactly that: the related element silently
      * kept its old values while the parent row logged success. The throw lands on
      * the parent mapping's row, the only row a sub-element has
-     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyCustomField()}).
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyCustomField()}) —
+     * so a refused save reports NO child either: the failure belongs on that row,
+     * not on a child claiming the element was written.
      *
      * @throws MappingValueException when the related element refuses to save
      */
-    protected function persistSubElement(FieldContext $context, ElementInterface $element): void
+    protected function persistSubElement(FieldContext $context, ElementInterface $element, bool $created = false): void
     {
-        if ($context->dryRun || ! $context->mapping->hasSubMappings()) {
+        if ($context->dryRun) {
+            return;
+        }
+
+        if (! $context->mapping->hasSubMappings()) {
+            if ($created) {
+                $this->reportChild($context, $element, ChildAction::CREATED);
+            }
+
             return;
         }
 
         $outcome = $context->applySubMappings($element);
+        $changed = $outcome->changed();
 
-        if (! $outcome->changed()) {
-            return;
-        }
-
-        if (! $this->saveSubElement($element)) {
+        if ($changed && ! $this->saveSubElement($element)) {
             throw new MappingValueException($this->saveFailureMessage($element));
         }
+
+        $action = ChildAction::UNCHANGED;
+
+        if ($created) {
+            $action = ChildAction::CREATED;
+        } elseif ($changed) {
+            $action = ChildAction::UPDATED;
+        }
+
+        $this->reportChild($context, $element, $action, $outcome->results);
+    }
+
+    /**
+     * Report one touched related element to the walk's collector, which attaches
+     * it to the row being built ({@see \GlueAgency\Influx\sync\item\MappingApplier::mapCustomField()}).
+     * A context without a collector (a strategy exercised directly) simply
+     * reports nothing.
+     *
+     * The COMMITTED action value is right by construction: every caller sits past
+     * {@see persistSubElement()}'s dry-run guard, so there is no hypothetical
+     * write here to label 'would-*' ({@see ChildAction::dryRunLabel()}).
+     *
+     * @param list<MappingResult> $mappingResults
+     */
+    protected function reportChild(FieldContext $context, ElementInterface $element, ChildAction $action, array $mappingResults = []): void
+    {
+        $context->childCollector?->add(new ChildResult(
+            title: (string) $element->getUiLabel(),
+            element: $element,
+            labelElement: $element,
+            action: $action->value,
+            mappingResults: $mappingResults,
+        ));
     }
 
     /**

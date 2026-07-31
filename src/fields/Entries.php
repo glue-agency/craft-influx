@@ -33,6 +33,11 @@ class Entries extends Relation
         return CraftEntriesField::class;
     }
 
+    public function childrenKind(): ?string
+    {
+        return 'entries';
+    }
+
     protected function elementType(): string
     {
         return CraftEntryElement::class;

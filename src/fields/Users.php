@@ -14,6 +14,11 @@ class Users extends Relation
         return CraftUsersField::class;
     }
 
+    public function childrenKind(): ?string
+    {
+        return 'users';
+    }
+
     protected function elementType(): string
     {
         return CraftUserElement::class;

@@ -24,6 +24,11 @@ class Tags extends GroupScopedRelation
         return CraftTagsField::class;
     }
 
+    public function childrenKind(): ?string
+    {
+        return 'tags';
+    }
+
     protected function elementType(): string
     {
         return CraftTagElement::class;

@@ -203,16 +203,18 @@ abstract class Relation extends RelationalField
 
         foreach ($this->referenceValues($raw) as $value) {
             $element = $this->lookup($context, $match, $value);
+            $created = false;
 
             if (! $element && ! $context->dryRun && $this->shouldCreate($context)) {
                 $element = $this->createMissing($context, $value);
+                $created = $element !== null;
 
                 $context->lookups?->put($this->elementType(), $match, $this->lookupScope($context), $value, $element);
             }
 
             if ($element) {
                 $ids[] = $element->id;
-                $this->persistSubElement($context, $element);
+                $this->persistSubElement($context, $element, $created);
             }
         }
 
