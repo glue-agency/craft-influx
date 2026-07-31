@@ -204,15 +204,14 @@ class SchemaBuilder
     /**
      * The reused date-format select on the mapping's `format` option. Pass
      * `options` ({@see \GlueAgency\Influx\fields\Date::formatOptions()}); the
-     * label, instructions and "auto-detect" default are supplied here.
+     * label and "auto-detect" default are supplied here.
      */
     public function dateFormat(array $config = []): self
     {
         return $this->select($config + [
-            'handle'       => 'format',
-            'label'        => Craft::t('influx', 'Date format'),
-            'instructions' => Craft::t('influx', 'Used by DateTime::createFromFormat. "Unix timestamp" parses integer seconds; "Auto-detect" uses the Craft DateTimeHelper.'),
-            'default'      => '',
+            'handle'  => 'format',
+            'label'   => Craft::t('influx', 'Date format'),
+            'default' => '',
         ]);
     }
 
