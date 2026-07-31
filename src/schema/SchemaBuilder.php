@@ -52,6 +52,7 @@ class SchemaBuilder
     public const LIGHTSWITCH = 'lightswitch';
     public const ELEMENT_SUB_FIELDS = 'elementSubFields';
     public const MATRIX_FIELDS = 'matrixFields';
+    public const SUB_FIELDS = 'subFields';
     public const NOTE = 'note';
     public const ELEMENT = 'element';
 
@@ -167,6 +168,24 @@ class SchemaBuilder
     public function matrixFields(array $config = []): self
     {
         return $this->push(['type' => self::MATRIX_FIELDS, 'handle' => 'blocks'] + $config);
+    }
+
+    /**
+     * Source-node + default rows for the sub-fields a field owns itself — the
+     * card that writes the mapping's flat `fields` channel ({@see \GlueAgency\Influx\models\FieldMapping::subMappings()}).
+     * `$config` supplies `label` + `subFields` (a list of primitive nodes, e.g.
+     * `SchemaBuilder::make()->text([...])->toArray()`), optionally
+     * `instructions`. Used by {@see \GlueAgency\Influx\fields\Table}'s columns.
+     *
+     * Unlike its two fixed-handle siblings ({@see elementSubFields()},
+     * {@see matrixFields()}) the handle is a shorthand DEFAULT the caller may
+     * override, per the folding convention this class documents: SchemaForm
+     * routes the card by node TYPE, so the handle is documentation of which
+     * channel the rows land in rather than the routing key.
+     */
+    public function subFields(array $config = []): self
+    {
+        return $this->push(['type' => self::SUB_FIELDS] + $config + ['handle' => 'fields']);
     }
 
     /**

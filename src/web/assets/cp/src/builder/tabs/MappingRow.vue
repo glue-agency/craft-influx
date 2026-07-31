@@ -101,12 +101,14 @@
                 <v-schema-form
                     :schema="extrasSchema"
                     :options="extrasOptions"
+                    :fields="extrasFields"
                     :native-fields="extrasNativeFields"
                     :blocks="extrasBlocks"
                     :node-options="extrasNodeOptions"
                     :discovered-nodes="discoveredNodes"
                     :read-only="readOnly"
                     @update:options="onOptionsUpdate"
+                    @update:fields="onFieldsUpdate"
                     @update:native-fields="onNativeFieldsUpdate"
                     @update:blocks="onBlocksUpdate"
                 />
@@ -147,10 +149,10 @@ import { discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappin
  * straight back into `link.mappings[handle]` on the reactive store; the
  * parent watches the store via the dirty flag.
  *
- * The row owns the extras' local `extrasOptions` / `extrasNativeFields` /
- * `extrasBlocks` models (seeded from the saved mapping) and writes them
- * pruned via writeMapping(), which is the shape that lands in Project
- * Config.
+ * The row owns the extras' local `extrasOptions` / `extrasFields` /
+ * `extrasNativeFields` / `extrasBlocks` models (seeded from the saved
+ * mapping) and writes them pruned via writeMapping(), which is the shape
+ * that lands in Project Config.
  */
 export default {
     name: 'MappingRow',
@@ -170,10 +172,12 @@ export default {
             extrasExpanded: Object.keys(saved).length > 0,
             // Local extras models, seeded once from the saved mapping —
             // SchemaForm edits land here first, then flow to the store
-            // pruned via writeMapping(). `extrasNativeFields` /
-            // `extrasBlocks` re-hydrate saved sub-field mappings (asset
-            // alt/title, Matrix per-block-type children) on edit.
+            // pruned via writeMapping(). `extrasFields` /
+            // `extrasNativeFields` / `extrasBlocks` re-hydrate saved
+            // sub-field mappings (Table columns, asset alt/title, Matrix
+            // per-block-type children) on edit.
             extrasOptions: { ...(saved.options || {}) },
+            extrasFields: { ...(saved.fields || {}) },
             extrasNativeFields: { ...(saved.nativeFields || {}) },
             extrasBlocks: { ...(saved.blocks || {}) },
         };
@@ -221,15 +225,20 @@ export default {
         /**
          * Source-node candidates for the extras' sub-field dropdowns: the
          * latest Fetch-sample nodes straight off the store, merged with
-         * saved sub-field paths — the flat `extrasNativeFields` rows plus
-         * every block type's nested `extrasBlocks.*.fields` rows — so the
-         * dropdowns render before a sample exists. Distinct from the
-         * `nodeOptions` prop, which feeds the row's own source-node select.
+         * saved sub-field paths — the flat `extrasFields` (Table columns) and
+         * `extrasNativeFields` rows plus every block type's nested
+         * `extrasBlocks.*.fields` rows — so the dropdowns render before a
+         * sample exists. Distinct from the `nodeOptions` prop, which feeds the
+         * row's own source-node select.
          */
         extrasNodeOptions() {
             const blockRows = Object.values(this.extrasBlocks)
                 .flatMap((entry) => Object.values(entry?.fields || {}));
-            const saved = [...Object.values(this.extrasNativeFields), ...blockRows]
+            const saved = [
+                ...Object.values(this.extrasFields),
+                ...Object.values(this.extrasNativeFields),
+                ...blockRows,
+            ]
                 .map((row) => row?.node)
                 .filter(Boolean);
             return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
@@ -328,6 +337,11 @@ export default {
         onOptionsUpdate(options) {
             this.extrasOptions = options;
             this.writeMapping('options', pruneEmpty(options));
+        },
+
+        onFieldsUpdate(fields) {
+            this.extrasFields = fields;
+            this.writeMapping('fields', fields);
         },
 
         onNativeFieldsUpdate(nativeFields) {

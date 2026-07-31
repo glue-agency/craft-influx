@@ -1,0 +1,113 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+
+vi.mock('../../api.js', () => ({
+    bootstrap: vi.fn(),
+    save: vi.fn(),
+    deleteLink: vi.fn(),
+    fetchSample: vi.fn(),
+    mappableFields: vi.fn(),
+    renderElementSelect: vi.fn(),
+    endpointTokenSuggestions: vi.fn(),
+    configureCsrf: vi.fn(),
+}));
+
+import * as api from '../../api.js';
+import { store } from '../../store.js';
+import MappingRow from '../MappingRow.vue';
+import SearchableSelect from '../../SearchableSelect.vue';
+
+/**
+ * The extras' write path: a schema card's edits land in the right channel of
+ * `link.mappings[handle]`, pruned to the shape Project Config stores. Specced
+ * through the `fields` channel — a Table field's columns — because that channel
+ * is the one a mapping row also carries sub-mappings in for a relation.
+ */
+
+// A subfieldsOnly field whose schema is one subFields card, i.e. what
+// fields\Table::schema() emits for a two-column table.
+const tableField = {
+    handle: 'specs',
+    name: 'Specs',
+    native: false,
+    group: 'Content',
+    defaultType: 'text',
+    fieldMeta: {
+        subfieldsOnly: true,
+        schema: [
+            { type: 'subFields', handle: 'fields', label: 'Columns', subFields: [
+                { type: 'text', handle: 'col1', label: 'Label' },
+                { type: 'text', handle: 'col2', label: 'Value' },
+            ] },
+        ],
+    },
+};
+
+const bootstrapPayload = (mappings = {}) => ({
+    link: {
+        handle: 'articles',
+        name: 'Articles',
+        elementType: 'craft\\elements\\Entry',
+        elementCriteria: {},
+        endpoint: null,
+        siteEndpoints: [],
+        offset: {},
+        mappings,
+    },
+    options: { elementTypes: [], sections: [], sectionEntryTypes: {}, processingActions: [], sites: [] },
+    meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x', envSuggestions: [] },
+});
+
+const loadStore = async (mappings = {}) => {
+    api.bootstrap.mockResolvedValue(bootstrapPayload(mappings));
+    api.mappableFields.mockResolvedValue({ fields: [], groups: [], matchOptions: [] });
+    api.endpointTokenSuggestions.mockResolvedValue({ suggestions: [] });
+    await store.load(1);
+};
+
+const mountRow = () => mount(MappingRow, {
+    props: { field: tableField, nodeOptions: [{ value: 'specs.label', label: 'specs.label' }] },
+    global: { mocks: { $t: (s) => s } },
+});
+
+describe('MappingRow fields extras', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('writes a column row into the mapping\'s fields channel', async () => {
+        await loadStore();
+        const wrapper = mountRow();
+
+        // subfieldsOnly hides the row's own source-node select, so the first
+        // SearchableSelect is the first column's.
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'specs.label');
+
+        expect(store.link.mappings.specs).toEqual({
+            fields: { col1: { node: 'specs.label' } },
+        });
+    });
+
+    it('seeds the card from the saved mapping and merges further edits', async () => {
+        await loadStore({ specs: { fields: { col2: { node: 'specs.value' } } } });
+        const wrapper = mountRow();
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'specs.label');
+
+        expect(store.link.mappings.specs.fields).toEqual({
+            col2: { node: 'specs.value' },
+            col1: { node: 'specs.label' },
+        });
+    });
+
+    it('prunes the whole row away once its last column is cleared', async () => {
+        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
+        const wrapper = mountRow();
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', '');
+
+        // An emptied channel drops off the mapping, and a mapping with nothing
+        // left drops out of `mappings` — no noise keys in Project Config.
+        expect(store.link.mappings.specs).toBeUndefined();
+    });
+});

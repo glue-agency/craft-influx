@@ -283,7 +283,9 @@ class Matrix extends Field
             $nativeLists[$sub->handle] = $this->valueList($resolved);
         }
 
-        $blockCount = $this->maxLength($customLists, $nativeLists);
+        // array_values on BOTH: a custom handle can collide with a native one,
+        // and a merge keyed by handle would drop one of the two lists.
+        $blockCount = $this->maxLength([...array_values($customLists), ...array_values($nativeLists)]);
 
         if ($blockCount === 0) {
             return $index;
@@ -1337,36 +1339,5 @@ class Matrix extends Field
         }
 
         return $handles;
-    }
-
-    /**
-     * Normalise a resolved child value into a per-block value list. A list
-     * array is one value per block; anything else (a scalar, or an assoc array
-     * that is ONE block's value) becomes a single-element list.
-     *
-     * @return list<mixed>
-     */
-    protected function valueList(mixed $resolved): array
-    {
-        return is_array($resolved) && array_is_list($resolved) ? $resolved : [$resolved];
-    }
-
-    /**
-     * The largest per-block list length across every contributing child —
-     * the block count. Ragged lists yield the longest; a per-block missing
-     * value just leaves that child's key absent on the trailing blocks.
-     *
-     * @param array<string, list<mixed>> $customLists
-     * @param array<string, list<mixed>> $nativeLists
-     */
-    protected function maxLength(array $customLists, array $nativeLists): int
-    {
-        $max = 0;
-
-        foreach (array_merge(array_values($customLists), array_values($nativeLists)) as $values) {
-            $max = max($max, count($values));
-        }
-
-        return $max;
     }
 }

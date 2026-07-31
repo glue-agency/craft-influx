@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SchemaForm from '../SchemaForm.vue';
 import MatrixFields from '../inputs/MatrixFields.vue';
+import SubFieldRows from '../inputs/SubFieldRows.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
 
 /**
@@ -114,6 +115,56 @@ describe('SchemaForm', () => {
         expect(wrapper.emitted('update:nativeFields').at(-1))
             .toEqual([{ alt: { node: 'images.0.alt' } }]);
         expect(wrapper.emitted('update:options')).toBeUndefined();
+    });
+});
+
+// The Table strategy's schema shape: ONE subFields node holding a row per
+// column, keyed by column id — the card writes the mapping's flat `fields`
+// channel, the one a relation's sub-fields also live in.
+const tableSchema = [
+    { type: 'subFields', handle: 'fields', label: 'Columns', subFields: [
+        { type: 'text', handle: 'col1', label: 'Label' },
+        { type: 'text', handle: 'col2', label: 'Value' },
+    ] },
+];
+
+const mountTableForm = (props = {}) => mount(SchemaForm, {
+    props: {
+        schema: tableSchema,
+        options: {},
+        fields: {},
+        nodeOptions: [{ value: 'specs.label', label: 'specs.label' }],
+        ...props,
+    },
+    global: { mocks: { $t: (s) => s } },
+});
+
+describe('SchemaForm subFields', () => {
+    it('renders the sub-field table with a row per column', () => {
+        const wrapper = mountTableForm();
+
+        const cards = wrapper.findAllComponents(SubFieldRows);
+        expect(cards).toHaveLength(1);
+        expect(cards[0].props('node').label).toBe('Columns');
+        expect(wrapper.findAll('.sub-field-row')).toHaveLength(2);
+        // The card is not an options control — it must stay out of the fieldset.
+        expect(wrapper.find('.extras-options').exists()).toBe(false);
+    });
+
+    it('routes column rows through the fields channel, preserving the other columns', () => {
+        const wrapper = mountTableForm({
+            fields: { col2: { node: 'specs.value' } },
+        });
+        const select = wrapper.findAllComponents(SearchableSelect).at(0);
+        select.vm.$emit('update:modelValue', 'specs.label');
+
+        expect(wrapper.emitted('update:fields').at(-1)).toEqual([{
+            col2: { node: 'specs.value' },
+            col1: { node: 'specs.label' },
+        }]);
+        expect(wrapper.emitted('update:options')).toBeUndefined();
+        expect(wrapper.emitted('update:nativeFields')).toBeUndefined();
+        expect(wrapper.emitted('update:blocks')).toBeUndefined();
     });
 });
 

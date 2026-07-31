@@ -101,6 +101,22 @@
             </template>
         </div>
 
+        <!-- Sub-fields the field owns itself (a Table field's columns) —
+             writes the mapping's flat `fields` channel. Rendered with the
+             shared SubFieldRows table directly: a wrapper component would be
+             byte-identical to ElementSubFields.vue, which is exactly one
+             prop-forwarding template. -->
+        <v-sub-field-rows
+            v-for="(node, idx) in fieldsNodes"
+            :key="'fields-' + (node.handle || idx)"
+            :node="node"
+            :rows="fields"
+            :node-options="nodeOptions"
+            :discovered-nodes="discoveredNodes"
+            :read-only="readOnly"
+            @update:rows="$emit('update:fields', $event)"
+        />
+
         <!-- Recursive native sub-fields (asset alt/title) — writes the
              mapping's nativeFields channel, not options. Rendered after
              the options fieldset as their own group cards. -->
@@ -136,6 +152,7 @@
 import SelectInput from './inputs/SelectInput.vue';
 import ElementSubFields from './inputs/ElementSubFields.vue';
 import MatrixFields from './inputs/MatrixFields.vue';
+import SubFieldRows from './inputs/SubFieldRows.vue';
 import TokenizedInput from '../TokenizedInput.vue';
 
 /**
@@ -147,21 +164,24 @@ import TokenizedInput from '../TokenizedInput.vue';
  * The type dispatch is open-ended by design: a type this renderer doesn't
  * know (a third-party kind pushed through SchemaBuilder::node()) lands on
  * the text-input branch, so it still renders labeled and still reads/writes
- * its handle — degrading instead of vanishing. Only `elementSubFields` and
- * `matrixFields` are routed away from that branch.
+ * its handle — degrading instead of vanishing. Only `subFields`,
+ * `elementSubFields` and `matrixFields` are routed away from that branch.
  *
- * Stateless: values come from the `options` / `nativeFields` / `blocks`
- * props, edits emit fully-merged replacements upward. The parent owns the
- * models.
+ * Stateless: values come from the `options` / `fields` / `nativeFields` /
+ * `blocks` props, edits emit fully-merged replacements upward. The parent
+ * owns the models.
  */
 export default {
     name: 'SchemaForm',
 
-    emits: ['update:options', 'update:nativeFields', 'update:blocks'],
+    emits: ['update:options', 'update:fields', 'update:nativeFields', 'update:blocks'],
 
     props: {
         schema: { type: Array, required: true },
         options: { type: Object, required: true },
+        // The mapping's flat `fields` channel — the sub-fields a field owns
+        // itself (a Table field's columns).
+        fields: { type: Object, default: () => ({}) },
         nativeFields: { type: Object, default: () => ({}) },
         // The mapping's whole per-block-type tree — matrixFields cards each
         // read/write their own `blocks.<type>` slice of it.
@@ -196,9 +216,14 @@ export default {
         /** The field's own options (Match by, conflict, …) — everything
          *  except sub-field mapping groups. */
         optionNodes() {
-            return this.visibleNodes.filter(
-                (node) => node.type !== 'elementSubFields' && node.type !== 'matrixFields',
-            );
+            const subFieldTypes = ['subFields', 'elementSubFields', 'matrixFields'];
+
+            return this.visibleNodes.filter((node) => !subFieldTypes.includes(node.type));
+        },
+
+        /** Own sub-field mapping nodes — the `fields` channel's group cards. */
+        fieldsNodes() {
+            return this.visibleNodes.filter((node) => node.type === 'subFields');
         },
 
         /** Sub-field mapping nodes, rendered as nested group cards. */
@@ -243,6 +268,6 @@ export default {
         },
     },
 
-    components: { 'v-select-input': SelectInput, 'v-element-sub-fields': ElementSubFields, 'v-matrix-fields': MatrixFields, 'v-tokenized-input': TokenizedInput },
+    components: { 'v-select-input': SelectInput, 'v-sub-field-rows': SubFieldRows, 'v-element-sub-fields': ElementSubFields, 'v-matrix-fields': MatrixFields, 'v-tokenized-input': TokenizedInput },
 };
 </script>

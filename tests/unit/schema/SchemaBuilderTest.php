@@ -47,4 +47,33 @@ class SchemaBuilderTest extends Unit
         $this->assertSame('slug', $schema[0]['default']);
         $this->assertSame('Look up by', $schema[0]['label']);
     }
+
+    public function testSubFieldsDefaultsToTheFlatFieldsChannel(): void
+    {
+        $schema = SchemaBuilder::make()
+            ->subFields(['label' => 'Columns', 'subFields' => [['type' => 'text', 'handle' => 'col1']]])
+            ->toArray();
+
+        $this->assertSame(SchemaBuilder::SUB_FIELDS, $schema[0]['type']);
+        $this->assertSame('fields', $schema[0]['handle']);
+        $this->assertSame('Columns', $schema[0]['label']);
+    }
+
+    public function testSubFieldsHandleIsAShorthandDefaultTheCallerCanOverride(): void
+    {
+        $schema = SchemaBuilder::make()
+            ->subFields(['handle' => 'columns', 'label' => 'Columns'])
+            ->toArray();
+
+        $this->assertSame('columns', $schema[0]['handle']);
+    }
+
+    public function testSubFieldsTypeCannotBeOverriddenByConfig(): void
+    {
+        $schema = SchemaBuilder::make()
+            ->subFields(['type' => 'text'])
+            ->toArray();
+
+        $this->assertSame(SchemaBuilder::SUB_FIELDS, $schema[0]['type']);
+    }
 }

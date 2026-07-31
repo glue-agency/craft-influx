@@ -16,6 +16,7 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\fields\RichText;
+use GlueAgency\Influx\fields\Table;
 use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Users;
 
@@ -119,6 +120,7 @@ class FieldsService extends AbstractRegistry
             Categories::class,
             Tags::class,
             Matrix::class,
+            Table::class,
         ];
     }
 

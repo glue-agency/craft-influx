@@ -37,7 +37,11 @@ class FieldMapping
     /** Per-field-type options (`match`, `format`, `create`, ...). */
     public array $options = [];
 
-    /** Recursive sub-mappings for a related element's custom fields. */
+    /**
+     * Sub-mappings the OWNING field strategy interprets, keyed by whatever that
+     * strategy addresses its parts by: a related element's custom-field handles
+     * for a relation, a Table field's column ids ({@see \GlueAgency\Influx\fields\Table}).
+     */
     protected array $fields = [];
 
     /** Recursive sub-mappings for a related element's native attributes. */
@@ -265,7 +269,12 @@ class FieldMapping
         return ! empty($this->fields) || ! empty($this->nativeFields);
     }
 
-    /** Sub-mappings for the related element's custom fields (`fields`). */
+    /**
+     * The flat `fields` channel — the sub-mappings the owning strategy owns the
+     * meaning of: a related element's custom fields (the relation strategies,
+     * plus {@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}),
+     * or a Table field's columns ({@see \GlueAgency\Influx\fields\Table::parse()}).
+     */
     public function subMappings(): MappingCollection
     {
         return MappingCollection::fromConfig($this->fields);

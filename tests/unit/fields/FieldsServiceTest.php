@@ -13,6 +13,7 @@ use craft\fields\Lightswitch as CraftLightswitchField;
 use craft\fields\MultiSelect;
 use craft\fields\PlainText;
 use craft\fields\RadioButtons;
+use craft\fields\Table as CraftTableField;
 use craft\fields\Tags as CraftTagsField;
 use craft\fields\Users as CraftUsersField;
 use GlueAgency\Influx\exceptions\InfluxException;
@@ -22,6 +23,7 @@ use GlueAgency\Influx\fields\DefaultField;
 use GlueAgency\Influx\fields\Dropdown;
 use GlueAgency\Influx\fields\Entries;
 use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\fields\Table;
 use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Users;
 use GlueAgency\Influx\schema\SchemaBuilder;
@@ -54,6 +56,7 @@ class FieldsServiceTest extends Unit
         $this->assertArrayHasKey(CraftUsersField::class, $byFqcn);
         $this->assertArrayHasKey(CraftCategoriesField::class, $byFqcn);
         $this->assertArrayHasKey(CraftTagsField::class, $byFqcn);
+        $this->assertArrayHasKey(CraftTableField::class, $byFqcn);
 
         $this->assertInstanceOf(Assets::class,      $byFqcn[CraftAssetsField::class]);
         $this->assertInstanceOf(Lightswitch::class, $byFqcn[CraftLightswitchField::class]);
@@ -62,6 +65,9 @@ class FieldsServiceTest extends Unit
         $this->assertInstanceOf(Users::class,       $byFqcn[CraftUsersField::class]);
         $this->assertInstanceOf(Categories::class,  $byFqcn[CraftCategoriesField::class]);
         $this->assertInstanceOf(Tags::class,        $byFqcn[CraftTagsField::class]);
+        // Table extends craft\base\Field directly, so the parent-chain walk
+        // gives it nothing — it needs its own entry or it falls to DefaultField.
+        $this->assertInstanceOf(Table::class,       $byFqcn[CraftTableField::class]);
     }
 
     public function testParentChainResolutionDispatchesDropdownVariants(): void

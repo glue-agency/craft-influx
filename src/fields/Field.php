@@ -248,6 +248,39 @@ abstract class Field
     }
 
     /**
+     * Normalise a resolved value into a per-row value list — the first half of
+     * the index-zip rule two strategies share ({@see Matrix}'s blocks,
+     * {@see Table}'s rows). A list array is one value per row; anything else (a
+     * scalar, or an assoc array that is ONE row's value) becomes a
+     * single-element list.
+     *
+     * @return list<mixed>
+     */
+    protected function valueList(mixed $resolved): array
+    {
+        return is_array($resolved) && array_is_list($resolved) ? $resolved : [$resolved];
+    }
+
+    /**
+     * The largest per-row list length across every contributing value list —
+     * the row count, and the second half of the shared zip rule. Ragged lists
+     * yield the longest; how a row that outlives a short list is filled is the
+     * caller's call (Matrix leaves the key off, Table writes a null cell).
+     *
+     * @param list<list<mixed>> $lists
+     */
+    protected function maxLength(array $lists): int
+    {
+        $max = 0;
+
+        foreach ($lists as $values) {
+            $max = max($max, count($values));
+        }
+
+        return $max;
+    }
+
+    /**
      * The field layer's seam onto {@see Comparable::of()} — the one comparison
      * normaliser, shared with the targets' native-attribute path so a bool, a
      * date or a related element compares the same either side. Subclasses reach
