@@ -76,4 +76,36 @@ class SchemaBuilderTest extends Unit
 
         $this->assertSame(SchemaBuilder::SUB_FIELDS, $schema[0]['type']);
     }
+
+    public function testAFieldRowTakesTheEditorItsFieldAsksFor(): void
+    {
+        // The row's editor is the target field's business, so the descriptor its
+        // strategy returns is folded straight into the node — a relation asks
+        // for a picker, an option field for a select, everything else reads as
+        // text.
+        $schema = SchemaBuilder::make()
+            ->fieldRow(['type' => SchemaBuilder::ELEMENT, 'elementType' => 'craft\\elements\\Entry'], ['handle' => 'campus', 'label' => 'Campus'])
+            ->fieldRow(['type' => SchemaBuilder::SELECT, 'options' => ['l' => 'Large', 's' => 'Small']], ['handle' => 'size', 'label' => 'Size'])
+            ->fieldRow(['type' => 'somethingElse'], ['handle' => 'blurb', 'label' => 'Blurb'])
+            ->fieldRow(null, ['handle' => 'note', 'label' => 'Note'])
+            ->toArray();
+
+        $this->assertSame([SchemaBuilder::ELEMENT, SchemaBuilder::SELECT, SchemaBuilder::TEXT, SchemaBuilder::TEXT], array_column($schema, 'type'));
+        $this->assertSame('craft\\elements\\Entry', $schema[0]['elementType']);
+        $this->assertSame(['campus', 'size', 'blurb', 'note'], array_column($schema, 'handle'));
+    }
+
+    public function testAFieldRowsSelectOptionsLeadWithABlankChoice(): void
+    {
+        // Without it a picked default can't be cleared again — the same
+        // convention a table column's select and the top-level default follow.
+        $schema = SchemaBuilder::make()
+            ->fieldRow(['type' => SchemaBuilder::SELECT, 'options' => ['l' => 'Large']], ['handle' => 'size'])
+            ->toArray();
+
+        $this->assertSame(
+            [['value' => '', 'label' => '—'], ['value' => 'l', 'label' => 'Large']],
+            $schema[0]['options'],
+        );
+    }
 }

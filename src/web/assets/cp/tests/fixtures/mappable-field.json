@@ -157,9 +157,10 @@
                             "channel": "fields"
                         },
                         {
-                            "type": "text",
+                            "type": "element",
                             "handle": "campus",
                             "label": "Campus",
+                            "elementType": "craft\\elements\\Entry",
                             "channel": "fields"
                         }
                     ]

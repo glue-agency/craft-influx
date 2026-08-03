@@ -142,13 +142,17 @@ abstract class RelationalField extends Field
     }
 
     /**
-     * One text sub-node per custom field across the related element's source
-     * layouts — the sub-fields a mapping's `fields` channel can address
+     * One sub-node per custom field across the related element's source layouts
+     * — the sub-fields a mapping's `fields` channel can address
      * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}
      * resolves each handle on the related element's own field layout). Deduped
      * by handle, first layout wins (mirrors {@see Relation::matchOptions()}'
      * `$seen` set), because the union across sources is what the field may
      * relate and the same handle means the same field wherever it appears.
+     *
+     * Each row carries the default-value editor its own field asks for
+     * ({@see SchemaBuilder::fieldRow()}), so a relation sub-field offers the
+     * element picker its top-level row would.
      *
      * @return list<array>
      */
@@ -170,7 +174,10 @@ abstract class RelationalField extends Field
                 }
 
                 $seen[$handle] = true;
-                $builder->text(['handle' => $handle, 'label' => $customField->name]);
+                $builder->fieldRow($this->fieldEditorFor($customField), [
+                    'handle' => $handle,
+                    'label'  => $customField->name,
+                ]);
             }
         }
 

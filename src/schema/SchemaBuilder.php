@@ -121,14 +121,61 @@ class SchemaBuilder
     }
 
     /**
-     * A native mappable field whose default-value editor is an element picker
-     * (e.g. an entry's Author). For use inside {@see group()} — `elementType`
-     * is the FQCN to pick from. Not a form-node type SchemaForm renders on its
-     * own; group() reads it into the descriptor's `defaultType`.
+     * A mappable field whose default-value editor is an element picker (e.g. an
+     * entry's Author, or a relation sub-field row). `elementType` is the FQCN to
+     * pick from. Read two ways: {@see group()} folds it into a descriptor's
+     * `defaultType`, and a sub-field row renders it as its own default editor.
      */
     public function element(array $config = []): self
     {
         return $this->push(['type' => self::ELEMENT] + $config);
+    }
+
+    /**
+     * One sub-field row for a Craft field, with the default-value editor that
+     * field's own strategy asks for ({@see \GlueAgency\Influx\fields\Field::defaultEditor()}).
+     *
+     * The editor descriptor already speaks this class's vocabulary — a relation
+     * asks for {@see ELEMENT} plus an `elementType`, an option field for
+     * {@see SELECT} plus its options — so this only folds it into a node and
+     * converts the descriptor's `value => label` option MAP into the option LIST
+     * a node carries. Anything else (or nothing declared) is a text row: the
+     * `fields` channel coerces per the target field's strategy anyway, so a row
+     * only has to supply a source node and an optional default.
+     *
+     * Without this, every sub-field row was a text box — including a relation's,
+     * which is a reference the operator can only pick, not retype.
+     *
+     * @param ?array{type: string, options?: array<string, string>, elementType?: class-string} $editor
+     * @param array<string, mixed> $config The row's `handle` / `label` (+ any extras).
+     */
+    public function fieldRow(?array $editor, array $config = []): self
+    {
+        return match ($editor['type'] ?? null) {
+            self::ELEMENT => $this->element($config + ['elementType' => $editor['elementType'] ?? null]),
+            self::SELECT  => $this->select($config + ['options' => static::optionList($editor['options'] ?? [])]),
+            default       => $this->text($config),
+        };
+    }
+
+    /**
+     * A descriptor's `value => label` option map as a node's option list, led by
+     * a blank choice so a picked default stays clearable — the same shape
+     * {@see \GlueAgency\Influx\fields\Table::columnOptions()} builds for a table
+     * column, and what the top-level default select offers.
+     *
+     * @param array<string, string> $map
+     * @return list<array{value: string, label: string}>
+     */
+    protected static function optionList(array $map): array
+    {
+        $options = [['value' => '', 'label' => '—']];
+
+        foreach ($map as $value => $label) {
+            $options[] = ['value' => (string) $value, 'label' => (string) $label];
+        }
+
+        return $options;
     }
 
     public function lightswitch(array $config = []): self

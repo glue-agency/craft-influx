@@ -135,7 +135,7 @@ class Matrix extends Field
             }
 
             foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
-                $subFields->text([
+                $subFields->fieldRow($this->fieldEditorFor($customField), [
                     'handle' => $customField->handle,
                     'label'  => $customField->name,
                 ]);

@@ -33,72 +33,93 @@
             <span class="pill pill-count" :title="$t('Total sub-fields in this group')" v-text="subFieldList.length"></span>
         </template>
 
-        <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
+        <template v-slot:default="{ expanded }">
+            <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
 
-        <!-- A group without sub-fields still gets its card when the consumer
-             supplies an empty-state hint (MatrixFields: a block type with no
-             custom fields) — the hint says why there are no rows to map. -->
-        <p v-if="! subFieldList.length && emptyHint" class="light sub-fields-hint" v-text="emptyHint"></p>
+            <!-- A group without sub-fields still gets its card when the consumer
+                 supplies an empty-state hint (MatrixFields: a block type with no
+                 custom fields) — the hint says why there are no rows to map. -->
+            <p v-if="! subFieldList.length && emptyHint" class="light sub-fields-hint" v-text="emptyHint"></p>
 
-        <!-- Same column headings as the main mapping list — sub-field rows are
-             mappings too. Joined to the card's shared grid in SchemaForm.vue,
-             which subgrids down from the parent mapping rows' tracks so the
-             columns align with the row above. -->
-        <div v-else class="influx-mapping-headings">
-            <div v-text="$t('Field')"></div>
-            <div v-text="$t('Source node')"></div>
-            <div v-text="$t('Default value')"></div>
-        </div>
+            <!-- Same column headings as the main mapping list — sub-field rows are
+                 mappings too. Joined to the card's shared grid in SchemaForm.vue,
+                 which subgrids down from the parent mapping rows' tracks so the
+                 columns align with the row above. -->
+            <div v-else class="influx-mapping-headings">
+                <div v-text="$t('Field')"></div>
+                <div v-text="$t('Source node')"></div>
+                <div v-text="$t('Default value')"></div>
+            </div>
 
-        <div
-            class="sub-field-row"
-            v-for="sub in subFieldList"
-            :key="sub.handle"
-            :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
-        >
-            <label>
-                {{ sub.label }}
-                <span v-if="isMissing(sub.handle)"
-                      class="influx-missing-badge"
-                      :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
-                      v-text="$t('missing mapping')"></span>
-                <code class="handle light" v-text="sub.handle"></code>
-            </label>
-            <v-searchable-select
-                :model-value="rowFor(sub.handle).node"
-                :options="sourceNodeOptions"
-                searchable
-                allow-custom
-                :placeholder="$t('— no mapping —')"
-                :search-placeholder="$t('Search nodes…')"
-                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
-                :disabled="readOnly"
-                @update:model-value="updateRow(sub.handle, 'node', $event)"
-            />
-            <!-- The default-value editor renders by the sub-field node's own
-                 type — the same primitives the rest of the schema uses. -->
-            <v-select-input
-                v-if="sub.type === 'select'"
-                :node="sub"
-                :model-value="rowFor(sub.handle).default"
-                searchable
-                :read-only="readOnly"
-                @update:model-value="updateRow(sub.handle, 'default', $event)"
-            />
-            <input
-                v-else
-                type="text"
-                :class="['text', sub.type === 'code' ? 'code' : null]"
-                :value="rowFor(sub.handle).default"
-                :placeholder="sub.placeholder || null"
-                :disabled="readOnly"
-                @input="updateRow(sub.handle, 'default', $event.target.value)"
+            <div
+                class="sub-field-row"
+                v-for="sub in subFieldList"
+                :key="sub.handle"
+                :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
             >
-        </div>
+                <label>
+                    {{ sub.label }}
+                    <span v-if="isMissing(sub.handle)"
+                          class="influx-missing-badge"
+                          :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
+                          v-text="$t('missing mapping')"></span>
+                    <code class="handle light" v-text="sub.handle"></code>
+                </label>
+                <v-searchable-select
+                    :model-value="rowFor(sub.handle).node"
+                    :options="sourceNodeOptions"
+                    searchable
+                    allow-custom
+                    :placeholder="$t('— no mapping —')"
+                    :search-placeholder="$t('Search nodes…')"
+                    :empty-label="$t('Run “Fetch sample” to discover nodes.')"
+                    :disabled="readOnly"
+                    @update:model-value="updateRow(sub.handle, 'node', $event)"
+                />
+                <!-- The default-value editor renders by the sub-field node's own
+                     type — the same primitives, and the same editors, the
+                     top-level mapping row uses. A relation sub-field gets the
+                     picker its own field would give an editor; a text box would
+                     ask the operator to retype a reference.
+
+                     Mounted only once the card is open: the picker fetches its
+                     markup from the server, and a mapping tab renders every
+                     card at once, so an eagerly-mounted one would fire a request
+                     per relation row on tab load. A card with saved rows starts
+                     expanded, so a configured picker still appears at once. -->
+                <template v-if="sub.type === 'element'">
+                    <v-element-picker
+                        v-if="expanded"
+                        :model-value="rowFor(sub.handle).default"
+                        :element-type="sub.elementType"
+                        :field-handle="sub.handle"
+                        @update:model-value="updateRow(sub.handle, 'default', $event)"
+                    />
+                </template>
+                <v-select-input
+                    v-else-if="sub.type === 'select'"
+                    :node="sub"
+                    :model-value="rowFor(sub.handle).default"
+                    searchable
+                    :read-only="readOnly"
+                    @update:model-value="updateRow(sub.handle, 'default', $event)"
+                />
+                <input
+                    v-else
+                    type="text"
+                    :class="['text', sub.type === 'code' ? 'code' : null]"
+                    :value="rowFor(sub.handle).default"
+                    :placeholder="sub.placeholder || null"
+                    :disabled="readOnly"
+                    @input="updateRow(sub.handle, 'default', $event.target.value)"
+                >
+            </div>
+        </template>
     </v-mapping-group-card>
 </template>
 
 <script>
+import ElementPicker from '../../ElementPicker.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
 import SelectInput from './SelectInput.vue';
 import MappingGroupCard from '../../../components/MappingGroupCard.vue';
@@ -252,6 +273,6 @@ export default {
         },
     },
 
-    components: { 'v-searchable-select': SearchableSelect, 'v-select-input': SelectInput, 'v-mapping-group-card': MappingGroupCard },
+    components: { 'v-searchable-select': SearchableSelect, 'v-select-input': SelectInput, 'v-element-picker': ElementPicker, 'v-mapping-group-card': MappingGroupCard },
 };
 </script>

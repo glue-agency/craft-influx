@@ -17,8 +17,11 @@
             </slot>
         </div>
 
+        <!-- The body slot is handed the expanded state so a consumer can hold
+             an expensive control back until the card is open — a collapsed
+             card's body is rendered (and hidden in CSS), not absent. -->
         <div class="influx-mapping-group-body">
-            <slot />
+            <slot :expanded="isExpanded" />
         </div>
     </div>
 </template>

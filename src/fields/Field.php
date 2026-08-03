@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\fields;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\helpers\Comparable;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
@@ -109,6 +110,24 @@ abstract class Field
     public function defaultEditor(CraftFieldInterface $field): ?array
     {
         return null;
+    }
+
+    /**
+     * The editor descriptor for ANOTHER field — the one behind a sub-field row,
+     * whose strategy this has to ask because a row's editor is that field's
+     * business, not its parent's.
+     *
+     * A seam rather than a direct service call so a schema spec can answer for
+     * it without a booted plugin, in the same idiom as this class's other
+     * registry seams. Editor only, never the full `metaFor()`: a row is one
+     * cell, so pulling a relation sub-field's own schema in would nest cards
+     * inside cards for nothing.
+     *
+     * @return array{type: string, options?: array<string, string>, elementType?: class-string}|null
+     */
+    protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+    {
+        return Influx::getInstance()->fields->defaultEditorFor($craftField) ?: null;
     }
 
     /**

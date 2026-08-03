@@ -71,6 +71,26 @@
  */
 
 /**
+ * One row of a sub-field card (`node.subFields` on an `elementSubFields`,
+ * `subFields` or `matrixFields` node). `type` picks the row's default-value
+ * editor, the same way a MappableField's `defaultType` does for a top-level row
+ * — PHP builds both from the target field's own strategy
+ * (`SchemaBuilder::fieldRow()`).
+ *
+ * `channel` names the mapping channel the row is stored in, and its ABSENCE
+ * means the node type's own default: `nativeFields` for an `elementSubFields`
+ * card, `fields` inside a `matrixFields` type entry (see `lib/channels.js`).
+ *
+ * @typedef {Object} SubFieldNode
+ * @property {('text'|'code'|'select'|'element')} type
+ * @property {string} handle
+ * @property {string} label
+ * @property {string} [channel] 'fields' | 'nativeFields'; absent means the card's default.
+ * @property {SelectOption[]} [options] For type 'select', blank-led so a picked default clears.
+ * @property {string} [elementType] For type 'element': FQCN to pick from.
+ */
+
+/**
  * FeedInspector::report() output — the "Fetch sample" report.
  *
  * @typedef {Object} SampleReport

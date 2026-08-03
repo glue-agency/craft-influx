@@ -8,6 +8,7 @@ use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fieldlayoutelements\entries\EntryTitleField;
+use craft\fields\PlainText;
 use craft\models\FieldLayout;
 use DateTime;
 use DateTimeZone;
@@ -1187,6 +1188,15 @@ class MatrixFieldTest extends Unit
                 return $this->descriptors;
             }
 
+            /**
+             * No booted plugin to ask, so every block field's row reads as text
+             * — the editor a plain-text child would get anyway.
+             */
+            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            {
+                return null;
+            }
+
             protected function blockTypeHandles(FieldContext $context): array
             {
                 return array_keys($this->typeLayouts);
@@ -1258,18 +1268,14 @@ class MatrixFieldTest extends Unit
      */
     public function fakeLayout(array $handles, ?string $titleLabel = null): FieldLayout
     {
-        // Plain carriers rather than field mocks: the schema reads nothing off a
-        // custom field but its handle and name.
-        $customFields = array_map(static fn(string $handle): object => new class($handle) {
-            public string $handle;
+        // Real field mocks: besides a handle and a name, the schema asks each
+        // custom field's own strategy which default editor its row should carry.
+        $customFields = array_map(function(string $handle): CraftFieldInterface {
+            $field = $this->createMock(PlainText::class);
+            $field->handle = $handle;
+            $field->name = ucfirst($handle);
 
-            public string $name;
-
-            public function __construct(string $handle)
-            {
-                $this->handle = $handle;
-                $this->name = ucfirst($handle);
-            }
+            return $field;
         }, $handles);
 
         $titleElement = null;

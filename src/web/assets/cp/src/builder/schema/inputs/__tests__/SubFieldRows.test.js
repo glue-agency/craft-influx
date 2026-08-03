@@ -87,3 +87,69 @@ describe('SubFieldRows clear', () => {
         expect(toggles(wrapper)).toEqual([[false]]);
     });
 });
+
+/**
+ * A row's default-value editor follows the sub-field's own type, the way the
+ * top-level mapping row's already did. A relation sub-field rendering a text box
+ * — Belkin's "Campus" case — was the whole of GT-107's fifth remark: a
+ * reference can be picked, not retyped.
+ */
+describe('SubFieldRows default editors', () => {
+    const campus = { type: 'element', handle: 'campus', label: 'Campus', elementType: 'craft\\elements\\Entry' };
+
+    const mountTyped = (subFields, props = {}) => mount(SubFieldRows, {
+        props: {
+            node: { ...node, subFields },
+            rows: { campus: { default: '12' } },
+            nodeOptions: [],
+            ...props,
+        },
+        global: { mocks: { $t: (s) => s }, stubs: { ElementPicker: true } },
+    });
+
+    const picker = (wrapper) => wrapper.findComponent({ name: 'ElementPicker' });
+
+    it('gives a relation sub-field the element picker its own field would', () => {
+        const wrapper = mountTyped([campus]);
+
+        expect(picker(wrapper).props('elementType')).toBe('craft\\elements\\Entry');
+        expect(picker(wrapper).props('modelValue')).toBe('12');
+        // The SUB-field's handle, not the parent's: the server looks a handle up
+        // globally, so this is what shapes the picker after the right field.
+        expect(picker(wrapper).props('fieldHandle')).toBe('campus');
+        expect(wrapper.find('input[type="text"]').exists()).toBe(false);
+    });
+
+    it('stores what the picker emits, and clears the row when it empties', () => {
+        const wrapper = mountTyped([campus]);
+
+        picker(wrapper).vm.$emit('update:modelValue', '34');
+        expect(wrapper.emitted('update:rows').at(-1)).toEqual([{ campus: { default: '34' } }]);
+
+        picker(wrapper).vm.$emit('update:modelValue', null);
+        expect(wrapper.emitted('update:rows').at(-1)).toEqual([{}]);
+    });
+
+    it('holds the picker back until the card is open', async () => {
+        // Every card of every relation row renders at once, and each picker
+        // fetches its markup from the server — so a collapsed card asks for
+        // nothing.
+        const wrapper = mountTyped([campus], { rows: {} });
+        expect(isCollapsed(wrapper)).toBe(true);
+        expect(picker(wrapper).exists()).toBe(false);
+
+        await wrapper.find('.influx-mapping-group-header').trigger('click');
+
+        expect(picker(wrapper).exists()).toBe(true);
+    });
+
+    it('leaves the other editors as they were', () => {
+        const wrapper = mountTyped([
+            { type: 'select', handle: 'size', label: 'Size', options: [{ value: '', label: '—' }, { value: 'l', label: 'Large' }] },
+            { type: 'text', handle: 'blurb', label: 'Blurb' },
+        ]);
+
+        expect(wrapper.findComponent({ name: 'SelectInput' }).exists()).toBe(true);
+        expect(wrapper.find('input[type="text"]').exists()).toBe(true);
+    });
+});

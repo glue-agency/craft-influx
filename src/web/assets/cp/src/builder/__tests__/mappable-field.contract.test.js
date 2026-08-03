@@ -33,6 +33,7 @@ import fixture from '../../../tests/fixtures/mappable-field.json';
 const REQUIRED_KEYS = ['handle', 'name', 'native', 'group', 'defaultType'];
 const OPTIONAL_KEYS = ['options', 'elementType', 'fieldClass', 'fieldMeta'];
 const DEFAULT_TYPES = ['text', 'select', 'element'];
+const SUB_FIELD_TYPES = ['text', 'code', 'select', 'element'];
 
 const byHandle = (handle) => fixture.find((f) => f.handle === handle);
 
@@ -91,6 +92,23 @@ describe('Mappable field wire contract', () => {
         expect(related.defaultType).toBe('element');
         expect(related.elementType).toBe('craft\\elements\\Entry');
         expect(typeof related.fieldClass).toBe('string');
+    });
+
+    it('types every sub-field row, and names what an element row picks', () => {
+        // A row's default editor branches on its own `type` the way the
+        // top-level row branches on `defaultType` — before that, every row was
+        // a text box, including a relation's.
+        const rows = byHandle('relatedArticles').fieldMeta.schema
+            .find((node) => node.type === 'elementSubFields').subFields;
+
+        for (const row of rows) {
+            expect(SUB_FIELD_TYPES).toContain(row.type);
+            expect(typeof row.handle).toBe('string');
+            expect(typeof row.label).toBe('string');
+        }
+
+        const campus = rows.find((row) => row.type === 'element');
+        expect(campus.elementType).toBe('craft\\elements\\Entry');
     });
 
     it('marks only the custom rows with a channel', () => {
