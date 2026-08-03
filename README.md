@@ -116,8 +116,8 @@ A `mapping` reads one field worth of data off a remote item and applies it to an
 Built-in strategies, keyed by Craft field class and registered via `FieldsService::EVENT_REGISTER_FIELDS`:
 
 - **`Lightswitch`**, **`Date`**, **`Dropdown`** (covers option fields generally, e.g. Radio Buttons, Checkboxes) — truthy/falsy coercion, configurable date-format parsing, match-by-label-or-value.
-- **`Entries`**, **`Categories`**, **`Tags`**, **`Users`** — relation fields with a match-by strategy (id, title, slug, or any unique attribute), with optional create-on-the-fly when nothing matches.
-- **`Assets`** — matches by id or by URL/filename, with best-effort fallback when a CDN host changes, and optional download-on-import when nothing matches. Sub-fields (alt, title, …) write back onto the matched asset.
+- **`Entries`**, **`Categories`**, **`Tags`**, **`Users`** — relation fields with a match-by strategy, with optional create-on-the-fly when nothing matches. What a flavour offers to match on is its own element type's identifiers (an entry's id/title/slug/uri, a user's id/username/email, a tag's id/title) plus every custom-field handle on its sources.
+- **`Assets`** — matches by id or by URL/filename, with best-effort fallback when a CDN host changes, and optional download-on-import when nothing matches. Sub-fields write back onto the matched asset.
 - **`RichText`** — CKEditor/Redactor-style fields.
 - **`Matrix`** — maps a remote sub-array to blocks, one child-mapping tree per block type. Every sync fully replaces the field's blocks from the feed (no per-block merge or reordering yet).
 - **`Table`** — one sub-mapping per column (keyed by column id, so a handle rename can't orphan it), values zipped by index into rows. Full-replace, like Matrix; change detection normalizes per column type so a checkbox or date column doesn't churn.
@@ -129,6 +129,8 @@ Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft fiel
 The source-node dropdowns list what the fetched sample discovered — and the sample is one page. A key that only shows up on a later page can be mapped anyway: type it into the node search and pick the "Custom node" row the picker offers for a path it doesn't know. It saves like any other node and reads as a missing mapping until a page carrying it is fetched; at sync time it resolves per item, so items that do carry it get the value.
 
 The builder's details sidebar reports where the sample stands and how much of the tree is mapped, and its **Auto-match** maps every field whose handle matches a node in the sample. It only ever fills a field that has no source node and no "use default" — a mapping you made is never overwritten — and the rows it filled carry an "auto" badge until you touch them. Nothing about that badge is stored: an auto-matched mapping is an ordinary one.
+
+A relation or asset mapping gets one sub-field card holding both what the related element writes natively (an entry's title and slug, an asset's alt and title where the volume's layout includes them) and the custom fields of the layouts its sources allow. The two halves reach the element differently — an attribute is assigned, a custom field goes through the layout — so a row declares which channel it lands in; to the editor it's one list. Each row's default-value editor is the one its own field's strategy declares, so a relation sub-field offers an element picker rather than a text box.
 
 A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuilder`, and the CP renders it generically — no Vue changes needed to add a control. For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
 

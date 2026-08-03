@@ -1,5 +1,25 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Added
+- **A relation mapping offers the related element's own fields.** A card used to hold an entry's title and slug and nothing else; it now holds every custom field of the layouts the field's sources allow, on the same `fields` channel the runtime has always applied. Assets keep their volumes' custom fields — in ONE card now, together with alt and title, rather than two cards split by the write channel behind them. A row marks the channel it lands in, the way a Matrix block's Title row already did.
+- **A sub-field row's default editor follows the sub-field's own type.** "Use default" became field-type aware in alpha.7 for top-level rows only, so a relation sub-field still asked the operator to retype a reference into a text box; each row now carries the editor its own field's strategy declares — an element picker for a relation, a select over its options for an option field. The picker mounts when its card is opened, so a mapping tab full of relation rows doesn't fetch one per row up front.
+- The details sidebar reports where the sample stands and how much of the field tree is mapped, and its **Auto-match** fills every field whose handle matches a node in the sample. It only ever fills a field that has no source node and no "use default", and the rows it filled carry an "auto" badge until they're touched.
+- A source node can be typed in when the fetched page doesn't carry it — the picker offers the typed path as a "Custom node". It saves like any other node and reads as a missing mapping until a page carrying it is fetched.
+
+### Changed
+- **Alt text and Title are offered only where a volume's field layout includes them.** alpha.7's notes claimed they stay unconditional because they're element attributes; that's true of the write, but a row nobody can fill in the asset's own editor has no business in a mapping either. A mapping saved before this keeps applying — the schema is rebuilt from live layouts on every request, so dropping it would make merely opening a link destructive — and "clear nodes" removes it.
+- **Only the missing-element policies that match the endpoint shape are offered:** the two global ones on a single-endpoint link, the two per-site ones once site-specific endpoints are on. Saving already rewrote a mismatched pair to its counterpart and said so in a notice; the checkboxes now say it up front.
+- The mapping tree's per-row Clear is gone — the group header's "clear nodes" link is the single clear affordance, and reads as chrome rather than a link.
+- A Table field's Columns card lost its instructions paragraph; the rows say what they do.
+
+### Fixed
+- **A Users relation offered `slug` and `title`** — neither of which a user has, so a match on them could never resolve one — while hiding `username` and `email`. Every relation flavour now offers its own element type's identifiers, from one shared list the native Author dropdown and the link-level match key read too. Entries gained `uri`.
+- **Categories, Tags and Users relations had no sub-fields card at all.** The rows were probed for by looking up a native field-layout element, and Craft ships one for an entry's title and for nothing else — which also meant no flavour ever offered a slug.
+- **An Entries field limited to Single sections resolved no sources**, so it offered no match options, no sub-fields and no query scoping on its lookups: Craft stores that restriction as the bare key `singles` rather than as `section:UID`.
+- The General tab never flagged red for "Add at least one site endpoint" — the error's attribute was missing from the tab's error map.
+
 ## 1.0.0-alpha.7 - 2026-08-03
 
 ### Added
