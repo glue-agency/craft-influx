@@ -77,6 +77,7 @@
                     <th>{{ "Run"|t("influx") }}</th>
                     <th>{{ "Link"|t("influx") }}</th>
                     <th>{{ "Trigger"|t("influx") }}</th>
+                    <th>{{ "User"|t("influx") }}</th>
                     <th>{{ "Site"|t("influx") }}</th>
                     <th>{{ "Result"|t("influx") }}</th>
                     <th class="thin"></th>
@@ -105,37 +106,37 @@
                             {% endif %}
                         </td>
 
-                        {# Link — name links to its edit screen; a deleted link
-                           degrades to its stored handle. #}
+                        {# Link — its chip, linking to the builder; a deleted link
+                           has none left to chip and degrades to the handle the
+                           run stored. #}
                         <td>
-                            {% set linkId = linkIds[log.linkHandle] ?? null %}
-                            {% set linkName = linkNames[log.linkHandle] ?? log.linkHandle %}
-                            {% if linkId %}
-                                <a href="{{ cpUrl('influx/links/' ~ linkId) }}">{{ linkName }}</a>
+                            {% set linkChip = linkChips[log.linkHandle] ?? null %}
+                            {% if linkChip %}
+                                {{ linkChip }}
                             {% else %}
-                                {{ linkName }}
+                                {{ log.linkHandle }}
                             {% endif %}
                         </td>
 
-                        {# Trigger — the mechanism as its own label (the same one
-                           the filter above offers), with the person who asked
-                           for the run underneath when a person did. #}
+                        {# Trigger — the mechanism as its own label, the same one
+                           the filter above offers. #}
                         <td>
                             {{ ui.pill(triggers[log.trigger] ?? log.trigger, "gray") }}
+                        </td>
+
+                        {# User — the person who asked for the run, as their user
+                           chip. Empty for a run nobody triggered (console, cron). #}
+                        <td>
                             {% if log.userId %}
-                                <div class="influx-cell-sub influx-cell-sub--flush">{{ userNames[log.userId] }}</div>
+                                {{ userChips[log.userId] ?? "" }}
                             {% endif %}
                         </td>
 
-                        {# Site the run was scoped to — a single-site run shows
-                           its handle; a run with no site scope shows "primary",
-                           the same as the Links overview. #}
+                        {# Site the run was scoped to, as a Craft chip — a run with
+                           no site scope chips the primary site, the same as the
+                           Links overview. #}
                         <td>
-                            {% if log.siteHandle %}
-                                {{ ui.pill(log.siteHandle, "gray") }}
-                            {% else %}
-                                {{ ui.pill("primary"|t("influx"), "blue") }}
-                            {% endif %}
+                            {{ influxSiteChip(log.siteHandle) }}
                         </td>
 
                         {# Result — the six numeric columns as the shared pill

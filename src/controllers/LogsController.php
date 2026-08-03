@@ -3,10 +3,12 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
+use craft\helpers\Template;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\services\LogsService;
 use GlueAgency\Influx\web\LinkPresenter;
@@ -20,12 +22,13 @@ class LogsController extends AbstractController
     /**
      * Every toolbar filter is validated against what currently exists (or, for
      * status and trigger, against its enum) by {@see oneOfQueryParam()}, so a
-     * stale query string falls back to "all". The `handle => id` /
-     * `handle => name` maps the rows read from carry no entry for a link that has
-     * since been deleted.
+     * stale query string falls back to "all". The `handle => name` map behind the
+     * filter and the `handle => chip` map the rows render carry no entry for a
+     * link that has since been deleted — the row then degrades to the handle the
+     * run stored.
      *
-     * The page's triggering users are resolved in one query up front
-     * ({@see LogPresenter::userLabels()}) rather than per row — 50 rows, 50
+     * The page's triggering users are chipped from one query up front
+     * ({@see LogPresenter::userChips()}) rather than per row — 50 rows, 50
      * lookups otherwise.
      */
     public function actionIndex(): Response
@@ -35,8 +38,8 @@ class LogsController extends AbstractController
         $plugin = Influx::getInstance();
 
         $links = $plugin->links->getAllLinks();
-        $linkIds = array_map(static fn($link)   => $link->id, $links);
         $linkNames = array_map(static fn($link) => $link->name, $links);
+        $linkChips = array_map(static fn($link) => Template::raw(Compat::linkChipHtml($link)), $links);
 
         $statuses = [];
 
@@ -69,10 +72,10 @@ class LogsController extends AbstractController
             'page'            => $page,
             'perPage'         => LogsService::LOGS_PER_PAGE,
             'total'           => $total,
-            'linkIds'         => $linkIds,
             'linkNames'       => $linkNames,
+            'linkChips'       => $linkChips,
             'presenter'       => $presenter,
-            'userNames'       => $presenter->userLabels($logs),
+            'userChips'       => $presenter->userChips($logs),
             'selectedLink'    => $selectedLink,
             'selectedStatus'  => $selectedStatus,
             'statuses'        => $statuses,
@@ -105,6 +108,16 @@ class LogsController extends AbstractController
 
         ['endpointUrl' => $endpointUrl, 'endpoints' => $endpoints] = $links->endpointDisplay($link, $elementId, $log->siteHandle);
 
+        // Each per-site endpoint line is labelled with its site's chip. Rendered
+        // here rather than in the presenter, whose endpoint helpers stay pure
+        // (primitives in, primitives out) so they need no booted Craft to test.
+        if ($endpoints !== null) {
+            $endpoints = array_map(
+                static fn(array $row): array => ['chipHtml' => Compat::siteChipHtml($row['site'])] + $row,
+                $endpoints,
+            );
+        }
+
         $this->registerAppTranslations(LogViewerTranslations::strings());
 
         return $this->renderTemplate('influx/logs/view', [
@@ -119,6 +132,7 @@ class LogsController extends AbstractController
                 'linkName'        => $link?->name,
                 'endpointUrl'     => $endpointUrl,
                 'endpoints'       => $endpoints,
+                'siteChipHtml'    => Compat::siteChipHtml($log->siteHandle),
                 'resourceHtml'    => $links->resourceDisplay($link, $elementId),
                 'isLive'          => LogPresenter::isLive($log->status),
                 'vocabulary'      => Vocabulary::payload(),

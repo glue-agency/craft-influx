@@ -6,11 +6,15 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
 use craft\helpers\DateTimeHelper;
+use craft\helpers\Html;
+use craft\helpers\Template;
 use GlueAgency\Influx\enums\ItemAction;
 use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
+use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
+use Twig\Markup;
 
 /**
  * Shapes log records into the JSON the Vue log viewer (LogApp) renders.
@@ -42,7 +46,7 @@ class LogPresenter
             'linkHandle'   => (string) $log->linkHandle,
             'trigger'      => (string) $log->trigger,
             'triggerLabel' => SyncTrigger::tryFrom((string) $log->trigger)?->label() ?? (string) $log->trigger,
-            'user'         => $this->userLabel($log),
+            'userChipHtml' => $this->userChipHtml($log),
             'siteHandle'   => $log->siteHandle,
             'offsetHandle' => $log->offsetHandle,
             'startedAt'    => $this->datetime($log->startedAt),
@@ -50,9 +54,60 @@ class LogPresenter
     }
 
     /**
-     * Name the users a page of runs was triggered by, keyed by user id, in ONE
-     * query — the overview renders 50 rows, and a per-row lookup is the same N+1
-     * {@see elementMap()} exists to avoid on the item list.
+     * The users a page of runs was triggered by as Craft user chips (photo, name,
+     * edit link), keyed by user id — what the Logs overview shows in its "User"
+     * column, so a person reads the way people read everywhere else in the CP.
+     *
+     * Rendered markup rather than a string, so the overview can print a cell
+     * without reaching for `|raw` — and can't forget to.
+     *
+     * @param LogRecord[] $logs
+     * @return array<int, Markup>
+     */
+    public function userChips(array $logs): array
+    {
+        $chips = [];
+
+        foreach ($this->usersForLogs($logs) as $id => $user) {
+            $chips[$id] = Template::raw($this->userChip($user, $id));
+        }
+
+        return $chips;
+    }
+
+    /**
+     * The chip for the user ONE run was triggered by, or null when nobody
+     * triggered it (a console or cron run) — the log viewer's "User" fact, which
+     * ships in its JSON payload, so this stays a raw string.
+     */
+    public function userChipHtml(LogRecord $log): ?string
+    {
+        if (! $log->userId) {
+            return null;
+        }
+
+        $id = (int) $log->userId;
+
+        return $this->userChip($this->usersForLogs([$log])[$id] ?? null, $id);
+    }
+
+    /**
+     * One user chip. A HARD-purged user has no element left to chip, so it gets a
+     * muted `#id` instead: baked in here rather than left to each caller, so no
+     * screen has to spell the fallback (and none can spell it differently).
+     */
+    protected function userChip(?User $user, int $id): string
+    {
+        return $user
+            ? Compat::elementChipHtml($user, ['hyperlink' => true])
+            : Html::tag('span', '#' . $id, ['class' => 'light']);
+    }
+
+    /**
+     * The users a page of runs was triggered by, keyed by user id, in ONE query —
+     * the overview renders 50 rows, and a per-row lookup is the same N+1
+     * {@see elementMap()} exists to avoid on the item list. Null for an id that
+     * no longer resolves.
      *
      * `status(null)` is required: a user query defaults to enabled-only, so a
      * suspended or pending account would drop out and its runs would go
@@ -60,14 +115,10 @@ class LogPresenter
      * still names the runs it triggered inside the log retention window, which is
      * the window where "who ran this" is actually asked.
      *
-     * A HARD-purged user can't be named at all, so the map carries `#id` for it:
-     * baked in here rather than left to each caller, so no template has to spell
-     * the fallback (and none can spell it differently).
-     *
      * @param LogRecord[] $logs
-     * @return array<int, string>
+     * @return array<int, ?User>
      */
-    public function userLabels(array $logs): array
+    protected function usersForLogs(array $logs): array
     {
         $ids = [];
 
@@ -90,27 +141,13 @@ class LogPresenter
             ->indexBy('id')
             ->all();
 
-        $labels = [];
+        $resolved = [];
 
         foreach ($ids as $id) {
-            $labels[$id] = (string) (($users[$id] ?? null)?->getUiLabel() ?: '#' . $id);
+            $resolved[$id] = $users[$id] ?? null;
         }
 
-        return $labels;
-    }
-
-    /**
-     * The user ONE run was triggered by, or null when nobody triggered it (a
-     * console or cron run). Same resolution and same `#id` fallback as
-     * {@see userLabels()}, which it defers to so the two can't disagree.
-     */
-    public function userLabel(LogRecord $log): ?string
-    {
-        if (! $log->userId) {
-            return null;
-        }
-
-        return $this->userLabels([$log])[(int) $log->userId] ?? null;
+        return $resolved;
     }
 
     /**

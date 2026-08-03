@@ -29,14 +29,42 @@
                 </div>
             </div>
 
-            <!-- All-sites run over per-site endpoints: one line each. -->
+            <!-- What the run was: the site it covered, the mechanism, who asked
+                 for it, and the window it fetched — each labelled, rather than
+                 folded into the meta sentence, which keeps the timing. The site
+                 and the user are Craft chips, server-rendered because the chip
+                 renderer lives in PHP (an unscoped run chips the primary site). -->
+            <div class="influx-log-facts" :style="{ '--influx-facts-columns': counters.length }">
+                <div v-if="siteChipHtml" class="influx-log-fact influx-log-site">
+                    <span class="influx-log-eyebrow" v-text="$t('Site')"></span>
+                    <span v-html="siteChipHtml"></span>
+                </div>
+                <div class="influx-log-fact">
+                    <span class="influx-log-eyebrow" v-text="$t('Trigger')"></span>
+                    <span class="influx-log-fact-value" v-text="log.triggerLabel || log.trigger"></span>
+                </div>
+                <div v-if="log.userChipHtml" class="influx-log-fact influx-log-user">
+                    <span class="influx-log-eyebrow" v-text="$t('User')"></span>
+                    <span v-html="log.userChipHtml"></span>
+                </div>
+                <div v-if="log.offsetHandle" class="influx-log-fact influx-log-window">
+                    <span class="influx-log-eyebrow" v-text="$t('Window')"></span>
+                    <span class="influx-log-fact-value" v-text="log.offsetHandle"></span>
+                </div>
+            </div>
+
+            <!-- All-sites run over per-site endpoints: one line each, chipped
+                 the same way. -->
             <div v-if="! endpointUrl && endpoints.length" class="influx-log-endpoint">
                 <span class="influx-log-eyebrow" v-text="$t('Endpoints')"></span>
-                <code
+                <span
                     v-for="endpoint in endpoints"
                     :key="endpoint.site"
-                    class="influx-log-endpoint-url influx-log-endpoint-line"
-                >{{ endpoint.site }}: {{ endpoint.url }}</code>
+                    class="influx-log-endpoint-line influx-log-site-endpoint"
+                >
+                    <span v-html="endpoint.chipHtml"></span>
+                    <code class="influx-log-endpoint-url" v-text="endpoint.url"></code>
+                </span>
             </div>
 
             <!-- Single-resource run: the element it was triggered for. -->
@@ -209,6 +237,30 @@
     color: var(--medium-text-color);
 }
 
+/* Run facts (site, trigger, user, window) — on the counters' own grid, over as
+   many tracks as there ARE counters (the template passes the count), so a fact
+   cell sits in the same column as the counter cell under it. `auto-fit` can't do
+   that here: with fewer facts than counters it collapses the empty tracks and
+   stretches the rest, which is what made the two rows drift apart. */
+.influx-log-facts {
+    display: grid;
+    grid-template-columns: repeat(var(--influx-facts-columns, 7), minmax(0, 1fr));
+    border-bottom: 1px solid var(--hairline-color);
+}
+
+.influx-log-fact {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 9px 18px;
+}
+
+.influx-log-fact-value {
+    font-size: 13px;
+    color: var(--text-color);
+}
+
 /* Endpoint / resource sub-rows (multi-site or single-resource runs). */
 .influx-log-endpoint {
     display: flex;
@@ -220,6 +272,13 @@
 
 .influx-log-endpoint .influx-log-endpoint-url { white-space: normal; }
 .influx-log-endpoint-line { display: block; padding: 0; background: none; }
+
+/* A per-site endpoint line: the site's chip, then the URL it was fetched from. */
+.influx-log-site-endpoint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 
 .influx-log-eyebrow {
     font-size: 10px;
@@ -527,6 +586,10 @@ export default {
             return this.config.endpoints || [];
         },
 
+        siteChipHtml() {
+            return this.config.siteChipHtml || null;
+        },
+
         resourceHtml() {
             return this.config.resourceHtml || null;
         },
@@ -630,18 +693,11 @@ export default {
             };
         },
 
-        // A run-info line for the summary bar: trigger, who asked for it,
-        // site/offset, started. The trigger is the mechanism and the user is the
-        // person, so both show when a person triggered the run.
+        // The summary bar's own line is the timing, and only that: what the run
+        // was — site, trigger, user, window — sits in the labelled facts strip
+        // below, where the site chip can live.
         metaLine() {
-            const parts = [this.log.triggerLabel || this.log.trigger];
-
-            if (this.log.user) parts.push(this.$t('by {u}', { u: this.log.user }));
-            if (this.log.siteHandle) parts.push(this.$t('site {s}', { s: this.log.siteHandle }));
-            if (this.log.offsetHandle) parts.push(this.$t('window {w}', { w: this.log.offsetHandle }));
-            if (this.log.startedAt) parts.push(this.$t('started {d}', { d: this.log.startedAt }));
-
-            return parts.join(' · ');
+            return this.log.startedAt ? this.$t('started {d}', { d: this.log.startedAt }) : '';
         },
 
         metaFinished() {

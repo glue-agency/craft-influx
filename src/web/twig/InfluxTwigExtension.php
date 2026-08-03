@@ -8,15 +8,17 @@ use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
 /**
- * CP Twig helpers: the cross-major element-chip shim, plus the enum-derived
- * processing vocabulary. The latter comes through a function rather than a
- * controller variable because `influx/_overview`'s pill macros need it and Twig
- * macros are context-isolated.
+ * CP Twig helpers: the cross-major chip shims, plus the enum-derived processing
+ * vocabulary. The latter comes through a function rather than a controller
+ * variable because `influx/_overview`'s pill macros need it and Twig macros are
+ * context-isolated.
  *
  * Craft 5 ships an `elementChip()` Twig function; Craft 4 has none. Rather
  * than branching in templates, every template uses `influxElementChip()`
  * unconditionally and {@see Compat::elementChipHtml()} picks the right
- * renderer at runtime.
+ * renderer at runtime. `influxSiteChip()` is the same deal for a site, which
+ * Craft 5 can chip as a component but Craft 4 cannot chip at all
+ * ({@see Compat::siteChipHtml()}).
  */
 class InfluxTwigExtension extends AbstractExtension
 {
@@ -24,6 +26,8 @@ class InfluxTwigExtension extends AbstractExtension
     {
         return [
             new TwigFunction('influxElementChip', [Compat::class, 'elementChipHtml'], ['is_safe' => ['html']]),
+            new TwigFunction('influxSiteChip', [Compat::class, 'siteChipHtml'], ['is_safe' => ['html']]),
+            new TwigFunction('influxSiteChips', [Compat::class, 'siteChipsHtml'], ['is_safe' => ['html']]),
             new TwigFunction('influxProcessingValues', [$this, 'processingValues']),
             new TwigFunction('influxProcessingColor', [$this, 'processingColor']),
         ];

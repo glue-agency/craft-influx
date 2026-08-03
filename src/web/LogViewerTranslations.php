@@ -60,9 +60,10 @@ class LogViewerTranslations
             'run summary' => [
                 'Endpoints',
                 'Resource',
-                'by {u}',
-                'site {s}',
-                'window {w}',
+                'Site',
+                'Trigger',
+                'User',
+                'Window',
                 'started {d}',
                 'ran for {d}',
                 'Show only {label} items',

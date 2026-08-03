@@ -6,7 +6,7 @@ import { installVocabulary } from '../../lib/vocabulary.js';
 const $t = (s, p) => (p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m)) : s);
 
 const baseConfig = (over = {}) => ({
-    log: { id: 1, linkHandle: 'news', trigger: 'cp', triggerLabel: 'Control panel', user: null, status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
+    log: { id: 1, linkHandle: 'news', trigger: 'cp', triggerLabel: 'Control panel', userChipHtml: null, status: 'ok', startedAt: 'now', finishedAt: 'later', error: null, itemsSeen: 2, itemsCreated: 1, itemsUpdated: 0, itemsUnchanged: 0, itemsSkipped: 1, itemsDeleted: 0, itemsDisabled: 0 },
     // The bootstrap ships only page 1 (newest first).
     items: [
         { id: 2, action: 'skipped', matchValue: 'B', message: 'missing id', title: 'Item B', trashed: false, errorCount: 0 },
@@ -68,19 +68,24 @@ describe('LogApp', () => {
         expect(counters[0].text().toLowerCase()).toContain('seen');
     });
 
-    it('names the user a run was triggered by, next to the trigger label', () => {
-        const w = mountApp({ log: { ...baseConfig().log, user: 'Ada Lovelace' } });
-        const meta = w.find('.influx-log-meta').text();
+    it('chips the user a run was triggered by, beside the trigger label', () => {
+        const w = mountApp({
+            log: { ...baseConfig().log, userChipHtml: '<span class="chip">Ada Lovelace</span>' },
+        });
+        const facts = w.find('.influx-log-facts').text();
 
         // The label, never the raw stored value — the trigger is the mechanism,
         // the user is who asked for it.
-        expect(meta).toContain('Control panel');
-        expect(meta).not.toContain('cp');
-        expect(meta).toContain('by Ada Lovelace');
+        expect(facts).toContain('Control panel');
+        expect(facts).not.toContain('cp');
+        expect(w.find('.influx-log-user').html()).toContain('Ada Lovelace');
     });
 
-    it('leaves the meta line userless for a run nobody triggered', () => {
-        expect(mountApp().find('.influx-log-meta').text()).not.toContain('by ');
+    it('drops the user cell for a run nobody triggered', () => {
+        const w = mountApp();
+
+        expect(w.find('.influx-log-facts').text()).toContain('Control panel');
+        expect(w.find('.influx-log-user').exists()).toBe(false);
     });
 
     it('says nothing in the list about an element sitting in the trash', () => {
@@ -237,15 +242,24 @@ describe('LogApp', () => {
         const w = mountApp({
             endpointUrl: null,
             endpoints: [
-                { site: 'nl', url: 'https://ex.test/api?language=nl' },
-                { site: 'fr', url: 'https://ex.test/api?language=fr' },
+                { site: 'nl', chipHtml: '<span class="chip">Site NL</span>', url: 'https://ex.test/api?language=nl' },
+                { site: 'fr', chipHtml: '<span class="chip">Site FR</span>', url: 'https://ex.test/api?language=fr' },
             ],
         });
 
         const lines = w.findAll('.influx-log-endpoint-line');
         expect(lines.length).toBe(2);
-        expect(lines[0].text()).toContain('nl');
+        expect(lines[0].html()).toContain('Site NL');
+        expect(lines[0].text()).toContain('language=nl');
         expect(lines[1].text()).toContain('language=fr');
+    });
+
+    it('renders the site chip for the scope the run covered', () => {
+        const w = mountApp({ siteChipHtml: '<span class="chip">Demo site</span>' });
+
+        const site = w.find('.influx-log-site');
+        expect(site.exists()).toBe(true);
+        expect(site.html()).toContain('Demo site');
     });
 
     it('renders the resource chip for a single-element run', () => {

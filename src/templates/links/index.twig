@@ -143,19 +143,12 @@
                             </div>
                         </td>
 
-                        {# Sites — one compact pill per configured site handle, or
-                           a single "primary" pill when the link runs primary-only. #}
+                        {# Sites — the configured sites as Craft chips: the first
+                           one plus a "+N" badge that reveals the rest. A link with
+                           no sites configured runs against the primary site, so
+                           that is the one chip it gets. #}
                         <td>
-                            <div class="influx-pill-group">
-                                {% set siteHandles = link.siteHandles() %}
-                                {% if siteHandles is empty %}
-                                    {{ ui.pill("primary"|t("influx"), "blue") }}
-                                {% else %}
-                                    {% for site in siteHandles %}
-                                        {{ ui.pill(site, "gray") }}
-                                    {% endfor %}
-                                {% endif %}
-                            </div>
+                            {{ influxSiteChips(link.siteHandles()) }}
                         </td>
 
                         {# Processing — the configured actions as one wrapping row

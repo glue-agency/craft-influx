@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\helpers;
 
 use Craft;
+use craft\base\Chippable;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\db\Table as CraftTable;
@@ -12,11 +13,15 @@ use craft\helpers\Cp;
 use craft\helpers\Db;
 use craft\helpers\Html;
 use craft\helpers\StringHelper;
+use craft\helpers\UrlHelper;
 use craft\models\EntryType;
 use craft\models\FieldLayout;
 use craft\models\Section;
+use craft\models\Site;
 use craft\services\Sections;
 use DateTime;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\web\LinkChip;
 use yii\web\Response;
 
 /**
@@ -341,6 +346,115 @@ class Compat
         }
 
         return $html;
+    }
+
+    /**
+     * Chip HTML for a link, labelled with its name and pointing at the link
+     * builder.
+     *
+     * A link is a config model rather than an element, which Craft 5 chips just
+     * as happily — `Cp::chipHtml()` takes any `Chippable`, and {@see LinkChip}
+     * adapts the model into one. Craft 4 has no generic chip renderer (the
+     * `Chippable` interface is the marker for one), so it falls back to the plain
+     * hyperlinked name the overviews used before chips.
+     *
+     * `autoReload` is off: Craft's chip JS re-renders a chip by asking the
+     * server for the component behind it, which only knows Craft's own types.
+     */
+    public static function linkChipHtml(Link $link, array $config = []): string
+    {
+        if (interface_exists(Chippable::class)) {
+            return Cp::chipHtml(new LinkChip($link), $config + [
+                'autoReload' => false,
+                'hyperlink'  => true,
+            ]);
+        }
+
+        $label = Html::encode($link->name);
+
+        return $link->id
+            ? Html::a($label, UrlHelper::cpUrl('influx/links/' . $link->id))
+            : $label;
+    }
+
+    /**
+     * Chip HTML for one site, by handle — the single renderer behind every site
+     * the CP displays. Exposed to Twig as `influxSiteChip()`.
+     *
+     * A null (or empty) handle is the plugin's "no site configured / no site
+     * scope" state, which means the primary site — the rule
+     * {@see \GlueAgency\Influx\models\Link::syncSiteHandles()} owns — so it
+     * chips the primary site, unmarked: the site it ran against is the fact
+     * worth showing, not how the config spelled it.
+     *
+     * Craft 5's `Cp::chipHtml()` takes any `Chippable` component, not just
+     * elements, and `craft\models\Site` is one — so a site renders as a real CP
+     * chip, labelled with the site's name. Craft 4 has no generic chip renderer
+     * (the `Chippable` interface is the marker for one), and neither major can
+     * chip a handle that no longer resolves to a site: both fall back to the
+     * gray pill the overviews used before chips, carrying the same label the
+     * chip would have, so nothing silently disappears.
+     *
+     * `autoReload` is off: Craft's chip JS re-renders a chip by asking the
+     * server for the component behind it, which is wasted work for a static
+     * config listing.
+     */
+    public static function siteChipHtml(?string $handle, array $config = []): string
+    {
+        $sites = Craft::$app->getSites();
+        $site = ($handle === null || $handle === '')
+            ? $sites->getPrimarySite()
+            : $sites->getSiteByHandle($handle);
+
+        if ($site && interface_exists(Chippable::class)) {
+            return Cp::chipHtml($site, $config + ['autoReload' => false]);
+        }
+
+        return Html::tag('span', Html::encode($site?->getUiLabel() ?? $handle), [
+            'class' => ['influx-pill', 'influx-pill--gray'],
+        ]);
+    }
+
+    /**
+     * A link's configured sites as one self-contained group, for the Links
+     * overview's "Sites" cell. Exposed to Twig as `influxSiteChips()`.
+     *
+     * No configured sites means the primary site, chipped on its own
+     * ({@see siteChipHtml()}).
+     *
+     * Craft 5.4+ gets Craft's own component preview for the rest: the first
+     * site's chip plus a `+N` badge that swaps itself for the remaining chips
+     * when clicked (`Cp::componentPreviewHtml()`), which keeps a link on a dozen
+     * sites one line tall.
+     *
+     * Everything else — Craft 4, Craft 5.0–5.3, or a handle that no longer
+     * resolves to a site — renders the whole set in a plain wrapping row so the
+     * dead handle stays visible instead of hiding behind a badge that can't
+     * count it. {@see siteChipHtml()} then degrades each entry on its own.
+     *
+     * @param string[] $handles
+     */
+    public static function siteChipsHtml(array $handles): string
+    {
+        if ($handles === []) {
+            return Html::tag('div', static::siteChipHtml(null), ['class' => 'influx-pill-group']);
+        }
+
+        $sites = array_filter(array_map(
+            static fn(string $handle): ?Site => Craft::$app->getSites()->getSiteByHandle($handle),
+            $handles,
+        ));
+
+        if (count($sites) === count($handles) && method_exists(Cp::class, 'componentPreviewHtml')) {
+            return Cp::componentPreviewHtml(array_values($sites), ['autoReload' => false]);
+        }
+
+        $chips = implode('', array_map(
+            static fn(string $handle): string => static::siteChipHtml($handle),
+            $handles,
+        ));
+
+        return Html::tag('div', $chips, ['class' => 'influx-pill-group']);
     }
 
     /**
