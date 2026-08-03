@@ -1,0 +1,88 @@
+/* ---------------------------------------------------------------------
+   Link builder details rail — the sections DetailsSidebar.vue teleports
+   into Craft's own `#details` pane. The rail, its collapse toggle and the
+   `.meta` / `.data` chrome inside are all Craft's; this adds the section
+   legends, the full-width action buttons and the width the drag handle
+   writes.
+
+   Global (not a component <style> block): the markup lands in Craft's
+   pane, outside the component's own subtree.
+--------------------------------------------------------------------- */
+
+/* The resizable width. Craft's own rule reads `--details-width` from :root,
+   so this only has to make the rail take the per-element override the handle
+   writes — with Craft's 350px as the fallback for a version that doesn't
+   declare the variable at all. */
+#details-container:has(.influx-rail-resizer) {
+    flex: 0 0 auto;
+    width: var(--details-width, 350px);
+}
+
+/* The host template's facts block follows the teleported sections. It carries
+   its own gap rather than leaning on the last section's bottom margin
+   collapsing out through the teleport slot — which it doesn't, so the two
+   blocks read as one. Craft's own rail spacing, so it matches the gaps
+   between the `.meta` blocks above it. */
+[data-influx-details-slot] + .meta.read-only {
+    margin-block-start: var(--spacing, 24px);
+}
+
+/* Section headings. `fieldset`/`legend` rather than an h-tag: the legend
+   labels the group of fields under it, which is what a legend is for, and
+   Craft has no sidebar-section heading of its own to borrow. */
+.influx-details-section {
+    margin: 0 0 16px;
+    padding: 0;
+    border: 0;
+}
+
+.influx-details-section > legend {
+    margin: 0 0 6px;
+    padding-inline: 4px;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--gray-500, #6b7280);
+}
+
+/* Craft's `.meta` rows are label-left / input-right; a rail this narrow
+   reads better with each row spanning the full width. */
+.influx-details-section .meta > .field > .heading,
+.influx-details-section .meta > .field > .input {
+    flex: 1 1 auto;
+    width: 100%;
+}
+
+.influx-details-section .meta > .field > .heading > label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+}
+
+.influx-details-section .meta > .field > .input {
+    padding-block: 6px;
+}
+
+.influx-details-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+/* The one attention state in the rail: mappings whose saved node isn't in the
+   sample. Informative text, not a link — the same amber foreground the row
+   badge and the group pill use, without their pill treatment. */
+.influx-details-warning {
+    color: var(--influx-amber-fg);
+}
+
+/* Craft animates its own [data-icon=refresh] buttons only inside a submit
+   spinner, so the fetching state spins the glyph here. */
+.influx-details-btn.is-spinning::before {
+    animation: influx-details-spin 1s linear infinite;
+}
+
+@keyframes influx-details-spin {
+    to { transform: rotate(360deg); }
+}

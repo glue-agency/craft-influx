@@ -1,0 +1,57 @@
+{# =====================================================================
+   Details sidebar for the LinkBuilder — Craft's own collapsible meta rail
+   (cpScreen.metaSidebarTemplate), so the collapse toggle, its persisted
+   state and the rail chrome are all Craft's. The SPA adds the drag handle
+   that makes it resizable.
+
+   Two halves, by who owns the data:
+     - the live sections (sample state, mapping progress) teleport into the
+       slot below from DetailsSidebar.vue — they change as the user edits;
+     - the link's own facts are rendered here, since they only change on
+       save, which reloads the screen.
+   ===================================================================== #}
+<div data-influx-details-slot></div>
+
+{% if not isNew %}
+    <div class="meta read-only">
+        <div class="data">
+            <h5 class="heading">{{ 'ID'|t('app') }}</h5>
+            <div class="value">{{ link.id }}</div>
+        </div>
+
+        <div class="data">
+            <h5 class="heading">{{ 'Last run'|t('influx') }}</h5>
+            <div class="value">
+                {% if link.lastRunAt %}
+                    {% set when = craft.app.formattingLocale.getFormatter().asDatetime(link.lastRunAt) %}
+                    {% if lastLog %}
+                        <span class="status {{ logPresenter.statusColor(lastLog.status) }}" title="{{ lastLog.status|t('influx') }}"></span>
+                        <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                    {% else %}
+                        {# The run's log has been deleted — only the timestamp persists. #}
+                        <span class="status" title="{{ 'Log removed'|t('influx') }}"></span>
+                        {{ when }}
+                    {% endif %}
+                {% else %}
+                    {# No dot: an empty `.status` still holds its column, which
+                       pushed this out of line with the values above it. #}
+                    {{ 'Never'|t('influx') }}
+                {% endif %}
+            </div>
+        </div>
+
+        {% if link.dateCreated %}
+            <div class="data">
+                <h5 class="heading">{{ 'Created at'|t('app') }}</h5>
+                <div class="value">{{ craft.app.formattingLocale.getFormatter().asDatetime(link.dateCreated) }}</div>
+            </div>
+        {% endif %}
+
+        {% if link.dateUpdated %}
+            <div class="data">
+                <h5 class="heading">{{ 'Updated at'|t('app') }}</h5>
+                <div class="value">{{ craft.app.formattingLocale.getFormatter().asDatetime(link.dateUpdated) }}</div>
+            </div>
+        {% endif %}
+    </div>
+{% endif %}

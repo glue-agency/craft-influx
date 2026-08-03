@@ -189,8 +189,11 @@ class LinksController extends AbstractController
      * those ids — see `_builder.twig`.
      *
      * The empty additional-buttons HTML ensures cpScreen renders its
-     * `#action-buttons` header slot so the SPA can teleport its top-right
-     * buttons (Fetch sample, Save) into it.
+     * `#action-buttons` header slot so the SPA can teleport its Save button
+     * into it. The meta sidebar is the same arrangement one rail over: Craft
+     * renders the collapsible details pane (and the SPA's own handle makes it
+     * resizable), the template ships the link's static facts, and the live
+     * sections teleport into a slot inside it.
      *
      * Project-Config-backed config can't be saved in a read-only environment,
      * so Craft's standard read-only notice is shown there.
@@ -203,6 +206,18 @@ class LinksController extends AbstractController
             ->title($title)
             ->addCrumb(Craft::t('influx', 'Influx'), 'influx')
             ->addCrumb(Craft::t('influx', 'Links'), 'influx/links')
+            ->metaSidebarTemplate('influx/links/_builder-sidebar', [
+                'link' => $link,
+                // A set lastLogId always resolves (it's nulled when the log is
+                // deleted), so this is the run behind the sidebar's status dot.
+                'lastLog' => $link->lastLogId
+                    ? (Influx::getInstance()->logs->logsByIds([$link->lastLogId])[$link->lastLogId] ?? null)
+                    : null,
+                'logPresenter' => new LogPresenter(),
+                // A duplicate renders the source's config under a fresh
+                // identity, so the source's id and timestamps aren't its own.
+                'isNew' => $link->id === null || $duplicateOf !== null,
+            ])
             ->tabs([
                 'general'        => ['label' => Craft::t('influx', 'General'),        'url' => '#general'],
                 'pagination'     => ['label' => Craft::t('influx', 'Pagination'),     'url' => '#pagination'],

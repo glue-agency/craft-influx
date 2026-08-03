@@ -13,6 +13,13 @@
                     @click.stop="clearGroup"
                     @keydown.stop></button>
 
+            <span v-if="autoCount > 0"
+                  class="pill pill-auto"
+                  :data-auto="autoCount"
+                  :title="$t('Fields filled in by Auto-match')">
+                <span class="num" v-text="autoCount"></span>&nbsp;{{ $t('auto') }}
+            </span>
+
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
@@ -102,6 +109,19 @@ export default {
                 }
 
                 return count + (mapping?.node ? 1 : 0);
+            }, 0);
+        },
+
+        // How many of the group's rows Auto-match filled in and the user
+        // hasn't touched since — the same transient store state the rows'
+        // own badges read.
+        autoCount() {
+            const mappings = this.link.mappings || {};
+
+            return this.group.fields.reduce((count, f) => {
+                const isAuto = this.ui.autoMatched.includes(f.handle) && !!mappings[f.handle]?.node;
+
+                return count + (isAuto ? 1 : 0);
             }, 0);
         },
 

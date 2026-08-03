@@ -43,6 +43,7 @@ class FeedInspector
      *   paginatorNodeCandidates: string[],
      *   countNodeCandidates: string[],
      *   sampleItem: ?array,
+     *   itemCount: int,
      *   mappingSuggestions: list<array{field: string, type: string, node: string}>,
      *   flatNodes: list<array{value: string, label: string}>,
      *   warning: ?string,
@@ -99,9 +100,12 @@ class FeedInspector
             'paginatorNodeCandidates' => $paginatorCandidates,
             'countNodeCandidates'     => $countCandidates,
             'sampleItem'              => is_array($sampleItem) ? $sampleItem : null,
-            'mappingSuggestions'      => $mappingSuggestions,
-            'flatNodes'               => $flatNodes,
-            'warning'                 => $warning,
+            // How many items this ONE page carried — what the builder's sidebar
+            // reports next to the node count. Zero on a partial report.
+            'itemCount'          => count($list),
+            'mappingSuggestions' => $mappingSuggestions,
+            'flatNodes'          => $flatNodes,
+            'warning'            => $warning,
         ];
     }
 

@@ -59,7 +59,7 @@ class LinkColumnMappingTest extends Unit
         // The map covers the runtime columns too, so hydration reads them off the
         // same declaration; nothing else may sneak in.
         $this->assertSame(
-            ['id', 'lastRunAt', 'lastLogId'],
+            ['id', 'lastRunAt', 'lastLogId', 'dateCreated', 'dateUpdated'],
             array_values(array_diff(array_keys(Link::COLUMN_CASTS), Link::CONFIG_FIELDS)),
         );
     }
@@ -131,9 +131,9 @@ class LinkColumnMappingTest extends Unit
     public function testStringyRowValuesAreCoercedOnHydration(): void
     {
         // Some drivers hand booleans / ints back as strings — the cast map is
-        // what normalizes them. (The `lastRunAt` datetime cast is left out: it
-        // routes through DateTimeHelper, which reads the app's timezone and so
-        // needs a booted Craft; its empty branch is covered below.)
+        // what normalizes them. (The datetime casts are left out: they route
+        // through DateTimeHelper, which reads the app's timezone and so needs a
+        // booted Craft; their empty branch is covered below.)
         $link = $this->hydrate([
             'id'        => '7',
             'uid'       => 'a-uid',
@@ -150,10 +150,12 @@ class LinkColumnMappingTest extends Unit
         $this->assertSame(19, $link->lastLogId);
     }
 
-    public function testEmptyDateColumnHydratesAsNull(): void
+    public function testEmptyDateColumnsHydrateAsNull(): void
     {
-        $this->assertNull(Link::castColumnValue('lastRunAt', null));
-        $this->assertNull(Link::castColumnValue('lastRunAt', ''));
+        foreach (['lastRunAt', 'dateCreated', 'dateUpdated'] as $column) {
+            $this->assertNull(Link::castColumnValue($column, null));
+            $this->assertNull(Link::castColumnValue($column, ''));
+        }
     }
 
     public function testUndeclaredColumnsPassThroughUncast(): void
@@ -167,6 +169,8 @@ class LinkColumnMappingTest extends Unit
 
         $this->assertNull($link->lastRunAt);
         $this->assertNull($link->lastLogId);
+        $this->assertNull($link->dateCreated);
+        $this->assertNull($link->dateUpdated);
     }
 
     public function testUnreadableJsonColumnsHydrateAsEmptyArrays(): void
@@ -180,15 +184,16 @@ class LinkColumnMappingTest extends Unit
 
     /**
      * A DB row the way the PC change handler writes it: the config columns plus
-     * the identity columns and the timestamps hydration drops.
+     * the identity columns. The `dateCreated` / `dateUpdated` columns a real row
+     * also carries are left out — they hydrate through the same DateTimeHelper
+     * the `lastRunAt` cast does, which needs a booted Craft (see below); their
+     * empty branch is covered on its own.
      */
     protected function row(array $config): array
     {
         return LinksService::columnValuesFromConfig($config) + [
-            'id'          => 7,
-            'uid'         => 'a-uid',
-            'dateCreated' => '2026-07-28 10:00:00',
-            'dateUpdated' => '2026-07-28 10:00:00',
+            'id'  => 7,
+            'uid' => 'a-uid',
         ];
     }
 

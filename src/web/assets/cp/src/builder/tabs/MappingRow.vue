@@ -3,6 +3,7 @@
          :class="{ 'has-extras': hasExtras }"
          :data-field-handle="field.handle"
          :data-missing="isMissing ? 'true' : 'false'"
+         :data-auto="isAuto ? 'true' : 'false'"
     >
         <!-- The whole meta cell toggles the extras: the chevron button has
              no handler of its own — its (mouse or keyboard) click bubbles
@@ -29,6 +30,13 @@
             </button>
 
             <span class="name" v-text="field.name"></span>
+
+            <!-- Shown by the row's `data-auto` attribute (mapping-row.css):
+                 this node was filled in by Auto-match, not picked. Cleared the
+                 moment the user picks one themselves. -->
+            <span class="influx-auto-badge"
+                  :title="$t('Filled in by Auto-match')"
+                  v-text="$t('auto')"></span>
 
             <span v-if="isMissing"
                   class="influx-missing-badge"
@@ -288,6 +296,12 @@ export default {
             return reportNodes(store.ui.sample);
         },
 
+        // This row's node came from Auto-match and hasn't been touched since.
+        // Transient UI state off the store, not part of the saved mapping.
+        isAuto() {
+            return store.ui.autoMatched.includes(this.field.handle) && !!this.mapping.node;
+        },
+
         // The saved source node is no longer in the fetched sample. Compares
         // directly against the discovered flatNodes — the merged nodeOptions
         // prop deliberately re-adds saved-but-missing values for dropdown
@@ -339,6 +353,8 @@ export default {
 
         onNodeSelect(value) {
             const handle = this.field.handle;
+            // The pick is the user's now, whatever Auto-match had put here.
+            store.clearAutoMatch(handle);
             let mappings = this.link.mappings;
             if (value === '__default__') {
                 mappings = setMappingSlot(mappings, handle, 'node', '');

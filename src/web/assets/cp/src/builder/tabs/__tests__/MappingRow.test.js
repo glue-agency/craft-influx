@@ -260,3 +260,60 @@ describe('MappingRow custom source node', () => {
         expect(wrapper.find('.influx-missing-badge').exists()).toBe(true);
     });
 });
+
+/**
+ * The "auto" badge: this row's node came from Auto-match rather than a pick.
+ * Rendered always and shown by the row's `data-auto` attribute, which is how
+ * the CSS has switched it since the pre-SPA builder.
+ */
+describe('MappingRow auto badge', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const autoMatchTitle = async () => {
+        api.mappableFields.mockResolvedValue({ fields: [{ handle: 'title' }], groups: [], matchOptions: [] });
+        await store.refreshMappableFields();
+
+        api.fetchSample.mockResolvedValue({
+            success: true,
+            report: {
+                itemCount: 1,
+                flatNodes: [{ value: 'title', label: 'title' }],
+                mappingSuggestions: [{ field: 'title', type: 'PlainText', node: 'title' }],
+            },
+        });
+        await store.fetchSample();
+
+        store.autoMatch();
+    };
+
+    const titleField = { handle: 'title', name: 'Title', native: true, group: 'Content', defaultType: 'text', fieldMeta: {} };
+
+    it('is off for a row the user mapped', async () => {
+        await loadStore({ title: { node: 'meta.title' } });
+
+        expect(mountRow(titleField).attributes('data-auto')).toBe('false');
+    });
+
+    it('is on for a row Auto-match filled', async () => {
+        await loadStore();
+        await autoMatchTitle();
+
+        const wrapper = mountRow(titleField);
+        expect(wrapper.attributes('data-auto')).toBe('true');
+        expect(wrapper.find('.influx-auto-badge').exists()).toBe(true);
+    });
+
+    it('goes off the moment the user picks a node themselves', async () => {
+        await loadStore();
+        await autoMatchTitle();
+        const wrapper = mountRow(titleField);
+
+        wrapper.findComponent(SearchableSelect).vm.$emit('update:modelValue', 'meta.headline');
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.attributes('data-auto')).toBe('false');
+        expect(store.ui.autoMatched).toEqual([]);
+    });
+});

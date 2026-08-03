@@ -576,8 +576,8 @@ class LinksService extends Component
      * missing or unreadable one reads back as `[]`, per the empty-shape
      * contract), every other column coerces per its {@see Link::COLUMN_CASTS}
      * declaration — the same map the write side uses, so the two can't drift.
-     * Columns `Link` doesn't declare are dropped before construction — the Model
-     * base warns on unknown attributes.
+     * Every column the query selects is declared on `Link`; one that isn't would
+     * have to be dropped here, since the Model base warns on unknown attributes.
      */
     protected function linkFromRow(array $row): Link
     {
@@ -597,8 +597,6 @@ class LinksService extends Component
                 $row[$column] = Link::castColumnValue($column, $row[$column]);
             }
         }
-
-        unset($row['dateCreated'], $row['dateUpdated']);
 
         return new Link($row);
     }

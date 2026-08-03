@@ -120,6 +120,8 @@ class Link extends Model
         'id'             => self::CAST_INT,
         'lastRunAt'      => self::CAST_NULLABLE_DATETIME,
         'lastLogId'      => self::CAST_NULLABLE_INT,
+        'dateCreated'    => self::CAST_NULLABLE_DATETIME,
+        'dateUpdated'    => self::CAST_NULLABLE_DATETIME,
     ];
 
     public ?int $id = null;
@@ -279,6 +281,16 @@ class Link extends Model
      * wasn't logged (logging disabled). Runtime state, not config.
      */
     public ?int $lastLogId = null;
+
+    /**
+     * Row timestamps, written by {@see \GlueAgency\Influx\services\LinksService::saveLink()}
+     * on every save. Runtime state like {@see $lastRunAt} — absent from
+     * {@see CONFIG_FIELDS}, so neither reaches Project Config — and null on a
+     * link that has never been saved. Read by the builder's details sidebar.
+     */
+    public ?DateTime $dateCreated = null;
+
+    public ?DateTime $dateUpdated = null;
 
     /** Memoized typed view over $mappings — see {@see getMappingCollection()}. */
     protected ?MappingCollection $mappingCollection = null;

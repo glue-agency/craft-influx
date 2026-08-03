@@ -1,11 +1,10 @@
 <template>
     <div
-        class="influx-split-resizer"
-        :class="{ 'is-dragging': dragging }"
+        :class="[variant === 'rail' ? 'influx-rail-resizer' : 'influx-split-resizer', { 'is-dragging': dragging }]"
         role="separator"
         aria-orientation="vertical"
         tabindex="0"
-        :aria-label="$t('Resize the item list')"
+        :aria-label="label || $t('Resize the item list')"
         :aria-valuenow="currentWidth"
         :aria-valuemin="minWidth"
         :aria-valuemax="maxWidth"
@@ -57,6 +56,37 @@
 .influx-split-resizer.is-dragging::before {
     background: hsl(208, 100%, 42%);
 }
+
+/* The `rail` variant sizes a fixed-width side rail instead of a flex seam, so
+   it can't sit in the layout: the rail's inline-start edge is already taken by
+   Craft's collapse toggle. It floats over the rail's own leading padding
+   (its containing block is the sticky #details-container). */
+.influx-rail-resizer {
+    position: absolute;
+    z-index: 1;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 7px;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.influx-rail-resizer::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 2px;
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
+    transition: background-color .12s;
+}
+
+.influx-rail-resizer:hover::before,
+.influx-rail-resizer:focus-visible::before,
+.influx-rail-resizer.is-dragging::before {
+    background: hsl(208, 100%, 42%);
+}
 </style>
 
 <script>
@@ -67,34 +97,51 @@ const MIN_WIDTH = 240;
 const STEP_WIDTH = 16;
 
 /**
- * One shared key for both inspectors: the pane is the same visual element on
- * both screens, so a reader who widens it on the log view expects the debug
- * view to have widened too.
- */
-const STORAGE_KEY = 'influx:splitListWidth';
-
-/**
- * The drag handle on the seam between a split inspector's item list and its
- * detail pane. Pointer drag, arrow keys (a focusable `separator`, the ARIA
- * window-splitter pattern) and a double-click back to the stylesheet's default.
+ * The drag handle that sizes a pane: pointer drag, arrow keys (a focusable
+ * `separator`, the ARIA window-splitter pattern) and a double-click back to the
+ * stylesheet's default.
  *
- * It owns the width outright and emits nothing: the number goes onto the split
- * CONTAINER as `--influx-split-list-width`, which the list pane's flex-basis
- * reads. Living on the container is what makes the width survive the list's
- * contents being swapped out (DrillList replaces the item list inside the same
- * wrapper while a reader is drilled in) — nothing about a resize is stored on
- * the element being resized.
+ * It owns the width outright and emits nothing: the number goes onto a HOST
+ * element as a custom property, which some CSS rule reads. Living on a host
+ * rather than on the pane is what makes the width survive the pane's contents
+ * being swapped out (DrillList replaces the item list inside the same wrapper
+ * while a reader is drilled in).
  *
- * The container is `$el.parentElement` and the resized pane is
- * `$el.previousElementSibling`, which holds because the component is only ever
- * rendered as a direct child of `.influx-split`, immediately after the list.
+ * Two wirings, per `variant`:
+ *   - `split` (default) — the seam between two flex panes. The host is
+ *     `$el.parentElement` (the split container) and the pane it sizes is
+ *     `$el.previousElementSibling`, which holds because the handle is only ever
+ *     rendered as a direct child of `.influx-split`, right after the list.
+ *     Dragging toward the inline-end widens.
+ *   - `rail` — a fixed-width side rail named by `target`, which is BOTH the
+ *     host and the pane; the ceiling is measured against its parent. Dragging
+ *     toward the inline-start widens, since the rail sits at the inline-end.
  *
- * Widths persist to localStorage, shared across both screens. Every access is
- * guarded: in private mode the read and the write both throw, and a handle that
- * can't remember its width still resizes.
+ * Widths persist to localStorage under `storageKey`. Every access is guarded:
+ * in private mode the read and the write both throw, and a handle that can't
+ * remember its width still resizes.
  */
 export default {
     name: 'SplitResizer',
+
+    props: {
+        /** `split` (a seam between panes) or `rail` (a fixed-width side rail). */
+        variant: { type: String, default: 'split' },
+        // The rail to size — required by, and only read for, variant="rail".
+        // An element rather than a selector so the caller resolves it however
+        // it likes (the details sidebar walks up from its teleport slot).
+        target: { type: Object, default: null },
+        /** Where the width lands on the host, for the consuming CSS to read. */
+        cssVar: { type: String, default: '--influx-split-list-width' },
+        /**
+         * One shared key per visual element. Both inspectors' lists share the
+         * default: a reader who widens it on the log view expects the debug
+         * view to have widened too.
+         */
+        storageKey: { type: String, default: 'influx:splitListWidth' },
+        /** Overrides the default separator label. */
+        label: { type: String, default: '' },
+    },
 
     data() {
         return {
@@ -125,11 +172,15 @@ export default {
         currentWidth() {
             return this.width !== null ? this.width : this.defaultWidth;
         },
+
+        isRail() {
+            return this.variant === 'rail';
+        },
     },
 
     mounted() {
-        this.container = this.$el.parentElement;
-        this.defaultWidth = Math.round(this.measure(this.$el.previousElementSibling)) || MIN_WIDTH;
+        this.container = this.isRail ? this.target : this.$el.parentElement;
+        this.defaultWidth = Math.round(this.measure(this.pane())) || MIN_WIDTH;
         this.sampleContainer();
 
         const stored = this.readStored();
@@ -163,7 +214,11 @@ export default {
                 return;
             }
 
-            this.apply(this.clamp(this.originWidth + (event.clientX - this.originX)));
+            // A rail lives at the inline-end, so dragging its handle toward the
+            // inline-start is what widens it.
+            const travelled = (event.clientX - this.originX) * (this.isRail ? -1 : 1);
+
+            this.apply(this.clamp(this.originWidth + travelled));
         },
 
         endDrag() {
@@ -180,10 +235,12 @@ export default {
             this.store();
         },
 
-        // Arrow-key resize, one step per press, same clamp as the drag.
+        // Arrow-key resize, one step per press, same clamp — and the same
+        // inverted travel — as the drag.
         nudge(direction) {
             this.sampleContainer();
-            this.apply(this.clamp(this.currentWidth + (direction * STEP_WIDTH)));
+            const step = direction * STEP_WIDTH * (this.isRail ? -1 : 1);
+            this.apply(this.clamp(this.currentWidth + step));
             this.store();
         },
 
@@ -193,11 +250,11 @@ export default {
             this.width = null;
 
             if (this.container) {
-                this.container.style.removeProperty('--influx-split-list-width');
+                this.container.style.removeProperty(this.cssVar);
             }
 
             try {
-                window.localStorage.removeItem(STORAGE_KEY);
+                window.localStorage.removeItem(this.storageKey);
             } catch (e) {
                 // Private mode: nothing was stored to forget.
             }
@@ -207,7 +264,7 @@ export default {
             this.width = width;
 
             if (this.container) {
-                this.container.style.setProperty('--influx-split-list-width', `${width}px`);
+                this.container.style.setProperty(this.cssVar, `${width}px`);
             }
         },
 
@@ -217,9 +274,20 @@ export default {
             return Math.round(Math.min(Math.max(width, MIN_WIDTH), Math.max(this.maxWidth, MIN_WIDTH)));
         },
 
-        // Half the split, so the list can never crowd the detail out.
+        // Half of whatever the pane sits inside, so it can never crowd the rest
+        // of the screen out.
         sampleContainer() {
-            this.maxWidth = Math.round(this.measure(this.container) / 2) || MIN_WIDTH;
+            this.maxWidth = Math.round(this.measure(this.bounds()) / 2) || MIN_WIDTH;
+        },
+
+        /** The element being sized — the rail itself, or the pane before the seam. */
+        pane() {
+            return this.isRail ? this.container : this.$el.previousElementSibling;
+        },
+
+        /** What the pane's ceiling is measured against. */
+        bounds() {
+            return this.isRail ? this.container?.parentElement : this.container;
         },
 
         measure(el) {
@@ -228,7 +296,7 @@ export default {
 
         readStored() {
             try {
-                const stored = parseInt(window.localStorage.getItem(STORAGE_KEY), 10);
+                const stored = parseInt(window.localStorage.getItem(this.storageKey), 10);
 
                 return Number.isFinite(stored) ? stored : null;
             } catch (e) {
@@ -242,7 +310,7 @@ export default {
             }
 
             try {
-                window.localStorage.setItem(STORAGE_KEY, String(this.width));
+                window.localStorage.setItem(this.storageKey, String(this.width));
             } catch (e) {
                 // Private mode: the width holds for this page, just not beyond.
             }

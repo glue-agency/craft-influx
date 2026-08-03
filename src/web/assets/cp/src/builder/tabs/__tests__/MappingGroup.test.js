@@ -142,3 +142,71 @@ describe('MappingGroup clear', () => {
         expect(toggles(wrapper)).toEqual([[false]]);
     });
 });
+
+/**
+ * The header's "auto" pill counts the rows Auto-match filled in — the same
+ * transient store state the rows' own badges read, so the two can't disagree.
+ */
+describe('MappingGroup auto pill', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const autoPill = (wrapper) => wrapper.find('.pill-auto');
+
+    /**
+     * Run a real Auto-match: the store only fills handles the field tree
+     * offers, from suggestions the sample carries, so both have to be primed.
+     * `postDate` is deliberately outside the group under test.
+     */
+    const autoMatchAll = async () => {
+        api.mappableFields.mockResolvedValue({
+            fields: [{ handle: 'title' }, { handle: 'body' }, { handle: 'postDate' }],
+            groups: [],
+            matchOptions: [],
+        });
+        await store.refreshMappableFields();
+
+        api.fetchSample.mockResolvedValue({
+            success: true,
+            report: {
+                itemCount: 1,
+                flatNodes: [{ value: 'title', label: 'title' }, { value: 'postDate', label: 'postDate' }],
+                mappingSuggestions: [
+                    { field: 'title', type: 'PlainText', node: 'title' },
+                    { field: 'postDate', type: 'PlainText', node: 'postDate' },
+                ],
+            },
+        });
+        await store.fetchSample();
+
+        store.autoMatch();
+    };
+
+    it('stays out of the header until something was auto-matched', async () => {
+        await loadStore({ title: { node: 'meta.title' } });
+
+        expect(autoPill(mountGroup()).exists()).toBe(false);
+    });
+
+    it('counts the group’s own auto-matched rows, and no others', async () => {
+        await loadStore();
+        await autoMatchAll();
+
+        // Both handles were filled, but only `title` is in this group.
+        expect(store.ui.autoMatched).toEqual(['title', 'postDate']);
+        expect(autoPill(mountGroup()).text()).toContain('1');
+    });
+
+    it('lets go of a row the user then picks for themselves', async () => {
+        await loadStore();
+        await autoMatchAll();
+        const wrapper = mountGroup();
+        expect(autoPill(wrapper).exists()).toBe(true);
+
+        store.clearAutoMatch('title');
+        await wrapper.vm.$nextTick();
+
+        expect(autoPill(wrapper).exists()).toBe(false);
+    });
+});

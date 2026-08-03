@@ -1,6 +1,7 @@
 import { computed, reactive, readonly, watch } from 'vue';
 import * as api from './api.js';
 import { errorText, notifyError, notifyNotice, t } from './lib/notify.js';
+import { autoMatchMappings } from './lib/mappings.js';
 
 /**
  * Minimal reactive store for the LinkBuilder SPA. Vue's `reactive()` + a
@@ -43,6 +44,10 @@ const initial = () => ({
     loadError: null,       // fatal error from the bootstrap fetch
     saving: false,
     savedSnapshot: null,   // JSON of the link as last loaded/saved
+    // Handles filled in by the last Auto-match, so those rows can say so. UI
+    // state only — an auto-matched mapping is an ordinary one on the wire, and
+    // a user edit drops its handle from here (see clearAutoMatch()).
+    autoMatched: [],
     errors: {},            // attribute → message[]
     warning: null,         // soft post-save warning banner (e.g. overlapping
                            // resource mapping); persists until the next save
@@ -132,6 +137,15 @@ async function load(id, duplicateOf = null) {
         // tab activation re-fetches against the new link.
         root.mappable = null;
         root.tokenSuggestions = null;
+        // Whose mappings these are is settled by the load — nothing on the
+        // screen was auto-matched in this session yet.
+        root.autoMatched = [];
+        // A sample belongs to the link it was fetched for, so it can't outlive
+        // a bootstrap; autoFetchSample() below re-primes it where there's an
+        // endpoint to hit.
+        root.sample = null;
+        root.sampleError = null;
+        root.sampleWarning = null;
         rememberSnapshot();
 
         // A duplicate is a prefilled but unsaved copy — seed it dirty so Save
@@ -264,6 +278,53 @@ async function refreshMappableFields() {
 }
 
 /**
+ * Apply the sample's mapping suggestions to every field that has no source
+ * node yet — the sidebar's Auto-match. One store write, so the whole mapping
+ * tree redraws off it once, and the filled handles are remembered so those
+ * rows can show they were machine-filled.
+ *
+ * Additive by construction ({@see autoMatchMappings}), so pressing it twice
+ * is harmless and it can never take a decision back off the user.
+ *
+ * @returns {number} How many mappings it filled in.
+ */
+function autoMatch() {
+    if (! root.link || root.meta?.readOnly) return 0;
+
+    const { mappings, matched } = autoMatchMappings(
+        root.link.mappings || {},
+        root.sample?.mappingSuggestions || [],
+        (root.mappable?.fields || []).map((field) => field.handle),
+        root.sample?.flatNodes || [],
+    );
+
+    if (matched.length === 0) {
+        notifyNotice(t('Nothing left to auto-match.'));
+
+        return 0;
+    }
+
+    root.link.mappings = mappings;
+    root.autoMatched = [...new Set([...root.autoMatched, ...matched])];
+    notifyNotice(t('Auto-matched {count} fields.', { count: matched.length }));
+
+    return matched.length;
+}
+
+/**
+ * Forget that one handle was auto-matched — called when the user picks a node
+ * on that row themselves, at which point the mapping is theirs and the "auto"
+ * flag would be a lie.
+ *
+ * @param {string} handle
+ */
+function clearAutoMatch(handle) {
+    if (! root.autoMatched.includes(handle)) return;
+
+    root.autoMatched = root.autoMatched.filter((entry) => entry !== handle);
+}
+
+/**
  * Hit the configured endpoint and stash the inspection report — root /
  * paginator candidates, flat node list, mapping suggestions. The
  * Pagination and Mapping tabs read from the same report so a single
@@ -326,6 +387,13 @@ function sampleEndpoint() {
 
     return typeof link.endpoint === 'string' ? link.endpoint.trim() : '';
 }
+
+/**
+ * Whether there is anything to sample against — resolved through
+ * {@see sampleEndpoint()}, the same call the fetch itself makes, so the
+ * sidebar's button can't offer a fetch that would hit nothing.
+ */
+const canSample = computed(() => sampleEndpoint() !== '');
 
 /** Whether any site-endpoint row is actually filled in. */
 function hasAnySiteEndpoint() {
@@ -459,11 +527,14 @@ export const store = {
         return root.link;
     },
     isDirty,
+    canSample,
     load,
     save,
     deleteLink,
     fetchSample,
     autoFetchSample,
+    autoMatch,
+    clearAutoMatch,
     setSiteEndpointsMode,
     setSupportsItemEndpoint,
     setSupportsOffset,

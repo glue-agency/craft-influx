@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { autoMatchMappings, clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -138,5 +138,68 @@ describe('discoveredNodes', () => {
     it('passes a full report’s nodes through', () => {
         const flatNodes = [{ value: 'id', label: 'id' }];
         expect(discoveredNodes({ flatNodes, warning: null })).toBe(flatNodes);
+    });
+});
+
+/**
+ * Auto-match: the sample's suggestions applied to the fields that have no
+ * source node yet. Additive by construction — the specs that matter are the
+ * ones about what it REFUSES to touch.
+ */
+describe('autoMatchMappings', () => {
+    const suggestions = [
+        { field: 'title', type: 'PlainText', node: 'title' },
+        { field: 'summary', type: 'PlainText', node: 'summary' },
+    ];
+    const nodes = [{ value: 'title', label: 'title' }, { value: 'summary', label: 'summary' }];
+    const handles = ['title', 'summary'];
+
+    it('fills the unmapped fields and reports which', () => {
+        const { mappings, matched } = autoMatchMappings({}, suggestions, handles, nodes);
+
+        expect(mappings).toEqual({ title: { node: 'title' }, summary: { node: 'summary' } });
+        expect(matched).toEqual(['title', 'summary']);
+    });
+
+    it('never overwrites a node the user already picked', () => {
+        const before = { title: { node: 'meta.headline' } };
+        const { mappings, matched } = autoMatchMappings(before, suggestions, handles, nodes);
+
+        expect(mappings.title).toEqual({ node: 'meta.headline' });
+        expect(matched).toEqual(['summary']);
+    });
+
+    it('leaves a "use default" row alone — that is a decision too', () => {
+        const { matched } = autoMatchMappings({ title: { useDefault: true, default: 'x' } }, suggestions, handles, nodes);
+
+        expect(matched).toEqual(['summary']);
+    });
+
+    it('keeps the rest of a row it does fill', () => {
+        const { mappings } = autoMatchMappings({ title: { default: 'fallback' } }, suggestions, handles, nodes);
+
+        expect(mappings.title).toEqual({ default: 'fallback', node: 'title' });
+    });
+
+    it('skips a suggestion whose node the sample no longer carries', () => {
+        const { matched } = autoMatchMappings({}, suggestions, handles, [{ value: 'title', label: 'title' }]);
+
+        expect(matched).toEqual(['title']);
+    });
+
+    it('skips a suggestion for a field the mapping tree does not offer', () => {
+        // Suggestions are computed off the feed, so they name remote keys that
+        // may have no destination field at all.
+        const { matched } = autoMatchMappings({}, suggestions, ['title'], nodes);
+
+        expect(matched).toEqual(['title']);
+    });
+
+    it('never mutates the input, and no-ops on empty inputs', () => {
+        const before = { title: { node: 'meta.headline' } };
+        autoMatchMappings(before, suggestions, handles, nodes);
+        expect(before).toEqual({ title: { node: 'meta.headline' } });
+
+        expect(autoMatchMappings({}, null, null, null)).toEqual({ mappings: {}, matched: [] });
     });
 });

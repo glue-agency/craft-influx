@@ -1,32 +1,6 @@
 <template>
     <teleport v-if="mounted && slotEl" :to="slotEl">
         <div class="influx-header-actions">
-            <!-- Fetch sample — single button whose icon carries the state.
-                 Idle: download (cloud) icon, "Fetch sample".
-                 Fetching: spinning refresh icon, "Fetching sample"
-                           (button disabled).
-                 Fetched: green check icon, "Sample fetched"; hovering
-                          swaps the label to "Refetch sample".
-                 Partial: amber alert icon, "Sample incomplete" — the
-                          response came back but no list of items resolved
-                          from it (pick a root node on the Pagination tab);
-                          hovering swaps the label to "Refetch sample".
-                 Error: red cross icon, "Fetch failed"; hovering swaps the
-                        label to "Refetch sample", error message in the
-                        title tooltip. -->
-            <button
-                type="button"
-                class="btn influx-fetch-btn"
-                :class="fetchBtnClass"
-                :data-icon="fetchIcon"
-                :disabled="! canSample || ui.sampling"
-                :title="fetchTitle"
-                @click="onFetch"
-                @mouseenter="fetchHovered = true"
-                @mouseleave="fetchHovered = false"
-                v-text="fetchLabel"
-            />
-
             <!-- Save split-button. Native Craft `.btngroup.submit.first`
                  with the chevron driven by Garnish's MenuBtn — the same
                  jQuery plugin every other CP screen uses. We init it
@@ -89,18 +63,14 @@
 import { store } from './store.js';
 
 /**
- * Top-right action buttons for the LinkBuilder, teleported into Craft's
- * standard cpScreen `#action-buttons` slot so they read as native CP
- * header actions.
+ * The LinkBuilder's header action, teleported into Craft's standard cpScreen
+ * `#action-buttons` slot so it reads as a native CP header action: the Save
+ * split-button — primary action plus a disclosure menu for "Save and continue
+ * editing" (vs. plain Save, which navigates back to the link index) and the
+ * destructive Delete.
  *
- * Two buttons:
- *   1. **Fetch sample** — formerly inside the Pagination tab. Surfaces
- *      ambient state at all times via a status indicator so the user
- *      knows whether they have a sample loaded before switching to the
- *      Pagination / Mapping tabs that depend on it.
- *   2. **Save split-button** — primary action plus a disclosure menu for
- *      "Save and continue editing" (vs. plain Save, which navigates back
- *      to the link index).
+ * Fetch sample used to sit beside it and now lives in the details sidebar
+ * ({@see DetailsSidebar.vue}), where its state has a line to be reported on.
  *
  * The teleport target is a `<div data-influx-actions-slot>` rendered into
  * cpScreen.additionalButtonsHtml() by LinksController::builderScreen(), the
@@ -116,7 +86,6 @@ export default {
             mounted: false,
             slotEl: null,
             ui: store.ui,
-            fetchHovered: false,
         };
     },
 
@@ -139,65 +108,6 @@ export default {
             return this.ui.saving ? this.$t('Saving…') : this.$t('Save');
         },
 
-        canSample() {
-            const link = this.ui.link;
-            if (! link) return false;
-            // Site-specific mode samples against the first filled site
-            // endpoint (the base endpoint is hidden there) — mirrors the
-            // store's sampleEndpoint() resolution.
-            if (this.ui.siteEndpointsMode) {
-                return Object.values(link.siteEndpoints || {})
-                    .some((url) => typeof url === 'string' && url.trim() !== '');
-            }
-            const ep = link.endpoint;
-            return typeof ep === 'string' && ep.trim() !== '';
-        },
-
-        // The store only ever sets sampleWarning off a report it stored, so
-        // it doubles as "a sample exists, but a partial one" here.
-        fetchBtnClass() {
-            if (this.ui.sampling) return 'is-fetching';
-            if (this.ui.sampleError) return 'is-error';
-            if (this.ui.sampleWarning) return 'is-partial';
-            if (this.ui.sample) return 'is-fetched';
-            return 'is-idle';
-        },
-
-        // Ligature names that exist in both the Craft 4 and Craft 5 icon
-        // fonts ("refresh"/"remove" are legacy aliases in Craft 5). The
-        // fonts have no cloud-check/cloud-cross glyph, so the fetched, partial
-        // and error states fall back to a plain check/alert/cross, colored via
-        // the is-fetched / is-partial / is-error classes.
-        fetchIcon() {
-            if (this.ui.sampling) return 'refresh';
-            if (this.ui.sampleError) return 'remove';
-            if (this.ui.sampleWarning) return 'alert';
-            if (this.ui.sample) return 'check';
-            return 'download';
-        },
-
-        fetchLabel() {
-            if (this.ui.sampling) return this.$t('Fetching sample');
-            if (this.ui.sampleError) {
-                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Fetch failed');
-            }
-            if (this.ui.sampleWarning) {
-                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Sample incomplete');
-            }
-            if (this.ui.sample) {
-                return this.fetchHovered ? this.$t('Refetch sample') : this.$t('Sample fetched');
-            }
-            return this.$t('Fetch sample');
-        },
-
-        fetchTitle() {
-            if (! this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
-            if (this.ui.sampling) return this.$t('Fetching sample…');
-            if (this.ui.sampleError) return this.$t('Last attempt failed: {message}', { message: this.ui.sampleError });
-            if (this.ui.sampleWarning) return this.$t('Sample incomplete: {message}', { message: this.ui.sampleWarning });
-            if (this.ui.sample?.url) return this.$t('Last fetched from {url}', { url: this.ui.sample.url });
-            return this.$t('Hit the configured endpoint and inspect the response');
-        },
     },
 
     mounted() {
@@ -220,10 +130,6 @@ export default {
     },
 
     methods: {
-        onFetch() {
-            store.fetchSample();
-        },
-
         doSave({ continue: keepEditing }) {
             if (! this.canSave) return;
             // Toast + redirect logic lives in store.save() so Cmd+S and

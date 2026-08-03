@@ -77,6 +77,49 @@ export function clearMappings(mappings, handles) {
 }
 
 /**
+ * Fill in the mappings a fetched sample can fill in on its own: the report's
+ * `mappingSuggestions` name a remote key per destination handle, and this
+ * applies each one whose node is really in the sample and whose field is
+ * really in the mapping tree.
+ *
+ * Never overwrites: a handle that already carries a node — or "use default" —
+ * is left exactly as it is, so a run of this can only ever add. The matched
+ * handles come back so the caller can flag those rows as machine-filled; to
+ * the saved config they are ordinary mappings.
+ *
+ * @param {Object<string, import('../types.js').Mapping>} mappings
+ * @param {Array<{field: string, node: string}>} suggestions Report suggestions.
+ * @param {string[]} handles The handles the mapping tree offers.
+ * @param {Array<import('../types.js').SelectOption|string>} discovered Sample nodes.
+ * @returns {{mappings: Object<string, import('../types.js').Mapping>, matched: string[]}}
+ */
+export function autoMatchMappings(mappings, suggestions, handles, discovered) {
+    const offered = new Set(handles || []);
+    const available = new Set((discovered || [])
+        .map((entry) => (typeof entry === 'string' ? entry : entry?.value))
+        .filter(Boolean));
+
+    const next = { ...mappings };
+    const matched = [];
+
+    for (const suggestion of suggestions || []) {
+        const handle = suggestion?.field;
+        const node = suggestion?.node;
+
+        if (! handle || ! node || ! offered.has(handle) || ! available.has(node)) continue;
+
+        const current = next[handle] || {};
+
+        if (current.node || current.useDefault) continue;
+
+        next[handle] = { ...current, node };
+        matched.push(handle);
+    }
+
+    return { mappings: next, matched };
+}
+
+/**
  * Render a node path as a select option. The label keeps the raw dot
  * syntax ('meta.id') so typing a dot-path into the dropdown search matches.
  *

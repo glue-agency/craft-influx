@@ -91,10 +91,12 @@
     border-color: #ddd;
 }
 
+/* Informative blue — see the badge note in mapping-row.css. It sits next to
+   the missing pill, whose amber is the one that wants acting on. */
 .influx-mapping-group-header .pill-auto {
-    background: var(--influx-amber-auto-bg);
-    color: var(--influx-amber-fg);
-    border: 1px solid var(--influx-amber-auto-border);
+    background: var(--influx-pill-blue-bg);
+    color: var(--influx-pill-blue-fg);
+    border: 1px solid var(--influx-pill-blue-border);
 }
 
 .influx-mapping-group-header .pill-missing {

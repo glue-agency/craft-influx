@@ -9,6 +9,7 @@
 
         <template v-else-if="ui.link">
             <v-header-actions />
+            <v-details-sidebar />
 
             <!-- Soft post-save warning (e.g. another link defines a resource
                  mapping for the same elements). Stays until the next save. -->
@@ -49,6 +50,7 @@ import MappingTab from './tabs/MappingTab.vue';
 import AuthTab from './tabs/AuthTab.vue';
 import SettingsTab from './tabs/SettingsTab.vue';
 import HeaderActions from './HeaderActions.vue';
+import DetailsSidebar from './DetailsSidebar.vue';
 
 export default {
     name: 'LinkBuilder',
@@ -184,6 +186,6 @@ export default {
         },
     },
 
-    components: { 'v-general-tab': GeneralTab, 'v-pagination-tab': PaginationTab, 'v-mapping-tab': MappingTab, 'v-auth-tab': AuthTab, 'v-settings-tab': SettingsTab, 'v-header-actions': HeaderActions },
+    components: { 'v-general-tab': GeneralTab, 'v-pagination-tab': PaginationTab, 'v-mapping-tab': MappingTab, 'v-auth-tab': AuthTab, 'v-settings-tab': SettingsTab, 'v-header-actions': HeaderActions, 'v-details-sidebar': DetailsSidebar },
 };
 </script>

@@ -83,14 +83,16 @@
 .influx-mapping-row .meta .extras-chevron.collapsed span { transform: rotate(-90deg); }
 .influx-mapping-row .field { margin: 0 !important; padding: 0 !important; }
 
+/* Blue, not amber: an auto-matched node is information about where the value
+   came from, not something to fix — the amber next to it always is. */
 .influx-auto-badge {
     display: none;
     margin-left: 6px;
     padding: 1px 7px;
     border-radius: 9px;
-    background: var(--influx-amber-auto-bg);
-    color: var(--influx-amber-fg);
-    border: 1px solid var(--influx-amber-auto-border);
+    background: var(--influx-pill-blue-bg);
+    color: var(--influx-pill-blue-fg);
+    border: 1px solid var(--influx-pill-blue-border);
     font-size: 10px;
     font-weight: 600;
     vertical-align: middle;

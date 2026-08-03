@@ -23,6 +23,7 @@
 /* Builder shell */
 @import './components/link-builder.css';
 @import './components/header-actions.css';
+@import './components/details-sidebar.css';
 
 /* Plugin palette — the one source for the colours that carry meaning across
    the CP: token-chip kinds, the verb/result pills, and the attention ambers.
@@ -61,10 +62,9 @@
     --influx-pill-gray-fg: #4a4f57;
     --influx-pill-gray-border: rgba(0, 0, 0, .08);
 
-    /* Attention ambers — auto-mapped (soft yellow) vs missing node (needs
-       attention, warmer), sharing one amber text colour */
-    --influx-amber-auto-bg: #fff7d6;
-    --influx-amber-auto-border: #f0d97a;
+    /* Attention amber — the missing-node badge, pill and sidebar line. The one
+       colour in the CP that means "this needs you"; anything merely worth
+       knowing (an auto-matched node) takes the informative blue above. */
     --influx-amber-missing-bg: #fdecc8;
     --influx-amber-missing-border: #f0c674;
     --influx-amber-fg: #8a6d00;

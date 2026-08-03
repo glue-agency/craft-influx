@@ -95,6 +95,7 @@ class FeedInspectorTest extends Unit
         $this->assertNull($report['sampleItem']);
         $this->assertSame([], $report['flatNodes']);
         $this->assertSame([], $report['mappingSuggestions']);
+        $this->assertSame(0, $report['itemCount']);
         // …but the response-level walks are unaffected.
         $this->assertContains('meta.total', $report['countNodeCandidates']);
     }
@@ -117,13 +118,15 @@ class FeedInspectorTest extends Unit
     {
         $report = (new FeedInspector())->report(
             $this->link('data'),
-            ['data' => [['id' => 1, 'title' => 'x']]],
+            ['data' => [['id' => 1, 'title' => 'x'], ['id' => 2, 'title' => 'y']]],
             'https://example.test/feed',
         );
 
         $this->assertNull($report['warning']);
         $this->assertSame(['id' => 1, 'title' => 'x'], $report['sampleItem']);
         $this->assertSame(['id', 'title'], array_column($report['flatNodes'], 'value'));
+        // The whole page is counted, not just the item the nodes came from.
+        $this->assertSame(2, $report['itemCount']);
     }
 
     public function testATopLevelListNeedsNoRootNode(): void

@@ -128,6 +128,8 @@ Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft fiel
 
 The source-node dropdowns list what the fetched sample discovered — and the sample is one page. A key that only shows up on a later page can be mapped anyway: type it into the node search and pick the "Custom node" row the picker offers for a path it doesn't know. It saves like any other node and reads as a missing mapping until a page carrying it is fetched; at sync time it resolves per item, so items that do carry it get the value.
 
+The builder's details sidebar reports where the sample stands and how much of the tree is mapped, and its **Auto-match** maps every field whose handle matches a node in the sample. It only ever fills a field that has no source node and no "use default" — a mapping you made is never overwritten — and the rows it filled carry an "auto" badge until you touch them. Nothing about that badge is stored: an auto-matched mapping is an ordinary one.
+
 A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuilder`, and the CP renders it generically — no Vue changes needed to add a control. For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
 
 ### Match
