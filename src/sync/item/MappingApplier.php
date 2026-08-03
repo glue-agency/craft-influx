@@ -273,12 +273,28 @@ class MappingApplier
      * detection.
      *
      * @return MappingResult|null The sub-field's row for the drill-down, or null
-     * when the related element has no such attribute — skipped silently, as it
-     * always has been.
+     * when the related element has no such attribute to write.
+     *
+     * That guard used to ask `$element->hasAttribute()`, which is an
+     * ActiveRecord method: `yii\base\Model` — and so every Craft element — does
+     * not have it, so the guard THREW instead of testing, and the sub-mapping
+     * loop deliberately doesn't catch. Every native sub-field on every
+     * relational strategy failed its row with "Calling unknown method" — alt and
+     * title on an asset, title and slug on a related entry, the whole channel
+     * the `elementSubFields` cards write.
+     *
+     * `canSetProperty()` is the Model-level question that was meant: a declared
+     * property or a setter. Behaviours are deliberately EXCLUDED — with them, a
+     * custom-field handle would answer true through Craft's CustomFieldBehavior
+     * and get assigned straight onto the element, bypassing the `fields`
+     * channel, which resolves it through the layout and its own strategy. It
+     * also subsumes the `property_exists()` half this used to fall back on
+     * (`checkVars: true` is that same test), so the fallback is gone rather than
+     * left as a redundant `||`.
      */
     protected function applyNativeSubField(ElementInterface $element, RemoteItem $item, FieldMapping $sub): ?MappingResult
     {
-        if (! ($element->hasAttribute($sub->handle) || property_exists($element, $sub->handle))) {
+        if (! $element->canSetProperty($sub->handle, true, false)) {
             return null;
         }
 
