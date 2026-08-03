@@ -121,7 +121,7 @@
                     :row="drillChild || selectedItem"
                     :match-attribute="drillStack.length ? '' : (meta && meta.matchAttribute || '')"
                     :drilled="drillStack.length > 0"
-                    :fallback-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
+                    :fallback-label="drillStack.length ? indexLabel(drillFrame.childIndex) : itemTitle(selectedItem)"
                     @drill="pushDrill"
                 />
                 <p v-else-if="! loading" class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
@@ -448,7 +448,7 @@ export default {
         // Left-list label: the resolved element's title, else the match value,
         // else blank (a would-skip item with no match value).
         itemTitle(item) {
-            return (item.element && item.element.title) || item.matchValue || '';
+            return (item?.element && item.element.title) || item?.matchValue || '';
         },
 
         // One-line summary of what a real run would do to this item.

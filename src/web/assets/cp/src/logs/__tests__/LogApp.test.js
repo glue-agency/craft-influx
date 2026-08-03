@@ -100,6 +100,22 @@ describe('LogApp', () => {
         expect(rows[1].text()).not.toContain('In trash');
     });
 
+    it('heads the detail with the list\'s title when the element is gone', async () => {
+        // A hard-deleted element leaves no chip, and a row the sweeper wrote
+        // carries no match value either — so the header read empty while the
+        // list beside it named the item.
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
+            data: { row: { action: 'deleted', matchValue: null, title: null, element: null, mappings: [], raw: {} } },
+        }));
+
+        const w = mountApp({
+            items: [{ id: 3, action: 'deleted', matchValue: null, message: 'Missing from feed.', title: 'Influx test entry', trashed: false, errorCount: 0 }],
+        });
+        await flushPromises();
+
+        expect(w.find('.influx-detail-title').text()).toBe('Influx test entry');
+    });
+
     it('hangs the resize handle on the seam, between the list and the detail', () => {
         const split = mountApp().find('.influx-split').element;
 

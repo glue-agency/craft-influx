@@ -148,7 +148,7 @@
                     :match-attribute="drillStack.length ? '' : (selectedRow.matchAttribute || '')"
                     context="log"
                     :drilled="drillStack.length > 0"
-                    :fallback-label="drillStack.length ? indexLabel(drillFrame.childIndex) : ''"
+                    :fallback-label="drillStack.length ? indexLabel(drillFrame.childIndex) : listTitle"
                     @drill="pushDrill"
                 />
                 <p v-else class="influx-split-placeholder light" v-text="$t('Select an item to inspect it.')"></p>
@@ -573,6 +573,18 @@ export default {
         // points back at.
         selectedItem() {
             return this.items.find((i) => i.id === this.selectedId) || null;
+        },
+
+        /**
+         * What the list row calls this item, for the detail header to fall back
+         * on. A hard-deleted element leaves the header with no chip, and a row
+         * the sweeper wrote carries no match value either — so the header read
+         * empty while the list beside it said "Influx test entry". The list's
+         * title is already the server's element-title → match-value → #id
+         * chain, so it's the one thing worth reusing.
+         */
+        listTitle() {
+            return (this.selectedItem && this.selectedItem.title) || '';
         },
 
         selectedRow() {
