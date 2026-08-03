@@ -109,8 +109,10 @@ class LinkBuilderOptionsPresenter
      * spelled out in a note beneath it, in {@see ProcessingAction::optionOrder()}.
      *
      * `missingPolicy` marks the four sweep policies, which the General tab hides
-     * for an element type whose target reports no sweeping support — the whole
-     * list ships either way, since the selected type changes without a reload.
+     * for an element type whose target reports no sweeping support, and `forSite`
+     * marks the two of those that act per site, which it hides unless the link
+     * uses site-specific endpoints. The whole list ships either way, since both
+     * of those change without a reload.
      */
     public function processingActionOptions(): array
     {
@@ -122,6 +124,7 @@ class LinkBuilderOptionsPresenter
                 'label'         => $action->label(),
                 'note'          => $action->note(),
                 'missingPolicy' => $action->isMissingPolicy(),
+                'forSite'       => $action->isForSite(),
             ];
         }
 

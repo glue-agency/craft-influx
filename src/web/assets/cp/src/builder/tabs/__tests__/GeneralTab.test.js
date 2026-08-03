@@ -39,14 +39,15 @@ const bootstrapPayload = () => ({
         sections: [],
         sectionEntryTypes: {},
         // Mirrors LinkBuilderOptionsPresenter::processingActionOptions(): the
-        // writes carry missingPolicy false, the four sweep policies true.
+        // writes carry missingPolicy false, the four sweep policies true, and
+        // forSite marks the two of those that act per site.
         processingActions: [
-            { value: 'create', label: 'Create', note: '', missingPolicy: false },
-            { value: 'update', label: 'Update', note: '', missingPolicy: false },
-            { value: 'disable', label: 'Disable globally', note: '', missingPolicy: true },
-            { value: 'delete', label: 'Delete globally', note: '', missingPolicy: true },
-            { value: 'disable-for-site', label: 'Disable for site', note: '', missingPolicy: true },
-            { value: 'delete-for-site', label: 'Delete for site', note: '', missingPolicy: true },
+            { value: 'create', label: 'Create', note: '', missingPolicy: false, forSite: false },
+            { value: 'update', label: 'Update', note: '', missingPolicy: false, forSite: false },
+            { value: 'disable', label: 'Disable globally', note: '', missingPolicy: true, forSite: false },
+            { value: 'delete', label: 'Delete globally', note: '', missingPolicy: true, forSite: false },
+            { value: 'disable-for-site', label: 'Disable for site', note: '', missingPolicy: true, forSite: true },
+            { value: 'delete-for-site', label: 'Delete for site', note: '', missingPolicy: true, forSite: true },
         ],
         sites: [],
     },
@@ -128,13 +129,26 @@ describe('GeneralTab processing actions', () => {
         vi.useRealTimers();
     });
 
-    it('offers every policy for a sweepable element type', () => {
+    it('offers the writes plus the GLOBAL policies for a single-endpoint link', () => {
+        // The per-site pair is meaningless without site endpoints — and the save
+        // would rewrite it to these two anyway.
         const tab = mountTab().vm;
 
         expect(tab.supportsSweeping).toBe(true);
-        expect(tab.processingActions.map((o) => o.value)).toEqual([
-            'create', 'update', 'disable', 'delete', 'disable-for-site', 'delete-for-site',
-        ]);
+        expect(tab.processingActions.map((o) => o.value)).toEqual(['create', 'update', 'disable', 'delete']);
+    });
+
+    it('swaps in the per-site policies once site-specific endpoints are on', async () => {
+        const wrapper = mountTab();
+
+        store.setSiteEndpointsMode(true);
+        await nextTick();
+
+        expect(wrapper.vm.processingActions.map((o) => o.value))
+            .toEqual(['create', 'update', 'disable-for-site', 'delete-for-site']);
+        expect(wrapper.findAll('.checkbox-group input[type="checkbox"]')).toHaveLength(4);
+
+        store.setSiteEndpointsMode(false);
     });
 
     it('hides the missing-element policies for an element type that cannot be swept', async () => {
@@ -157,6 +171,6 @@ describe('GeneralTab processing actions', () => {
         await nextTick();
 
         expect(tab.supportsSweeping).toBe(true);
-        expect(tab.processingActions).toHaveLength(6);
+        expect(tab.processingActions).toHaveLength(4);
     });
 });

@@ -87,7 +87,10 @@ export default {
             deep: true,
             handler(errors) {
                 const tabMap = {
-                    general:        ['name', 'handle', 'elementType', 'endpoint', 'processing'],
+                    // `siteEndpoints` included: the store's own "add at least one
+                    // site endpoint" error is keyed on it, and without it here
+                    // the only clue was the toast.
+                    general:        ['name', 'handle', 'elementType', 'endpoint', 'siteEndpoints', 'processing'],
                     mapping:        ['match'],
                     authentication: ['auth'],
                 };

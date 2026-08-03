@@ -219,14 +219,32 @@ export default {
             return this.currentElementType ? this.currentElementType.sweeping !== false : true;
         },
 
-        // The processing checkboxes to render: the missing-element policies are
-        // dropped for a non-sweeping element type, so the operator can't tick a
-        // policy its run would only skip. Stored config keeps loading either way
-        // — the server neither rejects nor rewrites it.
+        /**
+         * The processing checkboxes to render.
+         *
+         * The missing-element policies are dropped for a non-sweeping element
+         * type, so the operator can't tick a policy its run would only skip.
+         *
+         * Of those that remain, only the pair matching the endpoint shape is
+         * offered: a per-site policy needs site-specific endpoints to mean
+         * anything, and a global one is what a single-endpoint link enforces.
+         * Ticking the wrong pair was never wrong so much as pointless — the save
+         * rewrites it to its counterpart to match the endpoints
+         * (Link::migrateProcessingForEndpointShape()) and says so in a notice.
+         * Showing one pair is that rule, up front.
+         *
+         * Stored config keeps loading either way — the server neither rejects
+         * nor drops what it isn't showing.
+         */
         processingActions() {
             const actions = this.options.processingActions || [];
 
-            return this.supportsSweeping ? actions : actions.filter((o) => ! o.missingPolicy);
+            return actions.filter((o) => {
+                if (! o.missingPolicy) return true;
+                if (! this.supportsSweeping) return false;
+
+                return !!o.forSite === this.siteEndpointsMode;
+            });
         },
 
         section: {
