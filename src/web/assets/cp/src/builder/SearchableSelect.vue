@@ -85,6 +85,7 @@
                                 v-html="highlight(opt.label)"
                             ></span>
                             <span v-else class="label" v-html="highlight(opt.label)"></span>
+                            <span v-if="opt._custom" class="custom-hint" v-text="$t('not in the sample')"></span>
                             <svg
                                 v-if="isSelected(opt)"
                                 class="check"
@@ -180,6 +181,11 @@ import { t } from '../lib/installT.js';
  * An option with value='' is treated as the "no selection" sentinel and
  * rendered in muted italics — useful for "— no mapping —" / "—" placeholders.
  *
+ * With `allowCustom`, a query that isn't an existing option's value gets a
+ * trailing "Custom node" row committing the typed text verbatim — the source
+ * nodes come from ONE fetched page, so a key the operator knows lands on a
+ * later page can be mapped before it's ever been seen.
+ *
  * Uses the `setup()` option because {@see useDropdown} registers its
  * document-level dismissal listeners in onMounted/onBeforeUnmount, which
  * require setup context.
@@ -207,6 +213,9 @@ export default {
         // "Match by" selects want it; short fixed enums don't) — the component
         // doesn't guess from list length.
         searchable: { type: Boolean, default: false },
+        // Let the search box mint a value of its own — see the custom-node
+        // note in the component docblock. Only meaningful with `searchable`.
+        allowCustom: { type: Boolean, default: false },
     },
 
     setup(props, { emit }) {
@@ -222,18 +231,35 @@ export default {
             onClose: () => { query.value = ''; },
         });
 
-        const isGrouped = computed(() => {
+        const hasGroupedOptions = computed(() => {
             const options = props.options || [];
 
             return options.length > 0 && Array.isArray(options[0]?.options);
         });
 
         /** Always-grouped view; flat input becomes one label-less group. */
-        const groups = computed(() => (isGrouped.value
+        const groups = computed(() => (hasGroupedOptions.value
             ? props.options
             : [{ label: null, kind: null, options: props.options || [] }]));
 
         const allOptions = computed(() => groups.value.flatMap(g => g.options || []));
+
+        /**
+         * The query as a value of its own, or '' when there is nothing to
+         * mint: `allowCustom` off, an empty search box, or a query that IS
+         * already an option's value (the list covers it — no duplicate row).
+         */
+        const customValue = computed(() => {
+            if (! props.allowCustom) return '';
+            const q = query.value.trim();
+            if (! q) return '';
+
+            return allOptions.value.some(o => normalize(o.value) === q) ? '' : q;
+        });
+
+        // The custom row brings its own heading, so it turns a flat list into
+        // a grouped rendering for as long as it is on screen.
+        const isGrouped = computed(() => hasGroupedOptions.value || customValue.value !== '');
 
         // Caller-controlled via `searchable` — node pickers and "Match by"
         // selects opt in; short fixed enums leave it off. The component never
@@ -288,6 +314,16 @@ export default {
                     label: group.label,
                     kind: group.kind,
                     options: options.map(o => ({ ...o, _flatIdx: flat++ })),
+                });
+            }
+
+            // Last, so the discovered options keep the lower indices and Enter
+            // on a query that DID match commits the match, not the mint.
+            if (customValue.value) {
+                out.push({
+                    label: t('Custom node'),
+                    kind: 'node',
+                    options: [{ value: customValue.value, label: customValue.value, _custom: true, _flatIdx: flat++ }],
                 });
             }
 

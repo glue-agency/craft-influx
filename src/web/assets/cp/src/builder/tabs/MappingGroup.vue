@@ -16,7 +16,7 @@
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
-                  :title="$t('Fields whose saved source node is no longer in the fetched sample')">
+                  :title="$t('Fields whose source node isn’t in the fetched sample')">
                 <span class="num" v-text="missingCount"></span>&nbsp;{{ $t('missing') }}
             </span>
 

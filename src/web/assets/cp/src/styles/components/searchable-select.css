@@ -166,6 +166,14 @@
     padding: 0 1px;
     border-radius: 2px;
 }
+/* Trailing note on the "Custom node" row (allowCustom) — says why the row
+   is offered at all, without competing with the path chip beside it. */
+.influx-searchable-select-options li .custom-hint {
+    flex: 0 0 auto;
+    color: #6b7280;
+    font-size: 11px;
+}
+
 .influx-searchable-select-options li .check {
     flex: 0 0 auto;
     color: hsl(208deg, 100%, 42%);

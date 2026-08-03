@@ -26,7 +26,7 @@
             <span v-if="missingCount > 0"
                   class="pill pill-missing"
                   :data-missing="missingCount"
-                  :title="$t('Sub-fields whose saved source node is no longer in the fetched sample')">
+                  :title="$t('Sub-fields whose source node isn’t in the fetched sample')">
                 <span class="num" v-text="missingCount"></span>&nbsp;{{ $t('missing') }}
             </span>
 
@@ -60,7 +60,7 @@
                 {{ sub.label }}
                 <span v-if="isMissing(sub.handle)"
                       class="influx-missing-badge"
-                      :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
+                      :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
                       v-text="$t('missing mapping')"></span>
                 <code class="handle light" v-text="sub.handle"></code>
             </label>
@@ -68,6 +68,7 @@
                 :model-value="rowFor(sub.handle).node"
                 :options="sourceNodeOptions"
                 searchable
+                allow-custom
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
                 :empty-label="$t('Run “Fetch sample” to discover nodes.')"

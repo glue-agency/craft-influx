@@ -32,7 +32,7 @@
 
             <span v-if="isMissing"
                   class="influx-missing-badge"
-                  :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
+                  :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
                   v-text="$t('missing mapping')"></span>
 
             <code class="handle light" v-text="field.handle"></code>
@@ -49,6 +49,7 @@
                 :options="sourceNodeOptions"
                 :disabled="readOnly"
                 searchable
+                allow-custom
                 :placeholder="$t('— no mapping —')"
                 :search-placeholder="$t('Search nodes…')"
                 :empty-label="$t('Run “Fetch sample” to discover nodes.')"

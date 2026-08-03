@@ -134,7 +134,7 @@ class LinkBuilderTranslations
             'tabs/MappingGroup.vue' => [
                 'Clear every mapping in this group',
                 'clear nodes',
-                'Fields whose saved source node is no longer in the fetched sample',
+                'Fields whose source node isn’t in the fetched sample',
                 'missing',
                 'Fields with an active source node',
                 'mapped',
@@ -146,7 +146,7 @@ class LinkBuilderTranslations
             'tabs/MappingRow.vue' => [
                 'Hide options',
                 'Configure',
-                'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
+                'Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.',
                 'missing mapping',
                 '— no mapping —',
                 'Search options…',
@@ -156,7 +156,7 @@ class LinkBuilderTranslations
                 'Clear every source node and default in this group',
                 'clear nodes',
                 'Sub-fields with an active source node',
-                'Sub-fields whose saved source node is no longer in the fetched sample',
+                'Sub-fields whose source node isn’t in the fetched sample',
                 'Total sub-fields in this group',
             ],
             'schema/inputs/MatrixFields.vue' => [
@@ -192,8 +192,10 @@ class LinkBuilderTranslations
             'SearchableSelect.vue' => [
                 'Search…',
                 'Clear search',
+                'not in the sample',
                 'No matches for',
                 'No options available.',
+                'Custom node',
                 'Select…',
             ],
             'components/TokenPickerMenu.vue' => [

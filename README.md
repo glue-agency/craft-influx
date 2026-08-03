@@ -126,6 +126,8 @@ Built-in strategies, keyed by Craft field class and registered via `FieldsServic
 
 Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft field class it handles via `craftFieldClass()` (a base class such as `BaseOptionsField` covers a whole family — lookups walk the parent chain), and registering it as any other extension point (see [Registries](#registries)).
 
+The source-node dropdowns list what the fetched sample discovered — and the sample is one page. A key that only shows up on a later page can be mapped anyway: type it into the node search and pick the "Custom node" row the picker offers for a path it doesn't know. It saves like any other node and reads as a missing mapping until a page carrying it is fetched; at sync time it resolves per item, so items that do carry it get the value.
+
 A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuilder`, and the CP renders it generically — no Vue changes needed to add a control. For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
 
 ### Match

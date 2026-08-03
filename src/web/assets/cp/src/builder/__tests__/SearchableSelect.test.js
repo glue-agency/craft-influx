@@ -242,6 +242,85 @@ describe('filtering', () => {
     });
 });
 
+/**
+ * `allowCustom` — the source-node pickers' escape hatch: a key that isn't in
+ * the fetched page can still be mapped by typing it. Off by default, so no
+ * other select grows a way to mint values.
+ */
+describe('custom values', () => {
+    const NODES = [
+        { label: 'Nodes', kind: 'node', options: [
+            { value: 'consultations.id', label: 'consultations.id' },
+        ] },
+    ];
+
+    const customRow = (wrapper) => wrapper.find('li:has(.custom-hint)');
+
+    it('offers the typed query as a row of its own under a heading', async () => {
+        const wrapper = mountSelect({ options: NODES, allowCustom: true });
+        await open(wrapper);
+        expect(customRow(wrapper).exists()).toBe(false);
+
+        await searchInput(wrapper).setValue('consultations.name');
+
+        expect(wrapper.findAll('h6').at(-1).text()).toBe('Custom node');
+        expect(customRow(wrapper).find('.influx-tokenized-chip-inline').text()).toBe('consultations.name');
+    });
+
+    it('commits the trimmed query verbatim', async () => {
+        const wrapper = mountSelect({ options: NODES, allowCustom: true });
+        await open(wrapper);
+
+        await searchInput(wrapper).setValue('  consultations.name  ');
+        await customRow(wrapper).trigger('click');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual(['consultations.name']);
+        expect(menu(wrapper).exists()).toBe(false);
+    });
+
+    it('commits on Enter when the query matched nothing else', async () => {
+        const wrapper = mountSelect({ options: NODES, allowCustom: true });
+        await open(wrapper);
+
+        await searchInput(wrapper).setValue('consultations.name');
+        await searchInput(wrapper).trigger('keydown', { key: 'Enter' });
+
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual(['consultations.name']);
+    });
+
+    it('sorts behind the real matches, so Enter takes the match first', async () => {
+        const wrapper = mountSelect({ options: NODES, allowCustom: true });
+        await open(wrapper);
+
+        // 'consultations.' matches the discovered node AND is mintable.
+        await searchInput(wrapper).setValue('consultations.');
+        expect(wrapper.findAll('li')).toHaveLength(2);
+
+        await searchInput(wrapper).trigger('keydown', { key: 'Enter' });
+        expect(wrapper.emitted('update:modelValue').at(-1)).toEqual(['consultations.id']);
+    });
+
+    it('skips the row when the query already IS an option value', async () => {
+        const wrapper = mountSelect({ options: NODES, allowCustom: true });
+        await open(wrapper);
+
+        await searchInput(wrapper).setValue('consultations.id');
+
+        expect(wrapper.findAll('li')).toHaveLength(1);
+        expect(customRow(wrapper).exists()).toBe(false);
+    });
+
+    it('mints nothing without the prop — the no-match copy stands', async () => {
+        const wrapper = mountSelect({ options: NODES });
+        await open(wrapper);
+
+        await searchInput(wrapper).setValue('consultations.name');
+
+        expect(customRow(wrapper).exists()).toBe(false);
+        expect(wrapper.find('.influx-searchable-select-empty').text()).toContain('consultations.name');
+    });
+});
+
 describe('rendering modes', () => {
     it('renders flat options as a single list without the group scroller', async () => {
         const wrapper = mountSelect();

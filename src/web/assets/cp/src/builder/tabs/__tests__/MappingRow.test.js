@@ -212,3 +212,51 @@ describe('MappingRow clear', () => {
         expect(wrapper.find('.influx-mapping-extras').attributes('data-expanded')).toBe('true');
     });
 });
+
+/**
+ * A node the sample doesn't carry can still be mapped: the picker mints the
+ * typed path (SearchableSelect's `allowCustom`). The sample is ONE page, so a
+ * key that only appears further in is a legitimate mapping — it just reads as
+ * missing until a page carrying it is fetched.
+ *
+ * Last in the file on purpose: the store is a module singleton and its sample
+ * survives a re-load, so priming one here can't leak into the specs above.
+ */
+describe('MappingRow custom source node', () => {
+    const plainField = {
+        handle: 'title',
+        name: 'Title',
+        native: true,
+        group: 'Content',
+        defaultType: 'text',
+        fieldMeta: {},
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('lets its node picker mint one', async () => {
+        await loadStore();
+
+        expect(mountRow(plainField).findComponent(SearchableSelect).props('allowCustom')).toBe(true);
+    });
+
+    it('saves the minted path and flags the row missing', async () => {
+        await loadStore();
+        api.fetchSample.mockResolvedValue({
+            success: true,
+            report: { flatNodes: [{ value: 'specs.label', label: 'specs.label' }] },
+        });
+        await store.fetchSample();
+        const wrapper = mountRow(plainField);
+
+        wrapper.findComponent(SearchableSelect).vm.$emit('update:modelValue', 'consultations.name');
+        await wrapper.vm.$nextTick();
+
+        // `useDefault: false` rides along on every node pick — the server
+        // prunes it back out on save.
+        expect(store.link.mappings.title).toEqual({ node: 'consultations.name', useDefault: false });
+        expect(wrapper.find('.influx-missing-badge').exists()).toBe(true);
+    });
+});
