@@ -251,6 +251,13 @@ class MappingApplier
             default: $mapping->default,
             native: true,
             rawValue: $rawValue,
+            // What the target was handed, which is the only value a node-less
+            // "use default" row has to show: its raw value is null by
+            // definition, so without this the row read as having done nothing.
+            // The target coerces per attribute from here (an author by id, a
+            // status through parseEnabled), and only it knows that shape — this
+            // is the resolution, not the stored form.
+            parsedValue: $mapping->resolve($item),
             currentValue: $currentValue,
             changed: $changed,
             usedDefault: $mapping->usesDefault($item),
