@@ -145,6 +145,16 @@ class ItemProcessor
         }
 
         if ($draft->changed && ! $context->target->save($draft->element)) {
+            // Each validation error goes onto the row whose value Craft refused
+            // — including nested ones, onto the child and its own leaf row — so
+            // the item's message no longer has to carry a blob naming fields the
+            // rows beneath it said nothing about. What comes back is only what no
+            // row claimed, which the message still has to say itself.
+            $unclaimed = (new ValidationErrorRouter())->route(
+                $draft->element->getErrors(),
+                $draft->mappingResults,
+            );
+
             return new ItemSyncResult(
                 decision: $draft->decision,
                 action: ItemAction::ERROR,
@@ -153,7 +163,7 @@ class ItemProcessor
                 isNew: $draft->isNew,
                 changed: $draft->changed,
                 mappingResults: $draft->mappingResults,
-                message: $this->commitFailureMessage($draft->element),
+                message: $this->commitFailureMessage($draft->element, $unclaimed),
             );
         }
 
@@ -165,23 +175,41 @@ class ItemProcessor
     /**
      * Why a save that returned false failed, for the item's log row.
      *
-     * Saves run with validation off, so the usual `getErrors()` dump is normally
-     * EMPTY here — a false return then means Craft itself refused the save
-     * (`beforeSave()`/`afterSave()` on the element or a listening plugin returned
-     * false, which adds no error), and reporting `[]` would tell the operator
-     * nothing. Errors are still reported when there are any: a target may
-     * validate on its own terms, and Craft's save path can attach errors of its
-     * own (e.g. a failed slug/URI generation).
+     * Elements are saved WITH validation (the policy alpha.7 reversed), so a
+     * false return is usually a set of validation errors — and those are now on
+     * the rows themselves ({@see ValidationErrorRouter}), where the operator is
+     * already reading which value came from which node. This says how many there
+     * were rather than repeating them, and spells out only the ones no row
+     * claimed: a required field this link doesn't map has nowhere else to appear.
+     *
+     * A false return with no errors at all is Craft itself refusing — a
+     * `beforeSave()`/`afterSave()` handler on the element or a listening plugin —
+     * which attaches nothing to report.
+     *
+     * @param array<string, list<string>> $unclaimed
      */
-    protected function commitFailureMessage(ElementInterface $element): string
+    protected function commitFailureMessage(ElementInterface $element, array $unclaimed = []): string
     {
         $errors = $element->getErrors();
 
-        if ($errors !== []) {
-            return json_encode($errors) ?: 'The element reported validation errors that could not be encoded.';
+        if ($errors === []) {
+            return 'Craft rejected the save without reporting validation errors — a beforeSave/afterSave handler refused it.';
         }
 
-        return 'Craft rejected the save without reporting validation errors — a beforeSave/afterSave handler refused it.';
+        $count = count($errors);
+        $message = "Craft refused the save: {$count} field(s) reported validation errors.";
+
+        if ($unclaimed === []) {
+            return $message;
+        }
+
+        $spelled = [];
+
+        foreach ($unclaimed as $key => $messages) {
+            $spelled[] = $key . ': ' . implode(' ', $messages);
+        }
+
+        return $message . ' Not mapped by this link: ' . implode(' — ', $spelled);
     }
 
     protected function skipMessage(Link $link, SyncDecision $decision): string
