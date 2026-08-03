@@ -85,15 +85,6 @@ use Throwable;
  */
 class Matrix extends Field
 {
-    /**
-     * Cap on the children one mapping row emits. A runaway feed — a node that
-     * fans out into thousands of blocks — would otherwise balloon the debug
-     * inspector's payload and the log rows a run stores, for no diagnostic gain:
-     * the first hundred already show what the mapping does. The cap is PER
-     * MAPPING ROW, so every Matrix row of a link gets its own hundred.
-     */
-    protected const CHILD_RESULT_LIMIT = 100;
-
     public static function craftFieldClass(): ?string
     {
         return CraftMatrixField::class;
@@ -864,25 +855,6 @@ class Matrix extends Field
     }
 
     /**
-     * The index of the first not-yet-consumed entry equal to `$needle` — the one
-     * greedy step both pairing passes take, over fingerprints and then over type
-     * handles.
-     *
-     * @param list<mixed> $values
-     * @param array<int, true> $consumed
-     */
-    protected function firstUnconsumed(array $values, array $consumed, mixed $needle): ?int
-    {
-        foreach ($values as $index => $value) {
-            if (! isset($consumed[$index]) && $value === $needle) {
-                return $index;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * One block type's active sub-mappings resolved to per-block value lists —
      * the same resolve-and-{@see valueList()} step {@see appendTypeBlocks()} zips
      * into blocks, so indexing a list by a block's ordinal among the incoming
@@ -1069,15 +1041,6 @@ class Matrix extends Field
     protected function currentLeafValue(object $block, string $handle): mixed
     {
         return $block->getSerializedFieldValues([$handle])[$handle] ?? null;
-    }
-
-    /**
-     * The action string a child carries: the hypothetical label on a dry run, the
-     * committed value on a real one ({@see ChildAction::dryRunLabel()}).
-     */
-    protected function childActionLabel(FieldContext $context, ChildAction $action): string
-    {
-        return $context->dryRun ? $action->dryRunLabel() : $action->value;
     }
 
     /**

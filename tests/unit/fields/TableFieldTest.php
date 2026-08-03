@@ -11,6 +11,8 @@ use GlueAgency\Influx\fields\Table;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
+use GlueAgency\Influx\sync\item\ChildResult;
+use GlueAgency\Influx\sync\item\MappingResult;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
@@ -341,7 +343,261 @@ class TableFieldTest extends Unit
         $this->assertFalse($strategy->exposedValueDiffers($context, null, []));
     }
 
+    // -- per-row drill-down ---------------------------------------------------
+
+    public function testChildrenKindIsRows(): void
+    {
+        $this->assertSame('rows', $this->strategy()->childrenKind());
+    }
+
+    public function testIdenticalRowsReadAsUnchangedChildren(): void
+    {
+        $item = new RemoteItem(['specs' => [['label' => 'Width', 'value' => 10]]]);
+        $context = $this->context($item, [
+            'col1' => ['node' => 'specs.label'],
+            'col2' => ['node' => 'specs.value'],
+        ]);
+        $strategy = $this->strategy();
+
+        $incoming = $strategy->parse($context);
+        $children = $strategy->collectChildren($context, $incoming, [
+            // A stored row carries the column's handle beside its id; the
+            // fingerprint reads the id, the way the serializers do.
+            ['col1' => 'Width', 'label' => 'Width', 'col2' => 10, 'value' => 10],
+        ]);
+
+        $this->assertCount(1, $children);
+        $this->assertSame('unchanged', $children[0]->action);
+        // A table row is no element and has no name of its own — the drill-down
+        // labels it by its ordinal.
+        $this->assertNull($children[0]->title);
+        $this->assertNull($children[0]->element);
+        $this->assertNull($children[0]->labelElement);
+
+        $rows = $this->rowsByHandle($children[0]);
+        $this->assertSame(['col1', 'col2'], array_keys($rows));
+        $this->assertSame('specs.label', $rows['col1']->node);
+        $this->assertSame('Width', $rows['col1']->rawValue);
+        $this->assertSame('Width', $rows['col1']->parsedValue);
+        $this->assertSame('Width', $rows['col1']->currentValue);
+        $this->assertFalse($rows['col1']->changed);
+        $this->assertFalse($rows['col1']->native);
+        $this->assertFalse($rows['col2']->changed);
+    }
+
+    public function testTheChildNamesItsCellsAfterTheColumnHeadings(): void
+    {
+        // A table row's cells are COLUMNS, not layout fields, so the presenter has
+        // no layout to name them from — the child brings the map itself, for the
+        // mapped columns it shows rows for.
+        $item = new RemoteItem(['a' => 'x', 'b' => 'y']);
+        $context = $this->context($item, [
+            'col1' => ['node' => 'a'],
+            'col2' => ['node' => 'b'],
+        ]);
+
+        $children = $this->strategy()->collectChildren($context, [['col1' => 'x', 'col2' => 'y']], []);
+
+        $this->assertSame(['col1' => 'Label', 'col2' => 'Value'], $children[0]->labels);
+
+        // An unmapped column has no row to name.
+        $oneColumn = $this->context($item, ['col1' => ['node' => 'a']]);
+        $children = $this->strategy()->collectChildren($oneColumn, [['col1' => 'x']], []);
+
+        $this->assertSame(['col1' => 'Label'], $children[0]->labels);
+    }
+
+    public function testACellsRowsFollowTheColumnsDeclaredOrder(): void
+    {
+        // The mapping lists the second column first; the drill-down still reads
+        // left to right, the way the editor sees the table.
+        $item = new RemoteItem(['a' => 'x', 'b' => 'y']);
+        $context = $this->context($item, [
+            'col2' => ['node' => 'b'],
+            'col1' => ['node' => 'a'],
+        ]);
+        $strategy = $this->strategy();
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), []);
+
+        $this->assertSame(['col1', 'col2'], array_keys($this->rowsByHandle($children[0])));
+    }
+
+    public function testAChangedCellReadsAsAnAddAgainstItsPartner(): void
+    {
+        // Same position, one differing cell: full-replace means the row is written
+        // anew, and the stored row is only there to fill the Current column and
+        // flag which cell moved.
+        $item = new RemoteItem(['specs' => [['label' => 'Width', 'value' => 10]]]);
+        $context = $this->context($item, [
+            'col1' => ['node' => 'specs.label'],
+            'col2' => ['node' => 'specs.value'],
+        ], dryRun: true);
+        $strategy = $this->strategy();
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), [
+            ['col1' => 'Width', 'col2' => 99],
+        ]);
+
+        $this->assertCount(1, $children);
+        $this->assertSame('would-add', $children[0]->action);
+
+        $rows = $this->rowsByHandle($children[0]);
+        $this->assertTrue($rows['col2']->changed);
+        $this->assertSame(99, $rows['col2']->currentValue);
+        $this->assertFalse($rows['col1']->changed, 'Only the differing cell is flagged.');
+    }
+
+    public function testAnIncomingRowWithoutAPartnerHasNoCurrentValues(): void
+    {
+        $item = new RemoteItem(['a' => ['x', 'y']]);
+        $context = $this->context($item, ['col1' => ['node' => 'a']], dryRun: true);
+        $strategy = $this->strategy();
+
+        // The first row is the stored one; the second has nothing left to pair
+        // with.
+        $children = $strategy->collectChildren($context, $strategy->parse($context), [['col1' => 'x']]);
+
+        $this->assertSame(['unchanged', 'would-add'], array_column($children, 'action'));
+
+        $rows = $this->rowsByHandle($children[1]);
+        $this->assertNull($rows['col1']->currentValue);
+        $this->assertTrue($rows['col1']->changed, 'Nothing to compare against — a parsed value is new.');
+    }
+
+    public function testALeftoverStoredRowReadsAsARemoval(): void
+    {
+        $item = new RemoteItem(['a' => ['x']]);
+        $context = $this->context($item, ['col1' => ['node' => 'a']], dryRun: true);
+        $strategy = $this->strategy();
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), [
+            ['col1' => 'x'],
+            ['col1' => 'dropped'],
+        ]);
+
+        $this->assertSame(['unchanged', 'would-remove'], array_column($children, 'action'));
+
+        $rows = $this->rowsByHandle($children[1]);
+        $this->assertSame('dropped', $rows['col1']->currentValue);
+        $this->assertNull($rows['col1']->rawValue);
+        $this->assertNull($rows['col1']->parsedValue);
+        $this->assertNull($rows['col1']->changed, 'A dropped row has no feed side to compare.');
+    }
+
+    public function testAPerIndexMissingCellIsUnaddressed(): void
+    {
+        // Ragged lists: the third row never gets a `col2` value, so that cell is
+        // the fixed-width filler — amber, not a silent null, and not a change.
+        $item = new RemoteItem(['a' => ['x', 'y', 'z'], 'b' => [1, 2]]);
+        $context = $this->context($item, [
+            'col1' => ['node' => 'a'],
+            'col2' => ['node' => 'b'],
+        ]);
+        $strategy = $this->strategy();
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), []);
+
+        $this->assertCount(3, $children);
+
+        $rows = $this->rowsByHandle($children[2]);
+        $this->assertTrue($rows['col2']->unaddressed);
+        $this->assertFalse($rows['col2']->changed);
+        $this->assertNull($rows['col2']->rawValue);
+        $this->assertNull($rows['col2']->parsedValue);
+        $this->assertFalse($rows['col1']->unaddressed);
+        $this->assertTrue($rows['col1']->changed);
+        $this->assertSame('z', $rows['col1']->rawValue);
+    }
+
+    public function testACellComparesByItsColumnType(): void
+    {
+        // The stored cell is a real DateTime while the feed carries an ISO string:
+        // without the per-type reduction every paired row would flag it as moved.
+        $item = new RemoteItem(['at' => ['2024-03-02T10:00:00+00:00'], 'a' => ['x']]);
+        $columns = [
+            'col1' => ['heading' => 'When', 'handle' => 'when', 'type' => 'date'],
+            'col2' => ['heading' => 'Label', 'handle' => 'label', 'type' => 'singleline'],
+        ];
+        $context = $this->context($item, [
+            'col1' => ['node' => 'at'],
+            'col2' => ['node' => 'a'],
+        ], $columns, dryRun: true);
+        $strategy = $this->strategy();
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), [[
+            'col1' => new DateTime('2024-03-02 11:00:00', new DateTimeZone('Europe/Brussels')),
+            'col2' => 'MOVED',
+        ]]);
+
+        $rows = $this->rowsByHandle($children[0]);
+        $this->assertFalse($rows['col1']->changed, 'Same instant, spelled differently.');
+        $this->assertTrue($rows['col2']->changed);
+    }
+
+    public function testRealRunChildrenCarryCommittedActionLabels(): void
+    {
+        $item = new RemoteItem(['a' => ['x', 'new']]);
+        $stored = [['col1' => 'x']];
+
+        $real = $this->context($item, ['col1' => ['node' => 'a']]);
+        $strategy = $this->strategy();
+        $children = $strategy->collectChildren($real, $strategy->parse($real), $stored);
+        $this->assertSame(['unchanged', 'added'], array_column($children, 'action'));
+
+        $dry = $this->context($item, ['col1' => ['node' => 'a']], dryRun: true);
+        $children = $strategy->collectChildren($dry, $strategy->parse($dry), $stored);
+        $this->assertSame(['unchanged', 'would-add'], array_column($children, 'action'));
+    }
+
+    public function testThereIsNothingToDrillIntoWithoutRowsOnEitherSide(): void
+    {
+        $item = new RemoteItem(['a' => ['x']]);
+        $context = $this->context($item, ['col1' => ['node' => 'a']]);
+        $strategy = $this->strategy();
+
+        // Neither the feed nor the field holds a row…
+        $this->assertNull($strategy->collectChildren($context, [], null));
+        // …the field was left untouched (no parsed row set at all)…
+        $this->assertNull($strategy->collectChildren($context, null, [['col1' => 'x']]));
+        // …and the row maps no column.
+        $bare = $this->context($item, []);
+        $this->assertNull($strategy->collectChildren($bare, [['col1' => 'x']], []));
+    }
+
+    public function testChildrenAreCappedAtTheResultLimit(): void
+    {
+        $item = new RemoteItem(['a' => ['x']]);
+        $context = $this->context($item, ['col1' => ['node' => 'a']]);
+
+        // Handed straight to the derivation: a feed that fans out this far is the
+        // case the cap exists for, and parse()'s zip isn't what's under test.
+        $incoming = [];
+
+        for ($i = 1; $i <= 120; $i++) {
+            $incoming[] = ['col1' => 'row ' . $i];
+        }
+
+        $this->assertCount(100, $this->strategy()->collectChildren($context, $incoming, []));
+    }
+
     // -- fixtures -------------------------------------------------------------
+
+    /**
+     * The child's cell rows keyed by column id, for assertions that name one.
+     *
+     * @return array<string, MappingResult>
+     */
+    protected function rowsByHandle(ChildResult $child): array
+    {
+        $rows = [];
+
+        foreach ($child->mappingResults as $result) {
+            $rows[$result->handle] = $result;
+        }
+
+        return $rows;
+    }
 
     /**
      * The strategy under test, with its schema builder and its comparison
@@ -394,8 +650,12 @@ class TableFieldTest extends Unit
      * @param array<string, mixed> $fields
      * @param array<string, array<string, mixed>>|null $columns
      */
-    protected function context(RemoteItem $item, array $fields, ?array $columns = null): FieldContext
-    {
+    protected function context(
+        RemoteItem $item,
+        array $fields,
+        ?array $columns = null,
+        bool $dryRun = false,
+    ): FieldContext {
         return new FieldContext(
             craftField: $this->fakeField($columns ?? $this->textColumns()),
             handle: 'specs',
@@ -403,6 +663,7 @@ class TableFieldTest extends Unit
             item: $item,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
+            dryRun: $dryRun,
         );
     }
 }

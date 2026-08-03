@@ -73,6 +73,7 @@ describe('DrillList', () => {
         it('names the count by children type, falling back to elements', () => {
             const count = (childrenType) => mountList({ childrenType }).find('.influx-drill-strip-count').text();
 
+            expect(count('rows')).toBe('3 rows');
             expect(count('assets')).toBe('3 assets');
             expect(count('entries')).toBe('3 entries');
             expect(count('users')).toBe('3 users');

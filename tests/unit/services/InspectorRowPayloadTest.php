@@ -29,10 +29,11 @@ use GlueAgency\Influx\web\ItemRowPresenter;
  * The fixture's children deliberately span BOTH drill-downs' vocabularies — the
  * Matrix blocks carry the dry run's `would-*` labels, the related entry the
  * committed `updated` a real run reports ({@see ChildResult::$action}) — because
- * the one shape serves both, and a single fixture has to pin both identity
- * variants: a child standing for a saved element (the unchanged block and the
- * relation child, each with a presented element) and one the sync would only add,
- * which carries neither an element nor a title.
+ * the one shape serves both, and a single fixture has to pin every identity
+ * variant: a child standing for a saved element (the unchanged block and the
+ * relation child, each with a presented element), one the sync would only add,
+ * which carries neither an element nor a title, and a Table ROW, which can never
+ * carry either and whose cells are named from the child's own label map.
  *
  * If this test fails after a deliberate shape change: update the fixture and the
  * JS contract test together.
@@ -81,7 +82,14 @@ class InspectorRowPayloadTest extends Unit
         $rows = $this->presenter()->presentMappingResults(
             $this->results(),
             $this->createMock(ElementInterface::class),
-            ['importId' => 'Import ID', 'title' => 'Title', 'building_type' => 'Building type', 'content_blocks' => 'Content blocks', 'related_projects' => 'Related projects'],
+            [
+                'importId'         => 'Import ID',
+                'title'            => 'Title',
+                'building_type'    => 'Building type',
+                'content_blocks'   => 'Content blocks',
+                'related_projects' => 'Related projects',
+                'specs'            => 'Specs',
+            ],
         );
 
         $this->assertEquals(
@@ -165,6 +173,30 @@ class InspectorRowPayloadTest extends Unit
 
         $this->assertSame(['title' => 'Title', 'body' => 'Body'], array_column($rows, 'label', 'handle'));
         $this->assertSame('Summary', $this->childrenOf('related_projects')[0]['mappings'][0]['label']);
+    }
+
+    /**
+     * A Table row's cells are COLUMNS, keyed by column id — no field layout knows
+     * them, so the child supplies the labels itself and they have to win.
+     */
+    public function testATableRowsCellsAreLabelledFromTheChildsOwnMap(): void
+    {
+        $children = $this->childrenOf('specs');
+
+        $this->assertSame(['unchanged', 'would-remove'], array_column($children, 'action'));
+
+        foreach ($children as $child) {
+            // Neither identity nor title: a table row is no element, and the pane
+            // labels it by its ordinal.
+            $this->assertNull($child['element']);
+            $this->assertNull($child['title']);
+            $this->assertNull($child['blockType']);
+
+            $this->assertSame(
+                ['col1' => 'Kenmerk', 'col2' => 'Waarde'],
+                array_column($child['mappings'], 'label', 'handle'),
+            );
+        }
     }
 
     /**
@@ -290,6 +322,26 @@ class InspectorRowPayloadTest extends Unit
                 children: [$this->relationChild()],
                 childrenType: 'entries',
             ),
+            // Node-less too: a Table row's value is its per-COLUMN sub-mappings,
+            // and its children are the table's ROWS — the one child flavour that
+            // is no element at all.
+            new MappingResult(
+                handle: 'specs',
+                node: null,
+                default: null,
+                native: false,
+                rawValue: null,
+                parsedValue: [
+                    ['col1' => 'Breedte', 'col2' => '120'],
+                ],
+                currentValue: [
+                    ['col1' => 'Breedte', 'col2' => '120'],
+                    ['col1' => 'Diepte', 'col2' => '60'],
+                ],
+                changed: true,
+                children: $this->rowChildren(),
+                childrenType: 'rows',
+            ),
         ];
     }
 
@@ -350,6 +402,74 @@ class InspectorRowPayloadTest extends Unit
                         parsedValue: 'Voorzijde',
                         currentValue: null,
                         changed: true,
+                    ),
+                ],
+            ),
+        ];
+    }
+
+    /**
+     * The two row children a Table drill-down shows: one the feed leaves exactly
+     * as it is, and one the full replace drops. Neither is an element — a table
+     * row has no identity and no title of its own, so the pane labels both by
+     * their ordinal — and their cells are named from the child's OWN label map
+     * ({@see ChildResult::$labels}), there being no layout anywhere that knows
+     * `col1` is "Kenmerk".
+     *
+     * @return list<ChildResult>
+     */
+    protected function rowChildren(): array
+    {
+        $labels = ['col1' => 'Kenmerk', 'col2' => 'Waarde'];
+
+        return [
+            new ChildResult(
+                labels: $labels,
+                action: 'unchanged',
+                mappingResults: [
+                    new MappingResult(
+                        handle: 'col1',
+                        node: 'specs.label',
+                        default: null,
+                        native: false,
+                        rawValue: 'Breedte',
+                        parsedValue: 'Breedte',
+                        currentValue: 'Breedte',
+                        changed: false,
+                    ),
+                    new MappingResult(
+                        handle: 'col2',
+                        node: 'specs.value',
+                        default: null,
+                        native: false,
+                        rawValue: '120',
+                        parsedValue: '120',
+                        currentValue: '120',
+                        changed: false,
+                    ),
+                ],
+            ),
+            new ChildResult(
+                labels: $labels,
+                action: 'would-remove',
+                mappingResults: [
+                    new MappingResult(
+                        handle: 'col1',
+                        node: 'specs.label',
+                        default: null,
+                        native: false,
+                        rawValue: null,
+                        currentValue: 'Diepte',
+                        changed: null,
+                    ),
+                    new MappingResult(
+                        handle: 'col2',
+                        node: 'specs.value',
+                        default: null,
+                        native: false,
+                        rawValue: null,
+                        currentValue: '60',
+                        changed: null,
                     ),
                 ],
             ),

@@ -610,6 +610,8 @@ export default {
             switch (type) {
                 case 'blocks':
                     return this.$t('{n} blocks', { n });
+                case 'rows':
+                    return this.$t('{n} rows', { n });
                 case 'assets':
                     return this.$t('{n} assets', { n });
                 case 'entries':

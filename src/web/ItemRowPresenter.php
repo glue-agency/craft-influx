@@ -159,7 +159,9 @@ class ItemRowPresenter
      * were given: that one holds the TARGET's mappable fields
      * ({@see fieldLabels()}), and a block type's or related element's fields
      * aren't in it — handing it down would label every child row by its bare
-     * handle.
+     * handle. A child whose rows aren't layout fields at all brings its own map
+     * ({@see ChildResult::$labels}) — a Table row's cells are columns, which
+     * only the Table field's own config can name — and that one wins outright.
      *
      * {@see ChildResult::$labelElement} is also the element the child rows'
      * normalizeValue display parity runs against, and it can be missing (a
@@ -187,7 +189,7 @@ class ItemRowPresenter
                 'mappings'  => $this->presentMappingResults(
                     $child->mappingResults,
                     $child->labelElement ?? $fallbackElement,
-                    $this->childFieldLabels($child->labelElement),
+                    $child->labels ?? $this->childFieldLabels($child->labelElement),
                     $withParsedHtml,
                 ),
             ];

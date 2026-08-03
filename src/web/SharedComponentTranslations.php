@@ -66,6 +66,7 @@ class SharedComponentTranslations
                 'No mapped fields.',
                 // A drill row's count summary, one noun per children type.
                 '{n} blocks',
+                '{n} rows',
                 '{n} assets',
                 '{n} entries',
                 '{n} users',
@@ -85,6 +86,7 @@ class SharedComponentTranslations
                 'Back to parent',
                 // Its sub-strip's count summary, same nouns as the drill row's.
                 '{n} blocks',
+                '{n} rows',
                 '{n} assets',
                 '{n} entries',
                 '{n} users',

@@ -365,9 +365,13 @@ describe('DebugItemDetail', () => {
         });
 
         it('names the count by children type', () => {
-            const row = drillRow([child('unchanged'), child('unchanged')], { childrenType: 'entries' });
+            const summary = (childrenType) => mountDetail({
+                row: drillRow([child('unchanged'), child('unchanged')], { childrenType }),
+            }).find('.influx-detail-drill-summary').text();
 
-            expect(mountDetail({ row }).find('.influx-detail-drill-summary').text()).toBe('2 entries');
+            expect(summary('entries')).toBe('2 entries');
+            // A Table field's children are its rows, not elements.
+            expect(summary('rows')).toBe('2 rows');
         });
 
         it('labels the worst state inside — error over missing node over change', () => {

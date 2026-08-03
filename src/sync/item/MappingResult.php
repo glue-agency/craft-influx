@@ -70,7 +70,7 @@ class MappingResult
 
     /**
      * Noun key for the drill count summary ("3 blocks", "2 assets"):
-     * `'blocks'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
+     * `'blocks'|'rows'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
      * Set only alongside {@see $children}.
      */
     public ?string $childrenType = null;

@@ -72,10 +72,10 @@ describe('Inspector row wire contract', () => {
         }
     });
 
-    it('pins both child flavours — one standing for a saved element, one the sync would only add', () => {
+    it('pins every child flavour — a saved element, one the sync would only add, and a table row', () => {
         const children = childrenOf(fixture.mappings);
         const blocks = children.filter((c) => c.blockType !== null);
-        const related = children.find((c) => c.blockType === null);
+        const related = children.find((c) => c.blockType === null && c.element !== null);
 
         // A block that already exists is a saved element, chip and all.
         expect(typeof blocks[0].element.chipHtml).toBe('string');
@@ -89,6 +89,19 @@ describe('Inspector row wire contract', () => {
 
         expect(typeof related.element.chipHtml).toBe('string');
         expect(typeof related.element.id).toBe('number');
+
+        // A table row is no element at all and never carries either key, yet its
+        // cells are still labelled — from the map the server built off the
+        // field's columns.
+        const rows = childrenOf(fixture.mappings.filter((m) => m.childrenType === 'rows'));
+
+        expect(rows.length).toBeGreaterThan(1);
+
+        for (const row of rows) {
+            expect(row.element).toBe(null);
+            expect(row.title).toBe(null);
+            expect(row.mappings.every((m) => typeof m.label === 'string' && m.label !== '')).toBe(true);
+        }
     });
 
     it('names the child count noun only alongside children', () => {
@@ -136,6 +149,7 @@ describe('DebugItemDetail renders the contract', () => {
             'Building type missing node',
             'Content blocks',
             'Related projects',
+            'Specs',
         ]);
     });
 

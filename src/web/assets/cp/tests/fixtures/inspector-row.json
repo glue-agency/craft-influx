@@ -20,7 +20,10 @@
             { "type": "text", "heading": "Werfkelder", "body": "14de-eeuwse kelder" },
             { "type": "image", "caption": "Voorzijde" }
         ],
-        "projects": { "id": "412", "summary": "Restauratie" }
+        "projects": { "id": "412", "summary": "Restauratie" },
+        "specs": [
+            { "label": "Breedte", "value": "120" }
+        ]
     },
     "mappings": [
         {
@@ -222,6 +225,113 @@
                 }
             ],
             "childrenType": "entries"
+        },
+        {
+            "handle": "specs",
+            "label": "Specs",
+            "node": null,
+            "default": null,
+            "native": false,
+            "rawValue": null,
+            "parsedValue": "[{\"col1\":\"Breedte\",\"col2\":\"120\"}]",
+            "parsedHtml": null,
+            "currentValue": "[{\"col1\":\"Breedte\",\"col2\":\"120\"},{\"col1\":\"Diepte\",\"col2\":\"60\"}]",
+            "changed": true,
+            "unaddressed": false,
+            "usedDefault": false,
+            "managedByTarget": false,
+            "error": null,
+            "children": [
+                {
+                    "title": null,
+                    "blockType": null,
+                    "element": null,
+                    "action": "unchanged",
+                    "mappings": [
+                        {
+                            "handle": "col1",
+                            "label": "Kenmerk",
+                            "node": "specs.label",
+                            "default": null,
+                            "native": false,
+                            "rawValue": "Breedte",
+                            "parsedValue": "Breedte",
+                            "parsedHtml": null,
+                            "currentValue": "Breedte",
+                            "changed": false,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        },
+                        {
+                            "handle": "col2",
+                            "label": "Waarde",
+                            "node": "specs.value",
+                            "default": null,
+                            "native": false,
+                            "rawValue": "120",
+                            "parsedValue": "120",
+                            "parsedHtml": null,
+                            "currentValue": "120",
+                            "changed": false,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        }
+                    ]
+                },
+                {
+                    "title": null,
+                    "blockType": null,
+                    "element": null,
+                    "action": "would-remove",
+                    "mappings": [
+                        {
+                            "handle": "col1",
+                            "label": "Kenmerk",
+                            "node": "specs.label",
+                            "default": null,
+                            "native": false,
+                            "rawValue": null,
+                            "parsedValue": null,
+                            "parsedHtml": null,
+                            "currentValue": "Diepte",
+                            "changed": null,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        },
+                        {
+                            "handle": "col2",
+                            "label": "Waarde",
+                            "node": "specs.value",
+                            "default": null,
+                            "native": false,
+                            "rawValue": null,
+                            "parsedValue": null,
+                            "parsedHtml": null,
+                            "currentValue": "60",
+                            "changed": null,
+                            "unaddressed": false,
+                            "usedDefault": false,
+                            "managedByTarget": false,
+                            "error": null,
+                            "children": null,
+                            "childrenType": null
+                        }
+                    ]
+                }
+            ],
+            "childrenType": "rows"
         }
     ],
     "error": null

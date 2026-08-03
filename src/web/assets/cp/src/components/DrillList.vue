@@ -200,7 +200,8 @@ import ActionBadge from './ActionBadge.vue';
  *
  * A child's label is its own title — a Matrix block's title, a related element's
  * UI label — and, for a child that has none (a block the sync would add, whose
- * feed maps no title), its zero-padded ordinal instead.
+ * feed maps no title; every row of a Table field, which has no title concept at
+ * all), its zero-padded ordinal instead.
  *
  * A child row carries no note line under it, exactly like the item rows it
  * stands in for: what a run would do to the child is its badge's job, and the
@@ -246,6 +247,8 @@ export default {
             switch (type) {
                 case 'blocks':
                     return this.$t('{n} blocks', { n });
+                case 'rows':
+                    return this.$t('{n} rows', { n });
                 case 'assets':
                     return this.$t('{n} assets', { n });
                 case 'entries':

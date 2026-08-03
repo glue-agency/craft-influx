@@ -5,10 +5,11 @@ namespace GlueAgency\Influx\sync\item;
 use craft\base\ElementInterface;
 
 /**
- * One nested element of a mapping row — a Matrix block, or a related element the
- * mapping's sub-fields wrote. Produced by the same walk that produces the
- * {@see MappingResult}s, for the real run and the dry-run alike, so the
- * inspectors' drill-down is by construction what the sync would do.
+ * One nested child of a mapping row — a Matrix block, a related element the
+ * mapping's sub-fields wrote, or a Table row (the one flavour that is no element
+ * at all, so it carries neither chip nor title). Produced by the same walk that
+ * produces the {@see MappingResult}s, for the real run and the dry-run alike, so
+ * the inspectors' drill-down is by construction what the sync would do.
  *
  * Values are raw (un-truncated, un-stringified); presentation belongs to the
  * consumer. Treat as read-only — with one sanctioned exception at the very end
@@ -24,7 +25,8 @@ class ChildResult
      * Display title for the child row: the nested element's OWN title — the
      * Matrix block's title, or the related element's UI label. Null when it has
      * none, which is the drill-down's cue to label the child by its ordinal
-     * ("01", "02", …) instead.
+     * ("01", "02", …) instead — always the case for a Table row, whose position
+     * IS its identity.
      */
     public ?string $title = null;
 
@@ -51,6 +53,19 @@ class ChildResult
     public ?ElementInterface $labelElement = null;
 
     /**
+     * Row labels the producing strategy supplies itself, handle => label,
+     * overriding the layout-derived ones. For a child whose rows aren't layout
+     * fields and so can't be named by one: a {@see \GlueAgency\Influx\fields\Table}
+     * row's cells are COLUMNS, keyed by column id, and only the field's own
+     * column config knows that `col1` is "Label"
+     * ({@see \GlueAgency\Influx\web\ItemRowPresenter::presentChildren()}). Null
+     * for every other child, which has a layout to read.
+     *
+     * @var array<string, string>|null
+     */
+    public ?array $labels = null;
+
+    /**
      * The child's final action, resolved at build time — the dry-run label in
      * the debug walk, the committed value in a real run. Values come from
      * {@see \GlueAgency\Influx\enums\ChildAction}.
@@ -67,12 +82,14 @@ class ChildResult
 
     /**
      * @param list<MappingResult> $mappingResults
+     * @param array<string, string>|null $labels
      */
     public function __construct(
         ?string $title = null,
         ?string $blockType = null,
         ?ElementInterface $element = null,
         ?ElementInterface $labelElement = null,
+        ?array $labels = null,
         string $action = '',
         array $mappingResults = [],
     ) {
@@ -80,6 +97,7 @@ class ChildResult
         $this->blockType = $blockType;
         $this->element = $element;
         $this->labelElement = $labelElement;
+        $this->labels = $labels;
         $this->action = $action;
         $this->mappingResults = $mappingResults;
     }

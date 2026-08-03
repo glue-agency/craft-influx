@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
+use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\SchemaBuilder;
@@ -35,6 +36,16 @@ use Throwable;
  */
 abstract class Field
 {
+    /**
+     * Cap on the children one mapping row emits ({@see collectChildren()}). A
+     * runaway feed — a node that fans out into thousands of blocks or table
+     * rows — would otherwise balloon the debug inspector's payload and the log
+     * rows a run stores, for no diagnostic gain: the first hundred already show
+     * what the mapping does. The cap is PER MAPPING ROW, so every nesting row of
+     * a link gets its own hundred.
+     */
+    protected const CHILD_RESULT_LIMIT = 100;
+
     /**
      * FQCN of the Craft field class this strategy handles. Return `null` to
      * register as the generic fallback (only {@see DefaultField} should).
@@ -244,11 +255,44 @@ abstract class Field
 
     /**
      * Noun key for the drill count summary ("3 blocks", "2 assets"):
-     * `'blocks'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
+     * `'blocks'|'rows'|'assets'|'entries'|'users'|'categories'|'tags'|'elements'`.
      * Null for a strategy that nests nothing.
      */
     public function childrenKind(): ?string
     {
+        return null;
+    }
+
+    /**
+     * The action string a child carries: the hypothetical label on a dry run,
+     * the committed value on a real one ({@see ChildAction::dryRunLabel()}).
+     * Shared by the full-replace strategies, which decide a child's action
+     * themselves rather than reporting one they just performed
+     * ({@see RelationalField::reportChild()} is past every dry-run guard, so it
+     * needs none of this).
+     */
+    protected function childActionLabel(FieldContext $context, ChildAction $action): string
+    {
+        return $context->dryRun ? $action->dryRunLabel() : $action->value;
+    }
+
+    /**
+     * The index of the first not-yet-consumed entry equal to `$needle` — the one
+     * greedy step a full-replace pairing takes, over the per-child fingerprints
+     * first and then over a positional key ({@see Matrix::pairBlocks()},
+     * {@see Table::pairRows()}).
+     *
+     * @param list<mixed> $values
+     * @param array<int, true> $consumed
+     */
+    protected function firstUnconsumed(array $values, array $consumed, mixed $needle): ?int
+    {
+        foreach ($values as $index => $value) {
+            if (! isset($consumed[$index]) && $value === $needle) {
+                return $index;
+            }
+        }
+
         return null;
     }
 
