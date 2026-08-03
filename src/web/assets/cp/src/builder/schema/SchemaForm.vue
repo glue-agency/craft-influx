@@ -102,10 +102,9 @@
         </div>
 
         <!-- Sub-fields the field owns itself (a Table field's columns) —
-             writes the mapping's flat `fields` channel. Rendered with the
-             shared SubFieldRows table directly: a wrapper component would be
-             byte-identical to ElementSubFields.vue, which is exactly one
-             prop-forwarding template. -->
+             writes the mapping's flat `fields` channel and nothing else, so
+             it needs none of ElementSubFields' channel splitting and mounts
+             the shared SubFieldRows table directly. -->
         <v-sub-field-rows
             v-for="(node, idx) in fieldsNodes"
             :key="'fields-' + (node.handle || idx)"
@@ -117,18 +116,26 @@
             @update:rows="$emit('update:fields', $event)"
         />
 
-        <!-- Recursive native sub-fields (asset alt/title) — writes the
-             mapping's nativeFields channel, not options. Rendered after
-             the options fieldset as their own group cards. -->
+        <!-- The related element's own sub-fields — its natives (asset
+             alt/title, an entry's title) alongside its layout's custom fields,
+             ONE card writing BOTH channels: a row's `channel` key decides
+             which, and the card emits both on every write. Rendered after the
+             options fieldset as their own group cards.
+
+             The `fields` channel is shared with the Table card above, but no
+             field type emits both card kinds, and both write full
+             replacements — so they can't clobber each other. -->
         <v-element-sub-fields
             v-for="(node, idx) in subFieldNodes"
             :key="'subfields-' + (node.handle || idx)"
             :node="node"
-            :model-value="nativeFields"
+            :fields="fields"
+            :native-fields="nativeFields"
             :node-options="nodeOptions"
             :discovered-nodes="discoveredNodes"
             :read-only="readOnly"
-            @update:model-value="$emit('update:nativeFields', $event)"
+            @update:fields="$emit('update:fields', $event)"
+            @update:native-fields="$emit('update:nativeFields', $event)"
         />
 
         <!-- Matrix block sub-fields — one card per block type, ALL rendered

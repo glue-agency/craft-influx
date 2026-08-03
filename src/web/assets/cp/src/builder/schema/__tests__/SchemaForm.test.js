@@ -21,8 +21,9 @@ const assetSchema = [
         { handle: 'mode', equals: 'url' },
         { handle: 'upload' },
     ] },
-    { type: 'elementSubFields', handle: 'nativeFields', label: 'Asset sub-fields', subFields: [
+    { type: 'elementSubFields', handle: 'nativeFields', label: 'Sub-fields', subFields: [
         { type: 'text', handle: 'alt', label: 'Alt text' },
+        { type: 'text', handle: 'caption', label: 'Caption', channel: 'fields' },
     ] },
 ];
 
@@ -30,6 +31,7 @@ const mountForm = (props = {}) => mount(SchemaForm, {
     props: {
         schema: assetSchema,
         options: {},
+        fields: {},
         nativeFields: {},
         nodeOptions: [{ value: 'images.0.alt', label: 'images.0.alt' }],
         ...props,
@@ -63,11 +65,12 @@ describe('SchemaForm', () => {
 
         await wrapper.setProps({ options: { mode: 'url' } });
         expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true);
-        // volume needs mode=url AND upload truthy
-        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(1); // sub-field default only
+        // volume needs mode=url AND upload truthy, so what's left is the two
+        // sub-field cards' default editors (one per row of the merged card).
+        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(2);
 
         await wrapper.setProps({ options: { mode: 'url', upload: true } });
-        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(2);
+        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(3);
     });
 
     it('emits merged options when a control changes', async () => {
@@ -106,15 +109,33 @@ describe('SchemaForm', () => {
         expect(wrapper.find('input[type="text"]').element.value).toBe('#f00');
     });
 
-    it('routes sub-field rows through the nativeFields channel', async () => {
+    it('routes a keyless sub-field row through the nativeFields channel', async () => {
         const wrapper = mountForm();
-        // The sub-field source-node control is a SearchableSelect now.
-        const select = wrapper.findAllComponents(SearchableSelect).at(-1);
+        // Row 1 of the card; its source-node control is a SearchableSelect.
+        const select = wrapper.findAllComponents(SearchableSelect).at(-2);
         select.vm.$emit('update:modelValue', 'images.0.alt');
 
         expect(wrapper.emitted('update:nativeFields').at(-1))
             .toEqual([{ alt: { node: 'images.0.alt' } }]);
+        // The card writes both channels every time, so the companion emit is
+        // the untouched one rather than a second row.
+        expect(wrapper.emitted('update:fields').at(-1)).toEqual([{}]);
         expect(wrapper.emitted('update:options')).toBeUndefined();
+    });
+
+    it('routes a channel-carrying row of the SAME card through the fields channel', async () => {
+        const wrapper = mountForm();
+        wrapper.findAllComponents(SearchableSelect).at(-1)
+            .vm.$emit('update:modelValue', 'images.0.caption');
+
+        expect(wrapper.emitted('update:fields').at(-1))
+            .toEqual([{ caption: { node: 'images.0.caption' } }]);
+        expect(wrapper.emitted('update:nativeFields').at(-1)).toEqual([{}]);
+    });
+
+    it('renders one card for both channels', () => {
+        // The merged card is a single SubFieldRows table, not one per channel.
+        expect(mountForm().findAll('.influx-mapping-group')).toHaveLength(1);
     });
 });
 

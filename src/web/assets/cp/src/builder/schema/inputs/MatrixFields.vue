@@ -17,6 +17,7 @@
 
 <script>
 import SubFieldRows from './SubFieldRows.vue';
+import { flattenChannels, splitChannels } from '../../lib/channels.js';
 
 /**
  * Schema matrixFields node: source-node + default rows for ONE Matrix block
@@ -40,10 +41,12 @@ import SubFieldRows from './SubFieldRows.vue';
  * half of its type's entry the row is stored in — `nativeFields` for the
  * block's native Title, ABSENT for a custom field, which means `fields` (the
  * stored shape that predates the key). The two channels are one table to the
- * editor and are split apart again on every write. A handle can't collide
- * across them in practice (`title` is a reserved Craft field handle), but if
- * one ever did `nativeFields` would win deterministically — on the render
- * and on the write alike.
+ * editor and are split apart again on every write; the arithmetic is shared
+ * with the other two-channel card in {@see ../../lib/channels.js}, which this
+ * calls with `fields` as the default. A handle can't collide across them in
+ * practice (`title` is a reserved Craft field handle), but if one ever did
+ * `nativeFields` would win deterministically — on the render and the write
+ * alike.
  *
  * Matrix-specific rules:
  *   - node paths are ABSOLUTE item paths (`seasons.year`), resolved against
@@ -81,27 +84,11 @@ export default {
          * row ORDER comes from node.subFields, not from this map).
          */
         typeRows() {
-            return { ...(this.typeEntry.fields || {}), ...(this.typeEntry.nativeFields || {}) };
+            return flattenChannels(this.typeEntry);
         },
     },
 
     methods: {
-        /**
-         * The channel a handle's row belongs in: what its schema node
-         * declares, else the channel it was SAVED in. That fallback is what
-         * makes a stale saved handle — one no longer among the type's
-         * subFields, e.g. a since-removed custom field — round-trip back
-         * where it came from instead of silently switching channels on the
-         * next write.
-         */
-        channelFor(handle) {
-            const sub = (this.node.subFields || []).find(s => s.handle === handle);
-
-            if (sub) return sub.channel || 'fields';
-
-            return this.typeEntry.nativeFields?.[handle] ? 'nativeFields' : 'fields';
-        },
-
         /**
          * Merge the rewritten rows back into the whole `blocks` object: the
          * rows are partitioned by channel onto this type's entry, other
@@ -112,11 +99,7 @@ export default {
         mergeTypeRows(nextRows) {
             const type = this.node.blockType;
             const entry = { ...(this.modelValue[type] || {}) };
-            const channels = { fields: {}, nativeFields: {} };
-
-            Object.entries(nextRows).forEach(([handle, row]) => {
-                channels[this.channelFor(handle)][handle] = row;
-            });
+            const channels = splitChannels(nextRows, this.node.subFields, this.typeEntry, 'fields');
 
             Object.entries(channels).forEach(([channel, rows]) => {
                 if (Object.keys(rows).length === 0) {

@@ -143,10 +143,28 @@ class SchemaBuilder
     }
 
     /**
-     * Source-node + default rows for a related element's native sub-fields
-     * (asset alt/title, entry title/slug). Writes the mapping's `nativeFields`
-     * channel. `$config` supplies `label` + `subFields` (a list of primitive
-     * nodes, e.g. `SchemaBuilder::make()->text([...])->toArray()`).
+     * Source-node + default rows for the sub-fields of the element a mapping
+     * relates — its native attributes (asset alt/title, entry title/slug) and
+     * the custom fields of the layouts its sources allow. `$config` supplies
+     * `label` + `subFields` (a list of primitive nodes, e.g.
+     * `SchemaBuilder::make()->text([...])->toArray()`).
+     *
+     * ONE card over both sub-field channels, since the element's attributes and
+     * its layout's fields are written differently. Each sub-field row may carry
+     * an optional `channel` key saying which it lands in: `fields` routes the
+     * row through the element's field layout ({@see \GlueAgency\Influx\models\FieldMapping::subMappings()}),
+     * while an ABSENT key means `nativeFields` — the channel this node's rows
+     * were stored in before the key existed, and the handle forced below.
+     *
+     * Note the asymmetry with {@see matrixFields()}, whose absent key means
+     * `fields`: each node type defaults to the channel ITS rows already used,
+     * so a row whose key is forgotten keeps behaving as it did. A native row
+     * misrouted to `fields` would be dropped silently at apply time
+     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}),
+     * which is the failure this default avoids.
+     *
+     * A field must not pair a channel-carrying card with a separate
+     * {@see subFields()} card: both would claim the same `fields` channel.
      */
     public function elementSubFields(array $config = []): self
     {

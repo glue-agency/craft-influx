@@ -107,21 +107,21 @@ import MappingGroupCard from '../../../components/MappingGroupCard.vue';
  * The shared sub-field mapping table: source-node + default rows for one
  * group of sub-fields, inside the MappingGroupCard chrome (chevron,
  * mapped/missing/count pills, column headings, per-row missing badges).
- * Its two consumers are the schema-node wrappers ElementSubFields (a
- * related element's native sub-fields → the mapping's flat `nativeFields`
- * map) and MatrixFields (one Matrix block type's custom fields → that
- * type's `fields` slice of the `blocks` object) — each maps its own wire
- * shape onto this component's rows contract and stays out of the rendering.
+ * Its three consumers all map their own wire shape onto this component's rows
+ * contract and stay out of the rendering: ElementSubFields (a related
+ * element's natives AND its layout's custom fields, split across the
+ * mapping's `nativeFields` / `fields` channels), MatrixFields (one Matrix
+ * block type's slice of `blocks`, split the same way) and SchemaForm directly
+ * for a Table field's columns (the flat `fields` map, one channel only).
  *
  * Rows contract: `rows` is the saved map `{handle: {node?, default?,
- * useDefault?, ...}}` for the sub-fields in `node.subFields`. Every edit
- * emits `update:rows` with the fully-rewritten map; the consumer merges it
- * back into its own channel. Row rewrites are PRESERVING: only node /
- * default / useDefault are rewritten, a row's unknown keys (a Matrix
- * child's `options`, nested `fields`, …) round-trip untouched, and a row
- * is dropped only when nothing at all is left on it. (ElementSubFields
- * rows never carry unknown keys today, but the one shared writer keeps
- * both channels on the same rules.)
+ * useDefault?, ...}}` for the sub-fields in `node.subFields` — ONE map
+ * however many channels the consumer splits it into, since a row is addressed
+ * by bare handle. Every edit emits `update:rows` with the fully-rewritten map.
+ * Row rewrites are PRESERVING: only node / default / useDefault are rewritten,
+ * a row's unknown keys (a Matrix child's `options`, nested `fields`, …)
+ * round-trip untouched, and a row is dropped only when nothing at all is left
+ * on it.
  *
  * `__default__` is the same UI-only sentinel MappingRow uses: it
  * round-trips to a row's `useDefault` flag, never the wire node. Each row
@@ -201,8 +201,8 @@ export default {
     methods: {
         // An empty rows map is a normal emit, so the consumer's own merge
         // does the collapsing — MatrixFields drops the emptied channels and
-        // then the block type off `blocks`, ElementSubFields passes the {}
-        // straight up, and MappingRow.writeMapping() prunes from there.
+        // then the block type off `blocks`, ElementSubFields writes both
+        // channels empty, and MappingRow.writeMapping() prunes from there.
         clearRows() {
             this.$emit('update:rows', {});
         },

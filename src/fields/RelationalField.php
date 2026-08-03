@@ -97,6 +97,51 @@ abstract class RelationalField extends Field
     }
 
     /**
+     * The rows of the ONE sub-field card a relational mapping offers: the
+     * related element's own attributes first, then the custom fields of the
+     * layouts its sources allow, deduped by handle.
+     *
+     * The two halves are written through different channels, so the custom rows
+     * are marked `fields` while the natives stay unmarked — an unmarked row
+     * means `nativeFields`, which is both what these rows were stored in before
+     * the key existed and the safe default, since a native routed to `fields`
+     * is dropped silently at apply time. See
+     * {@see \GlueAgency\Influx\schema\SchemaBuilder::elementSubFields()}.
+     *
+     * A native wins a handle collision. It can only happen where the attribute
+     * isn't a reserved Craft field handle — `email` on a user, `alt` on an asset
+     * — and one handle-keyed table can hold only one of them.
+     *
+     * @return list<array>
+     */
+    protected function subFieldRows(BaseRelationField $field): array
+    {
+        $rows = $this->nativeSubFields($field);
+        $seen = array_column($rows, 'handle');
+
+        foreach ($this->layoutCustomSubFields($field) as $row) {
+            if (in_array($row['handle'] ?? null, $seen, true)) {
+                continue;
+            }
+
+            $rows[] = $row + ['channel' => 'fields'];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The related element's own attributes a mapping can write, as sub-field
+     * rows. Per element type, so each flavour overrides; the base offers none.
+     *
+     * @return list<array>
+     */
+    protected function nativeSubFields(BaseRelationField $field): array
+    {
+        return [];
+    }
+
+    /**
      * One text sub-node per custom field across the related element's source
      * layouts — the sub-fields a mapping's `fields` channel can address
      * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}
