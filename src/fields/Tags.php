@@ -5,8 +5,10 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\db\Table as CraftTable;
 use craft\elements\Tag as CraftTagElement;
+use craft\fields\BaseRelationField;
 use craft\fields\Tags as CraftTagsField;
 use craft\models\FieldLayout;
+use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -32,6 +34,16 @@ class Tags extends GroupScopedRelation
     protected function elementType(): string
     {
         return CraftTagElement::class;
+    }
+
+    protected function nativeMatchAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::tagMatchable();
+    }
+
+    protected function nativeWritableAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::tagWritable();
     }
 
     protected function sourcePrefix(): string

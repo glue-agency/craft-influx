@@ -40,12 +40,12 @@ abstract class Relation extends RelationalField
     abstract protected function elementType(): string;
 
     /**
-     * Options offered in the CP "Match by" dropdown — native identifiers
-     * (id / slug / title) plus every custom-field handle defined on the
-     * related element type's configured sources. The runtime in
-     * {@see findOne()} already routes unknown match keys through the
-     * dynamic query method, so this only widens the *UI surface*, not the
-     * underlying matching logic.
+     * Options offered in the CP "Match by" dropdown — the element type's own
+     * identifiers ({@see nativeMatchAttributes()}) plus every custom-field
+     * handle defined on the related element type's configured sources. The
+     * runtime in {@see findOne()} routes any match key through the dynamic query
+     * method, so this only shapes the *UI surface*, not the matching logic: a
+     * saved key that's no longer offered keeps working.
      *
      * Shape is grouped — the Vue dropdown renders each group with a heading
      * (the related element type's display name first — "Entry", "User",
@@ -62,20 +62,20 @@ abstract class Relation extends RelationalField
             ? $elementType::displayName()
             : Craft::t('influx', 'Native');
 
+        $natives = $this->nativeMatchAttributes($field);
+
         $groups = [
             [
                 'label'   => $nativeLabel,
                 'kind'    => 'element',
-                'options' => [
-                    ['value' => 'id',    'label' => Craft::t('influx', 'ID (id)')],
-                    ['value' => 'slug',  'label' => Craft::t('influx', 'Slug (slug)')],
-                    ['value' => 'title', 'label' => Craft::t('influx', 'Title (title)')],
-                ],
+                'options' => $natives,
             ],
         ];
 
         $customFields = [];
-        $seen = ['id' => true, 'slug' => true, 'title' => true];
+        // Seeded from the natives this flavour actually offers, so a custom
+        // field handled like an attribute another flavour has isn't shadowed.
+        $seen = array_fill_keys(array_column($natives, 'value'), true);
 
         foreach ($this->sourceFieldLayouts($field) as $layout) {
             if (! $layout instanceof FieldLayout) {
@@ -110,15 +110,40 @@ abstract class Relation extends RelationalField
     public function schema(CraftFieldInterface $field): SchemaBuilder
     {
         /** @var BaseRelationField $field */
-        $nativeSubFields = $this->nativeSubFields($field);
+        $subFields = $this->subFieldRows($field);
 
         return SchemaBuilder::make()
             ->matchBy(['options' => $this->matchOptions($field)])
             ->createWhenMissing()
-            ->when($nativeSubFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
+            ->when($subFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
                 'label'     => Craft::t('influx', 'Sub-fields'),
-                'subFields' => $nativeSubFields,
+                'subFields' => $subFields,
             ]));
+    }
+
+    /**
+     * The identifiers this flavour's "Match by" dropdown offers. Per element
+     * type — a user has no title to match on, a tag has no slug worth matching —
+     * so every subclass overrides; the base offers the one identifier every
+     * element has.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    protected function nativeMatchAttributes(BaseRelationField $field): array
+    {
+        return [['value' => 'id', 'label' => Craft::t('influx', 'ID (id)')]];
+    }
+
+    /**
+     * The attributes this flavour can WRITE back to the related element, as
+     * sub-field rows. Narrower than the matchable list (an `id` identifies, it
+     * never gets written) and per element type, so every subclass overrides.
+     *
+     * @return list<array{handle: string, label: string}>
+     */
+    protected function nativeWritableAttributes(BaseRelationField $field): array
+    {
+        return [];
     }
 
     /**
@@ -136,40 +161,26 @@ abstract class Relation extends RelationalField
     }
 
     /**
-     * Native attributes (title / slug) the related element can receive values
-     * for, rendered as an `elementSubFields` editor and applied via the
-     * mapping's `nativeFields` channel
+     * The writable attributes as sub-field rows, applied via the mapping's
+     * `nativeFields` channel
      * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}).
      *
-     * Driven by the related element's own field layout(s): each is offered
-     * only when a source layout actually includes it — entry types can
-     * auto-generate the title (titleFormat) or hide the slug, category groups
-     * vary too. The union across sources is offered; an unsupported attr that
-     * slips through is inert at apply time anyway. The `$seen` set is keyed by
-     * handle so each native field is contributed at most once — the first source
-     * layout that includes it wins.
+     * Driven by {@see nativeWritableAttributes()} rather than by probing the
+     * source layouts for a matching layout ELEMENT, which is what this used to
+     * do: Craft ships no slug layout element at all, and no title element for
+     * categories, tags or users — so the probe hid every row on every flavour
+     * but Entries, and left three of the four with no card whatsoever. Where a
+     * type genuinely can hide one (an entry's title or slug) the flavour gates
+     * its own list.
      *
      * @return list<array>
      */
     protected function nativeSubFields(BaseRelationField $field): array
     {
         $builder = SchemaBuilder::make();
-        $seen = [];
 
-        foreach ($this->sourceFieldLayouts($field) as $layout) {
-            if (! $layout instanceof FieldLayout) {
-                continue;
-            }
-
-            if (! isset($seen['title']) && $layout->isFieldIncluded('title')) {
-                $seen['title'] = true;
-                $builder->text(['handle' => 'title', 'label' => $layout->getField('title')->label() ?: Craft::t('app', 'Title')]);
-            }
-
-            if (! isset($seen['slug']) && $layout->isFieldIncluded('slug')) {
-                $seen['slug'] = true;
-                $builder->text(['handle' => 'slug', 'label' => Craft::t('app', 'Slug')]);
-            }
+        foreach ($this->nativeWritableAttributes($field) as $attribute) {
+            $builder->text($attribute);
         }
 
         return $builder->toArray();

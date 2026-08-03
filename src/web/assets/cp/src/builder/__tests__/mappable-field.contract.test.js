@@ -93,6 +93,22 @@ describe('Mappable field wire contract', () => {
         expect(typeof related.fieldClass).toBe('string');
     });
 
+    it('marks only the custom rows with a channel', () => {
+        // One card, two channels: an absent key means `nativeFields` — the
+        // channel these rows were stored in before the key existed, and the one
+        // an element attribute has to be written through.
+        const rows = byHandle('relatedArticles').fieldMeta.schema
+            .find((node) => node.type === 'elementSubFields').subFields;
+
+        const channels = Object.fromEntries(rows.map((row) => [row.handle, row.channel]));
+        expect(channels).toEqual({
+            title: undefined,
+            slug: undefined,
+            blurb: 'fields',
+            campus: 'fields',
+        });
+    });
+
     it('carries no visibility flag — everything reported is mappable', () => {
         for (const field of fixture) {
             expect(field).not.toHaveProperty('offered');

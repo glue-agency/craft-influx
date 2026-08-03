@@ -3,11 +3,15 @@
 namespace GlueAgency\Influx\Tests\unit\schema;
 
 use Codeception\Test\Unit;
+use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Entry;
+use craft\elements\Entry as CraftEntryElement;
 use craft\elements\User;
+use craft\fields\BaseRelationField;
 use craft\fields\Entries as CraftEntriesField;
 use craft\fields\Matrix;
 use craft\fields\PlainText;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\fields\Entries;
 use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\schema\MappableField;
@@ -135,41 +139,84 @@ class MappableFieldPayloadTest extends Unit
     }
 
     /**
-     * A custom Entries field, with its default editor taken from the REAL
-     * producer ({@see \GlueAgency\Influx\fields\Entries::defaultEditor()}) the
-     * way the natives take theirs from {@see SchemaBuilder::group()} — so the
-     * fixture pins the field-type-aware default too, not just a hand-written
-     * shape. The extras schema mirrors what {@see Relation::schema()} declares
-     * for a field whose sources expose no native sub-fields.
+     * A custom Entries field, built entirely by the REAL producers — its default
+     * editor from {@see \GlueAgency\Influx\fields\Entries::defaultEditor()} and
+     * its extras from that strategy's own `schema()`, the way the natives take
+     * theirs from {@see SchemaBuilder::group()}. So the fixture pins the
+     * field-type-aware default, the match-by list per element type AND the
+     * sub-field card's rows, rather than a hand-written approximation of them.
      */
     protected function relationDescriptor(): MappableField
     {
-        $editor = (new Entries())->defaultEditor($this->createMock(CraftEntriesField::class));
+        $craftField = $this->createMock(CraftEntriesField::class);
+        $editor = (new Entries())->defaultEditor($craftField);
 
         return MappableField::custom(
             handle: 'relatedArticles',
             name: 'Related articles',
             group: 'Content',
             fieldClass: CraftEntriesField::class,
-            fieldMeta: Field::meta(SchemaBuilder::make()
-                ->matchBy([
-                    'options' => [
-                        [
-                            'label'   => 'Entry',
-                            'kind'    => 'element',
-                            'options' => [
-                                ['value' => 'id', 'label' => 'ID (id)'],
-                                ['value' => 'slug', 'label' => 'Slug (slug)'],
-                                ['value' => 'title', 'label' => 'Title (title)'],
-                            ],
-                        ],
-                    ],
-                ])
-                ->createWhenMissing()
-                ->toArray()),
+            fieldMeta: Field::meta($this->relationSchema()->schema($craftField)->toArray()),
             defaultType: $editor['type'],
             elementType: $editor['elementType'],
         );
+    }
+
+    /**
+     * The real Entries strategy with only what needs a booted Craft stubbed: the
+     * source-layout walk (one layout, one Entries custom field) and the entry-type
+     * lookup its title / slug gating reads. Building the fixture from the producer
+     * rather than by hand is what makes it pin the match-by list AND the card's
+     * rows — the two things GT-107 reported wrong.
+     */
+    protected function relationSchema(): Entries
+    {
+        return new class($this) extends Entries {
+            public MappableFieldPayloadTest $test;
+
+            public function __construct(MappableFieldPayloadTest $test)
+            {
+                $this->test = $test;
+            }
+
+            protected function sourceEntryTypes(BaseRelationField $field): array
+            {
+                return [];
+            }
+
+            protected function sourceFieldLayouts(BaseRelationField $field): iterable
+            {
+                return [$this->test->fakeLayout()];
+            }
+
+            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            {
+                return $craftField->handle === 'campus'
+                    ? ['type' => SchemaBuilder::ELEMENT, 'elementType' => CraftEntryElement::class]
+                    : null;
+            }
+        };
+    }
+
+    /**
+     * A source's field layout carrying one plain-text and one relation custom
+     * field, so the fixture pins a row of each editor kind.
+     */
+    public function fakeLayout(): FieldLayout
+    {
+        $customFields = [];
+
+        foreach (['blurb' => PlainText::class, 'campus' => CraftEntriesField::class] as $handle => $class) {
+            $field = $this->createMock($class);
+            $field->handle = $handle;
+            $field->name = ucfirst($handle);
+            $customFields[] = $field;
+        }
+
+        $layout = $this->createMock(FieldLayout::class);
+        $layout->method('getCustomFields')->willReturn($customFields);
+
+        return $layout;
     }
 
     protected function fixture(): array

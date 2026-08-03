@@ -17,6 +17,7 @@ use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
@@ -234,36 +235,28 @@ class EntryTarget extends AbstractElementTarget
     }
 
     /**
-     * Adds slug/title on top of the base `id` — but only when the link's
-     * resolved entry type actually enables them (title fields can be
-     * generated via titleFormat, slug fields hidden per type). Unresolved
-     * criteria fall back to id-only. The title option is labelled from the
-     * field layout, so it reads as what the editor actually sees.
+     * The entry identifiers, from the one list an Entries RELATION field offers
+     * too ({@see NativeAttributes::entryMatchable()}), gated on the link's
+     * resolved entry type — a title can be generated from a titleFormat and a
+     * slug field can be hidden per type. Unresolved criteria fall back to
+     * id-only: there's no type yet whose settings could gate anything, and
+     * offering the rest would be guessing.
+     *
+     * The title option is labelled from the field layout, so it reads as what
+     * the editor actually sees.
      */
     public function matchableNativeAttributes(Link $link): array
     {
-        $attributes = parent::matchableNativeAttributes($link);
-
         $resolved = (new EntryTypeResolver())->tryResolve($link);
 
         if (! $resolved) {
-            return $attributes;
+            return parent::matchableNativeAttributes($link);
         }
         [, $entryType] = $resolved;
 
-        if (Compat::entryTypeShowsSlugField($entryType)) {
-            $attributes[] = ['value' => 'slug', 'label' => Craft::t('influx', 'Slug (slug)')];
-        }
+        $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(EntryTitleField::class);
 
-        if (Compat::entryTypeShowsTitleField($entryType)) {
-            $titleElement = $entryType->getFieldLayout()?->getFirstElementByType(
-                EntryTitleField::class,
-            );
-            $titleLabel = $titleElement?->label() ?: Craft::t('app', 'Title');
-            $attributes[] = ['value' => 'title', 'label' => "{$titleLabel} (title)"];
-        }
-
-        return $attributes;
+        return NativeAttributes::entryMatchable([$entryType], $titleElement?->label());
     }
 
     /**
@@ -506,9 +499,10 @@ class EntryTarget extends AbstractElementTarget
 
     /**
      * Match-by options for the native author dropdown. Built statically (no
-     * Craft field instance to introspect) — id/username/email cover the
-     * native identifiers, then any custom fields on the global User layout
-     * are surfaced so unique handles like an external `importId` can match.
+     * Craft field instance to introspect) — the shared user identifiers
+     * ({@see NativeAttributes::userMatchable()}), then any custom fields on the
+     * global User layout so unique handles like an external `importId` can
+     * match.
      *
      * @return list<array{label: string, options: list<array{value: string, label: string}>}>
      */
@@ -518,11 +512,7 @@ class EntryTarget extends AbstractElementTarget
             [
                 'label'   => Craft::t('influx', 'User'),
                 'kind'    => 'element',
-                'options' => [
-                    ['value' => 'id',       'label' => Craft::t('influx', 'ID (id)')],
-                    ['value' => 'username', 'label' => Craft::t('influx', 'Username (username)')],
-                    ['value' => 'email',    'label' => Craft::t('influx', 'Email (email)')],
-                ],
+                'options' => NativeAttributes::userMatchable(),
             ],
         ];
 

@@ -29,8 +29,14 @@
                 {
                     "type": "select",
                     "options": [
-                        { "value": "id", "label": "ID" },
-                        { "value": "email", "label": "Email" }
+                        {
+                            "value": "id",
+                            "label": "ID"
+                        },
+                        {
+                            "value": "email",
+                            "label": "Email"
+                        }
                     ],
                     "handle": "match",
                     "label": "Match by",
@@ -87,9 +93,36 @@
                             "label": "Entry",
                             "kind": "element",
                             "options": [
-                                { "value": "id", "label": "ID (id)" },
-                                { "value": "slug", "label": "Slug (slug)" },
-                                { "value": "title", "label": "Title (title)" }
+                                {
+                                    "value": "id",
+                                    "label": "ID (id)"
+                                },
+                                {
+                                    "value": "title",
+                                    "label": "Title (title)"
+                                },
+                                {
+                                    "value": "slug",
+                                    "label": "Slug (slug)"
+                                },
+                                {
+                                    "value": "uri",
+                                    "label": "URI (uri)"
+                                }
+                            ]
+                        },
+                        {
+                            "label": "Fields",
+                            "kind": "fields",
+                            "options": [
+                                {
+                                    "value": "blurb",
+                                    "label": "Blurb (blurb)"
+                                },
+                                {
+                                    "value": "campus",
+                                    "label": "Campus (campus)"
+                                }
                             ]
                         }
                     ],
@@ -101,6 +134,35 @@
                     "type": "lightswitch",
                     "handle": "create",
                     "label": "Create when not found"
+                },
+                {
+                    "type": "elementSubFields",
+                    "handle": "nativeFields",
+                    "label": "Sub-fields",
+                    "subFields": [
+                        {
+                            "type": "text",
+                            "handle": "title",
+                            "label": "Title"
+                        },
+                        {
+                            "type": "text",
+                            "handle": "slug",
+                            "label": "Slug"
+                        },
+                        {
+                            "type": "text",
+                            "handle": "blurb",
+                            "label": "Blurb",
+                            "channel": "fields"
+                        },
+                        {
+                            "type": "text",
+                            "handle": "campus",
+                            "label": "Campus",
+                            "channel": "fields"
+                        }
+                    ]
                 }
             ]
         }

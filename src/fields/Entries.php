@@ -8,7 +8,9 @@ use craft\elements\db\ElementQueryInterface;
 use craft\elements\Entry as CraftEntryElement;
 use craft\fields\BaseRelationField;
 use craft\fields\Entries as CraftEntriesField;
+use craft\models\Section;
 use GlueAgency\Influx\helpers\Compat;
+use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -42,34 +44,101 @@ class Entries extends Relation
         return CraftEntryElement::class;
     }
 
+    protected function nativeMatchAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::entryMatchable($this->sourceEntryTypes($field));
+    }
+
+    protected function nativeWritableAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::entryWritable($this->sourceEntryTypes($field));
+    }
+
     protected function sourceFieldLayouts(BaseRelationField $field): iterable
     {
-        $sources = $field->sources ?? '*';
+        foreach ($this->sourceEntryTypes($field) as $type) {
+            yield $type->getFieldLayout();
+        }
+    }
+
+    /**
+     * The entry types this field may relate — every type of every allowed
+     * section, which is what both the schema (title / slug gating, custom
+     * sub-fields, match options) and the layout walk are built from.
+     *
+     * @return list<\craft\models\EntryType>
+     */
+    protected function sourceEntryTypes(BaseRelationField $field): array
+    {
+        $types = [];
+
+        foreach ($this->sourceSections($field->sources ?? '*') ?? $this->allSections() as $section) {
+            foreach ($section->getEntryTypes() as $type) {
+                $types[] = $type;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * The sections a source list names, or null for "no constraint" — which an
+     * unrestricted field (`'*'`) and a malformed setting both mean.
+     *
+     * Two key shapes, and the second one is easy to miss: a section is named
+     * `section:UID`, but a field restricted to Singles stores the bare literal
+     * `singles` instead (there's no vendor constant for the key, only
+     * `Section::TYPE_SINGLE` for the type). Decoding only the first shape left a
+     * Singles-only field looking sourceless: no match options, no sub-field card
+     * and no scoping on its lookups.
+     *
+     * @return ?list<\craft\models\Section>
+     */
+    protected function sourceSections(mixed $sources): ?array
+    {
+        if ($sources === '*' || ! is_array($sources)) {
+            return null;
+        }
 
         $sections = [];
 
-        if ($sources === '*' || ! is_array($sources)) {
-            $sections = Compat::getAllSections();
-        } else {
-            foreach ($sources as $source) {
-                $uid = $this->sourceUid($source, 'section:');
-
-                if ($uid === null) {
-                    continue;
+        foreach ($sources as $source) {
+            if ($source === 'singles') {
+                foreach ($this->allSections() as $section) {
+                    if ($section->type === Section::TYPE_SINGLE) {
+                        $sections[] = $section;
+                    }
                 }
-                $section = Compat::getSectionByUid($uid);
 
-                if ($section) {
-                    $sections[] = $section;
-                }
+                continue;
+            }
+
+            $uid = $this->sourceUid($source, 'section:');
+            $section = $uid !== null ? $this->sectionByUid($uid) : null;
+
+            if ($section) {
+                $sections[] = $section;
             }
         }
 
-        foreach ($sections as $section) {
-            foreach ($section->getEntryTypes() as $type) {
-                yield $type->getFieldLayout();
-            }
-        }
+        return $sections;
+    }
+
+    /**
+     * The two section reads, behind seams: they're static Compat calls that
+     * need a booted Craft, and the source decoding above is worth specifying
+     * without one.
+     *
+     * @return list<Section>
+     */
+    protected function allSections(): array
+    {
+        return Compat::getAllSections();
+    }
+
+    protected function sectionByUid(string $uid): ?Section
+    {
+        return Compat::getSectionByUid($uid);
     }
 
     protected function scopeBySources(FieldContext $context, ElementQueryInterface $query): void
@@ -77,16 +146,19 @@ class Entries extends Relation
         if (! $context->craftField) {
             return;
         }
-        $sources = $context->craftField->sources ?? '*';
 
-        if ($sources === '*' || ! is_array($sources)) {
+        $sections = $this->sourceSections($context->craftField->sources ?? '*');
+
+        if ($sections === null) {
             return;
         }
 
         $sectionIds = [];
 
-        foreach ($sources as $source) {
-            $id = $this->sourceIdByUid($source, 'section:', CraftTable::SECTIONS);
+        foreach ($sections as $section) {
+            // By uid rather than off the model: a section id isn't Project
+            // Config, so the resolved id is the one this environment stores.
+            $id = $this->sourceIdByUid('section:' . $section->uid, 'section:', CraftTable::SECTIONS);
 
             if ($id !== null) {
                 $sectionIds[] = $id;

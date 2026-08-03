@@ -6,6 +6,7 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\SyncContext;
 
@@ -113,21 +114,13 @@ class UserTarget extends AbstractElementTarget
     }
 
     /**
-     * Adds the user's unique identifiers on top of the base `id`. `username`
-     * is dropped when the site is configured to use the email as the username
-     * (it's then just a copy of the email — not a distinct match key).
+     * The user's identifiers, from the one list a Users RELATION field offers
+     * too ({@see NativeAttributes::userMatchable()}) — including its `id` lead,
+     * so the base's guarantee holds without merging into it.
      */
     public function matchableNativeAttributes(Link $link): array
     {
-        $attributes = parent::matchableNativeAttributes($link);
-
-        if (! Craft::$app->getConfig()->getGeneral()->useEmailAsUsername) {
-            $attributes[] = ['value' => 'username', 'label' => Craft::t('influx', 'Username (username)')];
-        }
-
-        $attributes[] = ['value' => 'email', 'label' => Craft::t('influx', 'Email (email)')];
-
-        return $attributes;
+        return NativeAttributes::userMatchable();
     }
 
     /**
@@ -256,30 +249,16 @@ class UserTarget extends AbstractElementTarget
     {
         return SchemaBuilder::make()
             ->group(Craft::t('influx', 'Native'), function(SchemaBuilder $group): void {
-                if (! Craft::$app->getConfig()->getGeneral()->useEmailAsUsername) {
+                // The same writable attributes a Users relation offers as
+                // sub-field rows, in the same order — one list, two surfaces.
+                foreach (NativeAttributes::userWritable() as $attribute) {
                     $group->text([
-                        'handle' => 'username',
-                        'name'   => Craft::t('app', 'Username'),
+                        'handle' => $attribute['handle'],
+                        'name'   => $attribute['label'],
                     ]);
                 }
 
                 $group
-                    ->text([
-                        'handle' => 'email',
-                        'name'   => Craft::t('app', 'Email'),
-                    ])
-                    ->text([
-                        'handle' => 'fullName',
-                        'name'   => Craft::t('app', 'Full Name'),
-                    ])
-                    ->text([
-                        'handle' => 'firstName',
-                        'name'   => Craft::t('app', 'First Name'),
-                    ])
-                    ->text([
-                        'handle' => 'lastName',
-                        'name'   => Craft::t('app', 'Last Name'),
-                    ])
                     ->select([
                         'handle'  => 'enabled',
                         'name'    => Craft::t('app', 'Enabled'),

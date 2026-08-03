@@ -5,8 +5,10 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\db\Table as CraftTable;
 use craft\elements\Category as CraftCategoryElement;
+use craft\fields\BaseRelationField;
 use craft\fields\Categories as CraftCategoriesField;
 use craft\models\FieldLayout;
+use GlueAgency\Influx\schema\NativeAttributes;
 
 /**
  * Relation strategy for the Categories field: `group:UID` sources resolving
@@ -31,6 +33,16 @@ class Categories extends GroupScopedRelation
     protected function elementType(): string
     {
         return CraftCategoryElement::class;
+    }
+
+    protected function nativeMatchAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::categoryMatchable();
+    }
+
+    protected function nativeWritableAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::categoryWritable();
     }
 
     protected function sourcePrefix(): string

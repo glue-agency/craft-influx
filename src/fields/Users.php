@@ -6,6 +6,7 @@ use Craft;
 use craft\elements\User as CraftUserElement;
 use craft\fields\BaseRelationField;
 use craft\fields\Users as CraftUsersField;
+use GlueAgency\Influx\schema\NativeAttributes;
 
 class Users extends Relation
 {
@@ -22,6 +23,16 @@ class Users extends Relation
     protected function elementType(): string
     {
         return CraftUserElement::class;
+    }
+
+    protected function nativeMatchAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::userMatchable();
+    }
+
+    protected function nativeWritableAttributes(BaseRelationField $field): array
+    {
+        return NativeAttributes::userWritable();
     }
 
     /**
