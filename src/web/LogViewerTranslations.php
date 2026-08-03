@@ -74,7 +74,6 @@ class LogViewerTranslations
                 'showing {label}',
                 'filter with the counters above',
                 'Loading…',
-                'In trash',
                 'Saved despite {n} field error(s)',
                 'No {label} items',
                 'No data to process',

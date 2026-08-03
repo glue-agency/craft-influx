@@ -83,7 +83,10 @@ describe('LogApp', () => {
         expect(mountApp().find('.influx-log-meta').text()).not.toContain('by ');
     });
 
-    it('pills an item whose element sits in the trash, and only that one', () => {
+    it('says nothing in the list about an element sitting in the trash', () => {
+        // The row is about what the run did to the item; where the element
+        // lives now is the detail pane's business, and the pill was crowding a
+        // line that already carries a title, a message and an action badge.
         const w = mountApp({
             items: [
                 { id: 2, action: 'deleted', matchValue: 'B', message: '', title: 'Item B', trashed: true, errorCount: 0 },
@@ -92,9 +95,9 @@ describe('LogApp', () => {
         });
 
         const rows = w.findAll('.influx-split-item');
-        expect(rows[0].find('.influx-split-item-trashed').text()).toBe('In trash');
         expect(rows[0].find('.influx-split-item-title').text()).toBe('Item B');
-        expect(rows[1].find('.influx-split-item-trashed').exists()).toBe(false);
+        expect(rows[0].text()).not.toContain('In trash');
+        expect(rows[1].text()).not.toContain('In trash');
     });
 
     it('hangs the resize handle on the seam, between the list and the detail', () => {
