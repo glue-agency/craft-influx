@@ -1,5 +1,12 @@
 # Release Notes for Influx
 
+## 1.0.0-alpha.9 - 2026-08-03
+
+### Changed
+- **Every site the CP shows is a Craft chip**, labelled with the site's name rather than the handle its gray pill carried: the Links overview's Sites cell, the Logs overview's Site column, the log detail, and the per-site endpoint lines a multi-site run lists. Craft 5's chip renderer takes any component, not only elements, and a site is one. The Links cell shows the first site's chip plus a `+N` badge that reveals the rest on click, so a link on sixteen sites is one line instead of four. A link with no site endpoints — and a run with no site scope — chips the primary site itself, where both used to show a blue "primary" pill: the site it ran against is the fact worth showing. Craft 4 has no generic chip renderer and keeps a pill, carrying the same name.
+- **The Logs overview names a run's link with its chip and the person who triggered it with theirs**, in a User column of its own beside the trigger. The user chip is Craft's own — photo, status, hyperlinked name — resolved for the whole page in one query, and a hard-purged account still reads as a muted `#id`. A link is a config model rather than an element, which Craft 5 chips just as happily; a run whose link has since been deleted degrades to the handle it stored, as it did before.
+- **The log detail's run facts moved out of the summary sentence into labelled cells.** Site, trigger, user and window read as their own facts now — the site and the user as chips — laid out on the counters' grid, so a fact sits in the same column as the counter under it. The sentence beside the link keeps the timing and nothing else.
+
 ## 1.0.0-alpha.8 - 2026-08-03
 
 ### Added
