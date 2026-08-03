@@ -8,6 +8,7 @@ use GlueAgency\Influx\events\RegisterFieldsEvent;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\fields\Assets;
 use GlueAgency\Influx\fields\Categories;
+use GlueAgency\Influx\fields\ContentBlock;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\DefaultField;
 use GlueAgency\Influx\fields\Dropdown;
@@ -121,6 +122,11 @@ class FieldsService extends AbstractRegistry
             Tags::class,
             Matrix::class,
             Table::class,
+            // Craft 5 only. The registry files a strategy under the class STRING
+            // its craftFieldClass() names and matches by walking a real field's
+            // parent chain, so on Craft 4 this is a key nothing ever hits — no
+            // version branch needed.
+            ContentBlock::class,
         ];
     }
 
