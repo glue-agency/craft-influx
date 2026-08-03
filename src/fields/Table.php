@@ -109,9 +109,8 @@ class Table extends Field
         }
 
         return SchemaBuilder::make()->subFields([
-            'label'        => Craft::t('influx', 'Columns'),
-            'instructions' => Craft::t('influx', 'Each column reads its own source node; the values are zipped by index into rows. Mappings are keyed by column ID, so renaming a column’s handle keeps them intact.'),
-            'subFields'    => $subFields->toArray(),
+            'label'     => Craft::t('influx', 'Columns'),
+            'subFields' => $subFields->toArray(),
         ]);
     }
 
