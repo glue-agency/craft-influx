@@ -11,7 +11,11 @@ const here = dirname(fileURLToPath(import.meta.url));
  * serves the compiled files like any other plugin resource.
  */
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [vue({
+        // `<craft-tooltip>` is a custom element Craft's CP registers, so Vue
+        // must render it as-is instead of trying to resolve a component.
+        template: { compilerOptions: { isCustomElement: (tag) => tag.startsWith('craft-') } },
+    })],
 
     root: resolve(here, 'src/web/assets/cp/src'),
 

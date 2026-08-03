@@ -294,34 +294,60 @@ describe('DebugItemDetail', () => {
         });
     });
 
-    describe('status-pill "why" popover', () => {
+    describe('status-pill explanation', () => {
         const defaultedRow = () => baseRow({
             mappings: [
                 { handle: 'status', label: 'Status', node: 'status', native: false, rawValue: null, parsedValue: 'for_sale', currentValue: 'for_sale', changed: false, usedDefault: true },
             ],
         });
 
-        it('opens an explanation on click and toggles closed on a second click', async () => {
-            const w = mountDetail({ row: defaultedRow() });
+        /**
+         * happy-dom registers no custom elements, which is exactly the Craft 4
+         * case — so the Craft 5 specs are the ones that have to pretend the CP
+         * registered its tooltip.
+         */
+        const withCraftTooltip = (fn) => {
+            const registered = window.customElements.get;
+            window.customElements.get = (tag) => (tag === 'craft-tooltip' ? class {} : registered.call(window.customElements, tag));
 
-            expect(w.vm.info).toBe(null);
+            try {
+                fn();
+            } finally {
+                window.customElements.get = registered;
+            }
+        };
 
-            await w.find('.influx-detail-pill--default').trigger('click');
-            expect(w.vm.info).not.toBe(null);
-            expect(w.vm.info.text).toContain('default value');
+        it('hands the sentence to Craft\'s own tooltip', () => {
+            // The CP registers <craft-tooltip> and owns the positioning,
+            // flipping and theming; the plugin only says what it should read.
+            withCraftTooltip(() => {
+                const tooltip = mountDetail({ row: defaultedRow() }).find('craft-tooltip');
 
-            await w.find('.influx-detail-pill--default').trigger('click');
-            expect(w.vm.info).toBe(null);
+                expect(tooltip.exists()).toBe(true);
+                expect(tooltip.attributes('text')).toContain('default value');
+                expect(tooltip.find('.influx-detail-pill--default').exists()).toBe(true);
+            });
         });
 
-        it('closes on Escape', async () => {
+        it('makes the sentence the pill\'s accessible name, not a second tooltip', () => {
+            // Craft's tooltip sets no role="tooltip" and no aria-describedby, so
+            // without the label a reader who can't see it gets "use default" and
+            // no way to reach the why. The native title would double up.
+            withCraftTooltip(() => {
+                const pill = mountDetail({ row: defaultedRow() }).find('.influx-detail-pill--default');
+
+                expect(pill.attributes('aria-label')).toContain('default value');
+                expect(pill.attributes('title')).toBeUndefined();
+            });
+        });
+
+        it('falls back to a native title where the CP registers no tooltip', () => {
+            // Craft 4 ships no such element: the wrapper is an inert span and the
+            // sentence rides the button's own title instead.
             const w = mountDetail({ row: defaultedRow() });
 
-            await w.find('.influx-detail-pill--default').trigger('click');
-            expect(w.vm.info).not.toBe(null);
-
-            w.vm.onInfoKeydown({ key: 'Escape' });
-            expect(w.vm.info).toBe(null);
+            expect(w.find('craft-tooltip').exists()).toBe(false);
+            expect(w.find('.influx-detail-pill--default').attributes('title')).toContain('default value');
         });
     });
 
@@ -382,13 +408,15 @@ describe('DebugItemDetail', () => {
             expect(keyed.emitted('drill')).toEqual([[row.mappings[0]]]);
         });
 
-        it('opens a status pill\'s popover without also drilling', async () => {
+        it('lets a status pill be pressed without also drilling', async () => {
+            // `.stop` stops propagation, not immediate propagation, so the
+            // tooltip's own listener on the button still runs — only the row's
+            // drill toggle is spared.
             const row = drillRow([child('would-add')], { unaddressed: true });
             const w = mountDetail({ row });
 
             await w.find('.influx-detail-pill--untouched').trigger('click');
 
-            expect(w.vm.info).not.toBe(null);
             expect(w.emitted('drill')).toBe(undefined);
         });
 

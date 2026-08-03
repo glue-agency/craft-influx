@@ -7,7 +7,11 @@ import { defineConfig } from 'vitest/config';
  * irrelevant or hostile to the test runner.
  */
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [vue({
+        // `<craft-tooltip>` is a custom element Craft's CP registers, so Vue
+        // must render it as-is instead of trying to resolve a component.
+        template: { compilerOptions: { isCustomElement: (tag) => tag.startsWith('craft-') } },
+    })],
     test: {
         environment: 'happy-dom',
         include: ['src/web/assets/cp/src/**/__tests__/*.test.js'],

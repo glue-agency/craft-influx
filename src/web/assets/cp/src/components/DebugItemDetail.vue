@@ -68,30 +68,36 @@
                         <div class="influx-detail-field">
                             <span class="influx-detail-field-name">
                                 {{ m.label }}
-                                <button
-                                    v-if="isMatch(m)"
-                                    type="button"
-                                    class="influx-detail-pill influx-detail-pill--match"
-                                    @click.stop="toggleInfo($event, m.handle + ':match', $t('the unique identifier used by this Element Link'))"
-                                >{{ $t('match by') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
-                                <button
-                                    v-if="m.unaddressed"
-                                    type="button"
-                                    class="influx-detail-pill influx-detail-pill--untouched"
-                                    @click.stop="toggleInfo($event, m.handle + ':untouched', $t('the mapped node does not exist for this Element Link'))"
-                                >{{ $t('missing node') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
-                                <button
-                                    v-if="m.usedDefault"
-                                    type="button"
-                                    class="influx-detail-pill influx-detail-pill--default"
-                                    @click.stop="toggleInfo($event, m.handle + ':default', $t('the mapped node pushed a default value for this Element Link'))"
-                                >{{ $t('use default') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
-                                <button
-                                    v-if="m.managedByTarget"
-                                    type="button"
-                                    class="influx-detail-pill influx-detail-pill--managed"
-                                    @click.stop="toggleInfo($event, m.handle + ':managed', $t('This value isn\'t written during the element save — Influx reconciles it separately after each item is imported.'))"
-                                >{{ $t('not managed by element') }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
+                                <!-- Why this row is flagged, in Craft's own
+                                     tooltip: the CP registers <craft-tooltip>
+                                     and positions, flips and themes it, and the
+                                     plugin already leans on it for the element
+                                     editor's field indicators. On Craft 4, which
+                                     ships no such element, the wrapper is an
+                                     inert inline span and the button's `title`
+                                     carries the same sentence natively.
+
+                                     `.stop` keeps the press off the row's drill
+                                     toggle. It stops propagation, not immediate
+                                     propagation, so the tooltip's own listener
+                                     on the same button still fires. -->
+                                <component
+                                    :is="tooltipTag"
+                                    v-for="pill in pills(m)"
+                                    :key="pill.key"
+                                    placement="top"
+                                    max-width="260px"
+                                    :text="pill.info"
+                                >
+                                    <button
+                                        type="button"
+                                        class="influx-detail-pill"
+                                        :class="pill.class"
+                                        :aria-label="pill.info"
+                                        :title="hasCraftTooltip ? null : pill.info"
+                                        @click.stop
+                                    >{{ pill.label }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
+                                </component>
                             </span>
                             <!-- The feed node this mapping reads from. A
                                  node-less mapping (an explicit default) shows no
@@ -147,18 +153,6 @@
         <!-- Raw: the item's payload exactly as it came off the feed. -->
         <pre v-else class="influx-detail-raw" v-text="rawJson"></pre>
 
-        <!-- The "why" popover for a status pill. Teleported to <body> so the
-             table's own overflow can't clip it; positioned at the clicked pill
-             (viewport coords, hence position: fixed). -->
-        <teleport to="body">
-            <div
-                v-if="info"
-                class="influx-detail-info"
-                :style="{ top: info.top + 'px', left: info.left + 'px' }"
-                @click.stop
-                v-text="info.text"
-            ></div>
-        </teleport>
     </div>
 </template>
 
@@ -302,10 +296,18 @@
     font-weight: 600;
 }
 
-/* Status pills beside the field label. They're buttons (clicking opens the
-   "why" popover), so reset the native chrome and share one shape; each variant
-   only differs in palette. The trailing info glyph marks them as "click for
-   more". */
+/* Status pills beside the field label. They're buttons — Craft's tooltip needs
+   a focusable trigger, and it keeps the explanation reachable by keyboard — so
+   reset the native chrome and share one shape; each variant only differs in
+   palette. The trailing info glyph marks them as "there's more". */
+/* The tooltip wrapper takes the pill's place as a flex item of the label row:
+   cp.css styles only `.craft-tooltip` (the span it appends to the body), never
+   the host element, which is inline by default. */
+.influx-detail-field-name > craft-tooltip,
+.influx-detail-field-name > span:has(> .influx-detail-pill) {
+    display: inline-flex;
+}
+
 .influx-detail-pill {
     display: inline-flex;
     align-items: center;
@@ -395,21 +397,6 @@
     gap: 4px;
 }
 
-/* The status-pill "why" popover, teleported to <body> (so the table overflow
-   can't clip it) and fixed at the clicked pill. Self-contained dark card, so it
-   reads as an overlay without needing light/dark theming. */
-.influx-detail-info {
-    position: fixed;
-    z-index: 100;
-    max-width: 260px;
-    padding: 8px 10px;
-    background: #29333d;
-    color: #fff;
-    border-radius: 5px;
-    font-size: 12px;
-    line-height: 1.4;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .22);
-}
 
 .influx-detail-field-error {
     margin: 0;
@@ -531,13 +518,24 @@ export default {
     data() {
         return {
             view: 'parsed',
-            // The open status-pill popover: { key, text, top, left } (viewport
-            // coords), or null when none is open. Only one is open at a time.
-            info: null,
         };
     },
 
     computed: {
+        /**
+         * Craft 5 registers `<craft-tooltip>`; Craft 4 ships nothing of the
+         * kind, so the wrapper degrades to a plain inline span and each pill
+         * falls back to its native `title`. Read once — a custom element can't
+         * be registered mid-render.
+         */
+        hasCraftTooltip() {
+            return !!window.customElements?.get?.('craft-tooltip');
+        },
+
+        tooltipTag() {
+            return this.hasCraftTooltip ? 'craft-tooltip' : 'span';
+        },
+
         // Header label when there's no element chip (a would-create or
         // would-skip item, or a child the sync hasn't created yet): the match
         // value, else the row's own title (children carry no match value), else
@@ -563,10 +561,6 @@ export default {
                 return String(this.row.raw);
             }
         },
-    },
-
-    beforeUnmount() {
-        this.closeInfo();
     },
 
     methods: {
@@ -651,47 +645,55 @@ export default {
             return this.$t('No changes');
         },
 
+        /**
+         * The flags this row carries, each with the sentence that explains it.
+         * One list rather than four near-identical blocks, since every pill
+         * differs only in when it shows, what it says and its palette.
+         *
+         * The explanation is the pill's accessible NAME (`aria-label`), not just
+         * its tooltip text: Craft's tooltip sets no `role="tooltip"` and no
+         * `aria-describedby`, so a reader who can't see it would otherwise get
+         * only "use default" with no way to reach the why.
+         */
+        pills(m) {
+            return [
+                {
+                    key: 'match',
+                    when: this.isMatch(m),
+                    class: 'influx-detail-pill--match',
+                    label: this.$t('match by'),
+                    info: this.$t('the unique identifier used by this Element Link'),
+                },
+                {
+                    key: 'untouched',
+                    when: m.unaddressed,
+                    class: 'influx-detail-pill--untouched',
+                    label: this.$t('missing node'),
+                    info: this.$t('the mapped node does not exist for this Element Link'),
+                },
+                {
+                    key: 'default',
+                    when: m.usedDefault,
+                    class: 'influx-detail-pill--default',
+                    label: this.$t('use default'),
+                    info: this.$t('the mapped node pushed a default value for this Element Link'),
+                },
+                {
+                    key: 'managed',
+                    when: m.managedByTarget,
+                    class: 'influx-detail-pill--managed',
+                    label: this.$t('not managed by element'),
+                    info: this.$t('This value isn\'t written during the element save — Influx reconciles it separately after each item is imported.'),
+                },
+            ].filter((pill) => pill.when);
+        },
+
         // Values arrive already stringified + truncated by describeValue();
         // a genuine null/undefined renders as a blank cell.
         isNullish(v) {
             return v === null || v === undefined;
         },
 
-        // Open (or, on the same pill, close) the "why" popover for a status
-        // pill, anchored just under the clicked pill. One open at a time; a
-        // click anywhere else, Escape, or a scroll dismisses it (listeners are
-        // added only while open, and torn down in closeInfo / beforeUnmount).
-        toggleInfo(event, key, text) {
-            if (this.info && this.info.key === key) {
-                this.closeInfo();
-
-                return;
-            }
-
-            const rect = event.currentTarget.getBoundingClientRect();
-            this.info = { key, text, top: rect.bottom + 6, left: rect.left };
-
-            document.addEventListener('click', this.closeInfo);
-            document.addEventListener('keydown', this.onInfoKeydown);
-            window.addEventListener('scroll', this.closeInfo, true);
-        },
-
-        closeInfo() {
-            if (! this.info) {
-                return;
-            }
-
-            this.info = null;
-            document.removeEventListener('click', this.closeInfo);
-            document.removeEventListener('keydown', this.onInfoKeydown);
-            window.removeEventListener('scroll', this.closeInfo, true);
-        },
-
-        onInfoKeydown(event) {
-            if (event.key === 'Escape') {
-                this.closeInfo();
-            }
-        },
     },
 
     components: { 'v-action-badge': ActionBadge },
