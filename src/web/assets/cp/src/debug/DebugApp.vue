@@ -228,7 +228,17 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
+/* Craft paints scrollbar tracks grey (--gray-050, 11px wide). In a pane whose
+   inline-end edge IS the split's seam that reads as a second line beside the
+   hairline — a striped border rather than one edge. The thumb alone says as
+   much, and `scrollbar-gutter: stable` above keeps the rows from shifting when
+   it appears. */
+.influx-split-list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
 
 .influx-split-list-title {
     font-size: 11px;

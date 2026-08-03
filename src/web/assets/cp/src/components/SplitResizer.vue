@@ -51,7 +51,15 @@
     transition: background-color .12s;
 }
 
-.influx-split-resizer:hover::before,
+/* Hover only thickens the seam, in grey: the saturated blue read as a divider
+   the page owns rather than a handle the reader can move, and it stayed put as
+   long as the pointer rested there. Blue is kept for the two states where the
+   seam IS being moved — a live drag, and a keyboard focus whose arrow keys
+   will. */
+.influx-split-resizer:hover::before {
+    background: var(--gray-300);
+}
+
 .influx-split-resizer:focus-visible::before,
 .influx-split-resizer.is-dragging::before {
     background: hsl(208, 100%, 42%);
@@ -82,7 +90,10 @@
     transition: background-color .12s;
 }
 
-.influx-rail-resizer:hover::before,
+.influx-rail-resizer:hover::before {
+    background: var(--gray-300);
+}
+
 .influx-rail-resizer:focus-visible::before,
 .influx-rail-resizer.is-dragging::before {
     background: hsl(208, 100%, 42%);
