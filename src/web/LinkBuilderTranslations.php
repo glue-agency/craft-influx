@@ -148,8 +148,6 @@ class LinkBuilderTranslations
                 'Configure',
                 'Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.',
                 'missing mapping',
-                'Clear this field’s mapping, including its sub-fields',
-                'Clear',
                 '— no mapping —',
                 'Search options…',
                 '— use default —',

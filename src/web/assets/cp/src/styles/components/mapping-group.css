@@ -35,14 +35,15 @@
 
 /* The header's "clear nodes" affordance — a text link, not a button, so it
    reads quieter than the pills it precedes. Sits in both headers that carry
-   pills (MappingGroup, SubFieldRows). */
+   pills (MappingGroup, SubFieldRows). Deliberately gray, not link-blue: it
+   belongs to the same quiet row of chrome as the pills beside it. */
 .influx-clear-link {
     padding: 0;
     border: 0;
     background: none;
     font-size: 11px;
     font-weight: 400;
-    color: var(--link-color, #1f5fea);
+    color: #444;
     cursor: pointer;
 }
 

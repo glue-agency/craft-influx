@@ -47,32 +47,6 @@
 .influx-mapping-row .meta.is-toggleable:hover .name { color: #0b69a3; }
 
 .influx-mapping-row .meta .name { font-weight: 600; }
-/* Sits inline after the field name (the meta cell is a plain block, and
-   the handle below it is display:block) — same 6px gutter as the missing
-   badge it follows.
-
-   Hidden until the pointer is on the row: a permanent button beside every
-   mapped field's title was chrome competing with the name it followed. It
-   still occupies its space (no layout shift on reveal) and `pointer-events:
-   none` keeps the invisible button out of the click path — the ROW is what
-   reveals it, so the button never has to be its own hover target. */
-.influx-mapping-row .meta .clear-mapping {
-    margin-left: 6px;
-    vertical-align: middle;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .15s ease;
-}
-
-/* `:focus-within` covers the keyboard path whole: it fires for the button's
-   own focus as well as for any control in the row, so a user tabbing towards
-   the button sees it before reaching it — and never activates one they
-   can't see. */
-.influx-mapping-row:hover .meta .clear-mapping,
-.influx-mapping-row:focus-within .meta .clear-mapping {
-    opacity: 1;
-    pointer-events: auto;
-}
 .influx-mapping-row .meta .handle {
     display: block;
     margin-top: 3px;

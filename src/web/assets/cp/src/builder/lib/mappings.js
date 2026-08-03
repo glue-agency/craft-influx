@@ -57,27 +57,11 @@ export function setMappingSlot(mappings, handle, key, value) {
 }
 
 /**
- * Drop one field's whole mapping — every slot at once, sub-field channels
- * included. The counterpart to setMappingSlot for the row-level "Clear"
- * affordance. Pure: returns a new mappings object, never mutates, and an
- * unknown handle yields an equal copy.
- *
- * @param {Object<string, import('../types.js').Mapping>} mappings
- * @param {string} handle
- * @returns {Object<string, import('../types.js').Mapping>}
- */
-export function clearMapping(mappings, handle) {
-    const next = { ...mappings };
-    delete next[handle];
-
-    return next;
-}
-
-/**
- * Drop a whole list of field mappings in one write — the group-level "Clear"
- * affordance, which has to land as a single store assignment so the rows it
- * wipes re-render once. Same rules as clearMapping per handle: pure, never
- * mutates, and an unknown handle is a no-op.
+ * Drop a whole list of field mappings — every slot at once, sub-field
+ * channels included. The group-level "Clear" affordance, which has to land
+ * as a single store assignment so the rows it wipes re-render once. Pure:
+ * returns a new mappings object, never mutates, and an unknown handle is a
+ * no-op.
  *
  * @param {Object<string, import('../types.js').Mapping>} mappings
  * @param {string[]} handles

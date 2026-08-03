@@ -35,21 +35,6 @@
                   :title="$t('Saved source node is no longer in the fetched sample. Pick a new one or clear the mapping.')"
                   v-text="$t('missing mapping')"></span>
 
-            <!-- Rendered but not shown until the row is hovered or focused
-                 (mapping-row.css) — the group header carries the always-on
-                 Clear, this one is the per-field shortcut.
-
-                 `.stop` keeps the press off the cell's extras toggle. The
-                 cell listens for click only, so a keyboard press — which
-                 reaches the button as a native Enter → click — is covered
-                 by the same modifier. -->
-            <button v-if="hasMappingData && ! readOnly"
-                    type="button"
-                    class="btn small clear-mapping"
-                    :title="$t('Clear this field’s mapping, including its sub-fields')"
-                    v-text="$t('Clear')"
-                    @click.stop="clearRow"></button>
-
             <code class="handle light" v-text="field.handle"></code>
         </div>
 
@@ -161,7 +146,7 @@ import ElementPicker from '../ElementPicker.vue';
 import SearchableSelect from '../SearchableSelect.vue';
 import SchemaForm from '../schema/SchemaForm.vue';
 import { store } from '../store.js';
-import { clearMapping, discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
+import { discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab. Renders the field name, source-node select,
@@ -270,12 +255,6 @@ export default {
             return !!this.field.fieldMeta?.subfieldsOnly;
         },
 
-        // Anything at all saved under this handle — any slot, any channel.
-        // Gates the Clear button: a row with nothing to clear shows none.
-        hasMappingData() {
-            return Object.keys(this.mapping).length > 0;
-        },
-
         /**
          * Source-node candidates for the extras' sub-field dropdowns: the
          * latest Fetch-sample nodes straight off the store, merged with
@@ -352,18 +331,6 @@ export default {
     },
 
     methods: {
-        /**
-         * Wipe the whole field mapping — every slot and sub-field channel at
-         * once. One store write is the entire operation: the extras models
-         * are computed off that store, so the SchemaForm cards below redraw
-         * empty on their own. The same holds for a wipe coming from OUTSIDE
-         * the row (the group header's Clear), which is what makes a
-         * group-level clear safe.
-         */
-        clearRow() {
-            this.link.mappings = clearMapping(this.link.mappings, this.field.handle);
-        },
-
         toggleExtras() {
             if (! this.hasExtras) return;
             this.extrasExpanded = ! this.extrasExpanded;

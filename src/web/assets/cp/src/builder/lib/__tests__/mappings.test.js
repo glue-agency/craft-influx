@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearMapping, clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -53,13 +53,8 @@ describe('setMappingSlot', () => {
     });
 });
 
-describe('clearMapping', () => {
-    it('drops the handle and leaves every other one alone', () => {
-        expect(clearMapping({ title: { node: 'name' }, slug: { node: 'meta.slug' } }, 'title'))
-            .toEqual({ slug: { node: 'meta.slug' } });
-    });
-
-    it('takes the whole mapping, sub-field channels included', () => {
+describe('clearMappings', () => {
+    it('takes each handle whole, sub-field channels included', () => {
         const before = {
             specs: {
                 node: 'meta.specs',
@@ -72,24 +67,9 @@ describe('clearMapping', () => {
             },
         };
 
-        expect(clearMapping(before, 'specs')).toEqual({});
+        expect(clearMappings(before, ['specs'])).toEqual({});
     });
 
-    it('no-ops on an absent handle', () => {
-        expect(clearMapping({ title: { node: 'name' } }, 'slug'))
-            .toEqual({ title: { node: 'name' } });
-        expect(clearMapping({}, 'slug')).toEqual({});
-    });
-
-    it('never mutates the input', () => {
-        const before = { title: { node: 'name' } };
-        clearMapping(before, 'title');
-
-        expect(before).toEqual({ title: { node: 'name' } });
-    });
-});
-
-describe('clearMappings', () => {
     it('drops every listed handle in one pass and keeps the rest', () => {
         const before = {
             title: { node: 'name' },

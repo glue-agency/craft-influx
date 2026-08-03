@@ -19,8 +19,7 @@ import MappingGroupCard from '../../../components/MappingGroupCard.vue';
 
 /**
  * The group header's "Clear" — one press wipes every field mapping in the
- * group, which is what the row-level button next to each field title used to
- * be the only way to do.
+ * group, and the only clear affordance the mapping tab carries.
  *
  * Two regressions live here. The scoping one: only the group's own handles
  * may be dropped, in a single store write. And the collision with

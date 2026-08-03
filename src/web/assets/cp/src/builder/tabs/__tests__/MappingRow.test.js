@@ -164,64 +164,33 @@ describe('MappingRow element default', () => {
 });
 
 /**
- * The row-level "Clear": one press wipes the field's whole mapping, extras
- * included. Nothing but a store write — the extras models are computed off
- * the store, so the cards below redraw from it. The last spec here pins that
- * property from the other side (a wipe the row didn't perform), because it
- * is what lets the group header carry a Clear of its own.
+ * Clearing is a group-header affordance only — the row carries none. What
+ * the row owes that header is redrawing off the store for a wipe it did not
+ * perform itself.
  */
 describe('MappingRow clear', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    const clearBtn = (wrapper) => wrapper.find('.clear-mapping');
-
-    it('shows the button only for an editable row with something saved', async () => {
-        await loadStore();
-        expect(clearBtn(mountRow()).exists()).toBe(false);
-
+    it('carries no clear button of its own', async () => {
         await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
-        expect(clearBtn(mountRow()).exists()).toBe(true);
 
-        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } }, { readOnly: true });
-        expect(clearBtn(mountRow()).exists()).toBe(false);
+        expect(mountRow().find('.clear-mapping').exists()).toBe(false);
     });
 
-    it('drops the whole handle out of the store', async () => {
-        await loadStore({
-            specs: { default: 'x', options: { format: 'raw' }, fields: { col1: { node: 'specs.label' } } },
-            title: { node: 'meta.title' },
-        });
-        const wrapper = mountRow();
-
-        await clearBtn(wrapper).trigger('click');
-
-        expect(store.link.mappings).toEqual({ title: { node: 'meta.title' } });
-    });
-
-    it('redraws the sub-field cards empty', async () => {
-        await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
-        const wrapper = mountRow();
-
-        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('specs.label');
-
-        await clearBtn(wrapper).trigger('click');
-
-        expect(wrapper.findComponent(SchemaForm).props('fields')).toEqual({});
-        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('');
-    });
-
-    it('redraws them for a wipe the row did not perform either', async () => {
+    it('redraws the sub-field cards for a wipe the row did not perform', async () => {
         // The regression the group header's Clear rests on: it rewrites
-        // `mappings` for handles other than the pressed row's, so every OTHER
-        // row has to redraw off the store on its own. Seeding the extras
-        // models in data() — as this row used to — left them rendering
-        // sub-field handles the wipe had already dropped.
+        // `mappings` for handles other than its own rows', so every row has
+        // to redraw off the store on its own. Seeding the extras models in
+        // data() — as this row used to — left them rendering sub-field
+        // handles the wipe had already dropped.
         await loadStore({
             specs: { options: { format: 'raw' }, fields: { col1: { node: 'specs.label' } } },
         });
         const wrapper = mountRow();
+
+        expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('specs.label');
 
         store.link.mappings = {};
         await wrapper.vm.$nextTick();
@@ -231,12 +200,13 @@ describe('MappingRow clear', () => {
         expect(wrapper.findAllComponents(SearchableSelect).at(0).props('modelValue')).toBe('');
     });
 
-    it('leaves the extras panel open — the press is not a toggle', async () => {
+    it('leaves the extras panel open through the wipe', async () => {
         await loadStore({ specs: { fields: { col1: { node: 'specs.label' } } } });
         const wrapper = mountRow();
         expect(wrapper.vm.extrasExpanded).toBe(true);
 
-        await clearBtn(wrapper).trigger('click');
+        store.link.mappings = {};
+        await wrapper.vm.$nextTick();
 
         expect(wrapper.vm.extrasExpanded).toBe(true);
         expect(wrapper.find('.influx-mapping-extras').attributes('data-expanded')).toBe('true');
