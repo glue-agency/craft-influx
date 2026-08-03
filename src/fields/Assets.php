@@ -61,14 +61,22 @@ class Assets extends RelationalField
      * `mode` is grouped so it renders via the shared SearchableSelect like the
      * relation "Match by"; its handle stays `mode` so saved configs round-trip.
      *
-     * The matched asset's sub-fields come as TWO cards, because they're written
-     * through two different channels: "Sub-fields" holds the asset element's own
-     * attributes (alt / title), which are writable on any asset whatever its
-     * volume's layout says, and rides the `nativeFields` channel; "Asset fields"
-     * holds the custom fields of the volumes the field can relate, applied
-     * through the asset's field layout on the `fields` channel. A volume field
-     * that happens to use the handle `alt` therefore legitimately gets a row in
-     * both — they write different things, and each row shows its handle.
+     * The matched asset's sub-fields are ONE card over two write channels: the
+     * asset's own attributes (alt / title) ride `nativeFields`, the custom
+     * fields of the volumes this field can relate ride `fields` and are marked
+     * with the row-level `channel` key {@see SchemaBuilder::elementSubFields()}
+     * documents. Two cards were an implementation detail of that split showing
+     * through — to an editor filling them in they are one list of the asset's
+     * fields.
+     *
+     * Alt and Title are offered only where a volume's layout includes them.
+     * Craft treats both as optional native layout elements, so a volume can drop
+     * either, and a row nobody can fill in the asset's own editor has no
+     * business here — the same rule {@see Relation::nativeSubFields()} follows
+     * for a related entry's title. The attribute stays writable whatever the
+     * layout says, which is why an ALREADY-SAVED row keeps applying: dropping it
+     * would make rendering a mapping destructive, and this schema is rebuilt
+     * from live volume layouts on every request.
      *
      * Custom sub-fields are offered as plain text rows for now: the `fields`
      * channel coerces per the target field's own strategy anyway, so the row
@@ -79,7 +87,7 @@ class Assets extends RelationalField
         /** @var CraftAssetsField $field */
         $url = [['handle' => 'mode', 'equals' => 'url']];
         $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
-        $customSubFields = $this->layoutCustomSubFields($field);
+        $subFields = $this->subFieldRows($field);
 
         return SchemaBuilder::make()
             ->select([
@@ -112,17 +120,52 @@ class Assets extends RelationalField
                 'default' => 'index',
                 'showIf'  => $uploading,
             ])
-            ->elementSubFields([
+            ->when($subFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
                 'label'     => Craft::t('influx', 'Sub-fields'),
-                'subFields' => SchemaBuilder::make()
-                    ->text(['handle' => 'alt', 'label' => Craft::t('influx', 'Alt text')])
-                    ->text(['handle' => 'title', 'label' => Craft::t('influx', 'Title')])
-                    ->toArray(),
-            ])
-            ->when($customSubFields, fn(SchemaBuilder $builder) => $builder->subFields([
-                'label'     => Craft::t('influx', 'Asset fields'),
-                'subFields' => $customSubFields,
+                'subFields' => $subFields,
             ]));
+    }
+
+    /**
+     * The asset attributes a mapping can write, each offered only where a volume
+     * layout includes it — `craft\fieldlayoutelements\assets\AltField` and
+     * `AssetTitleField` are optional native layout elements in both Craft 4 and
+     * 5, so `isFieldIncluded()` is the same probe {@see Relation::nativeSubFields()}
+     * uses and needs no version seam.
+     *
+     * Emitted in a fixed order rather than in layout order, so the rows don't
+     * reshuffle depending on which volume happens to contribute which
+     * attribute; the label comes from the first layout that includes it.
+     *
+     * @return list<array>
+     */
+    protected function nativeSubFields(BaseRelationField $field): array
+    {
+        $labels = [];
+
+        foreach ($this->sourceFieldLayouts($field) as $layout) {
+            if (! $layout instanceof FieldLayout) {
+                continue;
+            }
+
+            foreach (['alt' => 'Alternative Text', 'title' => 'Title'] as $attribute => $fallback) {
+                if (isset($labels[$attribute]) || ! $layout->isFieldIncluded($attribute)) {
+                    continue;
+                }
+
+                $labels[$attribute] = $layout->getField($attribute)->label() ?: Craft::t('app', $fallback);
+            }
+        }
+
+        $builder = SchemaBuilder::make();
+
+        foreach (['alt', 'title'] as $attribute) {
+            if (isset($labels[$attribute])) {
+                $builder->text(['handle' => $attribute, 'label' => $labels[$attribute]]);
+            }
+        }
+
+        return $builder->toArray();
     }
 
     /**
