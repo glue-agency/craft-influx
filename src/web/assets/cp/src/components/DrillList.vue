@@ -56,7 +56,7 @@
     gap: 8px;
     box-sizing: border-box;
     width: 100%;
-    min-height: 62px;
+    min-height: var(--influx-split-head-height);
     padding: 10px 14px;
     border: 0;
     border-bottom: 1px solid var(--hairline-color);

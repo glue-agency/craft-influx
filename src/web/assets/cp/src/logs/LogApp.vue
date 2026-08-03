@@ -327,7 +327,7 @@
     justify-content: center;
     gap: 3px;
     box-sizing: border-box;
-    min-height: 62px;
+    min-height: var(--influx-split-head-height);
     padding: 10px 14px;
     background: var(--gray-050);
     border-bottom: 1px solid var(--hairline-color);

@@ -62,6 +62,13 @@
     --influx-pill-gray-fg: #4a4f57;
     --influx-pill-gray-border: rgba(0, 0, 0, .08);
 
+    /* Both panes of a split inspector head their list with a bar of this
+       height — the list side, the detail side and the drill-down's. They have
+       to agree to the pixel or the seam between the panes visibly steps, and
+       the detail side's content (a Craft element chip, 34px, plus padding)
+       is what set the taller of the two. */
+    --influx-split-head-height: 64px;
+
     /* Attention amber — the missing-node badge, pill and sidebar line. The one
        colour in the CP that means "this needs you"; anything merely worth
        knowing (an auto-matched node) takes the informative blue above. */
