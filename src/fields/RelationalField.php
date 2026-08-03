@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\elements\db\ElementQueryInterface;
 use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\enums\ChildAction;
@@ -34,16 +35,77 @@ abstract class RelationalField extends Field
      * null/empty parse clears the field, so it counts as changed only when ids
      * currently exist — clearing an already-empty field is not a needless save.
      *
-     * `$current` is the field's element query; resolving it via `ids()` runs
-     * inside {@see Field::hasChanged()}'s try, so a failing query still lands
-     * on the "assume changed" guard exactly as before.
+     * `$current` is the field's element query; resolving it runs inside
+     * {@see Field::hasChanged()}'s try, so a failing query still lands on the
+     * "assume changed" guard exactly as before.
+     *
+     * A field that maintains hierarchy is compared as a SET, and only in one
+     * direction: Craft fills the gaps in a structured relation on save
+     * ({@see \craft\fields\BaseRelationField::normalizeValue()} →
+     * `Structures::fillGapsInElements()`), so the stored side legitimately holds
+     * ancestors the feed never sent and an equality check could never hold. What
+     * a change means there is "the feed now asks for an id the element isn't
+     * related to".
      */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
-        $currentIds = $current?->ids() ?? [];
-        $incomingIds = is_array($incoming) ? array_values($incoming) : [];
+        $currentIds = array_map('intval', array_values($this->relatedIds($current)));
+        $incomingIds = array_map('intval', array_values(is_array($incoming) ? $incoming : []));
 
-        return array_map('intval', array_values($currentIds)) !== array_map('intval', $incomingIds);
+        if ($this->maintainsHierarchy($context)) {
+            return array_diff($incomingIds, $currentIds) !== []
+                || ($incomingIds === [] && $currentIds !== []);
+        }
+
+        return $currentIds !== $incomingIds;
+    }
+
+    /**
+     * Every id the field currently relates, read the way Craft reads a relation
+     * for serialization ({@see \craft\fields\BaseRelationField} `_all()`).
+     *
+     * The value Craft hands back is a query still carrying its own defaults —
+     * enabled elements, one site — so a plain `ids()` silently omits a related
+     * element that happens to be disabled, a draft, or resident in another site.
+     * The stored side then under-reports, the comparison can never match, and
+     * the field reads as changed on every single sync: a needless save and a
+     * revision per run, on an element nothing in the feed touched. Relaxing the
+     * query is what makes the two sides speak about the same set.
+     *
+     * @return list<int|string>
+     */
+    protected function relatedIds(mixed $current): array
+    {
+        if ($current instanceof ElementQueryInterface) {
+            return (clone $current)
+                ->status(null)
+                ->drafts(null)
+                ->site('*')
+                ->unique()
+                ->limit(null)
+                ->ids();
+        }
+
+        // Craft 5 hands an already-resolved collection back for an eager-loaded
+        // field; it holds what it holds, so there is no query to relax.
+        if (is_object($current) && method_exists($current, 'ids')) {
+            return $current->ids();
+        }
+
+        return [];
+    }
+
+    /**
+     * Whether the Craft field keeps a structured relation whole — `@since 5.0`,
+     * so absence of the property reads as "off" rather than throwing on Craft 4.
+     */
+    protected function maintainsHierarchy(FieldContext $context): bool
+    {
+        $craftField = $context->craftField;
+
+        return $craftField !== null
+            && property_exists($craftField, 'maintainHierarchy')
+            && $craftField->maintainHierarchy;
     }
 
     /**
