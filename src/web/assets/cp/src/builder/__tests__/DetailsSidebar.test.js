@@ -23,8 +23,8 @@ import DetailsSidebar from '../DetailsSidebar.vue';
  * reads the teleported output out of the document.
  *
  * What it owes the screen: an honest one-line account of the sample, mapping
- * progress that matches the tree's own counting, and the two actions — neither
- * of which may appear where admin changes aren't allowed.
+ * progress that matches the tree's own counting, and the two actions — of which
+ * only Auto-match, the one that writes, goes where admin changes aren't allowed.
  */
 
 const FIELDS = [
@@ -242,17 +242,36 @@ describe('DetailsSidebar', () => {
         });
     });
 
-    // A read-only environment can't save the config, so neither action belongs
-    // on the screen — the status line still does.
+    // A read-only environment can't save the config, so Auto-match goes. Fetch
+    // stays: it writes nothing, and the sample is what makes the mappings
+    // readable at all.
     describe('read-only', () => {
-        it('shows the sample state and no buttons at all', async () => {
+        it('keeps the fetch button and drops auto-match', async () => {
             host();
             await loadStore({}, { readOnly: true });
-            await primeSample({ itemCount: 3, flatNodes: [{ value: 'id', label: 'id' }] });
+            await primeSample({
+                itemCount: 3,
+                flatNodes: [{ value: 'id', label: 'id' }],
+                mappingSuggestions: [{ field: 'title', type: 'PlainText', node: 'id' }],
+            });
             await mountSidebar();
 
             expect(statusText()).toContain('Fetched');
-            expect(buttons()).toHaveLength(0);
+            expect(buttonFor('download')).toBeTruthy();
+            expect(buttonFor('wand')).toBeUndefined();
+        });
+
+        it('refetches on press', async () => {
+            host();
+            await loadStore({}, { readOnly: true });
+            await mountSidebar();
+            api.fetchSample.mockClear();
+            api.fetchSample.mockResolvedValue({ success: true, report: { itemCount: 1, flatNodes: [] } });
+
+            buttonFor('download').click();
+            await nextTick();
+
+            expect(api.fetchSample).toHaveBeenCalled();
         });
     });
 });

@@ -13,11 +13,12 @@
                     </div>
                 </div>
 
-                <!-- Both rail actions are hidden where admin changes aren't
-                     allowed, the same way the header hides Save: the screen is
-                     there to be read, and the status line above still says
-                     where the sample stands. -->
-                <div v-if="! readOnly" class="field">
+                <!-- Stays where admin changes aren't allowed: a fetch reads the
+                     remote feed and touches no config, the endpoint it hits is
+                     the saved one, and the screen already auto-fetches on load.
+                     Without it the mappings can't be read against a fresh
+                     sample — which is the whole point of the screen there. -->
+                <div class="field">
                     <div class="input ltr">
                         <button
                             type="button"
