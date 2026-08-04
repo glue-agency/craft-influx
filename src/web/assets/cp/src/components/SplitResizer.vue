@@ -1,10 +1,11 @@
 <template>
     <div
-        :class="[variant === 'rail' ? 'influx-rail-resizer' : 'influx-split-resizer', { 'is-dragging': dragging }]"
+        class="influx-split-resizer"
+        :class="{ 'is-dragging': dragging }"
         role="separator"
         aria-orientation="vertical"
         tabindex="0"
-        :aria-label="label || $t('Resize the item list')"
+        :aria-label="$t('Resize the item list')"
         :aria-valuenow="currentWidth"
         :aria-valuemin="minWidth"
         :aria-valuemax="maxWidth"
@@ -64,40 +65,6 @@
 .influx-split-resizer.is-dragging::before {
     background: hsl(208, 100%, 42%);
 }
-
-/* The `rail` variant sizes a fixed-width side rail instead of a flex seam, so
-   it can't sit in the layout: the rail's inline-start edge is already taken by
-   Craft's collapse toggle. It floats over the rail's own leading padding
-   (its containing block is the sticky #details-container). */
-.influx-rail-resizer {
-    position: absolute;
-    z-index: 1;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: 7px;
-    cursor: col-resize;
-    touch-action: none;
-}
-
-.influx-rail-resizer::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 2px;
-    width: 2px;
-    border-radius: 1px;
-    background: transparent;
-    transition: background-color .12s;
-}
-
-.influx-rail-resizer:hover::before {
-    background: var(--gray-300);
-}
-
-.influx-rail-resizer:focus-visible::before,
-.influx-rail-resizer.is-dragging::before {
-    background: hsl(208, 100%, 42%);
-}
 </style>
 
 <script>
@@ -118,15 +85,9 @@ const STEP_WIDTH = 16;
  * being swapped out (DrillList replaces the item list inside the same wrapper
  * while a reader is drilled in).
  *
- * Two wirings, per `variant`:
- *   - `split` (default) — the seam between two flex panes. The host is
- *     `$el.parentElement` (the split container) and the pane it sizes is
- *     `$el.previousElementSibling`, which holds because the handle is only ever
- *     rendered as a direct child of `.influx-split`, right after the list.
- *     Dragging toward the inline-end widens.
- *   - `rail` — a fixed-width side rail named by `target`, which is BOTH the
- *     host and the pane; the ceiling is measured against its parent. Dragging
- *     toward the inline-start widens, since the rail sits at the inline-end.
+ * The host is `$el.parentElement` (the split container) and the pane it sizes is
+ * `$el.previousElementSibling`, which holds because the handle is only ever
+ * rendered as a direct child of `.influx-split`, right after the list.
  *
  * Widths persist to localStorage under `storageKey`. Every access is guarded:
  * in private mode the read and the write both throw, and a handle that can't
@@ -136,12 +97,6 @@ export default {
     name: 'SplitResizer',
 
     props: {
-        /** `split` (a seam between panes) or `rail` (a fixed-width side rail). */
-        variant: { type: String, default: 'split' },
-        // The rail to size — required by, and only read for, variant="rail".
-        // An element rather than a selector so the caller resolves it however
-        // it likes (the details sidebar walks up from its teleport slot).
-        target: { type: Object, default: null },
         /** Where the width lands on the host, for the consuming CSS to read. */
         cssVar: { type: String, default: '--influx-split-list-width' },
         /**
@@ -150,8 +105,6 @@ export default {
          * view to have widened too.
          */
         storageKey: { type: String, default: 'influx:splitListWidth' },
-        /** Overrides the default separator label. */
-        label: { type: String, default: '' },
     },
 
     data() {
@@ -183,15 +136,11 @@ export default {
         currentWidth() {
             return this.width !== null ? this.width : this.defaultWidth;
         },
-
-        isRail() {
-            return this.variant === 'rail';
-        },
     },
 
     mounted() {
-        this.container = this.isRail ? this.target : this.$el.parentElement;
-        this.defaultWidth = Math.round(this.measure(this.pane())) || MIN_WIDTH;
+        this.container = this.$el.parentElement;
+        this.defaultWidth = Math.round(this.measure(this.$el.previousElementSibling)) || MIN_WIDTH;
         this.sampleContainer();
 
         const stored = this.readStored();
@@ -225,11 +174,7 @@ export default {
                 return;
             }
 
-            // A rail lives at the inline-end, so dragging its handle toward the
-            // inline-start is what widens it.
-            const travelled = (event.clientX - this.originX) * (this.isRail ? -1 : 1);
-
-            this.apply(this.clamp(this.originWidth + travelled));
+            this.apply(this.clamp(this.originWidth + (event.clientX - this.originX)));
         },
 
         endDrag() {
@@ -246,12 +191,10 @@ export default {
             this.store();
         },
 
-        // Arrow-key resize, one step per press, same clamp — and the same
-        // inverted travel — as the drag.
+        // Arrow-key resize, one step per press, same clamp as the drag.
         nudge(direction) {
             this.sampleContainer();
-            const step = direction * STEP_WIDTH * (this.isRail ? -1 : 1);
-            this.apply(this.clamp(this.currentWidth + step));
+            this.apply(this.clamp(this.currentWidth + (direction * STEP_WIDTH)));
             this.store();
         },
 
@@ -288,17 +231,7 @@ export default {
         // Half of whatever the pane sits inside, so it can never crowd the rest
         // of the screen out.
         sampleContainer() {
-            this.maxWidth = Math.round(this.measure(this.bounds()) / 2) || MIN_WIDTH;
-        },
-
-        /** The element being sized — the rail itself, or the pane before the seam. */
-        pane() {
-            return this.isRail ? this.container : this.$el.previousElementSibling;
-        },
-
-        /** What the pane's ceiling is measured against. */
-        bounds() {
-            return this.isRail ? this.container?.parentElement : this.container;
+            this.maxWidth = Math.round(this.measure(this.container) / 2) || MIN_WIDTH;
         },
 
         measure(el) {

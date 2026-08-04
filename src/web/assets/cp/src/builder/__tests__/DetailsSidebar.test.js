@@ -16,7 +16,6 @@ vi.mock('../api.js', () => ({
 import * as api from '../api.js';
 import { store } from '../store.js';
 import DetailsSidebar from '../DetailsSidebar.vue';
-import SplitResizer from '../../components/SplitResizer.vue';
 
 /**
  * The builder's details rail. It renders into Craft's pane rather than its own
@@ -67,13 +66,10 @@ const primeSample = async (report) => {
     await store.fetchSample();
 };
 
-// Craft's pane: the rail container the resizer sizes, wrapping the slot the
-// component teleports into.
-const host = (withRail = true) => {
+// Craft's pane, wrapping the slot the component teleports into.
+const host = () => {
     const el = document.createElement('div');
-    el.innerHTML = withRail
-        ? '<div id="details-container"><div id="details"><div class="details"><div data-influx-details-slot></div></div></div></div>'
-        : '<div data-influx-details-slot></div>';
+    el.innerHTML = '<div id="details-container"><div id="details"><div class="details"><div data-influx-details-slot></div></div></div></div>';
     document.body.appendChild(el);
 
     return el;
@@ -118,26 +114,6 @@ describe('DetailsSidebar', () => {
             await mountSidebar();
 
             expect(document.querySelector('[data-influx-details-slot]').closest('#details-container')).toBe(rail());
-            expect(sections()).toHaveLength(2);
-        });
-
-        it('hands the rail a resize handle', async () => {
-            host();
-            await loadStore();
-            const wrapper = await mountSidebar();
-            const resizer = wrapper.findComponent(SplitResizer);
-
-            expect(resizer.props('variant')).toBe('rail');
-            expect(resizer.props('target')).toBe(rail());
-            expect(resizer.props('cssVar')).toBe('--details-width');
-        });
-
-        it('leaves the handle out where there is no rail to size', async () => {
-            host(false);
-            await loadStore();
-            const wrapper = await mountSidebar();
-
-            expect(wrapper.findComponent(SplitResizer).exists()).toBe(false);
             expect(sections()).toHaveLength(2);
         });
     });

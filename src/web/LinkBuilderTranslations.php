@@ -61,7 +61,6 @@ class LinkBuilderTranslations
                 'Are you sure you want to delete this link? Its sync configuration is removed permanently — imported elements stay.',
             ],
             'DetailsSidebar.vue' => [
-                'Resize the details sidebar',
                 'Sample',
                 'Fetching…',
                 'Fetch failed',

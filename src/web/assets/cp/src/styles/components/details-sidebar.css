@@ -1,22 +1,12 @@
 /* ---------------------------------------------------------------------
    Link builder details rail — the sections DetailsSidebar.vue teleports
    into Craft's own `#details` pane. The rail, its collapse toggle and the
-   `.meta` / `.data` chrome inside are all Craft's; this adds the section
-   legends, the full-width action buttons and the width the drag handle
-   writes.
+   `.meta` / `.data` chrome inside are all Craft's, at Craft's own width;
+   this adds the section legends and the full-width action buttons.
 
    Global (not a component <style> block): the markup lands in Craft's
    pane, outside the component's own subtree.
 --------------------------------------------------------------------- */
-
-/* The resizable width. Craft's own rule reads `--details-width` from :root,
-   so this only has to make the rail take the per-element override the handle
-   writes — with Craft's 350px as the fallback for a version that doesn't
-   declare the variable at all. */
-#details-container:has(.influx-rail-resizer) {
-    flex: 0 0 auto;
-    width: var(--details-width, 350px);
-}
 
 /* The host template's facts block follows the teleported sections. It carries
    its own gap rather than leaning on the last section's bottom margin

@@ -1,17 +1,5 @@
 <template>
     <teleport v-if="slotEl" :to="slotEl">
-        <!-- Craft's rail is a fixed 350px; the handle makes it draggable and
-             remembers the width. Rendered only once the rail is found, so a
-             Craft version without a #details-container gets no dead handle. -->
-        <v-split-resizer
-            v-if="railEl"
-            variant="rail"
-            :target="railEl"
-            css-var="--details-width"
-            storage-key="influx:detailsWidth"
-            :label="$t('Resize the details sidebar')"
-        />
-
         <fieldset class="influx-details-section">
             <legend v-text="$t('Sample')"></legend>
 
@@ -86,7 +74,6 @@
 </template>
 
 <script>
-import SplitResizer from '../components/SplitResizer.vue';
 import { store } from './store.js';
 import { discoveredNodes } from './lib/mappings.js';
 
@@ -98,7 +85,7 @@ import { discoveredNodes } from './lib/mappings.js';
  * LinksController::builderScreen() renders through cpScreen.metaSidebarTemplate()
  * — the same arrangement as HeaderActions and Craft's `#action-buttons`. The
  * rail itself, its collapse toggle and that toggle's persisted state are
- * Craft's; this only fills it and hands it a resize handle.
+ * Craft's; this only fills it.
  *
  * The link's own facts (id, last run, timestamps) are rendered by the host
  * template instead: they only change on save, which reloads the screen.
@@ -114,7 +101,6 @@ export default {
         return {
             ui: store.ui,
             slotEl: null,
-            railEl: null,
         };
     },
 
@@ -233,9 +219,6 @@ export default {
 
     mounted() {
         this.slotEl = document.querySelector('[data-influx-details-slot]');
-        // Craft 5 wraps the rail in #details-container (the element its own
-        // collapse toggle shows and hides); that's what a resize sizes.
-        this.railEl = this.slotEl?.closest('#details-container') ?? null;
     },
 
     methods: {
@@ -249,7 +232,5 @@ export default {
             store.autoMatch();
         },
     },
-
-    components: { 'v-split-resizer': SplitResizer },
 };
 </script>
