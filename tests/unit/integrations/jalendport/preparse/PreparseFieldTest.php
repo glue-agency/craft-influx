@@ -1,11 +1,11 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\integrations\preparse;
+namespace GlueAgency\Influx\Tests\unit\integrations\jalendport\preparse;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
-use GlueAgency\Influx\integrations\preparse\PreparseField;
+use GlueAgency\Influx\integrations\jalendport\preparse\PreparseField;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;

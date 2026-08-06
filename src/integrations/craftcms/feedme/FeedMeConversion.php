@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\integrations\feedme;
+namespace GlueAgency\Influx\integrations\craftcms\feedme;
 
 use GlueAgency\Influx\models\Link;
 

@@ -1,11 +1,11 @@
 <?php
 
-namespace GlueAgency\Influx\Tests\unit\integrations\feedme;
+namespace GlueAgency\Influx\Tests\unit\integrations\craftcms\feedme;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\enums\ProcessingAction;
-use GlueAgency\Influx\integrations\feedme\FeedMeConversion;
-use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
+use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConversion;
+use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConverter;
 
 /**
  * Feed Me → Influx conversion spec.

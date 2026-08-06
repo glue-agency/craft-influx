@@ -1,13 +1,13 @@
 <?php
 
-namespace GlueAgency\Influx\integrations\feedme\services;
+namespace GlueAgency\Influx\integrations\craftcms\feedme\services;
 
 use Craft;
 use craft\base\Component;
 use craft\db\Query;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\integrations\feedme\FeedMeConverter;
-use GlueAgency\Influx\integrations\feedme\FeedMeImportResult;
+use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConverter;
+use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeImportResult;
 use InvalidArgumentException;
 
 /**

@@ -7,7 +7,7 @@ use craft\helpers\Console;
 use craft\helpers\Json;
 use GlueAgency\Influx\console\ConsoleOutputCompatTrait;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\integrations\feedme\FeedMeImportResult;
+use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeImportResult;
 use InvalidArgumentException;
 use yii\console\ExitCode;
 
@@ -21,7 +21,7 @@ use yii\console\ExitCode;
  *   ./craft influx/feed-me/import 1 --dry-run    # preview the link config without saving
  *   ./craft influx/feed-me/import 1 --force      # save even when the link doesn't validate
  *
- * The heavy lifting lives in {@see \GlueAgency\Influx\integrations\feedme\services\FeedMeService};
+ * The heavy lifting lives in {@see \GlueAgency\Influx\integrations\craftcms\feedme\services\FeedMeService};
  * this controller only renders its results.
  */
 class FeedMeController extends Controller

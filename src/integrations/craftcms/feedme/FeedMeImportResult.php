@@ -1,13 +1,13 @@
 <?php
 
-namespace GlueAgency\Influx\integrations\feedme;
+namespace GlueAgency\Influx\integrations\craftcms\feedme;
 
 use GlueAgency\Influx\models\Link;
 
 /**
  * Outcome of importing one Feed Me feed as an Influx link: the converted
  * link, the conversion warnings, and whether the save went through. Built by
- * {@see \GlueAgency\Influx\integrations\feedme\services\FeedMeService::importFeeds()}
+ * {@see \GlueAgency\Influx\integrations\craftcms\feedme\services\FeedMeService::importFeeds()}
  * and rendered by the `influx/feed-me` console command — the service stays
  * output-free. Treat as read-only.
  */

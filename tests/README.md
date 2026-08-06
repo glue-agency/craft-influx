@@ -31,7 +31,7 @@ behaviour it pins — read those first.
 - `services/`, `web/`, `enums/`, `auth/`, `data/`, `helpers/` — the registry
   base, presenters and their wire shapes, the enum-derived UI vocabulary, auth
   strategies, feed paging, and the comparison normaliser
-- `integrations/feedme/` — the Feed Me feed → Influx link conversion
+- `integrations/craftcms/feedme/` — the Feed Me feed → Influx link conversion
 
 Anything needing a booted Craft (a real `Element::find()`, a `saveElement()`) is
 either stubbed at a seam or left out — testing it at unit level would mean

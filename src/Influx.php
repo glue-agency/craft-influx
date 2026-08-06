@@ -19,7 +19,7 @@ use craft\services\ProjectConfig as ProjectConfigService;
 use craft\services\UserPermissions;
 use craft\web\UrlManager;
 use craft\web\View;
-use GlueAgency\Influx\integrations\feedme\services\FeedMeService;
+use GlueAgency\Influx\integrations\craftcms\feedme\services\FeedMeService;
 use GlueAgency\Influx\models\Settings;
 use GlueAgency\Influx\services\AssetUploadService;
 use GlueAgency\Influx\services\AuthService;

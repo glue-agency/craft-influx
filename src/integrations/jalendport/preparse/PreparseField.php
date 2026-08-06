@@ -1,6 +1,6 @@
 <?php
 
-namespace GlueAgency\Influx\integrations\preparse;
+namespace GlueAgency\Influx\integrations\jalendport\preparse;
 
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;

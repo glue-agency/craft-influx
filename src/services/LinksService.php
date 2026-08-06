@@ -267,7 +267,7 @@ class LinksService extends Component
      *
      * WHERE THIS RUNS: only from {@see saveLink()} — i.e. a builder save
      * ({@see LinkBuilderService::save()}) or a Feed Me import
-     * ({@see \GlueAgency\Influx\integrations\feedme\services\FeedMeService}).
+     * ({@see \GlueAgency\Influx\integrations\craftcms\feedme\services\FeedMeService}).
      * NOT on `project-config/apply`: {@see handleChangedLink()} writes the row
      * straight from the PC payload. So a mapping that became unmappable survives
      * — and keeps syncing — until the link is next saved, by design: hygiene

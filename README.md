@@ -203,10 +203,10 @@ Hook into any stage:
 
 ### Integrations
 
-Code that exists to play nice with *other* plugins lives under `src/integrations/`, one sub-namespace per plugin:
+Code that exists to play nice with *other* plugins lives under `src/integrations/<vendor>/<plugin>/`, mirroring the plugin's own Composer name — so the directory says who owns the thing being integrated with, and two vendors shipping a similarly-named plugin can't collide:
 
-- `integrations/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
-- `integrations/preparse` — a field strategy declaring that a [Preparse](https://github.com/jalendport/craft-preparse) field can't be mapped: its value is a Twig template the plugin re-renders on every element save, so the template always wins — over a sync and over anything an editor types. The row keeps its label and says so, rather than offering a mapping that would be discarded.
+- `integrations/craftcms/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
+- `integrations/jalendport/preparse` — a field strategy declaring that a [Preparse](https://github.com/jalendport/craft-preparse) field can't be mapped: its value is a Twig template the plugin re-renders on every element save, so the template always wins — over a sync and over anything an editor types. The row keeps its label and says so, rather than offering a mapping that would be discarded.
 
 Planned target adapters for [Solspace Calendar](https://github.com/solspace/craft-calendar) and [Craft Commerce](https://github.com/craftcms/commerce) elements (see the [Roadmap](#roadmap)) will register their targets when those plugins are installed, following the same optional-dependency rule.
 
@@ -237,7 +237,7 @@ Still open:
 
 ## Acknowledgements
 
-Influx is heavily inspired by [Feed Me](https://github.com/craftcms/feed-me) (`craftcms/feed-me`). Its mapping model — per-field-type strategies, relation sub-fields, asset upload-on-import, and change detection before save — follows trails Feed Me blazed. Influx makes different trade-offs (JSON-only, Project Config-backed, hydrating existing element types rather than owning its own), but it stands on Feed Me's shoulders, and the `integrations/feedme` converter exists so you can bring your existing feeds along.
+Influx is heavily inspired by [Feed Me](https://github.com/craftcms/feed-me) (`craftcms/feed-me`). Its mapping model — per-field-type strategies, relation sub-fields, asset upload-on-import, and change detection before save — follows trails Feed Me blazed. Influx makes different trade-offs (JSON-only, Project Config-backed, hydrating existing element types rather than owning its own), but it stands on Feed Me's shoulders, and the `integrations/craftcms/feedme` converter exists so you can bring your existing feeds along.
 
 ## License
 
