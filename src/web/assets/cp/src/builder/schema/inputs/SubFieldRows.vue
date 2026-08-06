@@ -86,6 +86,13 @@
                           v-text="$t('missing mapping')"></span>
                     <code class="handle light" v-text="sub.handle"></code>
                 </label>
+                <!-- `cells: false` — the sub-field's own value comes entirely from
+                     its extras (a nested Table, Link or Table Maker), so it renders
+                     neither control, exactly as its top-level row does by declaring
+                     neither region. A node select and a text box there would write
+                     into slots no sync reads. The columns stay empty rather than
+                     collapsing, so every row's label still shares one edge. -->
+                <template v-if="sub.cells !== false">
                 <v-searchable-select
                     :model-value="rowFor(sub.handle).node"
                     :options="sourceNodeOptions"
@@ -122,6 +129,7 @@
                     :read-only="readOnly"
                     @update:model-value="updateRow(sub.handle, 'default', $event)"
                 />
+                </template>
 
                 <!-- This row's OWN extras — whatever its field declares at the top
                      level, because a nested field is configured the same way: a

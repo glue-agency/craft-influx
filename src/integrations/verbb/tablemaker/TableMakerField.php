@@ -128,7 +128,7 @@ class TableMakerField extends Field
                 'columnTypes' => static::columnTypes(),
                 'enableWidth' => static::setting($field, 'enableWidthColumn'),
                 'enableAlign' => static::setting($field, 'enableAlignmentColumn'),
-                'addLabel'    => Craft::t('influx', 'Add a column'),
+                'addLabel'    => Craft::t('influx', 'add column'),
                 'emptyHint'   => Craft::t('influx', 'Add a column to start mapping this table.'),
             ]),
         ]);

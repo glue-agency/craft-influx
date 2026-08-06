@@ -5,8 +5,13 @@
          row — which is why one node owns both rather than two nodes trying to
          agree about state neither has saved yet. -->
     <v-mapping-group-card :label="node.label" variant="subfields">
+        <!-- Action first, then the pills — the order the cards' "clear nodes" link
+             already sets, so the header's chrome reads the same wherever it appears.
+             `.stop` on all three: the header is itself the collapse toggle, on click
+             AND on keydown.enter/.space (both with .prevent), so without it pressing
+             this also collapses the card and its .prevent kills the button's native
+             Enter → click before it fires. -->
         <template #tags>
-            <span class="pill pill-count" v-text="columns.length"></span>
             <button
                 v-if="! readOnly"
                 type="button"
@@ -14,8 +19,9 @@
                 @click.stop="addColumn"
                 @keydown.enter.stop
                 @keydown.space.stop
-                v-text="node.addLabel || $t('Add a column')"
+                v-text="node.addLabel || $t('add column')"
             ></button>
+            <span class="pill pill-count" v-text="columns.length"></span>
         </template>
 
         <p v-if="! columns.length" class="influx-mapping-group-empty light"

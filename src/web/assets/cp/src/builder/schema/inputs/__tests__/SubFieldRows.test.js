@@ -234,6 +234,31 @@ describe('SubFieldRows default editors', () => {
         expect(trigger.classes()).toContain('placeholder');
     });
 
+    it('renders neither control for a row whose value comes from its extras', async () => {
+        // A nested Table, Link or Table Maker declares no cells at the top level
+        // either. Rendering a node select and a text box for one gave the operator
+        // two controls writing into slots no sync reads — while its real
+        // configuration sat behind the chevron beside them.
+        const wrapper = mountTyped([
+            { type: 'text', handle: 'table', label: 'Tabel', cells: false, extra: [
+                { type: 'lightswitch', handle: 'flag', label: 'A flag' },
+            ] },
+            { type: 'text', handle: 'blurb', label: 'Blurb' },
+        ], { rows: {} });
+
+        const rows = wrapper.findAll('.sub-field-row');
+        expect(rows[0].findComponent({ name: 'SearchableSelect' }).exists()).toBe(false);
+        expect(rows[0].find('input[type="text"]').exists()).toBe(false);
+
+        // The row still expands to its own extras — that's where its value lives.
+        await rows[0].find('.extras-chevron').trigger('click');
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).exists()).toBe(true);
+
+        // And the ordinary row beside it is untouched.
+        expect(rows[1].findComponent({ name: 'SearchableSelect' }).exists()).toBe(true);
+        expect(rows[1].find('input[type="text"]').exists()).toBe(true);
+    });
+
     it('leaves the other editors as they were', () => {
         const wrapper = mountTyped([
             { type: 'select', handle: 'size', label: 'Size', options: [{ value: '', label: '—' }, { value: 'l', label: 'Large' }] },

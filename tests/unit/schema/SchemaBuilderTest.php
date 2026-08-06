@@ -129,6 +129,35 @@ class SchemaBuilderTest extends Unit
         $this->assertSame('col1', $schema[0]['handle']);
     }
 
+    public function testAChildWithNoCellOfItsOwnSaysSo(): void
+    {
+        // A nested Table, Link or Table Maker: its value comes entirely from its
+        // own extras, exactly as its top-level row declares by dropping both
+        // regions. Without `cells => false` the row fell to the text fallback, so
+        // the card offered a node select and a text box writing into slots no sync
+        // reads — while the real configuration sat behind the chevron beside them.
+        $schema = MappingSchemaBuilder::make()
+            ->fieldRow(
+                ['default' => null, 'extra' => [['type' => SchemaBuilder::LIGHTSWITCH, 'handle' => 'flag']]],
+                ['handle' => 'table', 'label' => 'Tabel'],
+            )
+            ->toArray();
+
+        $this->assertFalse($schema[0]['cells']);
+        $this->assertSame([['type' => SchemaBuilder::LIGHTSWITCH, 'handle' => 'flag']], $schema[0]['extra']);
+    }
+
+    public function testAChildWithACellIsNotMarkedCellLess(): void
+    {
+        // Guards the flag from becoming unconditional, which would blank every
+        // sub-field row in the builder.
+        $schema = MappingSchemaBuilder::make()
+            ->fieldRow(['default' => ['type' => SchemaBuilder::TEXT], 'extra' => []], ['handle' => 'col1'])
+            ->toArray();
+
+        $this->assertArrayNotHasKey('cells', $schema[0]);
+    }
+
     /**
      * A native declares ONE node and that node IS its default cell, so the terse
      * form gets the standard source select, the declared control as its default,

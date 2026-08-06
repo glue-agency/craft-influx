@@ -6,11 +6,22 @@
    the integration's CSS travels with the integration. cssCodeSplit is off, so it
    lands in the one bundle either way. */
 
+/* The card body is a three-track subgrid (schema-form.css), so anything dropped
+   in it auto-places into the FIRST track — which is what squeezed this table into
+   the Field column with two thirds of the card empty beside it. Both the table and
+   the empty hint span the tracks instead; they aren't mapping rows and have no
+   business lining up with the Field / Source node / Default value columns. */
+.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-tablemaker-columns,
+.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-mapping-group-empty {
+    grid-column: 1 / -1;
+}
+
 .influx-tablemaker-columns {
     width: 100%;
     border-collapse: collapse;
-    /* Clears the card's own edge the way a sub-field row does (schema-form.css). */
-    padding: 0 12px;
+    /* Its cells carry the card's 12px side inset instead — border-collapse
+       ignores padding on the table itself. */
+    table-layout: fixed;
 }
 
 .influx-tablemaker-columns th {

@@ -263,6 +263,13 @@ class MappingSchemaBuilder extends SchemaBuilder
      * Without this, every sub-field row was a text box — including a relation's,
      * which is a reference the operator can only pick, not retype.
      *
+     * A child declaring NO default cell keeps that statement too, as `cells =>
+     * false`: its value comes entirely from its own extras, so a node select and a
+     * text box beside it are two controls that write nothing a sync would read.
+     * Nested Table, Link and Table Maker rows are all this shape — the same
+     * declaration their top-level rows make by dropping both regions, carried down
+     * rather than replaced with the text fallback.
+     *
      * @param array{default: array|null, extra: list<array>} $childRow
      * @param array<string, mixed> $config The row's `handle` / `label` (+ `channel`).
      */
@@ -277,6 +284,10 @@ class MappingSchemaBuilder extends SchemaBuilder
 
         if ($extra !== []) {
             $config += ['extra' => $extra];
+        }
+
+        if ($cell === null) {
+            $config += ['cells' => false];
         }
 
         return $this->push($config + ($cell ?? []) + ['type' => self::TEXT]);

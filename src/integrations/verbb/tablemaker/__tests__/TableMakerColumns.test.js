@@ -38,6 +38,20 @@ describe('TableMakerColumns', () => {
         expect(w.find('.influx-mapping-group-empty').exists()).toBe(true);
     });
 
+    it('leads the header with the action, then the pills', () => {
+        // The order the cards' own "clear nodes" link sets, so the header chrome
+        // reads the same wherever it appears.
+        const w = mountCard({ options: { columns: twoColumns } });
+        const header = w.find('.influx-mapping-group-header');
+
+        const text = header.text();
+        expect(text.indexOf('add column')).toBeGreaterThan(-1);
+        expect(text.indexOf('add column')).toBeLessThan(text.lastIndexOf('2'));
+        // Document order, not just visual: the action is the first of the two.
+        expect([...header.element.querySelectorAll('.add-column, .pill-count')]
+            .map((el) => el.className.split(' ')[0])).toEqual(['influx-clear-link', 'pill']);
+    });
+
     it('writes a new column into options.columns, leaving fields alone', async () => {
         const w = mountCard({ options: { columns: [twoColumns[0]] }, fields: { c1: { node: 'x.day' } } });
 

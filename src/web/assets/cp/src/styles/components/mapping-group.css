@@ -47,7 +47,13 @@
     cursor: pointer;
 }
 
-.influx-clear-link:hover { text-decoration: underline; }
+/* Colour restated on hover, not just inherited: Craft's CP styles a bare
+   <button> blue on hover, which is exactly the link-ness this deliberately
+   isn't. Underline alone is the affordance. */
+.influx-clear-link:hover {
+    color: #444;
+    text-decoration: underline;
+}
 
 /* Static (non-collapsible) header — informational, no toggle affordance. */
 .influx-mapping-group.is-static .influx-mapping-group-header {
