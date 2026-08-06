@@ -58,6 +58,27 @@ describe('MappingCell', () => {
         expect(mountCell([{ type: 'text' }]).find('input.text').exists()).toBe(true);
     });
 
+    it('gives a note its trailing link, and escapes the text either way', () => {
+        // The text is escaped, so a note that needs to point somewhere carries
+        // the target as its own key rather than markup inside it.
+        const cell = mountCell([{
+            type: 'note',
+            text: 'Map one node holding the whole table. <b>x</b>',
+            url: 'https://example.test/docs',
+            linkText: 'Feed format',
+        }]);
+        const link = cell.find('p.light a');
+
+        expect(cell.find('p.light b').exists()).toBe(false);
+        expect(link.attributes('href')).toBe('https://example.test/docs');
+        expect(link.attributes('rel')).toContain('noopener');
+        expect(link.text()).toBe('Feed format');
+    });
+
+    it('renders a plain note without a link', () => {
+        expect(mountCell([{ type: 'note', text: 'Nothing to map yet.' }]).find('p.light a').exists()).toBe(false);
+    });
+
     it('leaves an unpicked default select reading empty', () => {
         // Not "—". The copy lives in the list, where the open menu says it in full
         // ("— no default —"), so the CLOSED cell looks like every other empty field

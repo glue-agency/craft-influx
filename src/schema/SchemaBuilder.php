@@ -146,7 +146,19 @@ class SchemaBuilder
     /** Static explanatory text — for placeholders like the Matrix stub. */
     public function note(array $config = []): static
     {
-        return $this->push(['type' => self::NOTE, 'text' => $config['text'] ?? '']);
+        $node = ['type' => self::NOTE, 'text' => $config['text'] ?? ''];
+
+        // An optional trailing link, for a note whose real answer is elsewhere —
+        // a feed format an integration documents in its own README, say. Kept as
+        // a key of its own rather than markup inside `text`, which the renderer
+        // escapes: a note's text is server-authored today, but one interpolating
+        // a field name would be the day that stopped being safe to relax.
+        if (($config['url'] ?? '') !== '') {
+            $node['url'] = (string) $config['url'];
+            $node['linkText'] = (string) ($config['linkText'] ?? $config['url']);
+        }
+
+        return $this->push($node);
     }
 
     /**

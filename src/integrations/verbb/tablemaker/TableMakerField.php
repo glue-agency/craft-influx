@@ -72,6 +72,12 @@ class TableMakerField extends Field
     public const DEFAULT_TYPE = 'singleline';
 
     /**
+     * Where the feed format is written down — the integration's own README, so
+     * the row can stay one line and the detail has somewhere to grow.
+     */
+    public const DOCS_URL = 'https://github.com/glue-agency/craft-influx/blob/master/src/integrations/verbb/tablemaker/README.md';
+
+    /**
      * The Craft column types a feed may name, `value => label`.
      *
      * Table Maker's own list minus `select` (see the class docblock) and minus
@@ -118,9 +124,9 @@ class TableMakerField extends Field
             'source'  => true,
             'default' => false,
             'extra'   => fn(MappingSchemaBuilder $b)   => $b->note([
-                'text' => Craft::t('influx', 'Map a node holding the whole table: an object with a “columns” list and a “values” list of rows. A column is a label, or an object with “label” plus any of “type”, “align” and “width”. Rows are positional against the columns; a short row leaves the rest empty. Column types: {types}.', [
-                    'types' => implode(', ', array_keys(static::columnTypes())),
-                ]),
+                'text'     => Craft::t('influx', 'Map one node holding the whole table.'),
+                'url'      => self::DOCS_URL,
+                'linkText' => Craft::t('influx', 'Feed format'),
             ]),
         ]);
     }

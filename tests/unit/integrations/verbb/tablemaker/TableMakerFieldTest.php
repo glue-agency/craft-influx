@@ -38,16 +38,17 @@ class TableMakerFieldTest extends Unit
         $this->assertSame(SchemaBuilder::SELECT, $regions['source'][0]['type']);
     }
 
-    public function testTheFormatContractIsOnTheRow(): void
+    public function testTheRowPointsAtTheFormatRatherThanReciting(): void
     {
-        // A feed shipping the wrong shape is the only way this row can fail, and
-        // there is nowhere else for the operator to learn what it wants.
+        // A feed shipping the wrong shape is the only way this row can fail, so it
+        // has to say where the contract is — in one line, with the detail in the
+        // integration's README where it has room to grow.
         $note = (new TableMakerField())->schema($this->fakeField())->toArray()['extra'][0];
 
         $this->assertSame(SchemaBuilder::NOTE, $note['type']);
-        $this->assertStringContainsString('columns', $note['text']);
-        $this->assertStringContainsString('values', $note['text']);
-        $this->assertStringContainsString('singleline', $note['text']);
+        $this->assertSame(TableMakerField::DOCS_URL, $note['url']);
+        $this->assertNotSame('', $note['linkText']);
+        $this->assertLessThan(60, strlen($note['text']));
     }
 
     public function testDropdownColumnsAreNotAccepted(): void

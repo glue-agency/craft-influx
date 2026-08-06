@@ -129,6 +129,28 @@ class SchemaBuilderTest extends Unit
         $this->assertSame('col1', $schema[0]['handle']);
     }
 
+    public function testANoteCanPointSomewhereWithoutMarkup(): void
+    {
+        // The renderer escapes a note's text, so a link is a key rather than an
+        // <a> inside it — which keeps the day a note interpolates a field name
+        // from being the day that stopped being safe.
+        [$plain, $linked] = SchemaBuilder::make()
+            ->note(['text' => 'Nothing to map yet.'])
+            ->note(['text' => 'See the docs.', 'url' => 'https://example.test/docs', 'linkText' => 'Feed format'])
+            ->toArray();
+
+        $this->assertArrayNotHasKey('url', $plain);
+        $this->assertSame('https://example.test/docs', $linked['url']);
+        $this->assertSame('Feed format', $linked['linkText']);
+    }
+
+    public function testALinkedNoteFallsBackToTheUrlAsItsLabel(): void
+    {
+        [$note] = SchemaBuilder::make()->note(['text' => 'x', 'url' => 'https://example.test'])->toArray();
+
+        $this->assertSame('https://example.test', $note['linkText']);
+    }
+
     public function testAChildCarriesTheRegionsItsFieldDoesntDeclare(): void
     {
         // A nested Table or Link: its value comes entirely from its own extras,

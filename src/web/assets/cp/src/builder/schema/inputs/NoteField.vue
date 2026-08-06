@@ -1,5 +1,11 @@
 <template>
-    <p class="light" v-text="node.text"></p>
+    <p class="light">
+        {{ node.text }}
+        <!-- The text itself is escaped, so a note that needs to point somewhere
+             carries the target as its own key rather than markup. -->
+        <a v-if="node.url" :href="node.url" target="_blank" rel="noopener noreferrer"
+           v-text="node.linkText || node.url"></a>
+    </p>
 </template>
 
 <script>
