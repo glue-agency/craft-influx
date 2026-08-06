@@ -30,6 +30,7 @@ use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Time;
 use GlueAgency\Influx\fields\Users;
 use GlueAgency\Influx\integrations\jalendport\preparse\PreparseField;
+use GlueAgency\Influx\integrations\verbb\tablemaker\TableMakerField;
 use GlueAgency\Influx\schema\MappingSchema;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
 
@@ -185,9 +186,11 @@ class FieldsService extends AbstractRegistry
             Country::class,
             Money::class,
 
-            // Third-party, so it lives under integrations/ — and keyed by class
-            // string, so an install without the plugin never hits the key.
+            // Third-party, so they live under integrations/<vendor>/<plugin> —
+            // and keyed by class string, so an install without the plugin never
+            // hits the key.
             PreparseField::class,
+            TableMakerField::class,
 
             // Craft 5 only. The registry files a strategy under the class STRING
             // its craftFieldClass() names and matches by walking a real field's

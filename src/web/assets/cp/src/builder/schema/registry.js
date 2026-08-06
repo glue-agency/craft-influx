@@ -23,6 +23,8 @@ import NoteField from './inputs/NoteField.vue';
 import SelectField from './inputs/SelectField.vue';
 import SubFields from './inputs/SubFields.vue';
 import TextField from './inputs/TextField.vue';
+// Third-party controls live with the PHP strategy they serve, not in inputs/.
+import TableMakerColumns from '@integrations/verbb/tablemaker/resources/TableMakerColumns.vue';
 import TokenField from './inputs/TokenField.vue';
 
 export const CONTROLS = {
@@ -41,6 +43,7 @@ export const CONTROLS = {
     subFields: SubFields,
     elementSubFields: ElementSubFields,
     matrixFields: MatrixFields,
+    tableMakerColumns: TableMakerColumns,
 };
 
 /**

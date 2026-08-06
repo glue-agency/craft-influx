@@ -5,8 +5,6 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\Table as CraftTableField;
-use craft\helpers\DateTimeHelper;
-use DateTimeInterface;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\MappingSchema;
@@ -67,16 +65,9 @@ use GlueAgency\Influx\sync\item\MappingResult;
  */
 class Table extends Field
 {
-    /**
-     * Column types whose value is a flag rather than text, coerced through
-     * {@see Lightswitch::coerce()} on both the write and the comparison.
-     * Craft's own `_normalizeCellValue()` has no case for either, so an
-     * uncoerced "yes" would land in the cell verbatim.
-     */
-    protected const BOOLEAN_TYPES = ['checkbox', 'lightswitch'];
-
-    /** Column types Craft trims and stores as plain text. */
-    protected const TEXT_TYPES = ['singleline', 'multiline'];
+    // What a typed cell stores and what it compares as — shared with the other
+    // strategy writing a table of Craft-typed cells.
+    use TableCells;
 
     public static function craftFieldClass(): ?string
     {
@@ -272,42 +263,6 @@ class Table extends Field
         }
 
         return $reduced;
-    }
-
-    /**
-     * Reduce one cell to its comparable form, by column type. Flags coerce, date
-     * and time columns compare by instant, text columns trim, and everything
-     * else lands on the shared normaliser ({@see Field::normalize()}) — which
-     * already handles the color column's ColorData (Stringable) and the number
-     * column's numeric strings.
-     */
-    protected function cellPrint(string $type, mixed $value): mixed
-    {
-        return match (true) {
-            in_array($type, self::BOOLEAN_TYPES, true) => Lightswitch::coerce($value),
-            in_array($type, self::TEXT_TYPES, true) => $this->normalize($this->trimmed($value)),
-            $type === 'date', $type === 'time' => $this->instant($value),
-            default => $this->normalize($value),
-        };
-    }
-
-    /**
-     * A date/time cell as its instant. Parsed with both timezone flags off so a
-     * timezone-less value reads as UTC on either side — which is how Craft's own
-     * `normalizeValue()` reads the stored one — and so the comparison stays
-     * boot-free. A value no date parse accepts keeps the base normal form rather
-     * than collapsing to null, so non-dates stay distinguishable ({@see Date::normalize()}
-     * takes the same stance).
-     */
-    protected function instant(mixed $value): mixed
-    {
-        if (! is_string($value) && ! is_int($value) && ! $value instanceof DateTimeInterface) {
-            return $this->normalize($value);
-        }
-
-        $date = DateTimeHelper::toDateTime($value, false, false);
-
-        return $date !== false ? $date->getTimestamp() : $this->normalize($value);
     }
 
     /**
@@ -695,28 +650,6 @@ class Table extends Field
         }
 
         return $labels;
-    }
-
-    /**
-     * Coerce one feed value into what its column stores. Craft's
-     * `_normalizeCellValue()` covers color, number, date and time but has no
-     * case for the two flag types, so those are coerced here; text columns are
-     * trimmed the way that same normaliser trims them, and every other type is
-     * handed over raw for Craft to normalize.
-     */
-    protected function coerceCell(string $type, mixed $value): mixed
-    {
-        return match (true) {
-            in_array($type, self::BOOLEAN_TYPES, true) => Lightswitch::coerce($value),
-            in_array($type, self::TEXT_TYPES, true) => $this->trimmed($value),
-            default => $value,
-        };
-    }
-
-    /** A scalar as its trimmed string; anything else unchanged. */
-    protected function trimmed(mixed $value): mixed
-    {
-        return is_scalar($value) ? trim((string) $value) : $value;
     }
 
     /**

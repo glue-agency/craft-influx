@@ -1,5 +1,6 @@
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
+import { aliases } from './vite.config.js';
 
 /**
  * Kept separate from vite.config.js on purpose — that file configures the
@@ -12,10 +13,16 @@ export default defineConfig({
         // must render it as-is instead of trying to resolve a component.
         template: { compilerOptions: { isCustomElement: (tag) => tag.startsWith('craft-') } },
     })],
+    // The one thing worth sharing with the build config: an integration's Vue
+    // sits outside the CP source root, so both resolvers need the same names.
+    resolve: { alias: aliases },
     test: {
         environment: 'happy-dom',
         include: [
             'src/web/assets/cp/src/**/__tests__/*.test.js',
+            // An integration's component is specced beside it, not back in the
+            // CP tree it is only registered from.
+            'src/integrations/**/__tests__/*.test.js',
             // The editor asset is a plain IIFE rather than part of the CP bundle,
             // but its DOM probing is subtle enough to want specs of its own.
             'src/web/assets/editor/**/__tests__/*.test.js',
