@@ -12,7 +12,8 @@ use DateTimeZone;
 use GlueAgency\Influx\events\RegisterMappingOptionsEvent;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use yii\base\Event;
 
@@ -89,10 +90,13 @@ class Date extends Field
         return static::$formatOptions = $event->options;
     }
 
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        return SchemaBuilder::make()
-            ->dateFormat(['options' => self::formatOptions()]);
+        return MappingSchemaBuilder::make()->mapping([
+            'source'  => true,
+            'default' => true,
+            'extra'   => fn(MappingSchemaBuilder $b)   => $b->dateFormat(['options' => self::formatOptions()]),
+        ]);
     }
 
     /**

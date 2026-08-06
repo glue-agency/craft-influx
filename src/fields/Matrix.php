@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\fields;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
@@ -13,7 +12,8 @@ use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -102,44 +102,52 @@ class Matrix extends Field
      * absent means the `fields` channel, which is the stored shape that predates
      * the key.
      */
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        $blockTypes = $this->blockTypeDescriptors($field);
+        return MappingSchemaBuilder::make()->mapping([
+            // The value derives entirely from the sub-mappings below, so the row
+            // renders neither cell of its own — absence is the whole declaration.
+            'source'  => false,
+            'default' => false,
+            'extra'   => function(MappingSchemaBuilder $b) use ($field) {
+                $blockTypes = $this->blockTypeDescriptors($field);
 
-        if (! $blockTypes) {
-            return SchemaBuilder::make()
-                ->note(['text' => Craft::t('influx', 'This Matrix field has no block types to map yet.')]);
-        }
+                if (! $blockTypes) {
+                    return $b
+                        ->note(['text' => Craft::t('influx', 'This Matrix field has no block types to map yet.')]);
+                }
 
-        $builder = SchemaBuilder::make();
+                $builder = $b;
 
-        foreach ($blockTypes as $blockType) {
-            $subFields = SchemaBuilder::make();
-            $layout = $blockType['layout'];
+                foreach ($blockTypes as $blockType) {
+                    $subFields = MappingSchemaBuilder::make();
+                    $layout = $blockType['layout'];
 
-            if ($blockType['hasTitleField']) {
-                $subFields->text([
-                    'handle'  => 'title',
-                    'label'   => $this->titleLabel($layout),
-                    'channel' => 'nativeFields',
-                ]);
-            }
+                    if ($blockType['hasTitleField']) {
+                        $subFields->text([
+                            'handle'  => 'title',
+                            'label'   => $this->titleLabel($layout),
+                            'channel' => 'nativeFields',
+                        ]);
+                    }
 
-            foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
-                $subFields->fieldRow($this->fieldEditorFor($customField), [
-                    'handle' => $customField->handle,
-                    'label'  => $customField->name,
-                ]);
-            }
+                    foreach ($layout !== null ? $layout->getCustomFields() : [] as $customField) {
+                        $subFields->fieldRow($this->childRowFor($customField), [
+                            'handle' => $customField->handle,
+                            'label'  => $customField->name,
+                        ]);
+                    }
 
-            $builder->matrixFields([
-                'label'     => $blockType['name'],
-                'subFields' => $subFields->toArray(),
-                'blockType' => $blockType['handle'],
-            ]);
-        }
+                    $builder->matrixFields([
+                        'label'     => $blockType['name'],
+                        'subFields' => $subFields->toArray(),
+                        'blockType' => $blockType['handle'],
+                    ]);
+                }
 
-        return $builder;
+                return $builder;
+            },
+        ]);
     }
 
     /**
@@ -155,18 +163,6 @@ class Matrix extends Field
         return $titleElement?->label() ?: Craft::t('app', 'Title');
     }
 
-    /**
-     * The Matrix row's value derives entirely from its sub-mappings — there is
-     * no source node or default on the row itself. `subfieldsOnly` tells the
-     * SPA's MappingRow to render neither control; any other strategy whose
-     * value comes solely from its extras can declare the same flag.
-     */
-    public function fieldMeta(CraftFieldInterface $field): array
-    {
-        return [
-            'subfieldsOnly' => true,
-        ];
-    }
 
     /**
      * A node-less Matrix row is addressed via its per-type sub-mappings, never
@@ -1154,22 +1150,6 @@ class Matrix extends Field
      *
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
      */
-    protected function coerceChildValue(
-        FieldContext $context,
-        ElementInterface $blockElement,
-        FieldMapping $sub,
-        CraftFieldInterface $childCraftField,
-        mixed $value,
-    ): mixed {
-        $childItem = $sub->node !== null
-            ? new RemoteItem(Hash::insert([], $sub->node, $value))
-            : $context->item;
-
-        $childContext = $context->descend($blockElement, $sub, $childCraftField, $childItem);
-
-        return $this->childStrategy($context, $childCraftField)->parse($childContext);
-    }
-
     /**
      * The block-type descriptors declared on the Matrix field, in declared
      * order. Extracted — like {@see blockTypeHandles()} and
@@ -1208,18 +1188,6 @@ class Matrix extends Field
     }
 
     /**
-     * Resolve the mapping strategy for a child craft field, through the seam the
-     * context carries ({@see FieldContext::strategyFor()}) rather than the plugin
-     * singleton — a field strategy has no business reaching a global mid-walk.
-     * Still extracted so tests can record the {@see FieldContext} a child
-     * receives and return a marker.
-     */
-    protected function childStrategy(FieldContext $context, CraftFieldInterface $childCraftField): Field
-    {
-        return $context->strategyFor($childCraftField);
-    }
-
-    /**
      * Every active child (custom + native) of one block type's sub-mapping
      * tree — used by {@see addressed()} to test whether the feed speaks to the
      * type at all.
@@ -1252,23 +1220,6 @@ class Matrix extends Field
     protected function activeNativeSubMappings(FieldMapping $typeMapping): array
     {
         return $this->filterActive($typeMapping->nativeSubMappings());
-    }
-
-    /**
-     * @param iterable<FieldMapping> $mappings
-     * @return list<FieldMapping>
-     */
-    protected function filterActive(iterable $mappings): array
-    {
-        $active = [];
-
-        foreach ($mappings as $mapping) {
-            if ($mapping->isActive()) {
-                $active[] = $mapping;
-            }
-        }
-
-        return $active;
     }
 
     /**

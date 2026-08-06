@@ -6,8 +6,8 @@ use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\NativeAttributes;
-use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\SyncContext;
 
 /**
@@ -245,10 +245,10 @@ class UserTarget extends AbstractElementTarget
      * extras — {@see afterCommit()} reads them as behaviour flags, never as
      * group selections.
      */
-    protected function nativeFieldDefinitions(): SchemaBuilder
+    protected function nativeFieldDefinitions(): MappingSchemaBuilder
     {
-        return SchemaBuilder::make()
-            ->group(Craft::t('influx', 'Native'), function(SchemaBuilder $group): void {
+        return MappingSchemaBuilder::make()
+            ->group(Craft::t('influx', 'Native'), function(MappingSchemaBuilder $group): void {
                 // The same writable attributes a Users relation offers as
                 // sub-field rows, in the same order — one list, two surfaces.
                 foreach (NativeAttributes::userWritable() as $attribute) {
@@ -274,8 +274,10 @@ class UserTarget extends AbstractElementTarget
                     $group->text([
                         'handle' => 'groups',
                         'name'   => Craft::t('app', 'Groups'),
-                        'meta'   => ['subfieldsOnly' => true],
-                        'extras' => function(SchemaBuilder $builder) use ($userGroups): void {
+                        // Membership is the toggles below, so there's nothing for a
+                        // feed node or a default to say — neither cell renders.
+                        'cells'  => ['source' => false, 'default' => false],
+                        'extras' => function(MappingSchemaBuilder $builder) use ($userGroups): void {
                             foreach ($userGroups as $userGroup) {
                                 $builder->lightswitch(['handle' => $userGroup->handle, 'label' => $userGroup->name]);
                             }

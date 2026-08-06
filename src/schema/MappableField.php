@@ -7,7 +7,7 @@ namespace GlueAgency\Influx\schema;
  * renders a row from, and THE owner of that wire contract (which used to live
  * in prose on {@see \GlueAgency\Influx\targets\ElementTargetInterface::getMappableFields()}).
  *
- * Two producers, one shape: {@see SchemaBuilder::group()} declares an element
+ * Two producers, one shape: {@see MappingSchemaBuilder::group()} declares an element
  * target's natives, {@see \GlueAgency\Influx\targets\AbstractElementTarget::customFieldDescriptors()}
  * walks a field layout's custom fields. Consumers
  * ({@see \GlueAgency\Influx\services\LinkBuilderService},
@@ -39,154 +39,101 @@ class MappableField
     /** Group heading: the field-layout tab name, or the target's native group. */
     public string $group = '';
 
-    /**
-     * Which default-value editor the row renders: {@see SchemaBuilder::TEXT},
-     * {@see SchemaBuilder::SELECT} or {@see SchemaBuilder::ELEMENT}.
-     */
-    public string $defaultType = SchemaBuilder::TEXT;
-
-    /**
-     * For {@see SchemaBuilder::SELECT}: value => label. Null when the field's
-     * default editor isn't a select — the key is then absent from the wire shape.
-     *
-     * @var array<string, string>|null
-     */
-    public ?array $options = null;
-
-    /**
-     * For {@see SchemaBuilder::ELEMENT}: FQCN of the element type to pick from.
-     *
-     * @var class-string|null
-     */
-    public ?string $elementType = null;
-
     /** FQCN of the Craft field class; null (and absent) for natives. */
     public ?string $fieldClass = null;
 
     /**
-     * Opaque per-kind meta the typed-mapping UI / runtime needs (extras schema,
-     * sub-fields, `subfieldsOnly`, ...), wrapped by {@see \GlueAgency\Influx\fields\Field::meta()}.
-     * Null — and absent from the wire shape — for a native with no extras;
-     * custom fields always carry it, even when empty.
+     * THE row's whole UI, as the regions its field's strategy declared
+     * ({@see \GlueAgency\Influx\fields\Field::schema()}): one key per region the
+     * row renders, each a list of nodes the SPA dispatches by `type`.
+     *
+     * An absent region is an absent cell, which is the whole reason this is all
+     * there is. It replaced a `defaultType` / `options` / `elementType` /
+     * `defaultLazy` descriptor beside a `fieldMeta` envelope carrying
+     * `subfieldsOnly` and `unmappable` flags — six keys saying by convention what
+     * this says by structure.
+     *
+     * @var array<string, list<array>>
      */
-    public ?array $fieldMeta = null;
+    public array $mapping = [];
 
     protected function __construct(
         string $handle,
         string $name,
         bool $native,
         string $group,
-        string $defaultType,
-        ?array $options,
-        ?string $elementType,
         ?string $fieldClass,
-        ?array $fieldMeta,
+        array $mapping,
     ) {
         $this->handle = $handle;
         $this->name = $name;
         $this->native = $native;
         $this->group = $group;
-        $this->defaultType = $defaultType;
-        $this->options = $options;
-        $this->elementType = $elementType;
         $this->fieldClass = $fieldClass;
-        $this->fieldMeta = $fieldMeta;
+        $this->mapping = $mapping;
     }
 
     /**
      * A native element attribute (title, slug, enabled, author, ...). Built by
-     * {@see SchemaBuilder::group()} from the group's declared nodes, so the
-     * nullable arguments mirror the keys a node may or may not carry.
+     * {@see MappingSchemaBuilder::group()} from the group's declared nodes.
      *
-     * @param array<string, string>|null $options
-     * @param class-string|null $elementType
+     * @param array<string, list<array>> $mapping
      */
-    public static function native(
-        string $handle,
-        string $name,
-        string $group,
-        string $defaultType = SchemaBuilder::TEXT,
-        ?array $options = null,
-        ?string $elementType = null,
-        ?array $fieldMeta = null,
-    ): self {
+    public static function native(string $handle, string $name, string $group, array $mapping = []): self
+    {
         return new self(
             handle: $handle,
             name: $name,
             native: true,
             group: $group,
-            defaultType: $defaultType,
-            options: $options,
-            elementType: $elementType,
             fieldClass: null,
-            fieldMeta: $fieldMeta,
+            mapping: $mapping,
         );
     }
 
     /**
-     * A custom field on an element's field layout. Its kind is expressed through
-     * `fieldClass` + `fieldMeta`; the default editor is a plain text input unless
-     * the field's strategy asks for something field-type aware
-     * ({@see \GlueAgency\Influx\fields\Field::defaultEditor()}) — an Entries field
-     * gets the same element picker a native author does, a Dropdown a select over
-     * its own options.
+     * A custom field on an element's field layout. Its kind reaches the SPA as
+     * `fieldClass` — which is also what marks a descriptor custom, and so what
+     * decides whether the row sends its handle to the server-rendered pickers —
+     * while everything the row RENDERS is in the regions.
      *
-     * @param array<string, string>|null $options
-     * @param class-string|null $elementType
+     * @param array<string, list<array>> $mapping
      */
     public static function custom(
         string $handle,
         string $name,
         string $group,
         string $fieldClass,
-        array $fieldMeta,
-        string $defaultType = SchemaBuilder::TEXT,
-        ?array $options = null,
-        ?string $elementType = null,
+        array $mapping = [],
     ): self {
         return new self(
             handle: $handle,
             name: $name,
             native: false,
             group: $group,
-            defaultType: $defaultType,
-            options: $options,
-            elementType: $elementType,
             fieldClass: $fieldClass,
-            fieldMeta: $fieldMeta,
+            mapping: $mapping,
         );
     }
 
     /**
-     * The JSON wire shape the SPA consumes. The five always-present keys lead,
-     * then each optional key — omitted while its property is null, so a native
-     * without extras stays as terse on the wire as it reads here.
+     * The JSON wire shape the SPA consumes: the four keys every descriptor has,
+     * `fieldClass` where there is one, and the row itself last.
      */
     public function toArray(): array
     {
         $descriptor = [
-            'handle'      => $this->handle,
-            'name'        => $this->name,
-            'native'      => $this->native,
-            'group'       => $this->group,
-            'defaultType' => $this->defaultType,
+            'handle' => $this->handle,
+            'name'   => $this->name,
+            'native' => $this->native,
+            'group'  => $this->group,
         ];
-
-        if ($this->options !== null) {
-            $descriptor['options'] = $this->options;
-        }
-
-        if ($this->elementType !== null) {
-            $descriptor['elementType'] = $this->elementType;
-        }
 
         if ($this->fieldClass !== null) {
             $descriptor['fieldClass'] = $this->fieldClass;
         }
 
-        if ($this->fieldMeta !== null) {
-            $descriptor['fieldMeta'] = $this->fieldMeta;
-        }
+        $descriptor['mapping'] = $this->mapping;
 
         return $descriptor;
     }

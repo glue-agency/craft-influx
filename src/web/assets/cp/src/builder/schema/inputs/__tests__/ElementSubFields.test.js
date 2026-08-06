@@ -26,23 +26,26 @@ const node = {
     ],
 };
 
-const mountFields = (props = {}) => mount(ElementSubFields, {
+// The card binds both stored channels as ONE `channels` object; the two are named
+// separately here only because that is how each spec below reads.
+const mountFields = ({ fields = {}, nativeFields = {}, ...rest } = {}) => mount(ElementSubFields, {
     props: {
         node,
-        fields: {},
-        nativeFields: {},
+        channels: { fields, nativeFields },
         nodeOptions: [
             { value: 'images.0.alt', label: 'images.0.alt' },
             { value: 'images.0.name', label: 'images.0.name' },
         ],
-        ...props,
+        ...rest,
     },
     global: { mocks: { $t: (s) => s } },
 });
 
 // Row i's source-node control is the i-th SearchableSelect.
 const nodeSelect = (wrapper, idx) => wrapper.findAllComponents(SearchableSelect).at(idx);
-const lastWrite = (wrapper, channel) => wrapper.emitted(channel).at(-1)[0];
+
+// One emit carries both channels, which is what makes a cross-channel move atomic.
+const lastWrite = (wrapper, channel) => wrapper.emitted('update:channels').at(-1)[0][channel];
 
 describe('ElementSubFields rows', () => {
     it('writes a picked node under the flat rows map, dropping emptied rows', () => {
@@ -51,7 +54,7 @@ describe('ElementSubFields rows', () => {
         });
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
 
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({ title: { node: 'images.0.name' } });
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({ title: { node: 'images.0.name' } });
     });
 
     it('keeps a row\'s unknown keys intact across a write round-trip', async () => {
@@ -62,7 +65,7 @@ describe('ElementSubFields rows', () => {
         // Rewriting the row's default must not disturb the unknown keys.
         await wrapper.findAll('input[type="text"]').at(0).setValue('Fallback');
 
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({
             alt: { node: 'images.0.alt', default: 'Fallback', options: { format: 'raw' } },
         });
     });
@@ -73,7 +76,7 @@ describe('ElementSubFields rows', () => {
         });
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', '');
 
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({ alt: { options: { format: 'raw' } } });
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({ alt: { options: { format: 'raw' } } });
     });
 });
 
@@ -95,12 +98,12 @@ describe('ElementSubFields channels', () => {
 
         nodeSelect(wrapper, 2).vm.$emit('update:modelValue', 'images.0.caption');
 
-        expect(lastWrite(wrapper, 'update:fields')).toEqual({ caption: { node: 'images.0.caption' } });
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({});
+        expect(lastWrite(wrapper, 'fields')).toEqual({ caption: { node: 'images.0.caption' } });
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({});
 
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'images.0.alt');
 
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({ alt: { node: 'images.0.alt' } });
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({ alt: { node: 'images.0.alt' } });
     });
 
     it('writes both channels on every edit, so neither keeps a stale copy', () => {
@@ -109,8 +112,8 @@ describe('ElementSubFields channels', () => {
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'images.0.alt');
 
         // The untouched channel is re-emitted as it was rather than left unsaid.
-        expect(wrapper.emitted('update:fields')).toHaveLength(1);
-        expect(lastWrite(wrapper, 'update:fields')).toEqual({ caption: { node: 'images.0.caption' } });
+        expect(wrapper.emitted('update:channels')).toHaveLength(1);
+        expect(lastWrite(wrapper, 'fields')).toEqual({ caption: { node: 'images.0.caption' } });
     });
 
     it('round-trips a saved handle the card no longer offers, in its own channel', () => {
@@ -124,8 +127,8 @@ describe('ElementSubFields channels', () => {
 
         nodeSelect(wrapper, 0).vm.$emit('update:modelValue', 'images.0.caption');
 
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({ alt: { node: 'images.0.alt' } });
-        expect(lastWrite(wrapper, 'update:fields')).toEqual({ caption: { node: 'images.0.caption' } });
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({ alt: { node: 'images.0.alt' } });
+        expect(lastWrite(wrapper, 'fields')).toEqual({ caption: { node: 'images.0.caption' } });
     });
 
     it('empties BOTH channels on the card\'s Clear', async () => {
@@ -135,7 +138,7 @@ describe('ElementSubFields channels', () => {
         });
         await wrapper.find('.clear-rows').trigger('click');
 
-        expect(lastWrite(wrapper, 'update:fields')).toEqual({});
-        expect(lastWrite(wrapper, 'update:nativeFields')).toEqual({});
+        expect(lastWrite(wrapper, 'fields')).toEqual({});
+        expect(lastWrite(wrapper, 'nativeFields')).toEqual({});
     });
 });

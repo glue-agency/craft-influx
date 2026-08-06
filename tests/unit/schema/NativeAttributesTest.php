@@ -56,7 +56,33 @@ class NativeAttributesTest extends Unit
         // needing its own coercion, which the native writer doesn't do).
         $handles = array_column(NativeAttributes::userWritable(), 'handle');
 
-        $this->assertSame(['username', 'email', 'fullName', 'firstName', 'lastName'], $handles);
+        $this->assertSame(['username', 'email', 'fullName'], $handles);
+    }
+
+    /**
+     * Craft's Full Name layout element renders EITHER one full-name input OR a
+     * First/Last pair, on `showFirstAndLastNameFields`, and branches its own
+     * validation on the same setting — so offering all three would put a row in
+     * the card for a shape the CP never shows.
+     */
+    public function testOnlyTheNameShapeTheCpRendersIsOffered(): void
+    {
+        $this->assertSame(
+            ['username', 'email', 'firstName', 'lastName'],
+            array_column(SplitNames::userWritable(), 'handle'),
+        );
+    }
+
+    /**
+     * The element is removable through `EVENT_DEFINE_NATIVE_FIELDS`; with it gone
+     * none of the three is editable anywhere, so none is offered.
+     */
+    public function testAUserLayoutWithoutTheNameElementOffersNoNames(): void
+    {
+        $this->assertSame(
+            ['username', 'email'],
+            array_column(NoNameElement::userWritable(), 'handle'),
+        );
     }
 
     public function testAnEntryOffersUriForMatchingButNeverForWriting(): void
@@ -146,6 +172,27 @@ class NativeAttributesTest extends Unit
 class EmailAsUsername extends NativeAttributes
 {
     protected static function usesSeparateUsername(): bool
+    {
+        return false;
+    }
+}
+
+/** The same lists on a site showing First/Last Name rather than one Full Name. */
+class SplitNames extends NativeAttributes
+{
+    protected static function userNameWritable(): array
+    {
+        return [
+            ['handle' => 'firstName', 'label' => 'First Name'],
+            ['handle' => 'lastName',  'label' => 'Last Name'],
+        ];
+    }
+}
+
+/** A user layout a module stripped the name element out of. */
+class NoNameElement extends NativeAttributes
+{
+    protected static function userLayoutShowsNames(): bool
     {
         return false;
     }

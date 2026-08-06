@@ -10,7 +10,8 @@ use craft\fields\BaseRelationField;
 use craft\helpers\Db;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\exceptions\MappingValueException;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -107,18 +108,29 @@ abstract class Relation extends RelationalField
         return $groups;
     }
 
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    /**
+     * A relation's default is an element the operator PICKS in the CP, so that
+     * cell offers the same element selector an entry's native author does — not a
+     * text box to retype a reference into. {@see parse()} matches a picked default
+     * by id accordingly.
+     */
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        /** @var BaseRelationField $field */
-        $subFields = $this->subFieldRows($field);
+        return MappingSchemaBuilder::make()->mapping([
+            'source'  => true,
+            'default' => fn(MappingSchemaBuilder $b) => $b->element(['elementType' => $this->elementType()]),
+            'extra'   => function(MappingSchemaBuilder $b) use ($field) {
+                /** @var BaseRelationField $field */
+                $subFields = $this->subFieldRows($field);
 
-        return SchemaBuilder::make()
-            ->matchBy(['options' => $this->matchOptions($field)])
-            ->createWhenMissing()
-            ->when($subFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
-                'label'     => Craft::t('influx', 'Sub-fields'),
-                'subFields' => $subFields,
-            ]));
+                $b->matchBy(['options' => $this->matchOptions($field)])
+                    ->createWhenMissing()
+                    ->when($subFields, fn(MappingSchemaBuilder $builder) => $builder->elementSubFields([
+                        'label'     => Craft::t('influx', 'Sub-fields'),
+                        'subFields' => $subFields,
+                    ]));
+            },
+        ]);
     }
 
     /**
@@ -147,20 +159,6 @@ abstract class Relation extends RelationalField
     }
 
     /**
-     * A relation's default is an element the operator PICKS in the CP, so the
-     * row offers the same element selector an entry's native author does — not a
-     * text box to retype a reference into. {@see parse()} matches a picked
-     * default by id accordingly.
-     */
-    public function defaultEditor(CraftFieldInterface $field): ?array
-    {
-        return [
-            'type'        => SchemaBuilder::ELEMENT,
-            'elementType' => $this->elementType(),
-        ];
-    }
-
-    /**
      * The writable attributes as sub-field rows, applied via the mapping's
      * `nativeFields` channel
      * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}).
@@ -177,7 +175,7 @@ abstract class Relation extends RelationalField
      */
     protected function nativeSubFields(BaseRelationField $field): array
     {
-        $builder = SchemaBuilder::make();
+        $builder = MappingSchemaBuilder::make();
 
         foreach ($this->nativeWritableAttributes($field) as $attribute) {
             $builder->text($attribute);
@@ -207,7 +205,7 @@ abstract class Relation extends RelationalField
      *
      * A value that comes from the mapping's DEFAULT rather than the feed is
      * matched by id, whatever `options.match` says, and never creates: the
-     * default is an element picked in the CP ({@see defaultEditor()}), so its id
+     * default is an element picked in the CP ({@see schema()}), so its id
      * is the reference — matching it as a title/slug finds nobody, and creating
      * on that miss would conjure an element named after an id. Same rule, same
      * reason as the native author's ({@see \GlueAgency\Influx\targets\EntryTarget::resolveAuthorId()});

@@ -1,6 +1,6 @@
 <template>
     <!-- Same group chrome as the main field list (MappingGroup): the shared
-         MappingGroupCard, with the subfields variant so SchemaForm's subgrid
+         MappingGroupCard, with the subfields variant so the extras' subgrid
          rules keep matching. Sub-field mappings ARE mappings, so they get the
          same furniture (chevron, mapped/missing pills, column headings). -->
     <v-mapping-group-card variant="subfields" :label="node.label" :default-expanded="hasSavedRows">
@@ -42,9 +42,10 @@
             <p v-if="! subFieldList.length && emptyHint" class="light sub-fields-hint" v-text="emptyHint"></p>
 
             <!-- Same column headings as the main mapping list — sub-field rows are
-                 mappings too. Joined to the card's shared grid in SchemaForm.vue,
-                 which subgrids down from the parent mapping rows' tracks so the
-                 columns align with the row above. -->
+                 mappings too. Joined to the card's shared grid in
+                 styles/components/schema-form.css, which subgrids down from the
+                 parent mapping rows' tracks so the columns align with the row
+                 above. -->
             <div v-else class="influx-mapping-headings">
                 <div v-text="$t('Field')"></div>
                 <div v-text="$t('Source node')"></div>
@@ -57,7 +58,27 @@
                 :key="sub.handle"
                 :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
             >
-                <label>
+                <!-- The whole label cell toggles this row's extras, the way the
+                     parent row's meta cell toggles its own.
+
+                     `.prevent` is load-bearing: a <label> forwards its own click to
+                     the first labelable element inside it, which is the chevron
+                     button — so a click on the label text toggled twice (once here,
+                     once on the forwarded button click bubbling back up) and looked
+                     like nothing happened at all. Only a click that started on the
+                     chevron itself ever worked. -->
+                <label :class="{ 'is-toggleable': hasExtras(sub) }" @click.prevent="toggleExtras(sub)">
+                    <button
+                        v-if="hasExtras(sub)"
+                        type="button"
+                        class="extras-chevron"
+                        :class="{ collapsed: ! isExpanded(sub) }"
+                        :aria-expanded="isExpanded(sub) ? 'true' : 'false'"
+                        :aria-label="isExpanded(sub) ? $t('Hide options') : $t('Configure')"
+                        :title="isExpanded(sub) ? $t('Hide options') : $t('Configure')"
+                    >
+                        <span aria-hidden="true">▼</span>
+                    </button>
                     {{ sub.label }}
                     <span v-if="isMissing(sub.handle)"
                           class="influx-missing-badge"
@@ -70,59 +91,71 @@
                     :options="sourceNodeOptions"
                     searchable
                     allow-custom
-                    :placeholder="$t('— no mapping —')"
                     :search-placeholder="$t('Search nodes…')"
                     :empty-label="$t('Run “Fetch sample” to discover nodes.')"
                     :disabled="readOnly"
                     @update:model-value="updateRow(sub.handle, 'node', $event)"
                 />
                 <!-- The default-value editor renders by the sub-field node's own
-                     type — the same primitives, and the same editors, the
-                     top-level mapping row uses. A relation sub-field gets the
-                     picker its own field would give an editor; a text box would
-                     ask the operator to retype a reference.
+                     type, through the same registry a top-level cell uses — the
+                     same primitives and the same controls. A relation sub-field
+                     gets the picker its own field would give an editor; a text box
+                     would ask the operator to retype a reference.
 
-                     Mounted only once the card is open: the picker fetches its
-                     markup from the server, and a mapping tab renders every
-                     card at once, so an eagerly-mounted one would fire a request
-                     per relation row on tab load. A card with saved rows starts
-                     expanded, so a configured picker still appears at once. -->
-                <template v-if="sub.type === 'element'">
-                    <v-element-picker
-                        v-if="expanded"
-                        :model-value="rowFor(sub.handle).default"
-                        :element-type="sub.elementType"
-                        :field-handle="sub.handle"
-                        @update:model-value="updateRow(sub.handle, 'default', $event)"
-                    />
-                </template>
-                <v-select-input
-                    v-else-if="sub.type === 'select'"
+                     A server-rendered control is mounted only once the card is
+                     open: it fetches its markup from the server, and a mapping tab
+                     renders every card at once, so an eagerly-mounted one would
+                     fire a request per relation row on tab load. A card with saved
+                     rows starts expanded, so a configured picker still appears at
+                     once.
+
+                     Bound exactly as a top-level cell is — no stand-in copy for the
+                     empty state. A select's "— no default —" is a sentinel in its
+                     own list now, so an unset row reads as an empty cell here too
+                     rather than as a labelled "—" a card row alone would show. -->
+                <component
+                    v-if="expanded || ! serverRendered(sub)"
+                    :is="controlFor(sub)"
                     :node="sub"
                     :model-value="rowFor(sub.handle).default"
-                    searchable
+                    :field-handle="sub.handle"
                     :read-only="readOnly"
                     @update:model-value="updateRow(sub.handle, 'default', $event)"
                 />
-                <input
-                    v-else
-                    type="text"
-                    :class="['text', sub.type === 'code' ? 'code' : null]"
-                    :value="rowFor(sub.handle).default"
-                    :placeholder="sub.placeholder || null"
-                    :disabled="readOnly"
-                    @input="updateRow(sub.handle, 'default', $event.target.value)"
-                >
+
+                <!-- This row's OWN extras — whatever its field declares at the top
+                     level, because a nested field is configured the same way: a
+                     nested Assets row's `mode` decides whether a URL is matched or
+                     uploaded, a nested Date's format parses its value, a nested
+                     relation's match-by resolves it. All honoured at sync time,
+                     because a sub-row is a whole mapping the applier descends into.
+
+                     Spans the row's columns below it, mounted only while open so a
+                     card's worth of pickers doesn't fetch on tab load. -->
+                <div v-if="hasExtras(sub)" class="sub-field-extras" :data-expanded="isExpanded(sub) ? 'true' : 'false'">
+                    <v-mapping-extras
+                        v-if="isExpanded(sub)"
+                        :nodes="sub.extra"
+                        :mapping="rows[sub.handle] || {}"
+                        :node-options="nodeOptions"
+                        :discovered-nodes="discoveredNodes"
+                        :read-only="readOnly"
+                        @update:mapping="replaceRow(sub.handle, $event)"
+                    />
+                </div>
             </div>
         </template>
     </v-mapping-group-card>
 </template>
 
 <script>
-import ElementPicker from '../../ElementPicker.vue';
 import SearchableSelect from '../../SearchableSelect.vue';
-import SelectInput from './SelectInput.vue';
 import MappingGroupCard from '../../../components/MappingGroupCard.vue';
+import MappingExtras from '../MappingExtras.vue';
+import { controlFor } from '../registry.js';
+
+/** Node types whose control fetches its markup from the server on mount. */
+const SERVER_RENDERED = ['element', 'icon'];
 
 /**
  * The shared sub-field mapping table: source-node + default rows for one
@@ -132,8 +165,8 @@ import MappingGroupCard from '../../../components/MappingGroupCard.vue';
  * contract and stay out of the rendering: ElementSubFields (a related
  * element's natives AND its layout's custom fields, split across the
  * mapping's `nativeFields` / `fields` channels), MatrixFields (one Matrix
- * block type's slice of `blocks`, split the same way) and SchemaForm directly
- * for a Table field's columns (the flat `fields` map, one channel only).
+ * block type's slice of `blocks`, split the same way) and SubFields for a
+ * field's own columns (the flat `fields` map, one channel only).
  *
  * Rows contract: `rows` is the saved map `{handle: {node?, default?,
  * useDefault?, ...}}` for the sub-fields in `node.subFields` — ONE map
@@ -170,6 +203,15 @@ export default {
         // Rendered instead of the column headings when node.subFields is
         // empty; without it the (row-less) headings still render.
         emptyHint: { type: String, default: null },
+    },
+
+    data() {
+        return {
+            // Which rows have their extras open, by handle. Panel state, not value
+            // state — a wipe of the rows deliberately leaves it alone, the way the
+            // parent row's own toggle survives one.
+            expanded: {},
+        };
     },
 
     computed: {
@@ -220,10 +262,51 @@ export default {
     },
 
     methods: {
+        controlFor,
+
+        serverRendered(sub) {
+            return SERVER_RENDERED.includes(sub.type);
+        },
+
+        /** Whether this row's field declares extras of its own to configure. */
+        hasExtras(sub) {
+            return (sub.extra || []).length > 0;
+        },
+
+        isExpanded(sub) {
+            // A row that already has extras saved starts open, so a configured one
+            // isn't hidden behind a chevron nobody thought to click.
+            return this.expanded[sub.handle]
+                ?? Object.keys(this.rows[sub.handle]?.options || {}).length > 0;
+        },
+
+        toggleExtras(sub) {
+            if (! this.hasExtras(sub)) return;
+
+            this.expanded = { ...this.expanded, [sub.handle]: ! this.isExpanded(sub) };
+        },
+
+        /**
+         * Put a row's whole rewritten mapping back — what its extras emit. Its
+         * node / default / useDefault ride along untouched, and a row left with
+         * nothing drops out, which is the same rule updateRow() applies.
+         */
+        replaceRow(handle, mapping) {
+            const next = { ...this.rows };
+
+            if (Object.keys(mapping || {}).length === 0) {
+                delete next[handle];
+            } else {
+                next[handle] = mapping;
+            }
+
+            this.$emit('update:rows', next);
+        },
+
         // An empty rows map is a normal emit, so the consumer's own merge
         // does the collapsing — MatrixFields drops the emptied channels and
         // then the block type off `blocks`, ElementSubFields writes both
-        // channels empty, and MappingRow.writeMapping() prunes from there.
+        // channels empty, and the slot writer prunes from there.
         clearRows() {
             this.$emit('update:rows', {});
         },
@@ -273,6 +356,10 @@ export default {
         },
     },
 
-    components: { 'v-searchable-select': SearchableSelect, 'v-select-input': SelectInput, 'v-element-picker': ElementPicker, 'v-mapping-group-card': MappingGroupCard },
+    components: {
+        'v-searchable-select': SearchableSelect,
+        'v-mapping-group-card': MappingGroupCard,
+        'v-mapping-extras': MappingExtras,
+    },
 };
 </script>

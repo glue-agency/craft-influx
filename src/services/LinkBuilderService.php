@@ -7,6 +7,8 @@ use craft\base\Component;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\elements\Entry;
 use craft\fields\BaseRelationField;
+use craft\fields\Icon as CraftIconField;
+use craft\helpers\Cp;
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
@@ -440,6 +442,84 @@ class LinkBuilderService extends Component
      *
      * @return array{sources: string|string[], limit: int|null, single: bool}
      */
+    /**
+     * Craft's own icon picker, for an Icon field's default-value cell — the
+     * counterpart of {@see renderElementSelect()}, and mounted the same way: the
+     * SPA drops the html in and constructs `Craft.IconPicker` off `jsSettings`.
+     *
+     * Rendered here rather than shipped as data because Craft's icon set runs to
+     * thousands of entries with their own search terms, which Craft already
+     * searches server-side from inside this control. Whether Pro icons are
+     * selectable is the FIELD's setting, derived here for the same reason an
+     * element picker's sources are — the SPA has no business knowing about it.
+     *
+     * The `{% js %}` the picker's template emits goes to the View's buffer rather
+     * than into this html, which is exactly why the settings come back separately
+     * for the client to construct with.
+     *
+     * @return array{html: string, jsSettings: array{id: string, freeOnly: bool}}
+     */
+    public function renderIconPicker(?string $fieldHandle, ?string $value, bool $readOnly): array
+    {
+        $field = $fieldHandle !== null ? Craft::$app->getFields()->getFieldByHandle($fieldHandle) : null;
+        $freeOnly = ! ($field instanceof CraftIconField) || ! $field->includeProIcons;
+        $id = 'influx-icon-' . ($fieldHandle ?? 'default');
+
+        if (! method_exists(Cp::class, 'iconPickerHtml')) {
+            return ['html' => '', 'jsSettings' => ['id' => $id, 'freeOnly' => $freeOnly]];
+        }
+
+        return [
+            'html' => Cp::iconPickerHtml([
+                'id' => $id,
+                // The picker writes the picked name into this input, so it has to
+                // exist even though the SPA reads the value off the change event
+                // and nothing here is ever POSTed as a form.
+                'name'     => $id,
+                'value'    => $value !== '' ? $value : null,
+                'static'   => $readOnly,
+                'freeOnly' => $freeOnly,
+            ]),
+            'jsSettings' => ['id' => $id, 'freeOnly' => $freeOnly],
+        ];
+    }
+
+    /**
+     * The option list a lazily-declared default select fetches on first use.
+     *
+     * Resolved from the field's own handle, the same way
+     * {@see renderElementSelect()} resolves the field shaping an element picker —
+     * so a strategy answers for its own field type and nothing here knows which
+     * field types have big lists.
+     *
+     * A handle that no longer resolves yields no options rather than an error:
+     * the row is already showing a mapping that outlived its field, and the
+     * builder says so through its missing-mapping badge.
+     *
+     * The field's own values ONLY. The "nothing picked" row is a sentinel declared
+     * on the node ({@see \GlueAgency\Influx\schema\MappingSchemaBuilder::defaultSelect()}),
+     * so it is already on screen before this list is ever fetched — returning one
+     * here would double it.
+     *
+     * @return list<array{value: string, label: string}> The SPA's option shape.
+     */
+    public function defaultOptionsFor(?string $fieldHandle): array
+    {
+        $field = $fieldHandle !== null ? Craft::$app->getFields()->getFieldByHandle($fieldHandle) : null;
+
+        if ($field === null) {
+            return [];
+        }
+
+        $options = [];
+
+        foreach (Influx::getInstance()->fields->defaultOptionsFor($field) as $value => $label) {
+            $options[] = ['value' => (string) $value, 'label' => (string) $label];
+        }
+
+        return $options;
+    }
+
     public function elementSelectConfigFor(?CraftFieldInterface $field): array
     {
         if (! $field instanceof BaseRelationField) {

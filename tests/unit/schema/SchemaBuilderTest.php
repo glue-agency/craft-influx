@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\schema;
 
 use Codeception\Test\Unit;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
@@ -16,7 +17,7 @@ class SchemaBuilderTest extends Unit
 {
     public function testNodePassesAThirdPartyTypeThrough(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->node('colorPicker', ['handle' => 'accent', 'label' => 'Accent', 'default' => '#f00'])
             ->toArray();
 
@@ -30,7 +31,7 @@ class SchemaBuilderTest extends Unit
 
     public function testNodeTypeCannotBeOverriddenByConfig(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->node('colorPicker', ['type' => 'text', 'handle' => 'accent'])
             ->toArray();
 
@@ -39,7 +40,7 @@ class SchemaBuilderTest extends Unit
 
     public function testShorthandDefaultsGiveWayToTheCallersConfig(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->matchBy(['default' => 'slug', 'label' => 'Look up by', 'options' => []])
             ->toArray();
 
@@ -50,18 +51,18 @@ class SchemaBuilderTest extends Unit
 
     public function testSubFieldsDefaultsToTheFlatFieldsChannel(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->subFields(['label' => 'Columns', 'subFields' => [['type' => 'text', 'handle' => 'col1']]])
             ->toArray();
 
-        $this->assertSame(SchemaBuilder::SUB_FIELDS, $schema[0]['type']);
+        $this->assertSame(MappingSchemaBuilder::SUB_FIELDS, $schema[0]['type']);
         $this->assertSame('fields', $schema[0]['handle']);
         $this->assertSame('Columns', $schema[0]['label']);
     }
 
     public function testSubFieldsHandleIsAShorthandDefaultTheCallerCanOverride(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->subFields(['handle' => 'columns', 'label' => 'Columns'])
             ->toArray();
 
@@ -70,42 +71,118 @@ class SchemaBuilderTest extends Unit
 
     public function testSubFieldsTypeCannotBeOverriddenByConfig(): void
     {
-        $schema = SchemaBuilder::make()
+        $schema = MappingSchemaBuilder::make()
             ->subFields(['type' => 'text'])
             ->toArray();
 
-        $this->assertSame(SchemaBuilder::SUB_FIELDS, $schema[0]['type']);
+        $this->assertSame(MappingSchemaBuilder::SUB_FIELDS, $schema[0]['type']);
     }
 
-    public function testAFieldRowTakesTheEditorItsFieldAsksFor(): void
+    public function testAFieldRowRendersTheControlItsFieldsOwnCellDoes(): void
     {
-        // The row's editor is the target field's business, so the descriptor its
-        // strategy returns is folded straight into the node — a relation asks
-        // for a picker, an option field for a select, everything else reads as
-        // text.
-        $schema = SchemaBuilder::make()
-            ->fieldRow(['type' => SchemaBuilder::ELEMENT, 'elementType' => 'craft\\elements\\Entry'], ['handle' => 'campus', 'label' => 'Campus'])
-            ->fieldRow(['type' => SchemaBuilder::SELECT, 'options' => ['l' => 'Large', 's' => 'Small']], ['handle' => 'size', 'label' => 'Size'])
-            ->fieldRow(['type' => 'somethingElse'], ['handle' => 'blurb', 'label' => 'Blurb'])
-            ->fieldRow(null, ['handle' => 'note', 'label' => 'Note'])
-            ->toArray();
-
-        $this->assertSame([SchemaBuilder::ELEMENT, SchemaBuilder::SELECT, SchemaBuilder::TEXT, SchemaBuilder::TEXT], array_column($schema, 'type'));
-        $this->assertSame('craft\\elements\\Entry', $schema[0]['elementType']);
-        $this->assertSame(['campus', 'size', 'blurb', 'note'], array_column($schema, 'handle'));
-    }
-
-    public function testAFieldRowsSelectOptionsLeadWithABlankChoice(): void
-    {
-        // Without it a picked default can't be cleared again — the same
-        // convention a table column's select and the top-level default follow.
-        $schema = SchemaBuilder::make()
-            ->fieldRow(['type' => SchemaBuilder::SELECT, 'options' => ['l' => 'Large']], ['handle' => 'size'])
+        // A sub-field row's control is the target field's business, so its default
+        // cell's NODE is the row — a relation's picker, an option field's select
+        // over its own options, everything else a text box. The row's identity is
+        // laid over it, and a type it doesn't declare falls back to text.
+        $schema = MappingSchemaBuilder::make()
+            ->fieldRow(['default' => ['type' => SchemaBuilder::ELEMENT, 'elementType' => 'craft\\elements\\Entry']], ['handle' => 'campus', 'label' => 'Campus'])
+            ->fieldRow(['default' => ['type' => 'somethingElse']], ['handle' => 'blurb', 'label' => 'Blurb'])
+            ->fieldRow(['default' => []], ['handle' => 'hint', 'label' => 'Hint'])
+            ->fieldRow(['default' => ['type' => SchemaBuilder::TEXT]], ['handle' => 'note', 'label' => 'Note'])
             ->toArray();
 
         $this->assertSame(
-            [['value' => '', 'label' => '—'], ['value' => 'l', 'label' => 'Large']],
-            $schema[0]['options'],
+            [SchemaBuilder::ELEMENT, 'somethingElse', SchemaBuilder::TEXT, SchemaBuilder::TEXT],
+            array_column($schema, 'type'),
         );
+        $this->assertSame('craft\\elements\\Entry', $schema[0]['elementType']);
+        $this->assertSame(['campus', 'blurb', 'hint', 'note'], array_column($schema, 'handle'));
+    }
+
+    public function testAFieldRowCarriesEverythingTheCellDeclared(): void
+    {
+        // The cell arrives whole rather than reduced to a type: an option field's
+        // sentinel and its search box come along, so the row behaves the way that
+        // field's own default cell does.
+        $cell = [
+            'type'            => SchemaBuilder::SELECT,
+            'options'         => [['value' => 'l', 'label' => 'Large']],
+            'sentinelOptions' => [['value' => '', 'label' => '— no default —']],
+            'lazy'            => true,
+        ];
+
+        $schema = MappingSchemaBuilder::make()->fieldRow(['default' => $cell], ['handle' => 'size'])->toArray();
+
+        $this->assertSame($cell['options'], $schema[0]['options']);
+        $this->assertSame($cell['sentinelOptions'], $schema[0]['sentinelOptions']);
+        $this->assertTrue($schema[0]['lazy']);
+    }
+
+    public function testAFieldRowsOwnIdentityWinsOverTheCells(): void
+    {
+        // The cell may carry a handle of its own (a native's does); the ROW's is
+        // what addresses the stored sub-mapping.
+        $schema = MappingSchemaBuilder::make()
+            ->fieldRow(['default' => ['type' => SchemaBuilder::TEXT, 'handle' => 'title']], ['handle' => 'col1', 'label' => 'Label'])
+            ->toArray();
+
+        $this->assertSame('col1', $schema[0]['handle']);
+    }
+
+    /**
+     * A native declares ONE node and that node IS its default cell, so the terse
+     * form gets the standard source select, the declared control as its default,
+     * and its `extras` as the extras region — without naming a region.
+     */
+    public function testANativesDeclaredNodeBecomesItsDefaultCell(): void
+    {
+        [$native] = MappingSchemaBuilder::make()
+            ->group('Native', fn(MappingSchemaBuilder $g) => $g->select([
+                'handle'  => 'enabled',
+                'name'    => 'Enabled',
+                'options' => ['true' => 'Enabled', 'false' => 'Disabled'],
+                'extras'  => fn(MappingSchemaBuilder $b)  => $b->createWhenMissing(),
+            ]))
+            ->toArray();
+
+        $regions = $native->toArray()['mapping'];
+
+        $this->assertSame(['source', 'default', 'extra'], array_keys($regions));
+        $this->assertSame(MappingSchemaBuilder::make()->sourceNode()->toArray(), $regions['source']);
+        // The option MAP a descriptor speaks becomes the option LIST a node does,
+        // through the same defaultSelect() preset a field strategy declares its own
+        // default cell with — so a native's select can't drift from a custom
+        // field's.
+        $this->assertSame([[
+            'type'    => SchemaBuilder::SELECT,
+            'handle'  => 'enabled',
+            'options' => [
+                ['value' => 'true',  'label' => 'Enabled'],
+                ['value' => 'false', 'label' => 'Disabled'],
+            ],
+            'searchable'        => true,
+            'searchPlaceholder' => 'Search options…',
+            'sentinelOptions'   => [['value' => '', 'label' => '— no default —']],
+        ]], $regions['default']);
+        $this->assertSame('create', $regions['extra'][0]['handle']);
+    }
+
+    /**
+     * The one native that renders no cells — a user's group toggles, whose value IS
+     * the extras. It says so by dropping the regions, the same way a Matrix does,
+     * rather than through a flag of its own.
+     */
+    public function testANativeCanDropBothCells(): void
+    {
+        [$native] = MappingSchemaBuilder::make()
+            ->group('Native', fn(MappingSchemaBuilder $g) => $g->text([
+                'handle' => 'groups',
+                'name'   => 'Groups',
+                'cells'  => ['source' => false, 'default' => false],
+                'extras' => fn(MappingSchemaBuilder $b) => $b->lightswitch(['handle' => 'editors']),
+            ]))
+            ->toArray();
+
+        $this->assertSame(['extra'], array_keys($native->toArray()['mapping']));
     }
 }

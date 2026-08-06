@@ -51,8 +51,10 @@ class RelationSchemaTest extends Unit
         $values = array_column($this->matchGroups($nodes)[0]['options'], 'value');
         $this->assertSame(['id', 'username', 'email'], $values);
 
+        // Only the name shape the CP renders — Craft's Full Name element is
+        // either one input or a First/Last pair, never both.
         $this->assertSame(
-            ['username', 'email', 'fullName', 'firstName', 'lastName'],
+            ['username', 'email', 'fullName'],
             array_column($this->card($nodes)['subFields'], 'handle'),
         );
     }
@@ -121,7 +123,7 @@ class RelationSchemaTest extends Unit
         // One handle-keyed table can hold one row: the native's.
         $rows = $this->card($this->usersSchema([$this->fakeLayout(['email'])]))['subFields'];
 
-        $this->assertSame(['username', 'email', 'fullName', 'firstName', 'lastName'], array_column($rows, 'handle'));
+        $this->assertSame(['username', 'email', 'fullName'], array_column($rows, 'handle'));
         $this->assertArrayNotHasKey('channel', $rows[1]);
     }
 
@@ -164,11 +166,11 @@ class RelationSchemaTest extends Unit
              * No booted plugin to ask, so the spec answers for the one field it
              * cares about: `campus` is an Entries field, everything else text.
              */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
                 return $craftField->handle === 'campus'
-                    ? ['type' => 'element', 'elementType' => 'craft\\elements\\Entry']
-                    : null;
+                    ? ['default' => ['type' => 'element', 'elementType' => 'craft\\elements\\Entry'], 'extra' => []]
+                    : ['default' => ['type' => 'text'], 'extra' => []];
             }
 
             /** No sections to read, so nothing gates title or slug. */
@@ -178,7 +180,7 @@ class RelationSchemaTest extends Unit
             }
         };
 
-        return $strategy->schema($this->createMock(CraftEntriesField::class))->toArray();
+        return $strategy->schema($this->createMock(CraftEntriesField::class))->toArray()['extra'] ?? [];
     }
 
     /** @param list<FieldLayout> $layouts @return list<array> */
@@ -202,15 +204,15 @@ class RelationSchemaTest extends Unit
              * No booted plugin to ask, so the spec answers for the one field it
              * cares about: `campus` is an Entries field, everything else text.
              */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
                 return $craftField->handle === 'campus'
-                    ? ['type' => 'element', 'elementType' => 'craft\\elements\\Entry']
-                    : null;
+                    ? ['default' => ['type' => 'element', 'elementType' => 'craft\\elements\\Entry'], 'extra' => []]
+                    : ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
 
-        return $strategy->schema($this->createMock(CraftUsersField::class))->toArray();
+        return $strategy->schema($this->createMock(CraftUsersField::class))->toArray()['extra'] ?? [];
     }
 
     /** @param list<FieldLayout> $layouts @return list<array> */
@@ -234,15 +236,15 @@ class RelationSchemaTest extends Unit
              * No booted plugin to ask, so the spec answers for the one field it
              * cares about: `campus` is an Entries field, everything else text.
              */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
                 return $craftField->handle === 'campus'
-                    ? ['type' => 'element', 'elementType' => 'craft\\elements\\Entry']
-                    : null;
+                    ? ['default' => ['type' => 'element', 'elementType' => 'craft\\elements\\Entry'], 'extra' => []]
+                    : ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
 
-        return $strategy->schema($this->createMock(CraftCategoriesField::class))->toArray();
+        return $strategy->schema($this->createMock(CraftCategoriesField::class))->toArray()['extra'] ?? [];
     }
 
     /** @param list<FieldLayout> $layouts @return list<array> */
@@ -266,15 +268,15 @@ class RelationSchemaTest extends Unit
              * No booted plugin to ask, so the spec answers for the one field it
              * cares about: `campus` is an Entries field, everything else text.
              */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
                 return $craftField->handle === 'campus'
-                    ? ['type' => 'element', 'elementType' => 'craft\\elements\\Entry']
-                    : null;
+                    ? ['default' => ['type' => 'element', 'elementType' => 'craft\\elements\\Entry'], 'extra' => []]
+                    : ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
 
-        return $strategy->schema($this->createMock(CraftTagsField::class))->toArray();
+        return $strategy->schema($this->createMock(CraftTagsField::class))->toArray()['extra'] ?? [];
     }
 
     /**

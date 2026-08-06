@@ -30,24 +30,25 @@ import { flattenChannels, splitChannels } from '../../lib/channels.js';
  * The split and the join are shared with the Matrix card in
  * {@see ../../lib/channels.js}; only the default channel differs.
  *
- * Both channels are emitted on EVERY write, each a full replacement, because a
- * handle can change channel — a saved `fields.alt` on a volume that later gains
- * a native Alt field moves home, and only writing both deletes the old one.
- * Both partitions are computed before either emit, so the second write can't be
- * built from props the first superseded, and a redundant identical write costs
- * nothing: the dirty flag is a derived JSON signature, not a touch counter.
+ * Both channels are emitted on EVERY write, in ONE `update:channels` payload and
+ * each a full replacement, because a handle can change channel — a saved
+ * `fields.alt` on a volume that later gains a native Alt field moves home, and
+ * only writing both deletes the old one. One payload is also what makes that
+ * atomic: the second half can't be built from a props value the first superseded.
  */
 export default {
     name: 'ElementSubFields',
 
-    emits: ['update:fields', 'update:nativeFields'],
+    inheritAttrs: false,
+
+    emits: ['update:channels'],
 
     props: {
         node: { type: Object, required: true },
-        // The mapping's two sub-field channels, each `{handle: {node?,
-        // default?, useDefault?}}` with fully-empty rows dropped.
-        fields: { type: Object, default: () => ({}) },
-        nativeFields: { type: Object, default: () => ({}) },
+        // The stored channels this card binds — `fields` and `nativeFields`, per
+        // its registry entry (lib/slots.js) — each `{handle: {node?, default?,
+        // useDefault?}}` with fully-empty rows dropped.
+        channels: { type: Object, default: () => ({}) },
         nodeOptions: { type: Array, default: () => [] },
         // The sample's discovered flatNodes — the "is the node still live"
         // signal. Null when no sample has been fetched. See SubFieldRows.
@@ -62,16 +63,19 @@ export default {
         },
 
         saved() {
-            return { fields: this.fields, nativeFields: this.nativeFields };
+            return {
+                fields: this.channels.fields || {},
+                nativeFields: this.channels.nativeFields || {},
+            };
         },
     },
 
     methods: {
         writeRows(nextRows) {
-            const channels = splitChannels(nextRows, this.node.subFields, this.saved, 'nativeFields');
-
-            this.$emit('update:fields', channels.fields);
-            this.$emit('update:nativeFields', channels.nativeFields);
+            this.$emit(
+                'update:channels',
+                splitChannels(nextRows, this.node.subFields, this.saved, 'nativeFields'),
+            );
         },
     },
 

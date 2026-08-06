@@ -76,7 +76,7 @@
 
 <script>
 import { store } from './store.js';
-import { discoveredNodes } from './lib/mappings.js';
+import { discoveredNodes, isMapped } from './lib/mappings.js';
 
 /**
  * The builder's details rail: what state the link is in, and the two actions
@@ -162,21 +162,14 @@ export default {
             return (this.ui.mappable?.fields || []).length;
         },
 
-        // Same rule as a group header's pill: a subfieldsOnly field (Matrix)
-        // carries no node of its own and counts as mapped once anything was
-        // saved on the row.
+        // The same rule a group header's pill counts by — one implementation, so
+        // the total and the per-group pills can't disagree.
         mappedCount() {
             const mappings = this.link?.mappings || {};
 
-            return (this.ui.mappable?.fields || []).reduce((count, field) => {
-                const mapping = mappings[field.handle];
-
-                if (field.fieldMeta?.subfieldsOnly) {
-                    return count + (Object.keys(mapping || {}).length ? 1 : 0);
-                }
-
-                return count + (mapping?.node ? 1 : 0);
-            }, 0);
+            return (this.ui.mappable?.fields || [])
+                .filter((field) => isMapped(field, mappings[field.handle]))
+                .length;
         },
 
         /**

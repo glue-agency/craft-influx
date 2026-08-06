@@ -15,7 +15,7 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
  * Behaviour spec for how a relation applies its configured DEFAULT, as opposed
  * to a feed value ({@see Relation::parse()}).
  *
- * The default is an element picked in the CP ({@see Relation::defaultEditor()}),
+ * The default is an element picked in the CP ({@see Relation::schema()}),
  * so it is an id — matched by id whatever `options.match` says, and never
  * created when it doesn't resolve. Same rule as the native author's
  * ({@see \GlueAgency\Influx\targets\EntryTarget::resolveAuthorId()}).

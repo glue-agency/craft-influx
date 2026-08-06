@@ -28,9 +28,11 @@ import DetailsSidebar from '../DetailsSidebar.vue';
  */
 
 const FIELDS = [
-    { handle: 'title', name: 'Title', defaultType: 'text' },
-    { handle: 'body', name: 'Body', defaultType: 'text' },
-    { handle: 'specs', name: 'Specs', defaultType: 'text', fieldMeta: { subfieldsOnly: true } },
+    { handle: 'title', name: 'Title', mapping: { source: [{ type: 'select' }] } },
+    { handle: 'body', name: 'Body', mapping: { source: [{ type: 'select' }] } },
+    // No source cell: its value comes from sub-mappings, so anything saved on the
+    // row counts as mapped.
+    { handle: 'specs', name: 'Specs', mapping: { extra: [{ type: 'subFields' }] } },
 ];
 
 const bootstrapPayload = (mappings = {}, meta = {}, link = {}) => ({
@@ -187,7 +189,7 @@ describe('DetailsSidebar', () => {
             host();
         });
 
-        it('counts a mapped node, and a subfieldsOnly row by its sub-mappings', async () => {
+        it('counts a mapped node, and a cell-less row by its sub-mappings', async () => {
             await loadStore({
                 title: { node: 'title' },
                 specs: { fields: { col1: { node: 'specs.label' } } },

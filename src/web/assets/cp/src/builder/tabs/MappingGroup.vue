@@ -55,7 +55,7 @@
 import MappingRow from './MappingRow.vue';
 import MappingGroupCard from '../../components/MappingGroupCard.vue';
 import { store } from '../store.js';
-import { clearMappings, discoveredNodes } from '../lib/mappings.js';
+import { clearMappings, discoveredNodes, isMapped } from '../lib/mappings.js';
 
 /**
  * One top-level group of the Mapping tab: the shared card chrome with the
@@ -98,18 +98,9 @@ export default {
         },
 
         mappedCount() {
-            return this.group.fields.reduce((count, f) => {
-                const mapping = this.link.mappings?.[f.handle];
-
-                // subfieldsOnly fields (Matrix) never carry a node of their
-                // own — they count as mapped when any sub-mapping content
-                // was saved on the row.
-                if (f.fieldMeta?.subfieldsOnly) {
-                    return count + (Object.keys(mapping || {}).length ? 1 : 0);
-                }
-
-                return count + (mapping?.node ? 1 : 0);
-            }, 0);
+            return this.group.fields
+                .filter((f) => isMapped(f, this.link.mappings?.[f.handle]))
+                .length;
         },
 
         // How many of the group's rows Auto-match filled in and the user

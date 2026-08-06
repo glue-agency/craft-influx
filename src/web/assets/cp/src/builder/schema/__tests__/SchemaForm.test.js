@@ -1,253 +1,116 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SchemaForm from '../SchemaForm.vue';
-import MatrixFields from '../inputs/MatrixFields.vue';
-import SubFieldRows from '../inputs/SubFieldRows.vue';
-import SearchableSelect from '../../SearchableSelect.vue';
 
 /**
- * Locks in the renderer contract for PHP-declared schemas (BuilderSchema):
- * dispatch purely by node type, display-only defaults, showIf visibility,
- * and the two emit channels (options vs nativeFields).
+ * The stacked form an auth strategy's schema renders as: Craft `.field` blocks over
+ * a flat `options` object. Dispatch is by node type through the shared control
+ * registry; what this locks in is the layout's own contract — the heading and
+ * instructions chrome, the plain CP select, display-only defaults, showIf
+ * visibility, and merged emits.
+ *
+ * The mapping extras are a different renderer over the same registry — see
+ * MappingExtras.test.js.
  */
 
-const assetSchema = [
-    { type: 'select', handle: 'mode', label: 'Value is', default: 'id', options: [
-        { value: 'id', label: 'Asset ID' },
-        { value: 'url', label: 'URL' },
+const authSchema = [
+    { type: 'select', handle: 'placement', label: 'Send as', default: 'header', options: [
+        { value: 'header', label: 'Header' },
+        { value: 'query', label: 'Query parameter' },
     ] },
-    { type: 'lightswitch', handle: 'upload', label: 'Download missing', showIf: [{ handle: 'mode', equals: 'url' }] },
-    { type: 'text', handle: 'volume', label: 'Target volume', showIf: [
-        { handle: 'mode', equals: 'url' },
-        { handle: 'upload' },
-    ] },
-    { type: 'elementSubFields', handle: 'nativeFields', label: 'Sub-fields', subFields: [
-        { type: 'text', handle: 'alt', label: 'Alt text' },
-        { type: 'text', handle: 'caption', label: 'Caption', channel: 'fields' },
-    ] },
+    { type: 'code', handle: 'name', label: 'Header name', showIf: [{ handle: 'placement', equals: 'header' }] },
+    { type: 'tokenInput', handle: 'token', label: 'Token' },
+    { type: 'lightswitch', handle: 'preflight', label: 'Preflight', showIf: [{ handle: 'name' }] },
 ];
 
 const mountForm = (props = {}) => mount(SchemaForm, {
-    props: {
-        schema: assetSchema,
-        options: {},
-        fields: {},
-        nativeFields: {},
-        nodeOptions: [{ value: 'images.0.alt', label: 'images.0.alt' }],
-        ...props,
-    },
+    props: { schema: authSchema, options: {}, ...props },
     global: { mocks: { $t: (s) => s } },
 });
 
 describe('SchemaForm', () => {
-    it('renders by node type and applies display-only defaults', () => {
+    it('gives every node a Craft field block with its own heading', () => {
+        const wrapper = mountForm({ schema: [authSchema[0]] });
+
+        expect(wrapper.find('.influx-schema-form').classes()).toContain('is-stacked');
+        expect(wrapper.find('.field .heading label').text()).toBe('Send as');
+    });
+
+    it('renders a flat select as the plain CP control', () => {
+        // The native select IS the idiom in a stacked field — the searchable one
+        // belongs to the mapping grid.
         const wrapper = mountForm();
-        // Grid-layout selects render as SearchableSelect (the node select's
-        // chrome); the default value resolves to its option label.
-        const select = wrapper.findComponent(SearchableSelect);
-        expect(select.props('modelValue')).toBe('id');
-        expect(select.find('.influx-searchable-select-trigger .value').text()).toBe('Asset ID');
-        // Untouched defaults must never be emitted into the saved options.
+
+        expect(wrapper.find('.select select').exists()).toBe(true);
+        expect(wrapper.findComponent({ name: 'SearchableSelect' }).exists()).toBe(false);
+    });
+
+    it('upgrades a GROUPED select, whose headings the plain one can’t render', () => {
+        const wrapper = mountForm({
+            schema: [{ type: 'select', handle: 'match', label: 'Match by', options: [
+                { label: 'Entry', options: [{ value: 'id', label: 'ID' }] },
+            ] }],
+        });
+
+        expect(wrapper.findComponent({ name: 'SearchableSelect' }).exists()).toBe(true);
+    });
+
+    it('applies a declared default for display without emitting it', () => {
+        const wrapper = mountForm();
+
+        expect(wrapper.find('.select select').element.value).toBe('header');
         expect(wrapper.emitted('update:options')).toBeUndefined();
     });
 
     it('renders code nodes as monospace text inputs', () => {
-        const wrapper = mountForm({
-            schema: [{ type: 'code', handle: 'token', label: 'Token' }],
-        });
-        const input = wrapper.find('input[type="text"]');
-        expect(input.classes()).toContain('code');
+        const wrapper = mountForm({ schema: [{ type: 'code', handle: 'name', label: 'Header name' }] });
+
+        expect(wrapper.find('input[type="text"]').classes()).toContain('code');
+    });
+
+    it('mounts a tokenInput as the token picker', () => {
+        expect(mountForm().findComponent({ name: 'TokenizedInput' }).exists()).toBe(true);
     });
 
     it('hides nodes whose showIf conditions fail — including chained ones', async () => {
-        const wrapper = mountForm();
+        const wrapper = mountForm({ options: { placement: 'query' } });
+
+        expect(wrapper.find('input[type="text"].code').exists()).toBe(false);
         expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
 
-        await wrapper.setProps({ options: { mode: 'url' } });
-        expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true);
-        // volume needs mode=url AND upload truthy, so what's left is the two
-        // sub-field cards' default editors (one per row of the merged card).
-        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(2);
+        await wrapper.setProps({ options: { placement: 'header' } });
+        expect(wrapper.find('input[type="text"].code').exists()).toBe(true);
+        // preflight needs a truthy `name`, which nothing has typed yet.
+        expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
 
-        await wrapper.setProps({ options: { mode: 'url', upload: true } });
-        expect(wrapper.findAll('input[type="text"].text')).toHaveLength(3);
+        await wrapper.setProps({ options: { placement: 'header', name: 'X-Api-Key' } });
+        expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true);
     });
 
     it('emits merged options when a control changes', async () => {
-        const wrapper = mountForm({ options: { mode: 'url' } });
+        const wrapper = mountForm({ options: { placement: 'header', name: 'X-Api-Key' } });
+
         await wrapper.find('input[type="checkbox"]').setValue(true);
 
-        expect(wrapper.emitted('update:options').at(-1)).toEqual([{ mode: 'url', upload: true }]);
+        expect(wrapper.emitted('update:options').at(-1))
+            .toEqual([{ placement: 'header', name: 'X-Api-Key', preflight: true }]);
     });
 
-    // A third-party node type (SchemaBuilder::node()) must not vanish: the
-    // type dispatch falls through to the text input, so the control stays
-    // labeled and keeps reading/writing its own handle.
     it('renders an unknown node type as a labeled text input', async () => {
+        // A third-party kind (SchemaBuilder::node()) must not vanish: the registry
+        // falls through to the text control, so it stays labelled and keeps
+        // reading/writing its own handle.
         const wrapper = mountForm({
             schema: [{ type: 'colorPicker', handle: 'accent', label: 'Accent', default: '#f00' }],
-            options: {},
         });
 
-        expect(wrapper.find('.option label').text()).toBe('Accent');
+        expect(wrapper.find('.field .heading label').text()).toBe('Accent');
+
         const input = wrapper.find('input[type="text"]');
         expect(input.element.value).toBe('#f00');
         expect(wrapper.emitted('update:options')).toBeUndefined();
 
         await input.setValue('#0f0');
         expect(wrapper.emitted('update:options').at(-1)).toEqual([{ accent: '#0f0' }]);
-    });
-
-    it('renders an unknown node type in the stacked layout too', () => {
-        const wrapper = mountForm({
-            schema: [{ type: 'colorPicker', handle: 'accent', label: 'Accent', default: '#f00' }],
-            options: {},
-            layout: 'stacked',
-        });
-
-        expect(wrapper.find('.field .heading label').text()).toBe('Accent');
-        expect(wrapper.find('input[type="text"]').element.value).toBe('#f00');
-    });
-
-    it('routes a keyless sub-field row through the nativeFields channel', async () => {
-        const wrapper = mountForm();
-        // Row 1 of the card; its source-node control is a SearchableSelect.
-        const select = wrapper.findAllComponents(SearchableSelect).at(-2);
-        select.vm.$emit('update:modelValue', 'images.0.alt');
-
-        expect(wrapper.emitted('update:nativeFields').at(-1))
-            .toEqual([{ alt: { node: 'images.0.alt' } }]);
-        // The card writes both channels every time, so the companion emit is
-        // the untouched one rather than a second row.
-        expect(wrapper.emitted('update:fields').at(-1)).toEqual([{}]);
-        expect(wrapper.emitted('update:options')).toBeUndefined();
-    });
-
-    it('routes a channel-carrying row of the SAME card through the fields channel', async () => {
-        const wrapper = mountForm();
-        wrapper.findAllComponents(SearchableSelect).at(-1)
-            .vm.$emit('update:modelValue', 'images.0.caption');
-
-        expect(wrapper.emitted('update:fields').at(-1))
-            .toEqual([{ caption: { node: 'images.0.caption' } }]);
-        expect(wrapper.emitted('update:nativeFields').at(-1)).toEqual([{}]);
-    });
-
-    it('renders one card for both channels', () => {
-        // The merged card is a single SubFieldRows table, not one per channel.
-        expect(mountForm().findAll('.influx-mapping-group')).toHaveLength(1);
-    });
-});
-
-// The Table strategy's schema shape: ONE subFields node holding a row per
-// column, keyed by column id — the card writes the mapping's flat `fields`
-// channel, the one a relation's sub-fields also live in.
-const tableSchema = [
-    { type: 'subFields', handle: 'fields', label: 'Columns', subFields: [
-        { type: 'text', handle: 'col1', label: 'Label' },
-        { type: 'text', handle: 'col2', label: 'Value' },
-    ] },
-];
-
-const mountTableForm = (props = {}) => mount(SchemaForm, {
-    props: {
-        schema: tableSchema,
-        options: {},
-        fields: {},
-        nodeOptions: [{ value: 'specs.label', label: 'specs.label' }],
-        ...props,
-    },
-    global: { mocks: { $t: (s) => s } },
-});
-
-describe('SchemaForm subFields', () => {
-    it('renders the sub-field table with a row per column', () => {
-        const wrapper = mountTableForm();
-
-        const cards = wrapper.findAllComponents(SubFieldRows);
-        expect(cards).toHaveLength(1);
-        expect(cards[0].props('node').label).toBe('Columns');
-        expect(wrapper.findAll('.sub-field-row')).toHaveLength(2);
-        // The card is not an options control — it must stay out of the fieldset.
-        expect(wrapper.find('.extras-options').exists()).toBe(false);
-    });
-
-    it('routes column rows through the fields channel, preserving the other columns', () => {
-        const wrapper = mountTableForm({
-            fields: { col2: { node: 'specs.value' } },
-        });
-        const select = wrapper.findAllComponents(SearchableSelect).at(0);
-        select.vm.$emit('update:modelValue', 'specs.label');
-
-        expect(wrapper.emitted('update:fields').at(-1)).toEqual([{
-            col2: { node: 'specs.value' },
-            col1: { node: 'specs.label' },
-        }]);
-        expect(wrapper.emitted('update:options')).toBeUndefined();
-        expect(wrapper.emitted('update:nativeFields')).toBeUndefined();
-        expect(wrapper.emitted('update:blocks')).toBeUndefined();
-    });
-});
-
-// The Matrix strategy's schema shape: one matrixFields node PER block type
-// (labeled with the type's name, Feed Me-style) — every card renders at
-// once and reads/writes its own slice of the mapping's `blocks` channel.
-// There is no gating select and no leading note.
-const matrixSchema = [
-    { type: 'matrixFields', handle: 'blocks', label: 'Quote', blockType: 'quote',
-        subFields: [{ type: 'text', handle: 'quote', label: 'Quote' }] },
-    { type: 'matrixFields', handle: 'blocks', label: 'Stat', blockType: 'stat',
-        subFields: [{ type: 'text', handle: 'number', label: 'Number' }] },
-];
-
-const mountMatrixForm = (props = {}) => mount(SchemaForm, {
-    props: {
-        schema: matrixSchema,
-        options: {},
-        blocks: {},
-        nodeOptions: [{ value: 'quotes.text', label: 'quotes.text' }],
-        ...props,
-    },
-    global: { mocks: { $t: (s) => s } },
-});
-
-describe('SchemaForm matrixFields', () => {
-    it('renders every block type\'s card at once, in schema order', () => {
-        const wrapper = mountMatrixForm();
-
-        const cards = wrapper.findAllComponents(MatrixFields);
-        expect(cards).toHaveLength(2);
-        expect(cards[0].props('node').blockType).toBe('quote');
-        expect(cards[1].props('node').blockType).toBe('stat');
-        expect(cards[0].text()).toContain('Quote');
-        expect(cards[1].text()).toContain('Number');
-    });
-
-    it('never showIf-gates matrixFields nodes', () => {
-        // Even a failing showIf leaves the card rendered — visibility gating
-        // only applies to the other node types.
-        const gated = matrixSchema.map((node) => (node.type === 'matrixFields'
-            ? { ...node, showIf: [{ handle: 'blockType', equals: 'nope' }] }
-            : node));
-        const wrapper = mountMatrixForm({ schema: gated });
-
-        expect(wrapper.findAllComponents(MatrixFields)).toHaveLength(2);
-    });
-
-    it('routes child rows through the blocks channel, preserving other types\' slices', () => {
-        const wrapper = mountMatrixForm({
-            blocks: { stat: { fields: { number: { node: 'stats.value' } } } },
-        });
-        // The quote card's child source-node control is the first
-        // SearchableSelect (cards render in schema order).
-        const select = wrapper.findAllComponents(SearchableSelect).at(0);
-        select.vm.$emit('update:modelValue', 'quotes.text');
-
-        expect(wrapper.emitted('update:blocks').at(-1)).toEqual([{
-            stat:  { fields: { number: { node: 'stats.value' } } },
-            quote: { fields: { quote: { node: 'quotes.text' } } },
-        }]);
-        expect(wrapper.emitted('update:options')).toBeUndefined();
-        expect(wrapper.emitted('update:nativeFields')).toBeUndefined();
     });
 });

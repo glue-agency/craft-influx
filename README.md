@@ -122,8 +122,11 @@ Built-in strategies, keyed by Craft field class and registered via `FieldsServic
 - **`Matrix`** — maps a remote sub-array to blocks, one child-mapping tree per block type. Every sync fully replaces the field's blocks from the feed (no per-block merge or reordering yet).
 - **`Table`** — one sub-mapping per column (keyed by column id, so a handle rename can't orphan it), values zipped by index into rows. Full-replace, like Matrix; change detection normalizes per column type so a checkbox or date column doesn't churn, and the inspectors drill into the result a row at a time (a table row is no element, so it's labelled by its position).
 - **`ContentBlock`** (Craft 5) — one sub-mapping per field in the block's layout. Between Matrix and Table: one implicit record, no block types, no fan-out. The strategy wraps the values in the `{fields: …}` envelope Craft's own field consumes, so the feed never has to carry Craft's serialization shape, and change detection compares the nested element's field values leaf by leaf.
+- **`Addresses`** (Craft 5) — a fan-out of nested Address elements over the one shared Address layout: many records, one implicit type. One sub-mapping per slot — the 17 native address properties plus the layout's custom fields, each landing in the channel Craft reads it from — index-zipped into as many addresses as the feed carries. Full-replace, like Matrix and Table. An empty `countryCode` is skipped rather than written, so Craft's own `defaultCountryCode` fallback still applies.
+- **`Link`** (Craft 5.3, and the deprecated URL field it aliases) — one sub-mapping per slot: the link type, its value, the label when the field shows one, and whichever advanced attributes the field enables. Assembles the array envelope Craft consumes; a type the field doesn't allow fails that row rather than the item. Element-typed links (`entry`, `asset`, `category`) take an element ID — no match-by lookup yet.
+- **`Time`**, **`Money`**, **`Color`**, **`Country`**, **`Icon`**, **`Json`**, **`Range`** — single-value fields whose stored form isn't what the feed ships, so the fallback's raw write churned or corrupted. Each parses the feed's spelling into what Craft stores and reduces both sides of the comparison to one canonical form: a clock time, a minor-unit amount (with an explicit `units` option, since Craft otherwise infers major-vs-minor from punctuation), a canonical hex, an alpha-2 code (matchable by name), a bare icon name, a key-sorted document (decoded first — Craft's programmatic normalize doesn't), and a value clamped and snapped to the slider's own scale.
 
-`DefaultField` catches everything no strategy claims — plain-value fields (Plain Text, Number, Email, URL, …) and any Craft field type without a dedicated strategy: a direct `setFieldValue()`. It declares no Craft field class, so it isn't a registered strategy; the registry holds it apart as the fallback, and it never shows up in `->fields->all()`.
+`DefaultField` catches everything no strategy claims — Plain Text, Number, Email, and any Craft field type without a dedicated strategy: a direct `setFieldValue()`. It declares no Craft field class, so it isn't a registered strategy; the registry holds it apart as the fallback, and it never shows up in `->fields->all()`.
 
 Add more by extending `GlueAgency\Influx\fields\Field`, declaring the Craft field class it handles via `craftFieldClass()` (a base class such as `BaseOptionsField` covers a whole family — lookups walk the parent chain), and registering it as any other extension point (see [Registries](#registries)).
 
@@ -133,7 +136,22 @@ The builder's details sidebar reports where the sample stands and how much of th
 
 A relation or asset mapping gets one sub-field card holding both what the related element writes natively (an entry's title and slug, an asset's alt and title where the volume's layout includes them) and the custom fields of the layouts its sources allow. The two halves reach the element differently — an attribute is assigned, a custom field goes through the layout — so a row declares which channel it lands in; to the editor it's one list. Each row's default-value editor is the one its own field's strategy declares, so a relation sub-field offers an element picker rather than a text box.
 
-A strategy's mapping-extras UI is declarative: `schema()` returns a `SchemaBuilder`, and the CP renders it generically — no Vue changes needed to add a control. For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it.
+A strategy's whole mapping row is declarative, and one declaration covers all of it. `schema()` returns a `MappingSchema` of three regions — the source-node cell, the default-value cell and the extras — and the CP renders every one of them through the same `type => component` map, so no Vue change is needed to add a control:
+
+```php
+public function schema(CraftFieldInterface $field): MappingSchema
+{
+    return MappingSchemaBuilder::make()->mapping([
+        'source'  => true,                                                  // the standard node select
+        'default' => fn (MappingSchemaBuilder $b) => $b->defaultSelect([…]), // any control, any config
+        'extra'   => fn (MappingSchemaBuilder $b) => $b->matchBy([…]),
+    ]);
+}
+```
+
+`true` is the region's preset, and an ABSENT region is an absent cell — which is the whole vocabulary for "this field has no default to pick" (a Matrix declares neither cell, because its value comes from its sub-mappings) and for "this field can't be mapped at all" (a Preparse field declares a source region holding nothing but a `note()`). There is no flag beside the regions saying either thing.
+
+For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it. To render it properly instead, add a component and one line to `builder/schema/registry.js`.
 
 ### Match
 
@@ -188,6 +206,7 @@ Hook into any stage:
 Code that exists to play nice with *other* plugins lives under `src/integrations/`, one sub-namespace per plugin:
 
 - `integrations/feedme` — converts [Feed Me](https://github.com/craftcms/feed-me) feeds into Influx links (see [Migrating from Feed Me](#migrating-from-feed-me)).
+- `integrations/preparse` — a field strategy declaring that a [Preparse](https://github.com/jalendport/craft-preparse) field can't be mapped: its value is a Twig template the plugin re-renders on every element save, so the template always wins — over a sync and over anything an editor types. The row keeps its label and says so, rather than offering a mapping that would be discarded.
 
 Planned target adapters for [Solspace Calendar](https://github.com/solspace/craft-calendar) and [Craft Commerce](https://github.com/craftcms/commerce) elements (see the [Roadmap](#roadmap)) will register their targets when those plugins are installed, following the same optional-dependency rule.
 
@@ -201,7 +220,7 @@ Anything in there treats the other plugin as optional: integrations read its tab
 
 ## Roadmap
 
-Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for relations, options, dates, assets, rich text, Matrix, and Table.
+Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for every native Craft field type — relations, options, dates, assets, rich text, Matrix, Table, Content Block, Addresses, Link, and the single-value types (Time, Money, Colour, Country, Icon, JSON, Range). Plain Text, Number and Email stay on the `DefaultField` fallback deliberately: a raw write is the right write for them.
 
 Still open:
 
@@ -211,14 +230,10 @@ Still open:
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
-- [ ] **Strategies for the remaining native field types.** Anything without a strategy falls back to `DefaultField`'s raw write — fine for plain scalar types, wrong for richer ones:
-  - [ ] Time (`craft\fields\Time`) — the fallback re-writes the field on every sync: the stored `DateTime` and the feed's string never compare equal
-  - [ ] Money (`craft\fields\Money`) — the fallback never detects a change after the first write, so updates are silently skipped
-  - [ ] Link (`craft\fields\Link`, Craft ≥ 5.3) — bare URLs work through the fallback; no link-type, label or target support
-  - [ ] Addresses (`craft\fields\Addresses`) — nested address elements, unusable through a raw write; needs a Matrix-style strategy with address sub-fields
-  - [ ] Content Block (`craft\fields\ContentBlock`, Craft ≥ 5.8) — nested entry, same story; Craft-5-only gating
-  - [ ] Plain Text, Email, Icon, Country, Range, Number, Color, JSON — served acceptably by the fallback today; dedicated strategies would only tighten change detection (decimal formatting, un-normalized hex colors, JSON key order)
-- [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks).
+- [ ] **Strategies for third-party field types.** The same extension point, for the field types sites actually install alongside the natives. [Super Table](https://github.com/verbb/super-table) 4.x is entry-type based on Craft 5, so it's structurally what `Matrix` already does; [Linkit](https://github.com/presseddigital/linkit)'s value object mirrors the native Link field. SEOmatic's `SeoSettings` and Freeform's form picker are container-shaped and still on the fallback. (CKEditor and Redactor already work — both extend `craft\htmlfield\HtmlField`, which `RichText` is keyed on.)
+- [ ] **Match-by lookup for element-typed links.** A `Link` mapping pointing at an entry, asset or category takes the element's ID; matching a title or slug the way the relational strategies do would need the match-by apparatus for a single lookup.
+- [ ] **Per-address drill-down in the inspectors.** `Matrix` and `Table` report what happened to each child; an `Addresses` row reports as one value.
+- [ ] Matrix per-block merge and reordering (today every sync fully replaces a Matrix field's blocks — as do Table and Addresses).
 
 ## Acknowledgements
 

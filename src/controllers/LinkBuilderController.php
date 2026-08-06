@@ -154,6 +154,50 @@ class LinkBuilderController extends AbstractController
     }
 
     /**
+     * Craft's own icon picker for an Icon field's default cell, the counterpart of
+     * {@see actionRenderElementSelect()}. Whether Pro icons are selectable is the
+     * field's own setting, so the handle is what shapes the control.
+     *
+     *   GET influx/link-builder/render-icon-picker?fieldHandle=...&value=...
+     */
+    public function actionRenderIconPicker(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $fieldHandle = $request->getQueryParam('fieldHandle');
+        $value = $request->getQueryParam('value');
+
+        return $this->asJson(
+            Influx::getInstance()->linkBuilder->renderIconPicker(
+                is_string($fieldHandle) && $fieldHandle !== '' ? $fieldHandle : null,
+                is_string($value) ? $value : null,
+                $this->readOnly(),
+            ),
+        );
+    }
+
+    /**
+     * The options a lazily-declared default select fetches on first use — the
+     * lists too big to ride every bootstrap, a field type's worth at a time
+     * ({@see \GlueAgency\Influx\fields\Field::defaultOptions()}).
+     *
+     *   GET influx/link-builder/default-options?fieldHandle=...
+     */
+    public function actionDefaultOptions(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $fieldHandle = Craft::$app->getRequest()->getQueryParam('fieldHandle');
+
+        return $this->asJson([
+            'options' => Influx::getInstance()->linkBuilder->defaultOptionsFor(
+                is_string($fieldHandle) && $fieldHandle !== '' ? $fieldHandle : null,
+            ),
+        ]);
+    }
+
+    /**
      * Resource Endpoint token-picker suggestions for the SPA — same data the
      * Twig form pre-computes, just reactive when criteria change. Served by the
      * service that owns the token vocabulary, not proxied through the builder.

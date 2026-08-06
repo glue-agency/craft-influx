@@ -13,8 +13,8 @@ use craft\fields\Matrix;
 use craft\fields\PlainText;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\fields\Entries;
-use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\schema\MappableField;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
@@ -24,7 +24,7 @@ use GlueAgency\Influx\schema\SchemaBuilder;
  * artifact, and the SPA asserts its own assumptions against the same file
  * (`src/web/assets/cp/src/builder/__tests__/mappable-field.contract.test.js`).
  *
- * The natives are produced through the REAL producer ({@see SchemaBuilder::group()})
+ * The natives are produced through the REAL producer ({@see MappingSchemaBuilder::group()})
  * rather than hand-built, so the fixture also pins how a declared node becomes a
  * descriptor. `Craft::t()` with no booted app returns its source string, which is
  * why the labels read as plain English here.
@@ -43,40 +43,39 @@ class MappableFieldPayloadTest extends Unit
         );
     }
 
-    public function testOptionalKeysAreOmittedRatherThanNulled(): void
+    public function testTheKeySetIsTheSameFourPlusTheRow(): void
     {
         $keys = array_map(static fn(array $descriptor): array => array_keys($descriptor), $this->fixture());
 
-        // Key ORDER is part of the contract: the five always-present keys lead,
-        // then only the optional keys that actually carry something.
-        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType'], $keys[0]);
-        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'options'], $keys[1]);
-        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'elementType', 'fieldMeta'], $keys[2]);
-        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'fieldClass', 'fieldMeta'], $keys[3]);
-        $this->assertSame(['handle', 'name', 'native', 'group', 'defaultType', 'elementType', 'fieldClass', 'fieldMeta'], $keys[5]);
+        // Key ORDER is part of the contract: the four keys every descriptor has,
+        // `fieldClass` only where there is one, and the row itself last.
+        $this->assertSame(['handle', 'name', 'native', 'group', 'mapping'], $keys[0]);
+        $this->assertSame(['handle', 'name', 'native', 'group', 'mapping'], $keys[2]);
+        $this->assertSame(['handle', 'name', 'native', 'group', 'fieldClass', 'mapping'], $keys[3]);
+        $this->assertSame(['handle', 'name', 'native', 'group', 'fieldClass', 'mapping'], $keys[5]);
     }
 
-    public function testACustomFieldCarriesItsStrategysDefaultEditor(): void
+    public function testACustomFieldCarriesItsStrategysDefaultControl(): void
     {
-        // A custom field is no longer stuck with a plain text default: its
-        // strategy declares the editor, so an Entries field offers the same
-        // element picker a native author does — and still identifies its kind
-        // through fieldClass + fieldMeta.
+        // A custom field is not stuck with a plain text default: its strategy
+        // declares the control, so an Entries field offers the same element picker
+        // a native author does — and still identifies its kind through fieldClass.
         $descriptor = MappableField::toArrays($this->descriptors())[5];
 
-        $this->assertSame(SchemaBuilder::ELEMENT, $descriptor['defaultType']);
-        $this->assertSame(Entry::class, $descriptor['elementType']);
         $this->assertSame(CraftEntriesField::class, $descriptor['fieldClass']);
+        $this->assertSame(
+            [['type' => SchemaBuilder::ELEMENT, 'elementType' => Entry::class]],
+            $descriptor['mapping']['default'],
+        );
     }
 
-    public function testCustomFieldsAlwaysCarryFieldMetaEvenWhenEmpty(): void
+    public function testARowWithNoCellsCarriesNoCellRegions(): void
     {
-        // An empty extras schema is still a schema — the key stays, so the SPA
-        // never has to distinguish "absent" from "empty" for a custom field.
-        $descriptor = MappableField::custom('importId', 'Import ID', 'Content', PlainText::class, ['schema' => []])->toArray();
+        // Absence IS the statement — there is no flag beside it saying so, which is
+        // the whole reason the descriptor is this small.
+        $descriptor = MappableField::toArrays($this->descriptors())[4];
 
-        $this->assertArrayHasKey('fieldMeta', $descriptor);
-        $this->assertSame(['schema' => []], $descriptor['fieldMeta']);
+        $this->assertSame(['extra'], array_keys($descriptor['mapping']));
     }
 
     public function testEveryReportedFieldIsAMappableOne(): void
@@ -91,16 +90,16 @@ class MappableFieldPayloadTest extends Unit
     }
 
     /**
-     * The fixture's six descriptors: the three native shapes (plain text,
-     * select with options, element with extras) plus a plain, a subfields-only
-     * and an element-defaulted custom field.
+     * The fixture's six descriptors: the three native shapes (a plain text
+     * default, a select over declared options, an element picker with extras) plus a
+     * plain, a no-cells and an element-defaulted custom field.
      *
      * @return list<MappableField>
      */
     protected function descriptors(): array
     {
-        $natives = SchemaBuilder::make()
-            ->group('Native', fn(SchemaBuilder $group) => $group
+        $natives = MappingSchemaBuilder::make()
+            ->group('Native', fn(MappingSchemaBuilder $group) => $group
                 ->text(['handle' => 'title', 'name' => 'Title'])
                 ->select([
                     'handle'  => 'enabled',
@@ -111,7 +110,7 @@ class MappableFieldPayloadTest extends Unit
                     'handle'      => 'author',
                     'name'        => 'Author',
                     'elementType' => User::class,
-                    'extras'      => fn(SchemaBuilder $builder)      => $builder->matchBy([
+                    'extras'      => fn(MappingSchemaBuilder $builder)      => $builder->matchBy([
                         'options' => [
                             ['value' => 'id', 'label' => 'ID'],
                             ['value' => 'email', 'label' => 'Email'],
@@ -121,44 +120,39 @@ class MappableFieldPayloadTest extends Unit
             ->toArray();
 
         return array_merge($natives, [
-            MappableField::custom('importId', 'Import ID', 'Content', PlainText::class, ['schema' => []]),
+            MappableField::custom('importId', 'Import ID', 'Content', PlainText::class, [
+                'source'  => MappingSchemaBuilder::make()->sourceNode()->toArray(),
+                'default' => [['type' => SchemaBuilder::TEXT]],
+            ]),
             MappableField::custom('contentBlocks', 'Content blocks', 'Content', Matrix::class, [
-                'schema' => [
-                    [
-                        'type'      => SchemaBuilder::MATRIX_FIELDS,
-                        'handle'    => 'blocks',
-                        'label'     => 'Text',
-                        'blockType' => 'text',
-                        'subFields' => [],
-                    ],
-                ],
-                'subfieldsOnly' => true,
+                'extra' => [[
+                    'type'      => MappingSchemaBuilder::MATRIX_FIELDS,
+                    'handle'    => 'blocks',
+                    'label'     => 'Text',
+                    'blockType' => 'text',
+                    'subFields' => [],
+                ]],
             ]),
             $this->relationDescriptor(),
         ]);
     }
 
     /**
-     * A custom Entries field, built entirely by the REAL producers — its default
-     * editor from {@see \GlueAgency\Influx\fields\Entries::defaultEditor()} and
-     * its extras from that strategy's own `schema()`, the way the natives take
-     * theirs from {@see SchemaBuilder::group()}. So the fixture pins the
-     * field-type-aware default, the match-by list per element type AND the
-     * sub-field card's rows, rather than a hand-written approximation of them.
+     * A custom Entries field, built by the REAL producer — one row from the
+     * strategy's own `schema()`, exactly as
+     * {@see \GlueAgency\Influx\targets\AbstractElementTarget::customFieldDescriptors()}
+     * assembles it. So the fixture pins the field-type-aware default cell, the
+     * match-by list per element type AND the sub-field card's rows, rather than a
+     * hand-written approximation of them.
      */
     protected function relationDescriptor(): MappableField
     {
-        $craftField = $this->createMock(CraftEntriesField::class);
-        $editor = (new Entries())->defaultEditor($craftField);
-
         return MappableField::custom(
             handle: 'relatedArticles',
             name: 'Related articles',
             group: 'Content',
             fieldClass: CraftEntriesField::class,
-            fieldMeta: Field::meta($this->relationSchema()->schema($craftField)->toArray()),
-            defaultType: $editor['type'],
-            elementType: $editor['elementType'],
+            mapping: $this->relationSchema()->schema($this->createMock(CraftEntriesField::class))->toArray(),
         );
     }
 
@@ -189,11 +183,11 @@ class MappableFieldPayloadTest extends Unit
                 return [$this->test->fakeLayout()];
             }
 
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
                 return $craftField->handle === 'campus'
-                    ? ['type' => SchemaBuilder::ELEMENT, 'elementType' => CraftEntryElement::class]
-                    : null;
+                    ? ['default' => ['type' => SchemaBuilder::ELEMENT, 'elementType' => CraftEntryElement::class], 'extra' => []]
+                    : ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
     }

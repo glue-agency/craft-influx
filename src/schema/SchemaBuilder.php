@@ -2,23 +2,23 @@
 
 namespace GlueAgency\Influx\schema;
 
-use Craft;
-use GlueAgency\Influx\fields\Field;
-
 /**
- * The one builder for every PHP-declared form in the plugin — the fields a
- * developer configures on any of the three extension points:
+ * The generic form vocabulary: a flat list of controls, and nothing that knows
+ * what a mapping is.
  *
- *   - auth strategy fields ({@see \GlueAgency\Influx\auth\AuthStrategyInterface::schema()});
- *   - mapping extras for a field strategy ({@see \GlueAgency\Influx\fields\Field::schema()});
- *   - an element target's native mappable fields (via {@see group()},
- *     {@see \GlueAgency\Influx\targets\ElementTargetInterface::getMappableFields()}).
+ * That is exactly what an auth strategy's form needs
+ * ({@see \GlueAgency\Influx\auth\AuthStrategyInterface::schema()}) — single fields
+ * rendered stacked, with no source node, no stored mapping slot and no nested
+ * rows. Everything that DOES need those concepts lives in
+ * {@see MappingSchemaBuilder}, which extends this: the mapping regions, the
+ * source-node preset, the option presets, the sub-mapping containers, and the
+ * native-descriptor `group()` an element target declares with.
  *
  * Chain onto an instance and terminate with {@see toArray()}:
  *
  *   return SchemaBuilder::make()
- *       ->matchBy(['options' => $options])
- *       ->createWhenMissing()
+ *       ->text(['handle' => 'username', 'label' => 'Username'])
+ *       ->code(['handle' => 'token', 'label' => 'Token'])
  *       ->toArray();
  *
  * EVERY field + helper takes the SAME signature — `(array $config = [])` — so
@@ -27,15 +27,11 @@ use GlueAgency\Influx\fields\Field;
  * `$config`. Base fields fix only `type`; shorthands fold their defaults *under*
  * the caller's config (`$config + [defaults]`), so `$config` wins.
  *
- * The Vue side ({@see SchemaForm.vue}) renders generically by node `type`, so
- * adding a kind is a PHP-only change. Recognised config keys: `handle`, `label`,
- * `instructions` (HTML), `placeholder`, `default`, `options` (select — flat
- * [{value,label}] or grouped [{label, options}]), `showIf`. A type outside the
- * consts below goes through {@see node()} and renders as a labeled text input.
- *
- * This namespace is the form-declaration vocabulary: the builder plus the
- * {@see MappableField} descriptor {@see group()} emits — one contract, kept
- * together (helpers/ stays for stateless utilities).
+ * The Vue side renders generically by node `type`, so adding a kind is a PHP-only
+ * change. Recognised config keys: `handle`, `label`, `instructions` (HTML),
+ * `placeholder`, `default`, `options` (select — flat [{value,label}] or grouped
+ * [{label, options}]), `showIf`. A type outside the consts below goes through
+ * {@see node()} and renders as a labeled text input rather than vanishing.
  *
  * Loosely modeled on Formie's SchemaHelper, deliberately tiny.
  */
@@ -49,12 +45,24 @@ class SchemaBuilder
     public const CODE = 'code';
     public const TOKEN_INPUT = 'tokenInput';
     public const SELECT = 'select';
+
+    /**
+     * A select that accumulates picks into a list. Its own type rather than a flag
+     * on {@see SELECT}, so the arity travels the way every other control kind does
+     * — one type, one control.
+     */
+    public const MULTI_SELECT = 'multiSelect';
     public const LIGHTSWITCH = 'lightswitch';
-    public const ELEMENT_SUB_FIELDS = 'elementSubFields';
-    public const MATRIX_FIELDS = 'matrixFields';
-    public const SUB_FIELDS = 'subFields';
     public const NOTE = 'note';
     public const ELEMENT = 'element';
+
+    /**
+     * Craft's own icon picker, mounted the way {@see ELEMENT} mounts its element
+     * select: the icon set is 3,800-odd entries with search terms and Pro gating,
+     * which Craft already searches server-side, so there is nothing to
+     * reimplement and nothing worth shipping to the client.
+     */
+    public const ICON = 'icon';
 
     /**
      * Accumulated fields in call order: form nodes from the field methods, or
@@ -70,9 +78,9 @@ class SchemaBuilder
         $this->fields = [];
     }
 
-    public static function make(): self
+    public static function make(): static
     {
-        return new self();
+        return new static();
     }
 
     /**
@@ -85,12 +93,12 @@ class SchemaBuilder
      * node's `handle` (honouring `default`), so a node declared this way
      * degrades gracefully instead of vanishing.
      */
-    public function node(string $type, array $config = []): self
+    public function node(string $type, array $config = []): static
     {
         return $this->push(['type' => $type] + $config);
     }
 
-    public function text(array $config = []): self
+    public function text(array $config = []): static
     {
         return $this->push(['type' => self::TEXT] + $config);
     }
@@ -99,7 +107,7 @@ class SchemaBuilder
      * Monospace ("code") text input — for tokens, header names, and other
      * machine-y values. Same behaviour as {@see text()}, different rendering.
      */
-    public function code(array $config = []): self
+    public function code(array $config = []): static
     {
         return $this->push(['type' => self::CODE] + $config);
     }
@@ -110,12 +118,12 @@ class SchemaBuilder
      * custom token group. PHP consumers must run values through
      * `craft\helpers\App::parseEnv()`.
      */
-    public function tokenInput(array $config = []): self
+    public function tokenInput(array $config = []): static
     {
         return $this->push(['type' => self::TOKEN_INPUT] + $config);
     }
 
-    public function select(array $config = []): self
+    public function select(array $config = []): static
     {
         return $this->push(['type' => self::SELECT] + $config);
     }
@@ -123,226 +131,22 @@ class SchemaBuilder
     /**
      * A mappable field whose default-value editor is an element picker (e.g. an
      * entry's Author, or a relation sub-field row). `elementType` is the FQCN to
-     * pick from. Read two ways: {@see group()} folds it into a descriptor's
-     * `defaultType`, and a sub-field row renders it as its own default editor.
+     * pick from.
      */
-    public function element(array $config = []): self
+    public function element(array $config = []): static
     {
         return $this->push(['type' => self::ELEMENT] + $config);
     }
 
-    /**
-     * One sub-field row for a Craft field, with the default-value editor that
-     * field's own strategy asks for ({@see \GlueAgency\Influx\fields\Field::defaultEditor()}).
-     *
-     * The editor descriptor already speaks this class's vocabulary — a relation
-     * asks for {@see ELEMENT} plus an `elementType`, an option field for
-     * {@see SELECT} plus its options — so this only folds it into a node and
-     * converts the descriptor's `value => label` option MAP into the option LIST
-     * a node carries. Anything else (or nothing declared) is a text row: the
-     * `fields` channel coerces per the target field's strategy anyway, so a row
-     * only has to supply a source node and an optional default.
-     *
-     * Without this, every sub-field row was a text box — including a relation's,
-     * which is a reference the operator can only pick, not retype.
-     *
-     * @param ?array{type: string, options?: array<string, string>, elementType?: class-string} $editor
-     * @param array<string, mixed> $config The row's `handle` / `label` (+ any extras).
-     */
-    public function fieldRow(?array $editor, array $config = []): self
-    {
-        return match ($editor['type'] ?? null) {
-            self::ELEMENT => $this->element($config + ['elementType' => $editor['elementType'] ?? null]),
-            self::SELECT  => $this->select($config + ['options' => static::optionList($editor['options'] ?? [])]),
-            default       => $this->text($config),
-        };
-    }
-
-    /**
-     * A descriptor's `value => label` option map as a node's option list, led by
-     * a blank choice so a picked default stays clearable — the same shape
-     * {@see \GlueAgency\Influx\fields\Table::columnOptions()} builds for a table
-     * column, and what the top-level default select offers.
-     *
-     * @param array<string, string> $map
-     * @return list<array{value: string, label: string}>
-     */
-    protected static function optionList(array $map): array
-    {
-        $options = [['value' => '', 'label' => '—']];
-
-        foreach ($map as $value => $label) {
-            $options[] = ['value' => (string) $value, 'label' => (string) $label];
-        }
-
-        return $options;
-    }
-
-    public function lightswitch(array $config = []): self
+    public function lightswitch(array $config = []): static
     {
         return $this->push(['type' => self::LIGHTSWITCH] + $config);
     }
 
     /** Static explanatory text — for placeholders like the Matrix stub. */
-    public function note(array $config = []): self
+    public function note(array $config = []): static
     {
         return $this->push(['type' => self::NOTE, 'text' => $config['text'] ?? '']);
-    }
-
-    /**
-     * Source-node + default rows for the sub-fields of the element a mapping
-     * relates — its native attributes (asset alt/title, entry title/slug) and
-     * the custom fields of the layouts its sources allow. `$config` supplies
-     * `label` + `subFields` (a list of primitive nodes, e.g.
-     * `SchemaBuilder::make()->text([...])->toArray()`).
-     *
-     * ONE card over both sub-field channels, since the element's attributes and
-     * its layout's fields are written differently. Each sub-field row may carry
-     * an optional `channel` key saying which it lands in: `fields` routes the
-     * row through the element's field layout ({@see \GlueAgency\Influx\models\FieldMapping::subMappings()}),
-     * while an ABSENT key means `nativeFields` — the channel this node's rows
-     * were stored in before the key existed, and the handle forced below.
-     *
-     * Note the asymmetry with {@see matrixFields()}, whose absent key means
-     * `fields`: each node type defaults to the channel ITS rows already used,
-     * so a row whose key is forgotten keeps behaving as it did. A native row
-     * misrouted to `fields` would be dropped silently at apply time
-     * ({@see \GlueAgency\Influx\sync\item\MappingApplier::applySubMappings()}),
-     * which is the failure this default avoids.
-     *
-     * A field must not pair a channel-carrying card with a separate
-     * {@see subFields()} card: both would claim the same `fields` channel.
-     */
-    public function elementSubFields(array $config = []): self
-    {
-        return $this->push(['type' => self::ELEMENT_SUB_FIELDS, 'handle' => 'nativeFields'] + $config);
-    }
-
-    /**
-     * One Matrix block type's card: source-node + default rows for its
-     * mappable sub-fields, writing the block type's slice of the mapping's
-     * `blocks` channel. `$config` supplies `label`, `subFields` and
-     * `blockType`.
-     *
-     * Each sub-field row may carry an optional `channel` key saying which half
-     * of the block type's slice it writes: `nativeFields` routes the row to
-     * `blocks.<blockType>.nativeFields` (the block's native Title), while an
-     * ABSENT key means `blocks.<blockType>.fields` — the custom-field channel,
-     * and the stored shape that predates the key.
-     */
-    public function matrixFields(array $config = []): self
-    {
-        return $this->push(['type' => self::MATRIX_FIELDS, 'handle' => 'blocks'] + $config);
-    }
-
-    /**
-     * Source-node + default rows for the sub-fields a field owns itself — the
-     * card that writes the mapping's flat `fields` channel ({@see \GlueAgency\Influx\models\FieldMapping::subMappings()}).
-     * `$config` supplies `label` + `subFields` (a list of primitive nodes, e.g.
-     * `SchemaBuilder::make()->text([...])->toArray()`), optionally
-     * `instructions`. Used by {@see \GlueAgency\Influx\fields\Table}'s columns.
-     *
-     * Unlike its two fixed-handle siblings ({@see elementSubFields()},
-     * {@see matrixFields()}) the handle is a shorthand DEFAULT the caller may
-     * override, per the folding convention this class documents: SchemaForm
-     * routes the card by node TYPE, so the handle is documentation of which
-     * channel the rows land in rather than the routing key.
-     */
-    public function subFields(array $config = []): self
-    {
-        return $this->push(['type' => self::SUB_FIELDS] + $config + ['handle' => 'fields']);
-    }
-
-    /**
-     * The reused "Match by" control: a select on the mapping's `match` option.
-     * Pass `options` (and optionally override `handle` / `label` / `default`).
-     */
-    public function matchBy(array $config = []): self
-    {
-        return $this->select($config + [
-            'handle'  => 'match',
-            'label'   => Craft::t('influx', 'Match by'),
-            'default' => 'id',
-        ]);
-    }
-
-    /**
-     * The reused date-format select on the mapping's `format` option. Pass
-     * `options` ({@see \GlueAgency\Influx\fields\Date::formatOptions()}); the
-     * label and "auto-detect" default are supplied here.
-     */
-    public function dateFormat(array $config = []): self
-    {
-        return $this->select($config + [
-            'handle'  => 'format',
-            'label'   => Craft::t('influx', 'Date format'),
-            'default' => '',
-        ]);
-    }
-
-    /**
-     * The reused "create the related element when no match is found" toggle,
-     * on the mapping's `create` option.
-     */
-    public function createWhenMissing(array $config = []): self
-    {
-        return $this->lightswitch($config + [
-            'handle' => 'create',
-            'label'  => Craft::t('influx', 'Create when not found'),
-        ]);
-    }
-
-    /**
-     * Native mappable-field descriptors for an element target's
-     * {@see \GlueAgency\Influx\targets\ElementTargetInterface::getMappableFields()},
-     * declared with the same fluent field methods as any other schema and
-     * grouped under $label. Each field the callback pushes becomes a
-     * {@see MappableField}: its method ({@see text()} / {@see select()} /
-     * {@see element()}) sets `defaultType`, and any `extras` / `meta` in its
-     * config are wrapped through {@see Field::meta()} into the `fieldMeta`
-     * envelope. Every descriptor is a native one, grouped under $label.
-     *
-     *   ->group('Native', fn (SchemaBuilder $g) => $g
-     *       ->text(['handle' => 'title', 'name' => 'Title'])
-     *       ->select(['handle' => 'enabled', 'name' => 'Enabled', 'options' => ['true' => 'Enabled', ...]])
-     *       ->element(['handle' => 'author', 'name' => 'Author', 'elementType' => User::class,
-     *           'extras' => fn (SchemaBuilder $b) => $b->matchBy([...])]))
-     *
-     * A native the element type hides is left out by not declaring it — see
-     * {@see when()}, and {@see \GlueAgency\Influx\targets\EntryTarget::nativeFieldDefinitions()}
-     * for the visibility rules that use it.
-     *
-     * @param callable(self): mixed $fields Pushes the group's fields onto the given builder.
-     */
-    public function group(string $label, callable $fields): self
-    {
-        $group = self::make();
-        $fields($group);
-
-        foreach ($group->toArray() as $field) {
-            $fieldMeta = null;
-
-            if (isset($field['extras']) || isset($field['meta'])) {
-                $extras = self::make();
-
-                if (isset($field['extras'])) {
-                    ($field['extras'])($extras);
-                }
-                $fieldMeta = Field::meta($extras->toArray(), $field['meta'] ?? []);
-            }
-
-            $this->push(MappableField::native(
-                handle: $field['handle'],
-                name: $field['name'],
-                group: $label,
-                defaultType: $field['type'] ?? self::TEXT,
-                options: $field['options'] ?? null,
-                elementType: $field['elementType'] ?? null,
-                fieldMeta: $fieldMeta,
-            ));
-        }
-
-        return $this;
     }
 
     /**
@@ -350,7 +154,7 @@ class SchemaBuilder
      * common "add this field only if there's something to map" branch, kept
      * inline so a builder stays a single fluent expression.
      */
-    public function when(mixed $condition, callable $callback): self
+    public function when(mixed $condition, callable $callback): static
     {
         if ($condition) {
             $callback($this);
@@ -371,7 +175,7 @@ class SchemaBuilder
         return $this->fields;
     }
 
-    protected function push(array|MappableField $config): self
+    protected function push(array|MappableField $config): static
     {
         $this->fields[] = $config;
 

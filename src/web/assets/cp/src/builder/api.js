@@ -144,6 +144,30 @@ export async function renderElementSelect(elementType, ids, fieldHandle = null) 
     return request(withQuery(url, params.toString()), { method: 'GET' });
 }
 
+// Craft's own icon picker for an Icon field's default cell. `fieldHandle` shapes
+// it — whether Pro icons are selectable is the field's setting — and `value`
+// seeds the preview with the currently-picked icon.
+export async function renderIconPicker(fieldHandle, value = null) {
+    const url = Craft.getActionUrl('influx/link-builder/render-icon-picker');
+    const params = new URLSearchParams();
+    if (fieldHandle) params.set('fieldHandle', String(fieldHandle));
+    if (value) params.set('value', String(value));
+
+    return request(withQuery(url, params.toString()), { method: 'GET' });
+}
+
+// The options a row's default select offers, for a field whose strategy declared
+// them `lazy` on the node rather than shipping them in the bootstrap — a list
+// big enough that every builder load would otherwise pay for it whether or not
+// the row is ever opened. Keyed by the field's own handle; the strategy behind
+// that field type answers.
+export async function defaultOptions(fieldHandle) {
+    const url = Craft.getActionUrl('influx/link-builder/default-options');
+    const params = new URLSearchParams({ fieldHandle: String(fieldHandle) });
+
+    return request(withQuery(url, params.toString()), { method: 'GET' });
+}
+
 export async function endpointTokenSuggestions(elementType, criteria) {
     const url = Craft.getActionUrl('influx/link-builder/endpoint-token-suggestions');
     const params = new URLSearchParams({ elementType });

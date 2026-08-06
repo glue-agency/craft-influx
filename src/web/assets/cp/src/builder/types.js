@@ -58,24 +58,33 @@
  * `tests/fixtures/mappable-field.json` from both sides (see
  * `__tests__/mappable-field.contract.test.js`).
  *
+ * `mapping` is THE description of the row's UI: one key per region it renders
+ * ('source' | 'default' | 'extra'), each a list of schema nodes the control
+ * registry dispatches by `type`. An ABSENT region is an absent cell — which is
+ * the whole reason there is nothing else here. It replaced a `defaultType` /
+ * `options` / `elementType` / `defaultLazy` descriptor beside a `fieldMeta`
+ * envelope carrying `subfieldsOnly` and `unmappable` flags: six keys saying by
+ * convention what one says by structure.
+ *
+ * `native` and `fieldClass` are not about rendering: `fieldClass` is what marks a
+ * descriptor custom, and so what decides whether a row sends its handle to the
+ * server-rendered element and icon pickers.
+ *
  * @typedef {Object} MappableField
  * @property {string} handle
  * @property {string} name
  * @property {boolean} native
  * @property {string} group Field-layout tab name, or 'Native'.
- * @property {('text'|'select'|'element')} defaultType
- * @property {Object<string, string>} [options] For defaultType 'select': value → label.
- * @property {string} [elementType] For defaultType 'element': FQCN to pick from.
  * @property {string} [fieldClass] FQCN of the Craft field class; absent for natives.
- * @property {Object<string, *>} [fieldMeta] Per-kind UI meta: {schema, subfieldsOnly, ...} — an extras block exists when schema is non-empty.
+ * @property {Object<string, Array<Object>>} mapping The row's regions, keyed by region name.
  */
 
 /**
  * One row of a sub-field card (`node.subFields` on an `elementSubFields`,
- * `subFields` or `matrixFields` node). `type` picks the row's default-value
- * editor, the same way a MappableField's `defaultType` does for a top-level row
- * — PHP builds both from the target field's own strategy
- * (`SchemaBuilder::fieldRow()`).
+ * `subFields` or `matrixFields` node). It IS a schema node, dispatched through the
+ * same control registry a top-level cell goes through — PHP builds it from the
+ * target field's own default cell (`MappingSchemaBuilder::fieldRow()`), so a
+ * relation row offers the picker that field's editor would.
  *
  * `channel` names the mapping channel the row is stored in, and its ABSENCE
  * means the node type's own default: `nativeFields` for an `elementSubFields`

@@ -9,7 +9,7 @@ use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\exceptions\MappingValueException;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -168,7 +168,7 @@ abstract class RelationalField extends Field
      * means `nativeFields`, which is both what these rows were stored in before
      * the key existed and the safe default, since a native routed to `fields`
      * is dropped silently at apply time. See
-     * {@see \GlueAgency\Influx\schema\SchemaBuilder::elementSubFields()}.
+     * {@see \GlueAgency\Influx\schema\MappingSchemaBuilder::elementSubFields()}.
      *
      * A native wins a handle collision. It can only happen where the attribute
      * isn't a reserved Craft field handle — `email` on a user, `alt` on an asset
@@ -213,14 +213,14 @@ abstract class RelationalField extends Field
      * relate and the same handle means the same field wherever it appears.
      *
      * Each row carries the default-value editor its own field asks for
-     * ({@see SchemaBuilder::fieldRow()}), so a relation sub-field offers the
+     * ({@see MappingSchemaBuilder::fieldRow()}), so a relation sub-field offers the
      * element picker its top-level row would.
      *
      * @return list<array>
      */
     protected function layoutCustomSubFields(BaseRelationField $field): array
     {
-        $builder = SchemaBuilder::make();
+        $builder = MappingSchemaBuilder::make();
         $seen = [];
 
         foreach ($this->sourceFieldLayouts($field) as $layout) {
@@ -236,7 +236,7 @@ abstract class RelationalField extends Field
                 }
 
                 $seen[$handle] = true;
-                $builder->fieldRow($this->fieldEditorFor($customField), [
+                $builder->fieldRow($this->childRowFor($customField), [
                     'handle' => $handle,
                     'label'  => $customField->name,
                 ]);

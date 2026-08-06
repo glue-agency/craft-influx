@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, bootstrap, configureCsrf, deleteLink, renderElementSelect, save } from '../api.js';
+import { ApiError, bootstrap, configureCsrf, defaultOptions, deleteLink, renderElementSelect, renderIconPicker, save } from '../api.js';
 
 const jsonResponse = (body, { status = 200 } = {}) => ({
     ok: status >= 200 && status < 300,
@@ -86,5 +86,35 @@ describe('render-element-select query', () => {
         await renderElementSelect('craft\\elements\\User', [], null);
 
         expect(fetch.mock.calls[0][0]).not.toContain('fieldHandle');
+    });
+});
+
+describe('default-options query', () => {
+    it('names the field whose strategy answers for the list', async () => {
+        fetch.mockResolvedValue(jsonResponse({ options: [{ value: 'BE', label: 'Belgium' }] }));
+        const payload = await defaultOptions('test_country');
+
+        const [url, init] = fetch.mock.calls[0];
+        expect(url).toContain('fieldHandle=test_country');
+        expect(init.method).toBe('GET');
+        expect(payload.options).toEqual([{ value: 'BE', label: 'Belgium' }]);
+    });
+});
+
+describe('render-icon-picker query', () => {
+    it('names the field shaping the picker, and seeds the current icon', async () => {
+        fetch.mockResolvedValue(jsonResponse({ html: '', jsSettings: { id: 'x', freeOnly: true } }));
+        await renderIconPicker('test_icon', 'user');
+
+        const [url] = fetch.mock.calls[0];
+        expect(url).toContain('fieldHandle=test_icon');
+        expect(url).toContain('value=user');
+    });
+
+    it('sends no value for an unset default', async () => {
+        fetch.mockResolvedValue(jsonResponse({ html: '', jsSettings: { id: 'x', freeOnly: true } }));
+        await renderIconPicker('test_icon', null);
+
+        expect(fetch.mock.calls[0][0]).not.toContain('value=');
     });
 });

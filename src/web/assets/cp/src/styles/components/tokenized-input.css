@@ -2,7 +2,7 @@
    TokenizedInput — flex row mimicking a single text input, with native
    <input> elements for text segments interleaved with colored chips and
    a built-in "+ token" dropdown. Also skins TokenChip / TokenPickerMenu,
-   and is reached by SchemaForm / SiteEndpointsTable, so it lives in the
+   and is reached by TokenField / SiteEndpointsTable, so it lives in the
    shared tree rather than a component <style> block.
 --------------------------------------------------------------------- */
 

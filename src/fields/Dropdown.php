@@ -5,7 +5,8 @@ namespace GlueAgency\Influx\fields;
 use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\BaseOptionsField;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 
 /**
@@ -34,28 +35,36 @@ class Dropdown extends Field
         return BaseOptionsField::class;
     }
 
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        return SchemaBuilder::make()
-            ->matchBy([
+        return MappingSchemaBuilder::make()->mapping([
+            'source' => true,
+            // Half this family holds a LIST (Checkboxes, MultiSelect), so the
+            // default does too — a single-value picker could only ever set one of
+            // the boxes.
+            'default' => fn(MappingSchemaBuilder $b) => $this->isMulti($field)
+                ? $b->defaultMultiSelect(['options' => $this->optionRows($field)])
+                : $b->defaultSelect(['options' => $this->optionRows($field)]),
+            'extra' => fn(MappingSchemaBuilder $b) => $b->matchBy([
                 'options' => [
                     ['value' => 'label', 'label' => Craft::t('influx', 'Label')],
                     ['value' => 'value', 'label' => Craft::t('influx', 'Value')],
                 ],
                 'default' => 'value',
-            ]);
+            ]),
+        ]);
     }
 
     /**
-     * The default is one of the field's own configured options, so the row
-     * offers them as a select instead of a free-text box the operator could
-     * mistype a stored value into. Option rows without a `value` are optgroup
-     * headings — they carry no storable value, so they're skipped (the same
-     * rows {@see labelToValueMap()} ignores).
+     * The field's own options as select rows. Rows without a `value` are optgroup
+     * headings — they carry no storable value, so they're skipped (the same rows
+     * {@see labelToValueMap()} ignores).
+     *
+     * @return list<array{value: string, label: string}>
      */
-    public function defaultEditor(CraftFieldInterface $field): ?array
+    protected function optionRows(CraftFieldInterface $field): array
     {
-        $map = [];
+        $rows = [];
 
         /** @var BaseOptionsField $field */
         foreach ($field->options ?? [] as $option) {
@@ -63,13 +72,23 @@ class Dropdown extends Field
                 continue;
             }
 
-            $map[(string) $option['value']] = (string) ($option['label'] ?? $option['value']);
+            $rows[] = [
+                'value' => (string) $option['value'],
+                'label' => (string) ($option['label'] ?? $option['value']),
+            ];
         }
 
-        return [
-            'type'    => SchemaBuilder::SELECT,
-            'options' => $map,
-        ];
+        return $rows;
+    }
+
+
+    /**
+     * Whether the field holds a LIST of options. Extracted so the no-boot tests
+     * can spec both arities without a real BaseOptionsField.
+     */
+    protected function isMulti(CraftFieldInterface $field): bool
+    {
+        return $field instanceof BaseOptionsField && $field->getIsMultiOptionsField();
     }
 
     public function parse(FieldContext $context): mixed
@@ -80,7 +99,7 @@ class Dropdown extends Field
             return null;
         }
 
-        // A default is picked from the field's own options (see defaultEditor()),
+        // A default is picked from the field's own options (see schema()),
         // so it already IS a stored value — `match: label` describes feed values
         // and would translate a picked one into nothing.
         if ($context->mapping->usesDefault($context->item)) {

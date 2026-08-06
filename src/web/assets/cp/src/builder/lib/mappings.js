@@ -1,3 +1,5 @@
+import { setSlot } from './slots.js';
+
 /**
  * Pure helpers for the link's `mappings` payload — extracted from
  * MappingRow so the pruning rules that keep Project Config clean exist
@@ -25,9 +27,35 @@ export function pruneEmpty(obj) {
 }
 
 /**
- * Write one slot (`node`, `default`, `options`, `nativeFields`, ...) of one
- * mapping, dropping empty values — and the whole handle when its last slot
- * empties out. Pure: returns a new mappings object, never mutates.
+ * Put one field's whole mapping back into the map, dropping the handle when
+ * nothing is left on it — so Project Config never carries an empty row. Pure:
+ * returns a new mappings object, never mutates.
+ *
+ * The map level is all this owns. Which SLOT of that mapping a control writes, and
+ * what counts as empty for it, is `lib/slots.js`'s business — and it works on the
+ * mapping alone, which is what lets a nested sub-field row reuse it.
+ *
+ * @param {Object<string, import('../types.js').Mapping>} mappings
+ * @param {string} handle
+ * @param {?import('../types.js').Mapping} mapping
+ * @returns {Object<string, import('../types.js').Mapping>}
+ */
+export function replaceMapping(mappings, handle, mapping) {
+    const next = { ...mappings };
+
+    if (! mapping || Object.keys(mapping).length === 0) {
+        delete next[handle];
+    } else {
+        next[handle] = mapping;
+    }
+
+    return next;
+}
+
+/**
+ * Write one slot of one field's mapping — the map-level convenience over
+ * {@see replaceMapping} + `slots.setSlot`, for callers that hold the map and know
+ * the key (the Feed Me import, the auto-match writer).
  *
  * @param {Object<string, import('../types.js').Mapping>} mappings
  * @param {string} handle
@@ -36,24 +64,33 @@ export function pruneEmpty(obj) {
  * @returns {Object<string, import('../types.js').Mapping>}
  */
 export function setMappingSlot(mappings, handle, key, value) {
-    const current = { ...(mappings?.[handle] || {}) };
+    return replaceMapping(mappings, handle, setSlot(mappings?.[handle], key, value));
+}
 
-    const isEmpty = value === '' || value === null || value === undefined
-        || (typeof value === 'object' && value !== null && Object.keys(value).length === 0);
-
-    if (isEmpty) {
-        delete current[key];
-    } else {
-        current[key] = value;
+/**
+ * Whether a field counts as mapped — the rule behind every "N mapped" pill and
+ * the sidebar's total, so the two can't drift apart.
+ *
+ * Normally that means a source node was picked. A row with no source CELL, though,
+ * has nowhere to pick one: its value comes entirely from its sub-mappings (a
+ * Matrix, a Table), so anything saved on the row counts. Read off the declared
+ * regions rather than a flag — a row that renders no source cell simply doesn't
+ * declare one.
+ *
+ * A field nothing can be mapped to is not a special case: it DOES declare a source
+ * region (holding a note), so it falls to the node rule and is never mapped, which
+ * is exactly right.
+ *
+ * @param {import('../types.js').MappableField} field
+ * @param {?import('../types.js').Mapping} mapping
+ * @returns {boolean}
+ */
+export function isMapped(field, mapping) {
+    if (! field.mapping?.source?.length) {
+        return Object.keys(mapping || {}).length > 0;
     }
 
-    const next = { ...mappings };
-    if (Object.keys(current).length === 0) {
-        delete next[handle];
-    } else {
-        next[handle] = current;
-    }
-    return next;
+    return !! mapping?.node;
 }
 
 /**

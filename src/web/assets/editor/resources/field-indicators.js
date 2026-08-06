@@ -34,7 +34,8 @@
 
     // Custom fields render as #fields-<handle>-field with data-attribute=<handle>;
     // native attributes (title, …) as #<handle>-field. Collect every match so a
-    // handle present in both the main pane and the sidebar meta is covered.
+    // handle present in both the main pane and the sidebar meta is covered, then
+    // keep only the OUTERMOST ones ({@see outermost}).
     function fieldsFor(handle) {
         var h = escape(handle);
         var selectors = [
@@ -56,7 +57,25 @@
             });
         });
 
-        return found;
+        return outermost(found);
+    }
+
+    // Drop any match nested inside another, because a field's own input HTML can
+    // carry the same id as its wrapper: several Craft field types build their
+    // input from a `Cp::*FieldHtml()` helper, which wraps it in a second .field
+    // whose id is derived as "<inputId>-field" — the very id the outer wrapper
+    // already has. A Color field with a palette is one (colorSelectFieldHtml), so
+    // the page really does hold two #fields-<handle>-field nodes, and
+    // querySelectorAll returns both where getElementById would stop at the first.
+    // Decorating both put a second mark inside the input, above the control.
+    function outermost(nodes) {
+        var all = Array.from(nodes);
+
+        return all.filter(function (node) {
+            return ! all.some(function (other) {
+                return other !== node && other.contains(node);
+            });
+        });
     }
 
     function buildIndicator() {

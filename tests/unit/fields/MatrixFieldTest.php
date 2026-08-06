@@ -19,7 +19,6 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -299,7 +298,7 @@ class MatrixFieldTest extends Unit
         $strategy = $this->strategy(['season' => ['year', 'notes']]);
         $nodes = $strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
-        ])->toArray();
+        ]);
 
         $this->assertCount(1, $nodes);
         $this->assertSame('matrixFields', $nodes[0]['type']);
@@ -323,7 +322,7 @@ class MatrixFieldTest extends Unit
                 'hasTitleField' => true,
                 'titleLabel'    => 'Season name',
             ],
-        ])->toArray();
+        ]);
 
         $this->assertSame('Season name', $nodes[0]['subFields'][0]['label']);
     }
@@ -333,7 +332,7 @@ class MatrixFieldTest extends Unit
         $strategy = $this->strategy(['season' => ['year']]);
         $nodes = $strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
-        ])->toArray();
+        ]);
 
         $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
     }
@@ -345,7 +344,7 @@ class MatrixFieldTest extends Unit
         $strategy = $this->strategy(['season' => ['year']]);
         $nodes = $strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
-        ])->toArray();
+        ]);
 
         $this->assertArrayNotHasKey('channel', $nodes[0]['subFields'][1]);
     }
@@ -356,7 +355,7 @@ class MatrixFieldTest extends Unit
         $nodes = $strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
             ['handle' => 'quote', 'name' => 'Quote', 'hasTitleField' => true],
-        ])->toArray();
+        ]);
 
         $this->assertSame(['season', 'quote'], array_column($nodes, 'blockType'));
         $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
@@ -365,7 +364,7 @@ class MatrixFieldTest extends Unit
 
     public function testAFieldWithoutBlockTypesRendersANote(): void
     {
-        $nodes = $this->strategy([])->exposedSchema([])->toArray();
+        $nodes = $this->strategy([])->exposedSchema([]);
 
         $this->assertCount(1, $nodes);
         $this->assertSame('note', $nodes[0]['type']);
@@ -1171,7 +1170,7 @@ class MatrixFieldTest extends Unit
              *
              * @param list<array<string, mixed>> $descriptors
              */
-            public function exposedSchema(array $descriptors): SchemaBuilder
+            public function exposedSchema(array $descriptors): array
             {
                 $this->descriptors = array_map(fn(array $descriptor): array => $descriptor + [
                     'layout' => $this->test->fakeLayout(
@@ -1180,7 +1179,7 @@ class MatrixFieldTest extends Unit
                     ),
                 ], $descriptors);
 
-                return $this->schema($this->test->fakeCraftField());
+                return $this->schema($this->test->fakeCraftField())->toArray()['extra'] ?? [];
             }
 
             protected function blockTypeDescriptors(CraftFieldInterface $field): array
@@ -1192,9 +1191,9 @@ class MatrixFieldTest extends Unit
              * No booted plugin to ask, so every block field's row reads as text
              * — the editor a plain-text child would get anyway.
              */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
-                return null;
+                return ['default' => ['type' => 'text'], 'extra' => []];
             }
 
             protected function blockTypeHandles(FieldContext $context): array

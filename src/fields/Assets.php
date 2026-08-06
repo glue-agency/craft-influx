@@ -11,7 +11,8 @@ use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
 use craft\models\Volume;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use Throwable;
 
@@ -64,7 +65,7 @@ class Assets extends RelationalField
      * The matched asset's sub-fields are ONE card over two write channels: the
      * asset's own attributes (alt / title) ride `nativeFields`, the custom
      * fields of the volumes this field can relate ride `fields` and are marked
-     * with the row-level `channel` key {@see SchemaBuilder::elementSubFields()}
+     * with the row-level `channel` key {@see MappingSchemaBuilder::elementSubFields()}
      * documents. Two cards were an implementation detail of that split showing
      * through — to an editor filling them in they are one list of the asset's
      * fields.
@@ -82,48 +83,56 @@ class Assets extends RelationalField
      * channel coerces per the target field's own strategy anyway, so the row
      * only needs to supply a source node and an optional default.
      */
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        /** @var CraftAssetsField $field */
-        $url = [['handle' => 'mode', 'equals' => 'url']];
-        $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
-        $subFields = $this->subFieldRows($field);
+        return MappingSchemaBuilder::make()->mapping([
+            'source' => true,
+            // A default here is a file the operator picks in the CP, so the cell
+            // offers an asset selector rather than a box to paste a URL into;
+            // {@see parse()} matches a picked default by id.
+            'default' => fn(MappingSchemaBuilder $b) => $b->element(['elementType' => Asset::class]),
+            'extra'   => function(MappingSchemaBuilder $b) use ($field) {
+                /** @var CraftAssetsField $field */
+                $url = [['handle' => 'mode', 'equals' => 'url']];
+                $uploading = [['handle' => 'mode', 'equals' => 'url'], ['handle' => 'upload']];
+                $subFields = $this->subFieldRows($field);
 
-        return SchemaBuilder::make()
-            ->select([
-                'handle'  => 'mode',
-                'label'   => Craft::t('influx', 'Match by'),
-                'options' => [
-                    [
-                        'label'   => Craft::t('influx', 'Asset'),
-                        'kind'    => 'element',
-                        'options' => [
-                            ['value' => 'id',  'label' => Craft::t('influx', 'ID (id)')],
-                            ['value' => 'url', 'label' => Craft::t('influx', 'URL (url)')],
+                $b->select([
+                    'handle'  => 'mode',
+                    'label'   => Craft::t('influx', 'Match by'),
+                    'options' => [
+                        [
+                            'label'   => Craft::t('influx', 'Asset'),
+                            'kind'    => 'element',
+                            'options' => [
+                                ['value' => 'id',  'label' => Craft::t('influx', 'ID (id)')],
+                                ['value' => 'url', 'label' => Craft::t('influx', 'URL (url)')],
+                            ],
                         ],
                     ],
-                ],
-                'default' => 'id',
-            ])
-            ->lightswitch([
-                'handle' => 'upload',
-                'label'  => Craft::t('influx', 'Download & upload missing files'),
-                'showIf' => $url,
-            ])
-            ->select([
-                'handle'  => 'conflict',
-                'label'   => Craft::t('influx', 'On conflict'),
-                'options' => [
-                    ['value' => 'index',   'label' => Craft::t('influx', 'Use existing')],
-                    ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
-                ],
-                'default' => 'index',
-                'showIf'  => $uploading,
-            ])
-            ->when($subFields, fn(SchemaBuilder $builder) => $builder->elementSubFields([
-                'label'     => Craft::t('influx', 'Sub-fields'),
-                'subFields' => $subFields,
-            ]));
+                    'default' => 'id',
+                ])
+                    ->lightswitch([
+                        'handle' => 'upload',
+                        'label'  => Craft::t('influx', 'Download & upload missing files'),
+                        'showIf' => $url,
+                    ])
+                    ->select([
+                        'handle'  => 'conflict',
+                        'label'   => Craft::t('influx', 'On conflict'),
+                        'options' => [
+                            ['value' => 'index',   'label' => Craft::t('influx', 'Use existing')],
+                            ['value' => 'replace', 'label' => Craft::t('influx', 'Replace')],
+                        ],
+                        'default' => 'index',
+                        'showIf'  => $uploading,
+                    ])
+                    ->when($subFields, fn(MappingSchemaBuilder $builder) => $builder->elementSubFields([
+                        'label'     => Craft::t('influx', 'Sub-fields'),
+                        'subFields' => $subFields,
+                    ]));
+            },
+        ]);
     }
 
     /**
@@ -157,7 +166,7 @@ class Assets extends RelationalField
             }
         }
 
-        $builder = SchemaBuilder::make();
+        $builder = MappingSchemaBuilder::make();
 
         foreach (['alt', 'title'] as $attribute) {
             if (isset($labels[$attribute])) {
@@ -166,19 +175,6 @@ class Assets extends RelationalField
         }
 
         return $builder->toArray();
-    }
-
-    /**
-     * An asset default is a file the operator picks in the CP, so the row offers
-     * an asset selector rather than a box to paste a URL into; {@see parse()}
-     * matches a picked default by id.
-     */
-    public function defaultEditor(CraftFieldInterface $field): ?array
-    {
-        return [
-            'type'        => SchemaBuilder::ELEMENT,
-            'elementType' => Asset::class,
-        ];
     }
 
     /**
@@ -200,7 +196,7 @@ class Assets extends RelationalField
             return null;
         }
 
-        // A picked default is an asset id (see defaultEditor()), so it takes the
+        // A picked default is an asset id (see schema()), so it takes the
         // id branch even under `url` mode — where it would otherwise be
         // basename-matched into nothing.
         $mode = $context->mapping->usesDefault($context->item) ? 'id' : $context->mapping->option('mode', 'id');

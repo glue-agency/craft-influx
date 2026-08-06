@@ -2,14 +2,18 @@
 
 namespace GlueAgency\Influx\fields;
 
+use Cake\Utility\Hash;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use Throwable;
 
 /**
@@ -75,88 +79,93 @@ abstract class Field
     abstract public function parse(FieldContext $context): mixed;
 
     /**
-     * Optional extra UI metadata, merged into the payload by
-     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}. The mapping
-     * extras UI is declared via {@see schema()} — the primary
-     * contract, with labels co-located on each node — so most strategies
-     * never need this. Override only to ship structured meta a schema node
-     * can't express; `schema` is a reserved key set by metaFor.
+     * THE declaration of this field type's whole mapping row — its source-node
+     * cell, its default-value cell and its extras — as three regions of schema
+     * nodes the SPA renders through one `type => component` map.
+     *
+     * The default is the shape most field types want: a source-node select and a
+     * plain text default. A strategy overrides to say something different, and
+     * says it by ABSENCE where a cell doesn't apply — a Matrix declares neither
+     * cell because its value comes from sub-mappings, and a Preparse field
+     * declares a source region holding nothing but a note. See
+     * {@see MappingSchema} for the three ways to declare a region.
      */
-    public function fieldMeta(CraftFieldInterface $field): array
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        return [];
+        return MappingSchemaBuilder::make()->mapping([
+            'source'  => true,
+            'default' => true,
+        ]);
     }
 
     /**
-     * Declarative form schema for this field type's mapping-extras block — a
-     * {@see SchemaBuilder} the SPA renders generically. Declaring the UI next
-     * to the parse logic is what keeps the Vue side free of per-field-type
-     * branches: adding a kind is a single-PHP-file change.
+     * The options a lazily-declared default select offers, resolved on demand
+     * rather than shipped with the row.
      *
-     * Default: an empty builder (no extras).
+     * Default: whatever the `default` region already declared, so a strategy
+     * carrying its options inline needs nothing here — the lazy endpoint and the
+     * bootstrap answer with the same list either way.
+     *
+     * A strategy overrides this AND declares `'lazy' => true` on its default node
+     * when the list is big enough to be worth a round-trip: every builder
+     * bootstrap otherwise pays for it once per field on the layout, whether or not
+     * the operator ever opens that row. Options that ARE the field's own settings
+     * (an option field's, a colour palette) are already in memory and not worth
+     * deferring; a repository lookup of every country in the world is.
+     *
+     * @return array<string, string> value => label
      */
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function defaultOptions(CraftFieldInterface $field): array
     {
-        return SchemaBuilder::make();
+        $node = $this->schema($field)->toArray()['default'][0] ?? [];
+
+        return static::optionsAsMap($node['options'] ?? []);
     }
 
     /**
-     * How the builder should render this field's default-value editor — the
-     * "— use default —" cell of a mapping row. Null (the base) leaves it a plain
-     * text input, which is right for anything the operator types.
+     * A node's option LIST as the `value => label` MAP the lazy endpoint speaks.
+     * The two shapes exist because a node carries an ordered list while the
+     * endpoint is keyed; this is the one place they meet.
      *
-     * The keys are the ones {@see SchemaBuilder::group()} reads off a declared
-     * node, so a CUSTOM field describes its editor in exactly the vocabulary a
-     * native attribute already does: `type` ({@see SchemaBuilder::TEXT},
-     * {@see SchemaBuilder::SELECT} or {@see SchemaBuilder::ELEMENT}) plus
-     * `options` for a select / `elementType` for an element picker.
+     * A row with an empty value is dropped defensively: the "nothing picked" row
+     * is a sentinel on the node rather than one of the options
+     * ({@see MappingSchemaBuilder::defaultSelect()}), so it should never reach
+     * here — but a field declaring a genuinely valueless option would be offering
+     * the lazy endpoint a key it can't address.
      *
-     * Overriding this is a promise {@see parse()} has to keep: a default picked
-     * from a select or an element picker is a stored value / an element id, so
-     * the strategy must stop putting it through the feed-value matching its
-     * `options.match` describes ({@see Relation::parse()}).
-     *
-     * @return array{type: string, options?: array<string, string>, elementType?: class-string}|null
+     * @param list<array{value: string, label: string}> $options
+     * @return array<string, string>
      */
-    public function defaultEditor(CraftFieldInterface $field): ?array
+    public static function optionsAsMap(array $options): array
     {
-        return null;
+        $map = [];
+
+        foreach ($options as $option) {
+            if (! is_array($option) || ! isset($option['value']) || $option['value'] === '') {
+                continue;
+            }
+
+            $map[(string) $option['value']] = (string) ($option['label'] ?? $option['value']);
+        }
+
+        return $map;
     }
 
     /**
-     * The editor descriptor for ANOTHER field — the one behind a sub-field row,
-     * whose strategy this has to ask because a row's editor is that field's
-     * business, not its parent's.
+     * The row ANOTHER field renders when nested under this one — its default cell
+     * and its extras, which this has to ask that field's strategy for because how a
+     * field is configured is its own business, not its parent's.
      *
-     * A seam rather than a direct service call so a schema spec can answer for
-     * it without a booted plugin, in the same idiom as this class's other
-     * registry seams. Editor only, never the full `metaFor()`: a row is one
-     * cell, so pulling a relation sub-field's own schema in would nest cards
-     * inside cards for nothing.
+     * A seam rather than a direct service call so a schema spec can answer for it
+     * without a booted plugin, in the same idiom as this class's other registry
+     * seams. See {@see \GlueAgency\Influx\services\FieldsService::childRowFor()}
+     * for what a nested row gets and why it stops at one card level.
      *
-     * @return array{type: string, options?: array<string, string>, elementType?: class-string}|null
+     * @return array{default: array|null, extra: list<array>}
      */
-    protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+    protected function childRowFor(CraftFieldInterface $craftField): array
     {
-        return Influx::getInstance()->fields->defaultEditorFor($craftField) ?: null;
-    }
-
-    /**
-     * Wrap a builder-schema node list in the `fieldMeta` envelope the SPA's
-     * SchemaForm consumes: the {@see schema()} nodes, with any extra meta
-     * merged in. THE one place the `{schema}` shape is defined — every mappable
-     * field routes its schema through here, whether it's a custom field (via
-     * {@see \GlueAgency\Influx\services\FieldsService::metaFor()}) or a native
-     * attribute declared by an {@see \GlueAgency\Influx\targets\ElementTargetInterface}.
-     * `schema` is reserved and wins over `$extra`.
-     *
-     * @param list<array> $schema SchemaBuilder nodes.
-     * @param array<string, mixed> $extra Extra meta keys (e.g. `subfieldsOnly`).
-     * @return array<string, mixed>
-     */
-    public static function meta(array $schema, array $extra = []): array
-    {
-        return ['schema' => $schema] + $extra;
+        return Influx::getInstance()->fields->childRowFor($craftField);
     }
 
     /**
@@ -341,6 +350,71 @@ abstract class Field
         }
 
         return $max;
+    }
+
+    /**
+     * Coerce one raw child value through the child field's OWN strategy, so its
+     * per-field options (match, truthy, format, …) apply inside a nested
+     * structure exactly as they would at the top level. The synthetic
+     * single-value item makes the child's own `resolve()` yield exactly this
+     * value; a node-less (useDefault-only) child is item-independent and reuses
+     * the parent item.
+     *
+     * Shared by every strategy that walks a sub-mapping tree — {@see Matrix}'s
+     * blocks, {@see ContentBlock}'s fields, {@see Addresses}'s address records.
+     *
+     * @param ElementInterface $carrier the element a child strategy reads its
+     * field settings against — the nested element where one exists, the owner
+     * as a stand-in where it can't be built yet.
+     * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
+     */
+    protected function coerceChildValue(
+        FieldContext $context,
+        ElementInterface $carrier,
+        FieldMapping $sub,
+        CraftFieldInterface $childCraftField,
+        mixed $value,
+    ): mixed {
+        $childItem = $sub->node !== null
+            ? new RemoteItem(Hash::insert([], $sub->node, $value))
+            : $context->item;
+
+        $childContext = $context->descend($carrier, $sub, $childCraftField, $childItem);
+
+        return $this->childStrategy($context, $childCraftField)->parse($childContext);
+    }
+
+    /**
+     * Resolve the mapping strategy for a child craft field, through the seam the
+     * context carries ({@see FieldContext::strategyFor()}) rather than the plugin
+     * singleton — a field strategy has no business reaching a global mid-walk.
+     * Still extracted so tests can record the {@see FieldContext} a child
+     * receives and return a marker.
+     */
+    protected function childStrategy(FieldContext $context, CraftFieldInterface $childCraftField): Field
+    {
+        return $context->strategyFor($childCraftField);
+    }
+
+    /**
+     * The mappings out of a set that actually carry something — the active-only
+     * rule every sub-mapping strategy applies before walking a tree, so a handle
+     * with neither a node nor an explicit default contributes nothing.
+     *
+     * @param iterable<FieldMapping> $mappings
+     * @return list<FieldMapping>
+     */
+    protected function filterActive(iterable $mappings): array
+    {
+        $active = [];
+
+        foreach ($mappings as $mapping) {
+            if ($mapping->isActive()) {
+                $active[] = $mapping;
+            }
+        }
+
+        return $active;
     }
 
     /**

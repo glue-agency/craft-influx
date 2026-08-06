@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\schema;
 
 use Craft;
+use craft\elements\User;
 use craft\models\EntryType;
 use GlueAgency\Influx\helpers\Compat;
 
@@ -117,12 +118,54 @@ class NativeAttributes
             $rows[] = ['handle' => 'username', 'label' => Craft::t('app', 'Username')];
         }
 
-        return array_merge($rows, [
-            ['handle' => 'email',     'label' => Craft::t('app', 'Email')],
-            ['handle' => 'fullName',  'label' => Craft::t('app', 'Full Name')],
-            ['handle' => 'firstName', 'label' => Craft::t('app', 'First Name')],
-            ['handle' => 'lastName',  'label' => Craft::t('app', 'Last Name')],
-        ]);
+        $rows[] = ['handle' => 'email', 'label' => Craft::t('app', 'Email')];
+
+        return array_merge($rows, static::userNameWritable());
+    }
+
+    /**
+     * The name attributes a user layout actually exposes.
+     *
+     * Craft renders its Full Name layout element as EITHER one full-name input OR
+     * a First/Last pair, on `showFirstAndLastNameFields`, and branches its own
+     * validation on the same setting ({@see \craft\elements\User::defineRules()}) —
+     * so offering all three would put rows in the card for a shape the CP never
+     * shows. The element is also removable, in which case none of the three is
+     * editable anywhere and the mapping shouldn't pretend otherwise; that's the
+     * same `isFieldIncluded()` probe an asset's alt and title go through
+     * ({@see \GlueAgency\Influx\fields\Assets::nativeSubFields()}).
+     *
+     * @return list<array{handle: string, label: string}>
+     */
+    protected static function userNameWritable(): array
+    {
+        if (! static::userLayoutShowsNames()) {
+            return [];
+        }
+
+        if (Craft::$app?->getConfig()->getGeneral()->showFirstAndLastNameFields ?? false) {
+            return [
+                ['handle' => 'firstName', 'label' => Craft::t('app', 'First Name')],
+                ['handle' => 'lastName',  'label' => Craft::t('app', 'Last Name')],
+            ];
+        }
+
+        return [
+            ['handle' => 'fullName', 'label' => Craft::t('app', 'Full Name')],
+        ];
+    }
+
+    /**
+     * Whether the (single, global) user field layout includes the name element.
+     * Craft marks it mandatory, so it's there unless a module removed it through
+     * `FieldLayout::EVENT_DEFINE_NATIVE_FIELDS` — and with no booted app there's
+     * no layout to ask, so the names are offered rather than silently dropped.
+     */
+    protected static function userLayoutShowsNames(): bool
+    {
+        $layout = Craft::$app?->getFields()->getLayoutByType(User::class);
+
+        return $layout === null || $layout->isFieldIncluded('fullName');
     }
 
     /** @return list<array{value: string, label: string}> */

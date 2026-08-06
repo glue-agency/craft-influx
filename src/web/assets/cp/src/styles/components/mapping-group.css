@@ -2,7 +2,7 @@
    Mapping group card — the white card wrapping a group of mapping rows,
    with a collapsible header carrying count / mapped / auto / missing
    pills. Global (not a component <style> block): the pills live in
-   consumers' `tags` slots and SchemaForm reaches this card's body, so
+   consumers' `tags` slots and the mapping extras reach this card's body, so
    the rules must not be scoped to MappingGroupCard.vue.
 --------------------------------------------------------------------- */
 .influx-mapping-group {

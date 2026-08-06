@@ -83,11 +83,14 @@ class ContentBlockFieldTest extends Unit
         )));
     }
 
-    public function testItDeclaresItselfSubfieldsOnly(): void
+    public function testItDeclaresNeitherCellOfItsOwn(): void
     {
-        // Without this the builder offers the row a source-node picker, for a
-        // value that only ever comes from its sub-mappings.
-        $this->assertTrue((new ContentBlock())->fieldMeta($this->craftField())['subfieldsOnly']);
+        // Declaring either would offer the row a picker for a value that only ever
+        // comes from its sub-mappings.
+        $schema = (new ContentBlock())->schema($this->craftField());
+
+        $this->assertFalse($schema->has('source'));
+        $this->assertFalse($schema->has('default'));
     }
 
     public function testAnUnchangedBlockReadsAsUnchanged(): void
@@ -118,7 +121,7 @@ class ContentBlockFieldTest extends Unit
 
     public function testTheCardOffersOneRowPerLayoutField(): void
     {
-        $nodes = $this->strategy()->schema($this->craftField())->toArray();
+        $nodes = $this->strategy()->schema($this->craftField())->toArray()['extra'] ?? [];
 
         $this->assertCount(1, $nodes);
         $this->assertSame('subFields', $nodes[0]['type']);
@@ -136,7 +139,7 @@ class ContentBlockFieldTest extends Unit
             }
         };
 
-        $nodes = $strategy->schema($this->craftField())->toArray();
+        $nodes = $strategy->schema($this->craftField())->toArray()['extra'] ?? [];
 
         $this->assertSame('note', $nodes[0]['type']);
     }
@@ -183,9 +186,9 @@ class ContentBlockFieldTest extends Unit
                 return TestContentBlockLayout::make();
             }
 
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
-                return null;
+                return ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
     }

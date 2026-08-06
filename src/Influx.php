@@ -226,6 +226,8 @@ class Influx extends Plugin
                 $event->rules['influx/link-builder/mappable-fields'] = 'influx/link-builder/mappable-fields';
                 $event->rules['influx/link-builder/endpoint-token-suggestions'] = 'influx/link-builder/endpoint-token-suggestions';
                 $event->rules['influx/link-builder/render-element-select'] = 'influx/link-builder/render-element-select';
+                $event->rules['influx/link-builder/default-options'] = 'influx/link-builder/default-options';
+                $event->rules['influx/link-builder/render-icon-picker'] = 'influx/link-builder/render-icon-picker';
 
                 $event->rules['influx/logs'] = 'influx/logs/index';
                 $event->rules['influx/logs/<id:\d+>'] = 'influx/logs/view';

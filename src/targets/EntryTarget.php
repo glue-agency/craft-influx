@@ -17,8 +17,8 @@ use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\NativeAttributes;
-use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\support\EntryTypeResolver;
@@ -450,27 +450,27 @@ class EntryTarget extends AbstractElementTarget
      *    while Influx still counts the write as a change and re-saves the element
      *    every run. Hidden slug / status mappings do still land until pruned.
      */
-    protected function nativeFieldDefinitions(?EntryType $entryType = null): SchemaBuilder
+    protected function nativeFieldDefinitions(?EntryType $entryType = null): MappingSchemaBuilder
     {
-        return SchemaBuilder::make()
-            ->group(Craft::t('influx', 'Native'), fn(SchemaBuilder $group) => $group
+        return MappingSchemaBuilder::make()
+            ->group(Craft::t('influx', 'Native'), fn(MappingSchemaBuilder $group) => $group
                 ->when(
                     $entryType === null || Compat::entryTypeShowsTitleField($entryType),
-                    fn(SchemaBuilder $builder) => $builder->text([
+                    fn(MappingSchemaBuilder $builder) => $builder->text([
                         'handle' => 'title',
                         'name'   => Craft::t('app', 'Title'),
                     ]),
                 )
                 ->when(
                     $entryType === null || Compat::entryTypeShowsSlugField($entryType),
-                    fn(SchemaBuilder $builder) => $builder->text([
+                    fn(MappingSchemaBuilder $builder) => $builder->text([
                         'handle' => 'slug',
                         'name'   => Craft::t('app', 'Slug'),
                     ]),
                 )
                 ->when(
                     $entryType === null || Compat::entryTypeShowsStatusField($entryType),
-                    fn(SchemaBuilder $builder) => $builder->select([
+                    fn(MappingSchemaBuilder $builder) => $builder->select([
                         'handle'  => 'enabled',
                         'name'    => Craft::t('app', 'Enabled'),
                         'options' => [
@@ -482,18 +482,18 @@ class EntryTarget extends AbstractElementTarget
                 ->text([
                     'handle' => 'postDate',
                     'name'   => Craft::t('app', 'Post Date'),
-                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
+                    'extras' => fn(MappingSchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
                 ])
                 ->text([
                     'handle' => 'expiryDate',
                     'name'   => Craft::t('app', 'Expiry Date'),
-                    'extras' => fn(SchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
+                    'extras' => fn(MappingSchemaBuilder $builder) => $builder->dateFormat(['options' => Date::formatOptions()]),
                 ])
                 ->element([
                     'handle'      => 'author',
                     'name'        => Craft::t('app', 'Author'),
                     'elementType' => User::class,
-                    'extras'      => fn(SchemaBuilder $builder)      => $builder->matchBy(['options' => $this->authorMatchOptions()]),
+                    'extras'      => fn(MappingSchemaBuilder $builder)      => $builder->matchBy(['options' => $this->authorMatchOptions()]),
                 ]));
     }
 

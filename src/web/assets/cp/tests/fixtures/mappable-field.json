@@ -4,17 +4,93 @@
         "name": "Title",
         "native": true,
         "group": "Native",
-        "defaultType": "text"
+        "mapping": {
+            "source": [
+                {
+                    "type": "select",
+                    "allowCustom": true,
+                    "searchable": true,
+                    "searchPlaceholder": "Search nodes…",
+                    "emptyLabel": "Run “Fetch sample” to discover nodes.",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no mapping —"
+                        },
+                        {
+                            "value": "__default__",
+                            "label": "— use default —"
+                        }
+                    ],
+                    "optionsLabel": "Nodes",
+                    "optionsKind": "node",
+                    "sentinel": {
+                        "__default__": "useDefault"
+                    }
+                }
+            ],
+            "default": [
+                {
+                    "type": "text",
+                    "handle": "title"
+                }
+            ]
+        }
     },
     {
         "handle": "enabled",
         "name": "Enabled",
         "native": true,
         "group": "Native",
-        "defaultType": "select",
-        "options": {
-            "true": "Enabled",
-            "false": "Disabled"
+        "mapping": {
+            "source": [
+                {
+                    "type": "select",
+                    "allowCustom": true,
+                    "searchable": true,
+                    "searchPlaceholder": "Search nodes…",
+                    "emptyLabel": "Run “Fetch sample” to discover nodes.",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no mapping —"
+                        },
+                        {
+                            "value": "__default__",
+                            "label": "— use default —"
+                        }
+                    ],
+                    "optionsLabel": "Nodes",
+                    "optionsKind": "node",
+                    "sentinel": {
+                        "__default__": "useDefault"
+                    }
+                }
+            ],
+            "default": [
+                {
+                    "type": "select",
+                    "handle": "enabled",
+                    "options": [
+                        {
+                            "value": "true",
+                            "label": "Enabled"
+                        },
+                        {
+                            "value": "false",
+                            "label": "Disabled"
+                        }
+                    ],
+                    "searchable": true,
+                    "searchPlaceholder": "Search options…",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no default —"
+                        }
+                    ]
+                }
+            ]
         }
     },
     {
@@ -22,10 +98,39 @@
         "name": "Author",
         "native": true,
         "group": "Native",
-        "defaultType": "element",
-        "elementType": "craft\\elements\\User",
-        "fieldMeta": {
-            "schema": [
+        "mapping": {
+            "source": [
+                {
+                    "type": "select",
+                    "allowCustom": true,
+                    "searchable": true,
+                    "searchPlaceholder": "Search nodes…",
+                    "emptyLabel": "Run “Fetch sample” to discover nodes.",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no mapping —"
+                        },
+                        {
+                            "value": "__default__",
+                            "label": "— use default —"
+                        }
+                    ],
+                    "optionsLabel": "Nodes",
+                    "optionsKind": "node",
+                    "sentinel": {
+                        "__default__": "useDefault"
+                    }
+                }
+            ],
+            "default": [
+                {
+                    "type": "element",
+                    "handle": "author",
+                    "elementType": "craft\\elements\\User"
+                }
+            ],
+            "extra": [
                 {
                     "type": "select",
                     "options": [
@@ -50,10 +155,37 @@
         "name": "Import ID",
         "native": false,
         "group": "Content",
-        "defaultType": "text",
         "fieldClass": "craft\\fields\\PlainText",
-        "fieldMeta": {
-            "schema": []
+        "mapping": {
+            "source": [
+                {
+                    "type": "select",
+                    "allowCustom": true,
+                    "searchable": true,
+                    "searchPlaceholder": "Search nodes…",
+                    "emptyLabel": "Run “Fetch sample” to discover nodes.",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no mapping —"
+                        },
+                        {
+                            "value": "__default__",
+                            "label": "— use default —"
+                        }
+                    ],
+                    "optionsLabel": "Nodes",
+                    "optionsKind": "node",
+                    "sentinel": {
+                        "__default__": "useDefault"
+                    }
+                }
+            ],
+            "default": [
+                {
+                    "type": "text"
+                }
+            ]
         }
     },
     {
@@ -61,10 +193,9 @@
         "name": "Content blocks",
         "native": false,
         "group": "Content",
-        "defaultType": "text",
         "fieldClass": "craft\\fields\\Matrix",
-        "fieldMeta": {
-            "schema": [
+        "mapping": {
+            "extra": [
                 {
                     "type": "matrixFields",
                     "handle": "blocks",
@@ -72,8 +203,7 @@
                     "blockType": "text",
                     "subFields": []
                 }
-            ],
-            "subfieldsOnly": true
+            ]
         }
     },
     {
@@ -81,11 +211,39 @@
         "name": "Related articles",
         "native": false,
         "group": "Content",
-        "defaultType": "element",
-        "elementType": "craft\\elements\\Entry",
         "fieldClass": "craft\\fields\\Entries",
-        "fieldMeta": {
-            "schema": [
+        "mapping": {
+            "source": [
+                {
+                    "type": "select",
+                    "allowCustom": true,
+                    "searchable": true,
+                    "searchPlaceholder": "Search nodes…",
+                    "emptyLabel": "Run “Fetch sample” to discover nodes.",
+                    "sentinelOptions": [
+                        {
+                            "value": "",
+                            "label": "— no mapping —"
+                        },
+                        {
+                            "value": "__default__",
+                            "label": "— use default —"
+                        }
+                    ],
+                    "optionsLabel": "Nodes",
+                    "optionsKind": "node",
+                    "sentinel": {
+                        "__default__": "useDefault"
+                    }
+                }
+            ],
+            "default": [
+                {
+                    "type": "element",
+                    "elementType": "craft\\elements\\Entry"
+                }
+            ],
+            "extra": [
                 {
                     "type": "select",
                     "options": [
@@ -151,15 +309,15 @@
                             "label": "Slug"
                         },
                         {
-                            "type": "text",
                             "handle": "blurb",
                             "label": "Blurb",
+                            "type": "text",
                             "channel": "fields"
                         },
                         {
-                            "type": "element",
                             "handle": "campus",
                             "label": "Campus",
+                            "type": "element",
                             "elementType": "craft\\elements\\Entry",
                             "channel": "fields"
                         }

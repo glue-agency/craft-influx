@@ -9,7 +9,8 @@ use craft\helpers\DateTimeHelper;
 use DateTimeInterface;
 use GlueAgency\Influx\enums\ChildAction;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -32,7 +33,7 @@ use GlueAgency\Influx\sync\item\MappingResult;
  * {@see Matrix} zips its blocks with: `specs.label` collapses to the list of
  * every spec's label, and row N takes the Nth value of every mapped column.
  * The parent row itself has NO node: its value comes entirely from the
- * sub-mappings ({@see fieldMeta()}, {@see addressed()}).
+ * sub-mappings ({@see schema()}, {@see addressed()}).
  *
  * Mappings are keyed by COLUMN ID (`col1`), never by the column's handle:
  * `serializeValue()` / `serializeValueForDb()` read a cell as `$row[$colId]`
@@ -86,52 +87,49 @@ class Table extends Field
      * ONE always-visible card holding a row per mappable column, writing the
      * mapping's flat `fields` channel. A `select` column offers its own options
      * as the row's default-value editor — the stored option values are a closed
-     * set the operator shouldn't have to retype — led by a blank choice so a
-     * picked default stays clearable (the same leading `—` the top-level
-     * default select carries).
+     * set the operator shouldn't have to retype — through the same
+     * {@see MappingSchemaBuilder::defaultSelect()} preset a top-level default
+     * cell uses, so a column row gets the searchable dropdown and the
+     * "— no default —" sentinel rather than its own spelling of both.
      */
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        $columns = $this->mappableColumns($field);
+        return MappingSchemaBuilder::make()->mapping([
+            // The value derives entirely from the sub-mappings below, so the row
+            // renders neither cell of its own — absence is the whole declaration.
+            'source'  => false,
+            'default' => false,
+            'extra'   => function(MappingSchemaBuilder $b) use ($field) {
+                $columns = $this->mappableColumns($field);
 
-        if (! $columns) {
-            return SchemaBuilder::make()
-                ->note(['text' => Craft::t('influx', 'This Table field has no mappable columns yet.')]);
-        }
+                if (! $columns) {
+                    return $b
+                        ->note(['text' => Craft::t('influx', 'This Table field has no mappable columns yet.')]);
+                }
 
-        $subFields = SchemaBuilder::make();
+                $subFields = MappingSchemaBuilder::make();
 
-        foreach ($columns as $colId => $column) {
-            $config = [
-                'handle' => $colId,
-                'label'  => $this->columnLabel($colId, $column),
-            ];
+                foreach ($columns as $colId => $column) {
+                    $config = [
+                        'handle' => $colId,
+                        'label'  => $this->columnLabel($colId, $column),
+                    ];
 
-            if (($column['type'] ?? null) === 'select') {
-                $subFields->select($config + ['options' => $this->columnOptions($column)]);
+                    if (($column['type'] ?? null) === 'select') {
+                        $subFields->defaultSelect($config + ['options' => $this->columnOptions($column)]);
 
-                continue;
-            }
+                        continue;
+                    }
 
-            $subFields->text($config);
-        }
+                    $subFields->text($config);
+                }
 
-        return SchemaBuilder::make()->subFields([
-            'label'     => Craft::t('influx', 'Columns'),
-            'subFields' => $subFields->toArray(),
+                return $b->subFields([
+                    'label'     => Craft::t('influx', 'Columns'),
+                    'subFields' => $subFields->toArray(),
+                ]);
+            },
         ]);
-    }
-
-    /**
-     * The Table row's value derives entirely from its per-column sub-mappings —
-     * there is no source node or default on the row itself, the same flag
-     * {@see Matrix} declares.
-     */
-    public function fieldMeta(CraftFieldInterface $field): array
-    {
-        return [
-            'subfieldsOnly' => true,
-        ];
     }
 
     /**
@@ -747,15 +745,7 @@ class Table extends Field
      */
     protected function activeColumnMappings(FieldMapping $mapping): array
     {
-        $active = [];
-
-        foreach ($mapping->subMappings() as $sub) {
-            if ($sub->isActive()) {
-                $active[] = $sub;
-            }
-        }
-
-        return $active;
+        return $this->filterActive($mapping->subMappings());
     }
 
     /**
@@ -806,16 +796,17 @@ class Table extends Field
     }
 
     /**
-     * A select column's options as schema select options, led by a blank choice
-     * so a picked default can be cleared again. Labels are site-translated the
-     * way Craft translates them on the field's own input.
+     * A select column's options as schema select options — the column's own
+     * values only, since the "nothing picked" row rides the node as
+     * {@see MappingSchemaBuilder::defaultSelect()}'s sentinel. Labels are
+     * site-translated the way Craft translates them on the field's own input.
      *
      * @param array<string, mixed> $column
      * @return list<array{value: string, label: string}>
      */
     protected function columnOptions(array $column): array
     {
-        $options = [['value' => '', 'label' => '—']];
+        $options = [];
 
         foreach ($column['options'] ?? [] as $option) {
             if (! is_array($option) || ! isset($option['value'])) {

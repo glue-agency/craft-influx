@@ -2,7 +2,6 @@
 
 namespace GlueAgency\Influx\fields;
 
-use Cake\Utility\Hash;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
@@ -10,9 +9,9 @@ use craft\fields\ContentBlock as CraftContentBlockField;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\models\FieldMapping;
-use GlueAgency\Influx\schema\SchemaBuilder;
+use GlueAgency\Influx\schema\MappingSchema;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
-use GlueAgency\Influx\sync\item\RemoteItem;
 
 /**
  * Mapping strategy for Craft 5's ContentBlock field: one nested element holding
@@ -54,44 +53,41 @@ class ContentBlock extends Field
     /**
      * One card of rows — the block's own layout, which is a single fixed layout
      * rather than one per type. Each row carries the default editor its own field
-     * declares ({@see SchemaBuilder::fieldRow()}), so a relation inside a content
+     * declares ({@see MappingSchemaBuilder::fieldRow()}), so a relation inside a content
      * block offers a picker.
      */
-    public function schema(CraftFieldInterface $field): SchemaBuilder
+    public function schema(CraftFieldInterface $field): MappingSchema
     {
-        $subFields = SchemaBuilder::make();
+        return MappingSchemaBuilder::make()->mapping([
+            // The value derives entirely from the sub-mappings below, so the row
+            // renders neither cell of its own — absence is the whole declaration.
+            'source'  => false,
+            'default' => false,
+            'extra'   => function(MappingSchemaBuilder $b) use ($field) {
+                $subFields = MappingSchemaBuilder::make();
 
-        foreach ($this->layoutFields($field) as $childField) {
-            $subFields->fieldRow($this->fieldEditorFor($childField), [
-                'handle' => $childField->handle,
-                'label'  => $childField->name,
-            ]);
-        }
+                foreach ($this->layoutFields($field) as $childField) {
+                    $subFields->fieldRow($this->childRowFor($childField), [
+                        'handle' => $childField->handle,
+                        'label'  => $childField->name,
+                    ]);
+                }
 
-        $rows = $subFields->toArray();
+                $rows = $subFields->toArray();
 
-        if (! $rows) {
-            return SchemaBuilder::make()
-                ->note(['text' => Craft::t('influx', 'This content block has no mappable fields yet.')]);
-        }
+                if (! $rows) {
+                    return $b
+                        ->note(['text' => Craft::t('influx', 'This content block has no mappable fields yet.')]);
+                }
 
-        return SchemaBuilder::make()->subFields([
-            'label'     => Craft::t('influx', 'Fields'),
-            'subFields' => $rows,
+                return $b->subFields([
+                    'label'     => Craft::t('influx', 'Fields'),
+                    'subFields' => $rows,
+                ]);
+            },
         ]);
     }
 
-    /**
-     * The row's value derives entirely from its sub-mappings — there is no source
-     * node or default on the row itself, the same flag {@see Matrix} and
-     * {@see Table} declare.
-     */
-    public function fieldMeta(CraftFieldInterface $field): array
-    {
-        return [
-            'subfieldsOnly' => true,
-        ];
-    }
 
     /**
      * A node-less row is addressed through its sub-mappings, never its own
@@ -205,31 +201,6 @@ class ContentBlock extends Field
     }
 
     /**
-     * Coerce one raw child value through the child field's own strategy so its
-     * per-field options (match, truthy, format, …) apply. The synthetic
-     * single-value item makes the child's own resolve() yield exactly this value;
-     * a node-less (useDefault-only) child is item-independent and reuses the
-     * parent item. The same seam {@see Matrix::coerceChildValue()} uses.
-     *
-     * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
-     */
-    protected function coerceChildValue(
-        FieldContext $context,
-        ElementInterface $blockElement,
-        FieldMapping $sub,
-        CraftFieldInterface $childCraftField,
-        mixed $value,
-    ): mixed {
-        $childItem = $sub->node !== null
-            ? new RemoteItem(Hash::insert([], $sub->node, $value))
-            : $context->item;
-
-        $childContext = $context->descend($blockElement, $sub, $childCraftField, $childItem);
-
-        return $context->strategyFor($childCraftField)->parse($childContext);
-    }
-
-    /**
      * The layout carrier a child value is coerced against. The nested element
      * Craft would build for this field, or the owner as a stand-in: a child
      * strategy reads the carrier for its own field's settings, and every one of
@@ -288,14 +259,6 @@ class ContentBlock extends Field
      */
     protected function activeSubMappings(FieldMapping $mapping): array
     {
-        $active = [];
-
-        foreach ($mapping->subMappings() as $sub) {
-            if ($sub->isActive()) {
-                $active[] = $sub;
-            }
-        }
-
-        return $active;
+        return $this->filterActive($mapping->subMappings());
     }
 }

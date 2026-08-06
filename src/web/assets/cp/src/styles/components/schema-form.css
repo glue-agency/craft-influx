@@ -11,7 +11,7 @@
    join the shared tracks via subgrid, so their rows read exactly like
    parent mapping rows — see the .influx-subfields-group rules below.
 
-   Scoped to :not(.is-stacked): the stacked variant (Auth tab) renders
+   Scoped to :not(.is-stacked): SchemaForm's stacked form (Auth tab) renders
    plain Craft .field blocks and must NOT inherit this grid, or each field
    gets pushed into column 2 with an empty column to its left. */
 .influx-schema-form:not(.is-stacked) {
@@ -76,12 +76,81 @@
    the label text lines up exactly under the parent field names; the gutter
    stays empty — sub-fields never collapse individually. */
 .influx-schema-form .sub-field-row > label {
+    position: relative;
     font-size: 13px;
     font-weight: 600;
     color: inherit;
     padding: 6px 0 0 22px;
     line-height: 1.2;
 }
+
+/* A row whose field declares extras of its own toggles them from the whole
+   label cell, the way a parent row toggles from its meta cell. The 22px
+   gutter above already reserves the space, so rows without extras keep the
+   same alignment. */
+.influx-schema-form .sub-field-row > label.is-toggleable { cursor: pointer; }
+.influx-schema-form .sub-field-row > label.is-toggleable:hover .extras-chevron { color: #333; }
+
+.influx-schema-form .sub-field-row > label .extras-chevron {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: #888;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: left;
+}
+.influx-schema-form .sub-field-row > label .extras-chevron span {
+    display: inline-block;
+    transition: transform .15s ease;
+}
+.influx-schema-form .sub-field-row > label .extras-chevron.collapsed span { transform: rotate(-90deg); }
+
+/* A nested row's own extras span its columns, below the row they configure, and hand
+   those columns straight down: row → extras → form → card → body → headings/rows,
+   subgrid at every step. Each card's contents therefore sit on tracks derived from
+   its parent's rather than measured independently, which is what keeps the three
+   columns reading as columns however deep the nesting goes — each level's are inset
+   from the level above by a constant, not skewed by their own content.
+
+   No side padding here: the inset belongs to the card below, so it lands outside the
+   card border rather than between the border and its rows. */
+.influx-schema-form .sub-field-row > .sub-field-extras {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    padding: 0 0 8px;
+}
+
+/* Spanning all three is what keeps the chain intact — left to auto-place, the form
+   lands in the first track and the card inside it collapses to one column. */
+.influx-schema-form .sub-field-extras > .influx-schema-form {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+}
+
+/* Exactly what the first-level card does (margin: … -1px, below): hang the border
+   1px outside the enclosing row's tracks, so the 12px that row already pads inward
+   becomes the gap between the two card borders. Every level then sits 12px inside
+   its parent, and its own rows another 12px inside that — the card/contents rhythm
+   repeats at whatever depth the nesting reaches.
+
+   Deliberately NOT -12px, which would cancel the rows' padding and put this card's
+   columns back on the parent's tracks: the columns would line up but the two card
+   borders would touch, and a nested card would read as a full-width band rather
+   than something inside the card above it. Alignment across levels and an inset
+   card are mutually exclusive; the inset is what makes the nesting legible. */
+.influx-schema-form .sub-field-extras > .influx-schema-form > .influx-subfields-group {
+    margin-left: -1px;
+    margin-right: -1px;
+}
+
 
 /* Same handle treatment as the parent rows' meta: own line, lightened —
    reference info, not something to read on every pass. */
@@ -156,13 +225,29 @@
     grid-template-columns: subgrid;
 }
 
-/* The in-card headings drop mapping-row.css's 12px side padding — horizontal
-   padding on a subgrid shrinks its first/last tracks, which would knock
-   the columns off the shared grid. Insets live inside the cells instead:
-   the Field heading mirrors the main list's 22px gutter so it stays flush
-   with the parent field names and the sub-field labels below. */
+/* The in-card headings and rows take the same 12px side inset a parent mapping
+   row carries (mapping-row.css), so a card's contents stop short of its own
+   border — the last column's control most visibly, which otherwise sits flush
+   against it while the parent row's equivalent enjoys the 12px its own padding
+   gives it.
+
+   The cost is deliberate: horizontal padding on a subgrid shrinks its tracks, so
+   the card's columns no longer land exactly on the shared ones. They stay
+   consistent with each other (headings and rows take the same value) and the
+   12px offset reads as the nesting it is — a card's contents belonging to the
+   card, not to the list outside it.
+
+   The Field cell keeps the main list's 22px gutter on top of that, so the label
+   text lines up with the sub-field labels below it. */
+.influx-schema-form .influx-subfields-group .influx-mapping-headings,
+.influx-schema-form .influx-subfields-group .sub-field-row {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
 .influx-schema-form .influx-subfields-group .influx-mapping-headings {
-    padding: 6px 0;
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 
 .influx-schema-form .influx-subfields-group .influx-mapping-headings > div:first-child {
@@ -175,6 +260,14 @@
    comes from the base .sub-field-row rule. */
 .influx-schema-form .influx-mapping-group .sub-field-row {
     border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+
+/* Same tint a parent row takes while its extras are open (mapping-row.css), so
+   "this row is the one being configured" reads identically at every depth. The
+   rows' own 12px padding is inside the tinted box, which is what carries the
+   colour out to the card's edges the way the parent row's does. */
+.influx-schema-form .sub-field-row:has(> .sub-field-extras[data-expanded="true"]) {
+    background: #f8f9fb;
 }
 
 .influx-schema-form .influx-mapping-group .sub-field-row:last-child {

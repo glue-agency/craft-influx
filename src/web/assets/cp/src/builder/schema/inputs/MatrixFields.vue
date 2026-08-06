@@ -13,6 +13,7 @@
         :empty-hint="$t('This block type has no mappable sub-fields.')"
         @update:rows="mergeTypeRows"
     />
+
 </template>
 
 <script>
@@ -29,13 +30,12 @@ import { flattenChannels, splitChannels } from '../../lib/channels.js';
  * `fields`, … — round-trip untouched, and a row drops only when nothing is
  * left).
  *
- * Contract: `modelValue` is the mapping's WHOLE `blocks` object
- * (`{<typeHandle>: {fields: {...}, nativeFields: {...}}}`). The card renders
+ * Contract: the `blocks` channel this card binds is the mapping's WHOLE `blocks`
+ * object (`{<typeHandle>: {fields: {...}, nativeFields: {...}}}`). The card renders
  * its own `node.blockType` slice as ONE row table and emits full `blocks`
- * replacements that leave every other type's slice — and any unknown keys on
- * its own type's entry — untouched. Taking the whole object keeps the merge
- * and its pruning next to the rewrite instead of splitting them across
- * SchemaForm.
+ * replacements that leave every other type's slice — and any unknown keys on its
+ * own type's entry — untouched. Taking the whole channel keeps the merge and its
+ * pruning next to the rewrite instead of splitting them across the renderer.
  *
  * Channels: a sub-field node carries an optional `channel` key saying which
  * half of its type's entry the row is stored in — `nativeFields` for the
@@ -59,12 +59,15 @@ import { flattenChannels, splitChannels } from '../../lib/channels.js';
 export default {
     name: 'MatrixFields',
 
-    emits: ['update:modelValue'],
+    inheritAttrs: false,
+
+    emits: ['update:channels'],
 
     props: {
         node: { type: Object, required: true },
-        // The mapping's whole `blocks` object — see the contract above.
-        modelValue: { type: Object, default: () => ({}) },
+        // The stored channels this card binds — `blocks` alone, per its registry
+        // entry (lib/slots.js). See the contract above.
+        channels: { type: Object, default: () => ({}) },
         nodeOptions: { type: Array, default: () => [] },
         // The sample's discovered flatNodes — the "is the node still live"
         // signal. Null when no sample has been fetched. See SubFieldRows.
@@ -73,9 +76,13 @@ export default {
     },
 
     computed: {
+        blocks() {
+            return this.channels.blocks || {};
+        },
+
         /** This card's own type entry — both channels, or nothing saved yet. */
         typeEntry() {
-            return this.modelValue[this.node.blockType] || {};
+            return this.blocks[this.node.blockType] || {};
         },
 
         /**
@@ -98,7 +105,7 @@ export default {
          */
         mergeTypeRows(nextRows) {
             const type = this.node.blockType;
-            const entry = { ...(this.modelValue[type] || {}) };
+            const entry = { ...this.typeEntry };
             const channels = splitChannels(nextRows, this.node.subFields, this.typeEntry, 'fields');
 
             Object.entries(channels).forEach(([channel, rows]) => {
@@ -109,14 +116,14 @@ export default {
                 }
             });
 
-            const next = { ...this.modelValue };
+            const next = { ...this.blocks };
             if (Object.keys(entry).length === 0) {
                 delete next[type];
             } else {
                 next[type] = entry;
             }
 
-            this.$emit('update:modelValue', next);
+            this.$emit('update:channels', { blocks: next });
         },
     },
 

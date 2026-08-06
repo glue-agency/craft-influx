@@ -46,86 +46,55 @@
             <code class="handle light" v-text="field.handle"></code>
         </div>
 
-        <!-- subfieldsOnly fields (fieldMeta flag, e.g. Matrix) carry no source
-             node or default of their own — their value derives entirely from
-             the extras below. The cells stay so the row keeps the shared grid
-             columns; they just render empty. -->
-        <div>
-            <v-searchable-select
-                v-if="! subfieldsOnly"
-                :model-value="mapping.useDefault ? '__default__' : (mapping.node ?? '')"
-                :options="sourceNodeOptions"
-                :disabled="readOnly"
-                searchable
-                allow-custom
-                :placeholder="$t('— no mapping —')"
-                :search-placeholder="$t('Search nodes…')"
-                :empty-label="$t('Run “Fetch sample” to discover nodes.')"
-                @update:model-value="onNodeSelect"
+        <!-- The two cells, each rendered from the region its field's strategy
+             declared. No branch on field kind lives here: an Icon field gets an
+             icon picker because PHP said `icon`, and a field nothing can be mapped
+             to gets a note in the cell its node select would have taken.
+
+             A region nobody declared renders nothing — which is how a row whose
+             value derives entirely from its sub-mappings (a Matrix) says it has
+             neither cell, while keeping the shared grid columns. When only the
+             source cell is declared, it spans the default's column too rather than
+             sitting squeezed in the middle. -->
+        <div :class="{ 'influx-cell-span': ! hasDefaultCell }">
+            <v-mapping-cell
+                :nodes="sourceNodes"
+                region="source"
+                :mapping="mapping"
+                :options="nodeOptions"
+                :read-only="readOnly"
+                @update:mapping="onSourceWrite"
             />
         </div>
 
-        <div>
-            <!-- Default-value editor. Three shapes:
-                 - `select` → searchable single-select
-                 - `element` → element picker, storing the picked id
-                 - anything else → plain text -->
-            <template v-if="subfieldsOnly" />
-            <template v-else-if="field.defaultType === 'select'">
-                <v-searchable-select
-                    :model-value="mapping.default ?? ''"
-                    :options="defaultSelectOptions"
-                    :disabled="readOnly"
-                    :search-placeholder="$t('Search options…')"
-                    @update:model-value="onDefaultSelect"
-                />
-            </template>
-            <template v-else-if="field.defaultType === 'element'">
-                <!-- Only a CUSTOM field's handle is sent along to shape the
-                     picker after that field (sources, single vs multiple).
-                     `fieldClass` is what makes a descriptor custom; a native
-                     row must send nothing, or a real custom field handled
-                     'author' would reshape the native author's picker. -->
-                <v-element-picker
-                    :model-value="mapping.default"
-                    :element-type="field.elementType || 'craft\\elements\\Entry'"
-                    :field-handle="field.fieldClass ? field.handle : null"
-                    @update:model-value="onDefaultElementChange"
-                />
-            </template>
-            <template v-else>
-                <input type="text"
-                       class="text fullwidth"
-                       :value="mapping.default ?? ''"
-                       :disabled="readOnly"
-                       @input="onDefaultChange" />
-            </template>
+        <div v-if="hasDefaultCell">
+            <v-mapping-cell
+                :nodes="defaultNodes"
+                region="default"
+                :mapping="mapping"
+                :picker-handle="pickerHandle"
+                :read-only="readOnly"
+                @update:mapping="write"
+            />
         </div>
 
-        <!-- Per-field options block: a generic SchemaForm rendering whatever
-             node schema the PHP strategy declared via
-             Field::schema(). No field-kind branches live here —
-             adding a mapping kind is a single-PHP-file change. The
-             `data-expanded` attribute mirrors the toggle state for the row's
-             `:has()` tint selector in mapping-row.css. -->
+        <!-- Per-field options block: the `extra` region, rendered through the same
+             registry the two cells use. No field-kind branches live here — adding a
+             mapping kind is a single-PHP-file change. The `data-expanded` attribute
+             mirrors the toggle state for the row's `:has()` tint selector in
+             mapping-row.css. -->
         <div v-if="hasExtras"
              class="influx-mapping-extras influx-mapping-extras-slot"
              :data-expanded="extrasExpanded ? 'true' : 'false'"
         >
             <div v-show="extrasExpanded" class="extras-body">
-                <!-- The four value models are computed off the store (see
-                     their get/set pair below), so a v-model binding is the
-                     whole write path: the setter prunes and writes the
-                     matching mapping channel. -->
-                <v-schema-form
-                    :schema="extrasSchema"
-                    v-model:options="extrasOptions"
-                    v-model:fields="extrasFields"
-                    v-model:native-fields="extrasNativeFields"
-                    v-model:blocks="extrasBlocks"
+                <v-mapping-extras
+                    :nodes="extraNodes"
+                    :mapping="mapping"
                     :node-options="extrasNodeOptions"
                     :discovered-nodes="discoveredNodes"
                     :read-only="readOnly"
+                    @update:mapping="write"
                 />
             </div>
         </div>
@@ -151,25 +120,23 @@
 </style>
 
 <script>
-import ElementPicker from '../ElementPicker.vue';
-import SearchableSelect from '../SearchableSelect.vue';
-import SchemaForm from '../schema/SchemaForm.vue';
+import MappingCell from '../schema/MappingCell.vue';
+import MappingExtras from '../schema/MappingExtras.vue';
 import { store } from '../store.js';
-import { discoveredNodes as reportNodes, mergeNodeOptions, pruneEmpty, setMappingSlot } from '../lib/mappings.js';
+import { discoveredNodes as reportNodes, mergeNodeOptions, replaceMapping } from '../lib/mappings.js';
 
 /**
- * One row in the Mapping tab. Renders the field name, source-node select,
- * default-value editor, and optionally an extras subform for complex field
- * types — a SchemaForm driven by the strategy's declared schema. Writes
- * straight back into `link.mappings[handle]` on the reactive store; the
- * parent watches the store via the dirty flag.
+ * One row in the Mapping tab, laid out as the three regions its field's strategy
+ * declared: the source-node cell, the default-value cell, and a collapsible extras
+ * block. All three render through the same `type => component` registry, so the row
+ * itself knows nothing about field kinds — see {@see ../schema/MappingCell} and
+ * {@see ../schema/MappingExtras}.
  *
- * The extras' `extrasOptions` / `extrasFields` / `extrasNativeFields` /
- * `extrasBlocks` models are computed straight off the saved mapping, with
- * setters that write them pruned via writeMapping() — the shape that lands
- * in Project Config. Nothing is cached in data(), which is what lets code
- * OUTSIDE the row (a group-level clear) rewrite this handle and have the
- * cards below redraw from the store.
+ * Writes land straight in `link.mappings[handle]` on the reactive store; the parent
+ * watches it via the dirty flag. The regions are stateless and hand back whole new
+ * `mappings` objects, so nothing is cached here either — which is what lets code
+ * OUTSIDE the row (a group-level clear) rewrite this handle and have the cells and
+ * cards redraw from the store.
  */
 export default {
     name: 'MappingRow',
@@ -206,83 +173,37 @@ export default {
             return this.link.mappings?.[this.field.handle] || {};
         },
 
-        /**
-         * The four extras value models — one per mapping channel, each
-         * DERIVED from the saved mapping rather than cached in data(). That
-         * is the whole reason a clear from outside this row (the group
-         * header's) redraws the SchemaForm cards below: there is no local
-         * copy left holding handles the wipe already dropped.
-         *
-         * Every getter hands back a fresh shallow copy so SchemaForm's props
-         * never alias the store object it is about to emit a replacement for.
-         *
-         * Round-tripping through the pruned store is behaviour-neutral:
-         * SchemaForm.valueFor() falls back to a node's declared `default`
-         * for keys the store doesn't carry, and every option pruning drops
-         * (`''` / `false`) is falsy — matching the falsy-or-absent default
-         * of every node that can produce one.
-         */
-        extrasOptions: {
-            get() { return { ...(this.mapping.options || {}) }; },
-            set(options) { this.writeMapping('options', pruneEmpty(options)); },
+        // An extras block exists exactly when the strategy declared an extras
+        // region — no separate flag to keep in sync. A field nothing can be mapped
+        // to declares none, so its note renders in the source cell instead, with no
+        // toggle and nothing to expand to.
+        extraNodes() {
+            return this.field.mapping?.extra || [];
         },
 
-        // `extrasFields` / `extrasNativeFields` / `extrasBlocks` carry the
-        // saved sub-field mappings (Table columns, asset alt/title, Matrix
-        // per-block-type children). Their sub-components already emit fully
-        // merged, self-pruned maps, so writeMapping's own empty-slot rule is
-        // all the pruning they need.
-        extrasFields: {
-            get() { return { ...(this.mapping.fields || {}) }; },
-            set(fields) { this.writeMapping('fields', fields); },
-        },
-
-        extrasNativeFields: {
-            get() { return { ...(this.mapping.nativeFields || {}) }; },
-            set(nativeFields) { this.writeMapping('nativeFields', nativeFields); },
-        },
-
-        extrasBlocks: {
-            get() { return { ...(this.mapping.blocks || {}) }; },
-            set(blocks) { this.writeMapping('blocks', blocks); },
-        },
-
-        // The node schema the PHP strategy declared for this field type.
-        extrasSchema() {
-            return this.field.fieldMeta?.schema || [];
-        },
-
-        // An extras block exists exactly when the strategy declared a
-        // schema — no separate flag to keep in sync.
         hasExtras() {
-            return this.extrasSchema.length > 0;
-        },
-
-        // The strategy declared its value derives entirely from sub-mappings
-        // (Matrix): the row shows no source-node select and no default editor.
-        subfieldsOnly() {
-            return !!this.field.fieldMeta?.subfieldsOnly;
+            return this.extraNodes.length > 0;
         },
 
         /**
-         * Source-node candidates for the extras' sub-field dropdowns: the
-         * latest Fetch-sample nodes straight off the store, merged with
-         * saved sub-field paths — the flat `extrasFields` (Table columns) and
-         * `extrasNativeFields` rows plus every block type's nested
-         * `extrasBlocks.*.fields` rows — so the dropdowns render before a
-         * sample exists. Distinct from the `nodeOptions` prop, which feeds the
-         * row's own source-node select.
+         * Source-node candidates for the extras' sub-field dropdowns: the latest
+         * Fetch-sample nodes straight off the store, merged with saved sub-field
+         * paths — the flat `fields` (Table columns) and `nativeFields` rows plus
+         * every block type's nested `blocks.*.fields` rows — so the dropdowns render
+         * before a sample exists. Distinct from the `nodeOptions` prop, which feeds
+         * the row's own source-node cell.
          */
         extrasNodeOptions() {
-            const blockRows = Object.values(this.extrasBlocks)
+            const blockRows = Object.values(this.mapping.blocks || {})
                 .flatMap((entry) => Object.values(entry?.fields || {}));
             const saved = [
-                ...Object.values(this.extrasFields),
-                ...Object.values(this.extrasNativeFields),
+                ...Object.values(this.mapping.fields || {}),
+                ...Object.values(this.mapping.nativeFields || {}),
                 ...blockRows,
             ]
                 .map((row) => row?.node)
                 .filter(Boolean);
+
             return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], saved);
         },
 
@@ -315,33 +236,33 @@ export default {
             return ! discovered.some(o => o.value === saved);
         },
 
-        // Grouped for SearchableSelect: the sentinels render as plain rows
-        // up top, the sample-discovered nodes inside a grey "Nodes" group.
-        // `__default__` is a UI-only sentinel: it round-trips to the
-        // mapping's `useDefault` flag, never to the wire `node`.
-        sourceNodeOptions() {
-            const groups = [
-                {
-                    label: null,
-                    kind: null,
-                    options: [
-                        { value: '', label: this.$t('— no mapping —') },
-                        { value: '__default__', label: this.$t('— use default —') },
-                    ],
-                },
-            ];
-            if (this.nodeOptions.length) {
-                groups.push({ label: this.$t('Nodes'), kind: 'node', options: this.nodeOptions });
-            }
-            return groups;
+        /**
+         * The nodes each cell's region declared. Both may be empty: a field whose
+         * value derives entirely from its sub-mappings declares neither, and a
+         * field nothing can be mapped to declares a source region holding a note
+         * and no default region at all.
+         */
+        sourceNodes() {
+            return this.field.mapping?.source || [];
         },
 
-        defaultSelectOptions() {
-            const opts = this.field.options || {};
-            return [
-                { value: '', label: '—' },
-                ...Object.keys(opts).map(value => ({ value, label: opts[value] })),
-            ];
+        defaultNodes() {
+            return this.field.mapping?.default || [];
+        },
+
+        hasDefaultCell() {
+            return this.defaultNodes.length > 0;
+        },
+
+        /**
+         * The handle a server-rendered picker is shaped after (an element select's
+         * sources, an icon picker's Pro gating). Only a CUSTOM field's is sent:
+         * `fieldClass` is what makes a descriptor custom, and a native row must
+         * send nothing or a real custom field handled `author` would reshape the
+         * native author's picker.
+         */
+        pickerHandle() {
+            return this.field.fieldClass ? this.field.handle : null;
         },
     },
 
@@ -351,47 +272,30 @@ export default {
             this.extrasExpanded = ! this.extrasExpanded;
         },
 
-        onNodeSelect(value) {
-            const handle = this.field.handle;
-            // The pick is the user's now, whatever Auto-match had put here.
-            store.clearAutoMatch(handle);
-            let mappings = this.link.mappings;
-            if (value === '__default__') {
-                mappings = setMappingSlot(mappings, handle, 'node', '');
-                mappings = setMappingSlot(mappings, handle, 'useDefault', true);
-            } else {
-                mappings = setMappingSlot(mappings, handle, 'useDefault', false);
-                mappings = setMappingSlot(mappings, handle, 'node', value);
-            }
-            this.link.mappings = mappings;
-        },
-
-        onDefaultSelect(value) {
-            this.writeMapping('default', value);
-        },
-
-        onDefaultChange(e) {
-            const value = e.target.value;
-            this.writeMapping('default', value);
-        },
-
-        onDefaultElementChange(value) {
-            // ElementPicker emits ids as strings already: one for a
-            // single-element field, the list for a multi-relation one, null on
-            // clear (which writeMapping prunes away).
-            this.writeMapping('default', value);
+        /**
+         * THE write path: the regions hand back a whole new mapping for this field,
+         * and the row splices it into the store — dropping the handle when nothing
+         * is left on it, so Project Config stays free of empty rows.
+         */
+        write(mapping) {
+            this.link.mappings = replaceMapping(this.link.mappings, this.field.handle, mapping);
         },
 
         /**
-         * Write one slot of the mapping row, dropping empty values so the
-         * saved Project Config doesn't fill up with noise. The pruning
-         * rules live in lib/mappings.js where they're unit-tested.
+         * A source-node pick is the operator's now, whatever Auto-match had put
+         * there. Only this cell clears the badge: it flags the NODE, and editing
+         * the default beside it leaves the machine-filled node exactly as it was.
          */
-        writeMapping(key, value) {
-            this.link.mappings = setMappingSlot(this.link.mappings, this.field.handle, key, value);
+        onSourceWrite(mapping) {
+            store.clearAutoMatch(this.field.handle);
+            this.write(mapping);
         },
+
     },
 
-    components: { 'v-element-picker': ElementPicker, 'v-searchable-select': SearchableSelect, 'v-schema-form': SchemaForm },
+    components: {
+        'v-mapping-cell': MappingCell,
+        'v-mapping-extras': MappingExtras,
+    },
 };
 </script>

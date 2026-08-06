@@ -14,7 +14,12 @@ export default defineConfig({
     })],
     test: {
         environment: 'happy-dom',
-        include: ['src/web/assets/cp/src/**/__tests__/*.test.js'],
+        include: [
+            'src/web/assets/cp/src/**/__tests__/*.test.js',
+            // The editor asset is a plain IIFE rather than part of the CP bundle,
+            // but its DOM probing is subtle enough to want specs of its own.
+            'src/web/assets/editor/**/__tests__/*.test.js',
+        ],
         setupFiles: ['src/web/assets/cp/tests/setup.js'],
     },
 });

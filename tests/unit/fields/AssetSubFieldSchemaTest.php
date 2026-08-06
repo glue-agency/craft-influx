@@ -175,13 +175,13 @@ class AssetSubFieldSchemaTest extends Unit
             }
 
             /** No booted plugin to ask: every volume field's row reads as text. */
-            protected function fieldEditorFor(CraftFieldInterface $craftField): ?array
+            protected function childRowFor(CraftFieldInterface $craftField): array
             {
-                return null;
+                return ['default' => ['type' => 'text'], 'extra' => []];
             }
         };
 
-        return $strategy->schema($this->createMock(CraftAssetsField::class))->toArray();
+        return $strategy->schema($this->createMock(CraftAssetsField::class))->toArray()['extra'] ?? [];
     }
 
     /**

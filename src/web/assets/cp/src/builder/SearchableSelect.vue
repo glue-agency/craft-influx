@@ -193,10 +193,10 @@ import { t } from '../lib/installT.js';
 export default {
     name: 'SearchableSelect',
 
-    emits: ['update:modelValue'],
+    emits: ['update:modelValue', 'open'],
 
     props: {
-        modelValue: { type: [String, Number], default: '' },
+        modelValue: { type: [String, Number, Array, null], default: '' },
         options: { type: Array, default: () => [] },
         placeholder: { type: String, default: '' },
         searchPlaceholder: { type: String, default: '' },
@@ -213,6 +213,10 @@ export default {
         // "Match by" selects want it; short fixed enums don't) — the component
         // doesn't guess from list length.
         searchable: { type: Boolean, default: false },
+        // Accumulate picks into a list instead of answering with one. The bound
+        // value is then an array (or null for none), and the menu stays open while
+        // the operator builds the set.
+        multiple: { type: Boolean, default: false },
         // Let the search box mint a value of its own — see the custom-node
         // note in the component docblock. Only meaningful with `searchable`.
         allowCustom: { type: Boolean, default: false },
@@ -266,6 +270,18 @@ export default {
         // guesses from list length.
         const showSearch = computed(() => props.searchable);
 
+        /**
+         * The bound value as the list of picked values, whichever arity the
+         * caller binds — so `isSelected` and the display label read one shape.
+         */
+        const selectedValues = computed(() => {
+            if (! props.multiple) return [normalize(props.modelValue)];
+
+            const value = Array.isArray(props.modelValue) ? props.modelValue : [];
+
+            return value.map(normalize).filter(v => v !== '');
+        });
+
         const currentOption = computed(() => {
             const v = normalize(props.modelValue);
 
@@ -273,6 +289,8 @@ export default {
         });
 
         const hasValue = computed(() => {
+            if (props.multiple) return selectedValues.value.length > 0;
+
             const v = normalize(props.modelValue);
             if (v !== '' && v !== null && v !== undefined) return true;
 
@@ -280,13 +298,33 @@ export default {
         });
 
         const displayLabel = computed(() => {
+            if (props.multiple) {
+                if (! hasValue.value) return props.placeholder;
+
+                // The labels while they fit, a count past that: a Checkboxes field
+                // with a dozen picks would otherwise overflow the cell.
+                const labels = selectedValues.value.map((v) => {
+                    const opt = allOptions.value.find(o => normalize(o.value) === v);
+
+                    return opt ? opt.label : v;
+                });
+
+                return labels.length > 3
+                    ? t('{n} selected', { n: labels.length })
+                    : labels.join(', ');
+            }
+
             if (currentOption.value && hasValue.value) return currentOption.value.label;
             // Saved value no longer in options (e.g. source node fell out of
             // the fetched sample). Show the raw value so the missing-mapping
             // badge still has a referent the user recognizes.
             if (hasValue.value) return normalize(props.modelValue);
 
-            return props.placeholder || t('Select…');
+            // No stand-in copy when the caller declares none: an empty select
+            // reads like every other empty field on the row rather than
+            // announcing itself. Callers wanting one pass it ('— no mapping —',
+            // '— none —', …).
+            return props.placeholder;
         });
 
         /**
@@ -341,6 +379,9 @@ export default {
 
         watch(open, (isOpen) => {
             if (! isOpen) return;
+            // Lets a consumer resolve its options on first use rather than up
+            // front — the lazily-declared default lists (see MappingRow).
+            emit('open');
             query.value = '';
             // Land the highlight on the currently-selected option if it
             // survives the (empty) filter, otherwise on the first row.
@@ -359,7 +400,7 @@ export default {
         }
 
         function isSelected(opt) {
-            return normalize(opt.value) === normalize(props.modelValue);
+            return selectedValues.value.includes(normalize(opt.value));
         }
 
         function optionKey(opt, idx) {
@@ -374,6 +415,22 @@ export default {
         }
 
         function commit(opt) {
+            // Multi picks accumulate, so the menu stays open and a second click on
+            // the same row takes it back out — the operator is building a set, not
+            // answering a question.
+            if (props.multiple) {
+                const value = normalize(opt.value);
+                const next = isSelected(opt)
+                    ? selectedValues.value.filter(v => v !== value)
+                    : [...selectedValues.value, value];
+
+                // Never an empty ARRAY: a mapping reads that as a default that is
+                // set ({@see FieldMapping::usesDefault()}), where none is meant.
+                emit('update:modelValue', next.length ? next : null);
+
+                return;
+            }
+
             emit('update:modelValue', opt.value);
             close();
         }

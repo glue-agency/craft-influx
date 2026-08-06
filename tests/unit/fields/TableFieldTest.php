@@ -9,6 +9,7 @@ use DateTime;
 use DateTimeZone;
 use GlueAgency\Influx\fields\Table;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
@@ -36,10 +37,10 @@ class TableFieldTest extends Unit
             'col1' => ['heading' => 'Label', 'handle' => 'label', 'type' => 'singleline'],
             'col2' => ['heading' => '', 'handle' => 'value', 'type' => 'number'],
             'col3' => ['heading' => '', 'handle' => '', 'type' => 'url'],
-        ]))->toArray();
+        ]));
 
         $this->assertCount(1, $nodes);
-        $this->assertSame(SchemaBuilder::SUB_FIELDS, $nodes[0]['type']);
+        $this->assertSame(MappingSchemaBuilder::SUB_FIELDS, $nodes[0]['type']);
         $this->assertSame('fields', $nodes[0]['handle']);
 
         $subFields = $nodes[0]['subFields'];
@@ -57,7 +58,7 @@ class TableFieldTest extends Unit
         $nodes = $this->strategy()->exposedSchema($this->fakeField([
             'col1' => ['heading' => 'Section', 'handle' => '', 'type' => 'heading'],
             'col2' => ['heading' => 'Label', 'handle' => 'label', 'type' => 'singleline'],
-        ]))->toArray();
+        ]));
 
         $this->assertSame(['col2'], array_column($nodes[0]['subFields'], 'handle'));
     }
@@ -76,20 +77,24 @@ class TableFieldTest extends Unit
                     ['label' => 'Orphan'],
                 ],
             ],
-        ]))->toArray();
+        ]));
 
         $row = $nodes[0]['subFields'][0];
         $this->assertSame(SchemaBuilder::SELECT, $row['type']);
         $this->assertSame([
-            ['value' => '',  'label' => '—'],
             ['value' => 's', 'label' => 'Small'],
             ['value' => 'l', 'label' => 'Large'],
         ], $row['options']);
+        // Built with the same preset a top-level default cell uses, so a column
+        // row gets the searchable dropdown and the sentinel rather than a plain
+        // select over a list with a hand-rolled blank row in it.
+        $this->assertTrue($row['searchable']);
+        $this->assertSame([['value' => '', 'label' => '— no default —']], $row['sentinelOptions']);
     }
 
     public function testAFieldWithoutMappableColumnsRendersANote(): void
     {
-        $nodes = $this->strategy()->exposedSchema($this->fakeField([]))->toArray();
+        $nodes = $this->strategy()->exposedSchema($this->fakeField([]));
 
         $this->assertCount(1, $nodes);
         $this->assertSame(SchemaBuilder::NOTE, $nodes[0]['type']);
@@ -606,9 +611,9 @@ class TableFieldTest extends Unit
     protected function strategy(): Table
     {
         return new class() extends Table {
-            public function exposedSchema(CraftTableField $field): SchemaBuilder
+            public function exposedSchema(CraftTableField $field): array
             {
-                return $this->schema($field);
+                return $this->schema($field)->toArray()['extra'] ?? [];
             }
 
             public function exposedValueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool

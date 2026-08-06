@@ -143,13 +143,104 @@ describe('SubFieldRows default editors', () => {
         expect(picker(wrapper).exists()).toBe(true);
     });
 
+    /**
+     * A nested field is configured the way the same field is at the top level: its
+     * own extras, behind its own disclosure, writing its own `options`. All of it is
+     * honoured at sync time, because a sub-row IS a whole mapping the applier
+     * descends into — before this, a Matrix block's Assets child was stuck matching
+     * by asset id whatever the feed carried, with no control in sight to change it.
+     */
+    it('gives a row its field’s own extras, behind its own chevron', async () => {
+        const wrapper = mountTyped([
+            { type: 'element', handle: 'photo', label: 'Photo', extra: [
+                { type: 'select', handle: 'mode', label: 'Match by', default: 'id', options: [
+                    { value: 'id', label: 'Asset ID' },
+                    { value: 'url', label: 'URL' },
+                ] },
+            ] },
+            { type: 'text', handle: 'blurb', label: 'Blurb' },
+        ]);
+
+        // Only the row that declares extras gets a toggle.
+        expect(wrapper.findAll('.sub-field-row .extras-chevron')).toHaveLength(1);
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).exists()).toBe(false);
+
+        await wrapper.find('.sub-field-row .extras-chevron').trigger('click');
+
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).props('nodes'))
+            .toEqual([expect.objectContaining({ handle: 'mode' })]);
+    });
+
+    it('toggles from anywhere in the field cell, not just the chevron', async () => {
+        // The whole label is the target, the way a parent row's meta cell is.
+        const wrapper = mountTyped([
+            { type: 'element', handle: 'photo', label: 'Photo', extra: [
+                { type: 'lightswitch', handle: 'upload', label: 'Download missing' },
+            ] },
+        ]);
+        const label = wrapper.find('.sub-field-row > label.is-toggleable');
+
+        await label.trigger('click');
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).exists()).toBe(true);
+
+        await label.trigger('click');
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).exists()).toBe(false);
+    });
+
+    it('writes a row’s extras into that row’s own options', async () => {
+        const wrapper = mountTyped([
+            { type: 'element', handle: 'photo', label: 'Photo', extra: [
+                { type: 'lightswitch', handle: 'upload', label: 'Download missing' },
+            ] },
+        ], { rows: { photo: { node: 'images.0.url' } } });
+
+        await wrapper.find('.sub-field-row .extras-chevron').trigger('click');
+        await wrapper.find('.sub-field-extras input[type="checkbox"]').setValue(true);
+
+        // The row's node rides along untouched — its extras configure it, they don't
+        // replace it.
+        expect(wrapper.emitted('update:rows').at(-1)).toEqual([{
+            photo: { node: 'images.0.url', options: { upload: true } },
+        }]);
+    });
+
+    it('starts a row open when its extras are already configured', () => {
+        // Otherwise a live `mode: url` sits hidden behind a chevron nobody thought
+        // to click — which is how it was invisible in the first place.
+        const wrapper = mountTyped([
+            { type: 'element', handle: 'photo', label: 'Photo', extra: [
+                { type: 'lightswitch', handle: 'upload', label: 'Download missing' },
+            ] },
+        ], { rows: { photo: { node: 'images.0.url', options: { upload: true } } } });
+
+        expect(wrapper.findComponent({ name: 'MappingExtras' }).exists()).toBe(true);
+    });
+
+    it('reads an unpicked default as an empty cell, like a top-level row', () => {
+        // A card row used to label its empty state "—" where the row above it showed
+        // nothing at all. Both go through the same sentinel now, so both read empty
+        // — a nested row is configured the way its field is at the top level, right
+        // down to what "not set" looks like.
+        const wrapper = mountTyped([{
+            type:            'select',
+            handle:          'size',
+            label:           'Size',
+            options:         [{ value: 'l', label: 'Large' }],
+            sentinelOptions: [{ value: '', label: '— no default —' }],
+        }], { rows: { size: { node: 'items.0.size' } } });
+        const trigger = wrapper.findComponent({ name: 'SelectField' }).find('.value');
+
+        expect(trigger.text()).toBe('');
+        expect(trigger.classes()).toContain('placeholder');
+    });
+
     it('leaves the other editors as they were', () => {
         const wrapper = mountTyped([
             { type: 'select', handle: 'size', label: 'Size', options: [{ value: '', label: '—' }, { value: 'l', label: 'Large' }] },
             { type: 'text', handle: 'blurb', label: 'Blurb' },
         ]);
 
-        expect(wrapper.findComponent({ name: 'SelectInput' }).exists()).toBe(true);
+        expect(wrapper.findComponent({ name: 'SelectField' }).exists()).toBe(true);
         expect(wrapper.find('input[type="text"]').exists()).toBe(true);
     });
 });

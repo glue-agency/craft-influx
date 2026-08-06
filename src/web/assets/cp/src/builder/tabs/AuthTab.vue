@@ -16,7 +16,6 @@
 
         <v-schema-form
             v-if="activeStrategy"
-            layout="stacked"
             :schema="activeStrategy.schema"
             :options="link.auth || {}"
             :token-groups="envSuggestions"
@@ -42,11 +41,12 @@ import SchemaForm from '../schema/SchemaForm.vue';
 
 /**
  * Authentication tab. The auth-type select drives which per-strategy schema
- * renders below — the same generic SchemaForm the mapping extras use, in
- * its stacked (Craft .field block) layout. Schemas come through the
- * bootstrap options (see `LinkBuilderOptionsPresenter::authStrategyDefinitions()`,
- * which translates each strategy's schema() into SchemaBuilder nodes);
- * third-party strategies without one fall back to the message below.
+ * renders below, as stacked Craft `.field` blocks — through the same control
+ * registry the mapping regions use, which is the part they share. Schemas come
+ * through the bootstrap options (see
+ * `LinkBuilderOptionsPresenter::authStrategyDefinitions()`, which translates each
+ * strategy's schema() into SchemaBuilder nodes); third-party strategies without
+ * one fall back to the message below.
  *
  * Writes flow into `link.auth = { type, ...fields }`. Swapping the type
  * resets the field slot — the old strategy's saved values are dropped on

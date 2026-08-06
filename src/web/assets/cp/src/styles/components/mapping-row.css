@@ -19,6 +19,19 @@
    covers padding too), no need for the slot to stretch beyond the row. */
 .influx-mapping-row .influx-mapping-extras-slot { grid-column: 1 / -1; }
 
+/* A row with a source cell but no default beside it — a field nothing can be
+   mapped to, whose notice occupies the cell the node select would have taken.
+   It spans the remainder rather than sitting squeezed into the middle column,
+   vertically centred against the label. Keyed on the absent region, so nothing
+   has to declare the layout separately from the cells. */
+.influx-mapping-row .influx-cell-span {
+    grid-column: 2 / -1;
+    display: flex;
+    align-items: center;
+}
+
+.influx-mapping-row .influx-cell-span p { margin: 0; }
+
 /* Light gray tint applied to the whole row only while the user has the
    extras open. Collapsed state stays unstyled — the "Configure" toggle
    rides on the handle line inside the meta column. */

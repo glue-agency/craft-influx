@@ -287,7 +287,7 @@ interface ElementTargetInterface
      * Fields the link can map to. Drives the per-field mapping UI on the
      * CP edit screen. Each field is a {@see MappableField} — that value object
      * owns the descriptor's shape and its JSON serialization; natives are
-     * declared through {@see \GlueAgency\Influx\schema\SchemaBuilder::group()}
+     * declared through {@see \GlueAgency\Influx\schema\MappingSchemaBuilder::group()}
      * and a field layout's custom fields through
      * {@see AbstractElementTarget::customFieldDescriptors()}.
      *

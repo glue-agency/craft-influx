@@ -32,8 +32,8 @@ import MappingGroupCard from '../../../components/MappingGroupCard.vue';
 const group = {
     label: 'Content',
     fields: [
-        { handle: 'title', name: 'Title', defaultType: 'text' },
-        { handle: 'body', name: 'Body', defaultType: 'text' },
+        { handle: 'title', name: 'Title', mapping: { source: [{ type: 'select' }] } },
+        { handle: 'body', name: 'Body', mapping: { source: [{ type: 'select' }] } },
     ],
 };
 

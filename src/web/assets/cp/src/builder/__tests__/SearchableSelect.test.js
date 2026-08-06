@@ -377,3 +377,85 @@ describe('drop direction', () => {
         expect(wrapper.classes()).not.toContain('drop-up');
     });
 });
+
+/**
+ * Multi mode: the arity the option fields that hold a LIST need (Checkboxes,
+ * MultiSelect). Picks accumulate, the menu stays open, and a second click on a
+ * row takes it back out — the operator is building a set, not answering once.
+ */
+describe('SearchableSelect multiple', () => {
+    const options = [
+        { value: 'red', label: 'Red' },
+        { value: 'green', label: 'Green' },
+        { value: 'blue', label: 'Blue' },
+        { value: 'pink', label: 'Pink' },
+    ];
+
+    const mountMulti = (modelValue = null) => mount(SearchableSelect, {
+        props: { options, modelValue, multiple: true, searchable: true },
+        global: { mocks: { $t: (s) => s } },
+    });
+
+    const rows = (wrapper) => wrapper.findAll('li[role="option"]');
+
+    it('adds a pick to the list rather than replacing it', async () => {
+        const wrapper = mountMulti(['red']);
+        await wrapper.find('button').trigger('click');
+
+        await rows(wrapper)[1].trigger('click');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)[0]).toEqual(['red', 'green']);
+    });
+
+    it('takes a pick back out when its row is clicked again', async () => {
+        const wrapper = mountMulti(['red', 'green']);
+        await wrapper.find('button').trigger('click');
+
+        await rows(wrapper)[0].trigger('click');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)[0]).toEqual(['green']);
+    });
+
+    /**
+     * Never an empty ARRAY: a mapping reads that as a default that IS set
+     * (FieldMapping::usesDefault), where none is meant.
+     */
+    it('emits null rather than an empty list when the last pick is removed', async () => {
+        const wrapper = mountMulti(['red']);
+        await wrapper.find('button').trigger('click');
+
+        await rows(wrapper)[0].trigger('click');
+
+        expect(wrapper.emitted('update:modelValue').at(-1)[0]).toBeNull();
+    });
+
+    it('stays open while the set is built', async () => {
+        const wrapper = mountMulti(['red']);
+        await wrapper.find('button').trigger('click');
+        await rows(wrapper)[1].trigger('click');
+
+        expect(rows(wrapper).length).toBeGreaterThan(0);
+    });
+
+    it('marks every picked row, not just one', async () => {
+        const wrapper = mountMulti(['red', 'blue']);
+        await wrapper.find('button').trigger('click');
+
+        const selected = rows(wrapper).filter(r => r.classes('selected'));
+        expect(selected).toHaveLength(2);
+    });
+
+    it('reads the picks back as labels, and as a count once they stop fitting', async () => {
+        expect(mountMulti(['red', 'green']).find('.value').text()).toBe('Red, Green');
+        expect(mountMulti(['red', 'green', 'blue', 'pink']).find('.value').text()).toBe('4 selected');
+    });
+
+    it('shows the placeholder while nothing is picked', async () => {
+        const wrapper = mount(SearchableSelect, {
+            props: { options, modelValue: null, multiple: true, placeholder: '— none —' },
+            global: { mocks: { $t: (s) => s } },
+        });
+
+        expect(wrapper.find('.value').text()).toBe('— none —');
+    });
+});

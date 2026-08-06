@@ -165,11 +165,10 @@ class LinkBuilderTranslations
                 'auto',
                 'Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.',
                 'missing mapping',
-                '— no mapping —',
-                'Search options…',
-                '— use default —',
             ],
             'schema/inputs/SubFieldRows.vue' => [
+                '— no mapping —',
+                '— use default —',
                 'Clear every source node and default in this group',
                 'clear nodes',
                 'Sub-fields with an active source node',
@@ -213,7 +212,7 @@ class LinkBuilderTranslations
                 'No matches for',
                 'No options available.',
                 'Custom node',
-                'Select…',
+                '{n} selected',
             ],
             'components/TokenPickerMenu.vue' => [
                 'Filter tokens…',
