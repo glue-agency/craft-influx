@@ -235,12 +235,12 @@ describe('SubFieldRows default editors', () => {
     });
 
     it('renders neither control for a row whose value comes from its extras', async () => {
-        // A nested Table, Link or Table Maker declares no cells at the top level
-        // either. Rendering a node select and a text box for one gave the operator
-        // two controls writing into slots no sync reads — while its real
-        // configuration sat behind the chevron beside them.
+        // A nested Table or Link declares no cells at the top level either.
+        // Rendering a node select and a text box for one gave the operator two
+        // controls writing into slots no sync reads — while its real configuration
+        // sat behind the chevron beside them.
         const wrapper = mountTyped([
-            { type: 'text', handle: 'table', label: 'Tabel', cells: false, extra: [
+            { type: 'text', handle: 'table', label: 'Tabel', cells: { source: false, default: false }, extra: [
                 { type: 'lightswitch', handle: 'flag', label: 'A flag' },
             ] },
             { type: 'text', handle: 'blurb', label: 'Blurb' },
@@ -257,6 +257,20 @@ describe('SubFieldRows default editors', () => {
         // And the ordinary row beside it is untouched.
         expect(rows[1].findComponent({ name: 'SearchableSelect' }).exists()).toBe(true);
         expect(rows[1].find('input[type="text"]').exists()).toBe(true);
+    });
+
+    it('keeps the node select for a row that only lacks a default', () => {
+        // A nested Table Maker: one node holds the whole table, so the select is
+        // the only cell it wants — and the only one it must not lose.
+        const wrapper = mountTyped([
+            { type: 'text', handle: 'table', label: 'Tabel', cells: { default: false }, extra: [
+                { type: 'note', text: 'Ship a columns/values object.' },
+            ] },
+        ], { rows: {} });
+        const row = wrapper.find('.sub-field-row');
+
+        expect(row.findComponent({ name: 'SearchableSelect' }).exists()).toBe(true);
+        expect(row.find('input[type="text"]').exists()).toBe(false);
     });
 
     it('leaves the other editors as they were', () => {

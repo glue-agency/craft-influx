@@ -41,13 +41,6 @@ const CONTAINER_CHANNELS = {
     subFields: ['fields'],
     matrixFields: ['blocks'],
     elementSubFields: ['fields', 'nativeFields'],
-    // The one container that binds `options` too, because half of what it edits
-    // is configuration rather than mappings: a Table Maker field's columns are
-    // per-entry content, so the operator declares them (into `options.columns`)
-    // and maps a node per column (into `fields`). Two nodes couldn't do it — the
-    // rows are derived from columns that aren't saved yet while they're being
-    // added.
-    tableMakerColumns: ['options', 'fields'],
 };
 
 /** Values that mean "nothing stored", and so prune the slot away. */

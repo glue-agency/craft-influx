@@ -127,15 +127,25 @@ class FieldsService extends AbstractRegistry
      * `matrixFields` never nests either way: a block container inside a block is
      * the one shape this deliberately doesn't offer.
      *
-     * @return array{default: array|null, extra: list<array>}
+     * `source` says whether the field declares a source-node region at all. Most
+     * do, and a nested row's node select is the point of it — but a field whose
+     * value comes from its own sub-mappings declares none ({@see \GlueAgency\Influx\fields\Table},
+     * {@see \GlueAgency\Influx\fields\Link}), and one that takes a whole
+     * structure from a single node declares a source but no default
+     * ({@see \GlueAgency\Influx\integrations\verbb\tablemaker\TableMakerField}).
+     * Carrying both flags is what lets a nested row render exactly the cells its
+     * own top-level row does, rather than the two the table used to assume.
+     *
+     * @return array{source: bool, default: array|null, extra: list<array>}
      */
     public function childRowFor(CraftFieldInterface $field): array
     {
         $row = $this->rowFor($field);
         $cell = $row->region('default')[0] ?? null;
+        $source = $row->has('source');
 
         if ($this->nesting) {
-            return ['default' => $cell, 'extra' => []];
+            return ['source' => $source, 'default' => $cell, 'extra' => []];
         }
 
         $this->nesting = true;
@@ -149,7 +159,7 @@ class FieldsService extends AbstractRegistry
             $this->nesting = false;
         }
 
-        return ['default' => $cell, 'extra' => $extra];
+        return ['source' => $source, 'default' => $cell, 'extra' => $extra];
     }
 
     /**

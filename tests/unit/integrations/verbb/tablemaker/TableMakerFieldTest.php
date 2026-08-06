@@ -4,10 +4,10 @@ namespace GlueAgency\Influx\Tests\unit\integrations\verbb\tablemaker;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
-use craft\base\FieldInterface as CraftFieldInterface;
 use craft\fields\PlainText;
 use GlueAgency\Influx\integrations\verbb\tablemaker\TableMakerField;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
@@ -15,246 +15,217 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 /**
  * Behaviour spec for the Table Maker strategy.
  *
- * The whole reason this isn't {@see \GlueAgency\Influx\fields\Table}: a Table
- * Maker field's columns are per-entry CONTENT, so they come off the MAPPING and
- * are written to the field on every sync alongside the rows. The Craft field
- * itself is stubbed as any old field — the strategy reads only two optional
- * editor toggles off it, and the plugin isn't installed here.
+ * The premise of the field is that an entry defines its own columns and values,
+ * however many or few — so the mapping declares none of them. One source node
+ * holds the whole table and the feed speaks a fixed shape:
+ *
+ *   { "columns": ["a", "b"], "values": [[1, 2], [3, 4]] }
+ *
+ * with a column optionally an object carrying `label` plus `type` / `align` /
+ * `width`.
  */
 class TableMakerFieldTest extends Unit
 {
     // -- schema ---------------------------------------------------------------
 
-    public function testTheRowIsOneColumnCardAndNoCellsOfItsOwn(): void
+    public function testTheRowIsOneSourceNodeAndNoDefault(): void
     {
         $regions = (new TableMakerField())->schema($this->fakeField())->toArray();
 
-        // Neither cell: the value comes entirely from the columns below, the
-        // same declaration a Table or Matrix row makes.
-        $this->assertSame(['extra'], array_keys($regions));
-        $this->assertCount(1, $regions['extra']);
-        $this->assertSame('tableMakerColumns', $regions['extra'][0]['type']);
-        $this->assertSame('columns', $regions['extra'][0]['handle']);
+        // A default is one literal value; what this takes is a whole table, and
+        // no text box expresses one.
+        $this->assertSame(['source', 'extra'], array_keys($regions));
+        $this->assertSame(SchemaBuilder::SELECT, $regions['source'][0]['type']);
     }
 
-    public function testTheFieldsEditorTogglesRideAlong(): void
+    public function testTheFormatContractIsOnTheRow(): void
     {
-        // A site that hides widths from its editors doesn't get to set them in
-        // the mapping either.
-        $node = $this->extras($this->fakeField(enableWidth: false, enableAlign: true));
+        // A feed shipping the wrong shape is the only way this row can fail, and
+        // there is nowhere else for the operator to learn what it wants.
+        $note = (new TableMakerField())->schema($this->fakeField())->toArray()['extra'][0];
 
-        $this->assertFalse($node['enableWidth']);
-        $this->assertTrue($node['enableAlign']);
+        $this->assertSame(SchemaBuilder::NOTE, $note['type']);
+        $this->assertStringContainsString('columns', $note['text']);
+        $this->assertStringContainsString('values', $note['text']);
+        $this->assertStringContainsString('singleline', $note['text']);
     }
 
-    public function testAFieldMissingThoseSettingsDefaultsThemOn(): void
+    public function testDropdownColumnsAreNotAccepted(): void
     {
-        // The plugin may be absent or older, and an unknown property on a Yii
-        // component throws rather than coalescing — so this must not reach for
-        // one that isn't declared.
-        $node = $this->extras($this->createMock(PlainText::class));
-
-        $this->assertTrue($node['enableWidth']);
-        $this->assertTrue($node['enableAlign']);
-    }
-
-    public function testDropdownColumnsAreNotOffered(): void
-    {
-        // A select column carries its own option list, which nothing here can
-        // declare — writing an arbitrary feed string into a closed-set cell
-        // would store something the CP can't render back.
-        $types = TableMakerField::columnTypes();
-
-        $this->assertArrayNotHasKey('select', $types);
-        $this->assertArrayNotHasKey('heading', $types);
-        $this->assertArrayHasKey('singleline', $types);
-        $this->assertArrayHasKey('lightswitch', $types);
-        $this->assertSame($types, $this->extras($this->fakeField())['columnTypes']);
-    }
-
-    // -- addressed ------------------------------------------------------------
-
-    public function testDeclaredColumnsAloneDoNotAddressTheField(): void
-    {
-        // Otherwise a feed that carries none of the mapped nodes would blank a
-        // populated table down to bare headings.
-        $context = $this->context(
-            new RemoteItem(['other' => 'x']),
-            ['c1' => ['node' => 'consultations.day']],
-        );
-
-        $this->assertFalse((new TableMakerField())->addressed($context));
-    }
-
-    public function testAnyAddressedColumnAddressesTheField(): void
-    {
-        $context = $this->context(
-            new RemoteItem(['consultations' => [['day' => 'Monday']]]),
-            ['c1' => ['node' => 'consultations.day']],
-        );
-
-        $this->assertTrue((new TableMakerField())->addressed($context));
+        // A dropdown cell must be one of a closed set of options the feed has no
+        // way to declare, so accepting one would store what the CP can't render.
+        $this->assertArrayNotHasKey('select', TableMakerField::columnTypes());
+        $this->assertArrayNotHasKey('heading', TableMakerField::columnTypes());
     }
 
     // -- parse ----------------------------------------------------------------
 
-    public function testColumnsAndRowsAreWrittenTogetherPositionally(): void
+    public function testBareStringColumnsAreTheirLabels(): void
     {
-        $context = $this->context(
-            new RemoteItem(['consultations' => [
-                ['day' => 'Monday', 'from' => '09:00'],
-                ['day' => 'Tuesday', 'from' => '13:00'],
-            ]]),
-            [
-                'c1' => ['node' => 'consultations.day'],
-                'c2' => ['node' => 'consultations.from'],
-            ],
-        );
+        $parsed = $this->parse(['columns' => ['this', 'that'], 'values' => [[1, 2]]]);
 
         $this->assertSame([
-            // Influx's own `id` is stripped: the stored shape is a bare
-            // positional list with no identity of its own.
+            ['heading' => 'this', 'width' => '', 'align' => '', 'type' => 'singleline'],
+            ['heading' => 'that', 'width' => '', 'align' => '', 'type' => 'singleline'],
+        ], $parsed['columns']);
+        // A bare-string column is single-line TEXT, so its cells store as text —
+        // a feed shipping numbers into one gets them back as strings. A `number`
+        // column keeps them numeric (below).
+        $this->assertSame([['1', '2']], $parsed['rows']);
+    }
+
+    public function testANumberColumnKeepsItsCellsNumeric(): void
+    {
+        $parsed = $this->parse([
+            'columns' => [['label' => 'n', 'type' => 'number'], 'text'],
+            'values'  => [[1, 2]],
+        ]);
+
+        $this->assertSame([[1, '2']], $parsed['rows']);
+    }
+
+    public function testAColumnObjectCarriesItsOwnPresentation(): void
+    {
+        // A width may arrive as a number; Table Maker stores a string.
+        $parsed = $this->parse([
             'columns' => [
-                ['heading' => 'Day', 'width' => '', 'align' => '', 'type' => 'singleline'],
-                ['heading' => 'From', 'width' => '100', 'align' => 'left', 'type' => 'time'],
+                ['label' => 'this', 'width' => 50],
+                ['label' => 'that', 'width' => 25, 'type' => 'number'],
+                ['label' => 'other', 'width' => 25, 'align' => 'right'],
             ],
-            'rows' => [
-                ['Monday', '09:00'],
-                ['Tuesday', '13:00'],
-            ],
-        ], (new TableMakerField())->parse($context));
-    }
-
-    public function testAnUnmappedColumnStillGetsItsCellOnEveryRow(): void
-    {
-        // Table Maker reads a cell as $row[$i] against $columns[$i], so a row is
-        // a fixed-width list — a hole would shift every later column's value
-        // into the wrong heading.
-        $context = $this->context(
-            new RemoteItem(['consultations' => [['day' => 'Monday'], ['day' => 'Tuesday']]]),
-            ['c1' => ['node' => 'consultations.day']],
-        );
+            'values' => [],
+        ]);
 
         $this->assertSame([
-            ['Monday', null],
-            ['Tuesday', null],
-        ], (new TableMakerField())->parse($context)['rows']);
+            ['heading' => 'this', 'width' => '50', 'align' => '', 'type' => 'singleline'],
+            ['heading' => 'that', 'width' => '25', 'align' => '', 'type' => 'number'],
+            ['heading' => 'other', 'width' => '25', 'align' => 'right', 'type' => 'singleline'],
+        ], $parsed['columns']);
     }
 
-    public function testTheColumnsSurviveAFeedThatCarriesNoRows(): void
+    public function testRowsArePositionalAndRaggedOnesAreHonoured(): void
     {
-        // addressed() was true, so the feed is authoritative: headings with no
-        // rows IS "the feed carries none of these".
-        $context = $this->context(
-            new RemoteItem(['consultations' => []]),
-            ['c1' => ['node' => 'consultations.day']],
-        );
-        $parsed = (new TableMakerField())->parse($context);
+        // The user's own example: an explicit null IS an empty cell, and a short
+        // row leaves the rest empty rather than shifting anything.
+        $parsed = $this->parse([
+            'columns' => ['this', 'that', 'other'],
+            'values'  => [[1, 2, 3], [4, 5, 6], [null, 7, 8], ['pizza', 'sausage']],
+        ]);
 
-        $this->assertSame([], $parsed['rows']);
-        $this->assertCount(2, $parsed['columns']);
+        $this->assertSame([
+            ['1', '2', '3'],
+            ['4', '5', '6'],
+            [null, '7', '8'],
+            ['pizza', 'sausage', null],
+        ], $parsed['rows']);
+    }
+
+    public function testACellPastTheLastColumnIsDropped(): void
+    {
+        // Table Maker reads a cell as $row[$i] against $columns[$i], so a cell
+        // with no column has nowhere to be stored.
+        $parsed = $this->parse(['columns' => ['a', 'b'], 'values' => [[1, 2, 3, 4]]]);
+
+        $this->assertSame([['1', '2']], $parsed['rows']);
     }
 
     public function testACellIsCoercedByItsColumnType(): void
     {
-        $context = $this->context(
-            new RemoteItem(['rows' => [['flag' => 'yes', 'text' => '  padded  ']]]),
-            ['c1' => ['node' => 'rows.flag'], 'c2' => ['node' => 'rows.text']],
-            [
-                ['id' => 'c1', 'heading' => 'Flag', 'type' => 'lightswitch'],
-                ['id' => 'c2', 'heading' => 'Text', 'type' => 'singleline'],
-            ],
-        );
+        $parsed = $this->parse([
+            'columns' => [['label' => 'Flag', 'type' => 'lightswitch'], ['label' => 'Text']],
+            'values'  => [['yes', '  padded  ']],
+        ]);
 
-        $this->assertSame([[true, 'padded']], (new TableMakerField())->parse($context)['rows']);
+        $this->assertSame([[true, 'padded']], $parsed['rows']);
     }
 
-    public function testAColumnWithoutAnIdIsDropped(): void
+    public function testAnUnusableColumnTypeFallsBackToText(): void
     {
-        // The id is the only thing tying a column to its sub-mapping, and stored
-        // config is operator-authored JSON.
-        $context = $this->context(
-            new RemoteItem(['consultations' => [['day' => 'Monday']]]),
-            ['c1' => ['node' => 'consultations.day']],
-            [
-                ['id' => 'c1', 'heading' => 'Day', 'type' => 'singleline'],
-                ['heading' => 'Orphan', 'type' => 'singleline'],
-            ],
-        );
+        $parsed = $this->parse([
+            'columns' => [['label' => 'a', 'type' => 'select'], ['label' => 'b', 'type' => 'nonsense']],
+            'values'  => [],
+        ]);
 
-        $this->assertSame([['heading' => 'Day', 'width' => '', 'align' => '', 'type' => 'singleline']],
-            (new TableMakerField())->parse($context)['columns']);
+        $this->assertSame(['singleline', 'singleline'], array_column($parsed['columns'], 'type'));
     }
 
-    public function testAnUnknownColumnTypeFallsBackToText(): void
+    public function testAnUnlabelledColumnIsDropped(): void
     {
-        $context = $this->context(
-            new RemoteItem(['consultations' => [['day' => 'Monday']]]),
-            ['c1' => ['node' => 'consultations.day']],
-            [['id' => 'c1', 'heading' => 'Day', 'type' => 'nonsense']],
-        );
+        // It would still occupy a position every row counts against, so keeping
+        // it would silently widen the table with a blank heading.
+        $parsed = $this->parse([
+            'columns' => ['a', ['width' => 20], '', 'b'],
+            'values'  => [[1, 2, 3, 4]],
+        ]);
 
-        $this->assertSame('singleline', (new TableMakerField())->parse($context)['columns'][0]['type']);
+        $this->assertSame(['a', 'b'], array_column($parsed['columns'], 'heading'));
+        $this->assertSame([['1', '2']], $parsed['rows']);
+    }
+
+    public function testATableWithNoColumnsClearsTheField(): void
+    {
+        // addressed() was true, so the feed is authoritative — and values with
+        // nothing to hang on aren't a table.
+        foreach ([['values' => [[1, 2]]], ['columns' => [], 'values' => [[1]]], 'nonsense', null] as $value) {
+            $this->assertSame(
+                ['columns' => [], 'rows' => []],
+                $this->parse($value),
+                'Unexpected parse for ' . json_encode($value),
+            );
+        }
     }
 
     // -- change detection -----------------------------------------------------
 
     public function testTheRenderedPreviewIsNeverCompared(): void
     {
-        // Table Maker rebuilds `table` from the other two keys on every read, so
+        // Table Maker rebuilds `table` from the other two on every read, so
         // comparing it would report a change on every single sync.
-        $context = $this->context(new RemoteItem([]), ['c1' => ['node' => 'consultations.day']]);
-        $incoming = [
-            'columns' => [
-                ['heading' => 'Day', 'width' => '', 'align' => '', 'type' => 'singleline'],
-                ['heading' => 'From', 'width' => '100', 'align' => 'left', 'type' => 'time'],
-            ],
-            'rows' => [['Monday', '09:00']],
+        $stored = [
+            'columns' => [['heading' => 'a', 'width' => '', 'align' => '', 'type' => 'singleline']],
+            'rows'    => [['x']],
         ];
-        $current = $incoming + ['table' => '<table><tr><td>Monday</td></tr></table>'];
 
-        $this->assertFalse($this->strategy()->exposedValueDiffers($context, $current, $incoming));
+        $this->assertFalse($this->strategy()->exposedValueDiffers(
+            $this->context(new RemoteItem([])),
+            $stored + ['table' => '<table><tr><td>x</td></tr></table>'],
+            $stored,
+        ));
     }
 
-    public function testAnEditedHeadingIsAChangeEvenWithIdenticalCells(): void
+    public function testARenamedHeadingIsAChange(): void
     {
-        // The columns are part of the value here, unlike a Craft Table's.
-        $context = $this->context(new RemoteItem([]), ['c1' => ['node' => 'consultations.day']]);
-        $rows = [['Monday', '09:00']];
+        // The columns are part of the value here — the feed owns them.
+        $rows = [['x']];
+        $context = $this->context(new RemoteItem([]));
 
-        $current = [
-            'columns' => [
-                ['heading' => 'Weekday', 'width' => '', 'align' => '', 'type' => 'singleline'],
-                ['heading' => 'From', 'width' => '100', 'align' => 'left', 'type' => 'time'],
-            ],
-            'rows' => $rows,
-        ];
-        $incoming = ['columns' => $this->declaredColumnsAsStored(), 'rows' => $rows];
-
-        $this->assertTrue($this->strategy()->exposedValueDiffers($context, $current, $incoming));
+        $this->assertTrue($this->strategy()->exposedValueDiffers(
+            $context,
+            ['columns' => [['heading' => 'a', 'type' => 'singleline']], 'rows' => $rows],
+            ['columns' => [['heading' => 'b', 'type' => 'singleline']], 'rows' => $rows],
+        ));
     }
 
-    public function testAClearedFieldDiffersFromRowsAndMatchesAClear(): void
+    public function testAStoredFlagMatchesTheFeedsSpellingOfIt(): void
     {
-        $context = $this->context(new RemoteItem([]), ['c1' => ['node' => 'consultations.day']]);
-        $rows = ['columns' => $this->declaredColumnsAsStored(), 'rows' => [['Monday', '09:00']]];
-
-        $this->assertTrue($this->strategy()->exposedValueDiffers($context, null, $rows));
-        $this->assertFalse($this->strategy()->exposedValueDiffers($context, null, null));
-    }
-
-    public function testATimeCellComparesByInstantNotSpelling(): void
-    {
-        // The stored side has been through Craft's normalize; the feed still
-        // carries whatever it spelled.
-        $context = $this->context(new RemoteItem([]), ['c2' => ['node' => 'consultations.from']]);
-        $columns = $this->declaredColumnsAsStored();
+        // A CP round-trip stores a real bool where the feed carried "yes".
+        $columns = [['heading' => 'Flag', 'width' => '', 'align' => '', 'type' => 'lightswitch']];
+        $context = $this->context(new RemoteItem([]));
 
         $this->assertFalse($this->strategy()->exposedValueDiffers(
             $context,
-            ['columns' => $columns, 'rows' => [['Monday', '1970-01-01T09:00:00+00:00']]],
-            ['columns' => $columns, 'rows' => [['Monday', '1970-01-01T09:00:00Z']]],
+            ['columns' => $columns, 'rows' => [[true]]],
+            ['columns' => $columns, 'rows' => [['yes']]],
         ));
+    }
+
+    public function testAClearedFieldDiffersFromATableAndMatchesAClear(): void
+    {
+        $context = $this->context(new RemoteItem([]));
+        $table = ['columns' => [['heading' => 'a', 'type' => 'singleline']], 'rows' => [['x']]];
+
+        $this->assertTrue($this->strategy()->exposedValueDiffers($context, null, $table));
+        $this->assertFalse($this->strategy()->exposedValueDiffers($context, null, null));
     }
 
     // -- helpers --------------------------------------------------------------
@@ -269,65 +240,27 @@ class TableMakerFieldTest extends Unit
         };
     }
 
-    /**
-     * The `extra` region's single node.
-     *
-     * @return array<string, mixed>
-     */
-    protected function extras(CraftFieldInterface $field): array
+    /** Parse the given feed value, mapped from the item's `table` node. */
+    protected function parse(mixed $value): mixed
     {
-        return (new TableMakerField())->schema($field)->toArray()['extra'][0];
+        return (new TableMakerField())->parse($this->context(new RemoteItem(['table' => $value])));
     }
 
-    /**
-     * A Craft field standing in for a Table Maker one — the two editor toggles
-     * are all the strategy reads, and the real class isn't installed here.
-     */
-    protected function fakeField(bool $enableWidth = true, bool $enableAlign = true): CraftFieldInterface
-    {
-        return new class($enableWidth, $enableAlign) extends PlainText {
-            public bool $enableWidthColumn = true;
-
-            public bool $enableAlignmentColumn = true;
-
-            public function __construct(bool $enableWidth, bool $enableAlign)
-            {
-                $this->enableWidthColumn = $enableWidth;
-                $this->enableAlignmentColumn = $enableAlign;
-
-                parent::__construct();
-            }
-        };
-    }
-
-    /** The recurring two-column fixture, as the strategy would store it. */
-    protected function declaredColumnsAsStored(): array
-    {
-        return [
-            ['heading' => 'Day', 'width' => '', 'align' => '', 'type' => 'singleline'],
-            ['heading' => 'From', 'width' => '100', 'align' => 'left', 'type' => 'time'],
-        ];
-    }
-
-    /**
-     * @param array<string, array<string, mixed>> $fields column id → sub-mapping
-     * @param ?list<array<string, mixed>> $columns declared columns, defaulting to the fixture
-     */
-    protected function context(RemoteItem $item, array $fields, ?array $columns = null): FieldContext
+    protected function context(RemoteItem $item): FieldContext
     {
         return new FieldContext(
             craftField: $this->fakeField(),
-            handle: 'consultations',
-            mapping: FieldMapping::fromConfig('consultations', [
-                'fields'  => $fields,
-                'options' => ['columns' => $columns ?? [
-                    ['id' => 'c1', 'heading' => 'Day', 'type' => 'singleline'],
-                    ['id' => 'c2', 'heading' => 'From', 'type' => 'time', 'width' => '100', 'align' => 'left'],
-                ]],
-            ]),
+            handle: 'table',
+            mapping: FieldMapping::fromConfig('table', ['node' => 'table']),
             item: $item,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
         );
+    }
+
+    /** The real class isn't installed here, and the strategy reads nothing off it. */
+    protected function fakeField(): PlainText
+    {
+        return $this->createMock(PlainText::class);
     }
 }

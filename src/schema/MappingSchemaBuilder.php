@@ -263,14 +263,14 @@ class MappingSchemaBuilder extends SchemaBuilder
      * Without this, every sub-field row was a text box — including a relation's,
      * which is a reference the operator can only pick, not retype.
      *
-     * A child declaring NO default cell keeps that statement too, as `cells =>
-     * false`: its value comes entirely from its own extras, so a node select and a
-     * text box beside it are two controls that write nothing a sync would read.
-     * Nested Table, Link and Table Maker rows are all this shape — the same
-     * declaration their top-level rows make by dropping both regions, carried down
-     * rather than replaced with the text fallback.
+     * A region the child DOESN'T declare is carried down too, as `cells`, in the
+     * same shape {@see group()} takes it. Otherwise the table assumed both: a
+     * nested Table or Link, whose value comes entirely from its own extras, got a
+     * node select and a text box that write into slots no sync reads, while a
+     * nested Table Maker — one node holding a whole structure — got a text box
+     * beside the node select that was the only cell it wanted.
      *
-     * @param array{default: array|null, extra: list<array>} $childRow
+     * @param array{source?: bool, default: array|null, extra: list<array>} $childRow
      * @param array<string, mixed> $config The row's `handle` / `label` (+ `channel`).
      */
     public function fieldRow(array $childRow, array $config = []): static
@@ -286,8 +286,18 @@ class MappingSchemaBuilder extends SchemaBuilder
             $config += ['extra' => $extra];
         }
 
+        $cells = [];
+
+        if (($childRow['source'] ?? true) === false) {
+            $cells['source'] = false;
+        }
+
         if ($cell === null) {
-            $config += ['cells' => false];
+            $cells['default'] = false;
+        }
+
+        if ($cells !== []) {
+            $config += ['cells' => $cells];
         }
 
         return $this->push($config + ($cell ?? []) + ['type' => self::TEXT]);

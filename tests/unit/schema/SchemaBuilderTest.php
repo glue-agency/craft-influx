@@ -129,30 +129,46 @@ class SchemaBuilderTest extends Unit
         $this->assertSame('col1', $schema[0]['handle']);
     }
 
-    public function testAChildWithNoCellOfItsOwnSaysSo(): void
+    public function testAChildCarriesTheRegionsItsFieldDoesntDeclare(): void
     {
-        // A nested Table, Link or Table Maker: its value comes entirely from its
-        // own extras, exactly as its top-level row declares by dropping both
-        // regions. Without `cells => false` the row fell to the text fallback, so
-        // the card offered a node select and a text box writing into slots no sync
-        // reads — while the real configuration sat behind the chevron beside them.
+        // A nested Table or Link: its value comes entirely from its own extras,
+        // exactly as its top-level row declares by dropping both regions. Without
+        // this the row fell to the text fallback, so the card offered a node select
+        // and a text box writing into slots no sync reads — while the real
+        // configuration sat behind the chevron beside them.
+        $extra = [['type' => SchemaBuilder::LIGHTSWITCH, 'handle' => 'flag']];
         $schema = MappingSchemaBuilder::make()
             ->fieldRow(
-                ['default' => null, 'extra' => [['type' => SchemaBuilder::LIGHTSWITCH, 'handle' => 'flag']]],
+                ['source' => false, 'default' => null, 'extra' => $extra],
                 ['handle' => 'table', 'label' => 'Tabel'],
             )
             ->toArray();
 
-        $this->assertFalse($schema[0]['cells']);
-        $this->assertSame([['type' => SchemaBuilder::LIGHTSWITCH, 'handle' => 'flag']], $schema[0]['extra']);
+        $this->assertSame(['source' => false, 'default' => false], $schema[0]['cells']);
+        $this->assertSame($extra, $schema[0]['extra']);
     }
 
-    public function testAChildWithACellIsNotMarkedCellLess(): void
+    public function testAChildKeepsASourceItDoesDeclare(): void
+    {
+        // A nested Table Maker: one node holds the whole structure, so it wants the
+        // node select and no default beside it. Marking both absent would take away
+        // the only cell it uses.
+        $schema = MappingSchemaBuilder::make()
+            ->fieldRow(
+                ['source' => true, 'default' => null, 'extra' => [['type' => SchemaBuilder::NOTE, 'text' => 'x']]],
+                ['handle' => 'table'],
+            )
+            ->toArray();
+
+        $this->assertSame(['default' => false], $schema[0]['cells']);
+    }
+
+    public function testAChildWithBothRegionsIsNotMarkedAtAll(): void
     {
         // Guards the flag from becoming unconditional, which would blank every
         // sub-field row in the builder.
         $schema = MappingSchemaBuilder::make()
-            ->fieldRow(['default' => ['type' => SchemaBuilder::TEXT], 'extra' => []], ['handle' => 'col1'])
+            ->fieldRow(['source' => true, 'default' => ['type' => SchemaBuilder::TEXT], 'extra' => []], ['handle' => 'col1'])
             ->toArray();
 
         $this->assertArrayNotHasKey('cells', $schema[0]);

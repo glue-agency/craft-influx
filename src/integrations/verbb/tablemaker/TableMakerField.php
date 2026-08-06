@@ -6,7 +6,6 @@ use Craft;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\TableCells;
-use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\schema\MappingSchema;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\sync\FieldContext;
@@ -14,57 +13,54 @@ use GlueAgency\Influx\sync\FieldContext;
 /**
  * Mapping strategy for Verbb's Table Maker field.
  *
- * Structurally this is {@see \GlueAgency\Influx\fields\Table} with one thing
- * moved, and that one thing decides the whole design: a Craft Table's columns are
- * FIELD SETTINGS, so the mapping card can offer a row per column and be sure the
- * columns exist. A Table Maker field's columns are CONTENT — the field itself
- * carries nothing but two "should the editor see this sub-column" toggles
- * (`enableWidthColumn`, `enableAlignmentColumn`), and every entry authors its own
- * headings. So there is nothing to derive a card from, and a sync that only wrote
- * rows would write them into a table with no columns to hang them on.
+ * The whole premise of the field is that an entry defines its own columns and its
+ * own values, however many or few it wants — so a mapping that declared the
+ * columns would turn a per-entry structure into a fixed one for every item the
+ * feed carries. The row therefore takes ONE source node holding the whole table,
+ * and the columns come out of the feed with the values.
  *
- * The operator therefore declares the columns as part of the MAPPING, and they're
- * written verbatim on every sync alongside the rows. From there it is the Table
- * strategy again: one sub-mapping per declared column, node paths ABSOLUTE
- * (resolved against the top-level item), and rows built by index-zipping the
- * per-column value lists — `consultations.day` collapses to every consultation's
- * day, and row N takes the Nth value of every column.
+ * That means the feed has to speak a fixed shape, and this is it:
  *
- *   mappings[<handle>] = {
- *       options: { columns: [
- *           { id: 'c1', heading: 'Day',  type: 'singleline' },
- *           { id: 'c2', heading: 'From', type: 'time', width: '100' },
- *       ] },
- *       fields: {
- *           c1: { node: 'consultations.day' },
- *           c2: { node: 'consultations.from' },
- *       },
+ *   "table": {
+ *       "columns": ["this", "that", "other"],
+ *       "values": [
+ *           [1, 2, 3],
+ *           [4, 5, 6],
+ *           [null, 7, 8],
+ *           ["pizza", "sausage"]
+ *       ]
  *   }
  *
- * The column `id` is Influx's, not Table Maker's — Table Maker stores columns as a
- * positional list with no identity at all, so a mapping keyed on position would
- * silently re-point every cell the moment a column was inserted or reordered. The
- * id is minted when a column is added and never reused; it is stripped on the way
- * out, since the stored value has no place for it.
+ * A column may be a bare string — its label — or an object carrying `label` plus
+ * any of `type`, `align` and `width`:
  *
- * `select` columns are deliberately not offered. A dropdown column carries its own
- * option list, which the operator has no way to declare here, and writing an
- * arbitrary feed string into a cell whose value must be one of a closed set would
- * store something the CP can't render back. Every other Craft column type needs no
- * configuration beyond its name.
+ *   "columns": [
+ *       { "label": "this",  "width": 50 },
+ *       { "label": "that",  "width": 25, "type": "number" },
+ *       { "label": "other", "width": 25, "align": "right" }
+ *   ]
  *
- * Sync semantics are full-replace, like Table and Matrix: {@see parse()} rebuilds
- * the whole table, so a declared column the feed doesn't address is written empty.
- * {@see valueDiffers()} compares columns and rows together — a heading edited in
- * the mapping IS a change to the field, even when every cell is identical — with
- * the cells reduced by their column type ({@see TableCells::cellPrint()}) because a
- * CP round-trip stores a checkbox as a real bool and a date as a DateTime while the
- * feed carries "yes" and an ISO string.
+ * Rows are positional against that list. A row shorter than the column set pads
+ * with empty cells and an explicit null IS an empty cell, so a ragged table is
+ * expressible; a row longer than the column set has its tail dropped, since Table
+ * Maker reads a cell as `$row[$i]` against `$columns[$i]` and a cell with no
+ * column has nowhere to be stored.
+ *
+ * `select` is not an accepted column type, and an unrecognised one falls back to
+ * single-line text. A dropdown column's cell must be one of a closed set of
+ * options the feed has no way to declare, so accepting one would store a value
+ * the CP can't render back.
+ *
+ * Sync semantics are full-replace: the feed owns the whole table, columns
+ * included. {@see valueDiffers()} compares columns and rows together — a renamed
+ * heading IS a change to the field — with cells reduced by their column type
+ * ({@see TableCells::cellPrint()}), because a CP round-trip stores a checkbox as a
+ * real bool and a date as a DateTime while the feed carries "yes" and an ISO
+ * string. It never compares `table`, the rendered HTML preview Table Maker
+ * regenerates from the other two on every read.
  *
  * A Table Maker row reports as one value in the log rather than drilling down per
- * row, as an {@see \GlueAgency\Influx\fields\Addresses} mapping does — the
- * per-child drill-down {@see \GlueAgency\Influx\fields\Table} has is a separate
- * piece of work.
+ * row, as an {@see \GlueAgency\Influx\fields\Addresses} mapping does.
  *
  * Keyed by class string, so an install without the plugin never touches it.
  */
@@ -72,13 +68,17 @@ class TableMakerField extends Field
 {
     use TableCells;
 
+    /** The default a column with no usable `type` takes. */
+    public const DEFAULT_TYPE = 'singleline';
+
     /**
-     * The Craft column types a declared column may take, `value => label`.
+     * The Craft column types a feed may name, `value => label`.
      *
      * Table Maker's own list minus `select` (see the class docblock) and minus
-     * `heading`, which Craft offers for the row-header column pattern a
-     * feed-written table has no use for. Labels are Craft's own strings, the
-     * same ones the field's editor shows.
+     * `heading`, which Craft offers for the row-header pattern a feed-written
+     * table has no use for. Labels are Craft's own strings — the same ones the
+     * field's editor shows — and they're here for the operator-facing note the
+     * row renders, not for a control.
      *
      * @return array<string, string>
      */
@@ -104,245 +104,183 @@ class TableMakerField extends Field
     }
 
     /**
-     * Neither cell of its own — the value comes entirely from the columns and
-     * their sub-mappings, the same declaration {@see \GlueAgency\Influx\fields\Table}
-     * makes — and one card that is both the column editor and the mapping rows.
+     * One source node and nothing else.
      *
-     * Those two can't be separate nodes: the rows ARE the declared columns, so
-     * adding a column has to add its row in the same breath, off state neither the
-     * server nor a second card can see until it's saved.
-     *
-     * The field's two editor toggles ride along, so the mapping offers exactly the
-     * sub-columns the entry editor does — a site that hides widths doesn't get to
-     * set them here either. Read defensively: the class may not be installed, and
-     * an unknown property on a Yii component throws rather than coalescing.
+     * No default cell: a default is one literal value a sync falls back to, and
+     * what this field takes is a whole table — there is no text box that could
+     * express one. The extras hold the format contract instead, because a feed
+     * shipping the wrong shape is the only way this row can fail and the operator
+     * has no other way to learn what it wants.
      */
     public function schema(CraftFieldInterface $field): MappingSchema
     {
         return MappingSchemaBuilder::make()->mapping([
-            'source'  => false,
+            'source'  => true,
             'default' => false,
-            'extra'   => fn(MappingSchemaBuilder $b)   => $b->node('tableMakerColumns', [
-                'handle'      => 'columns',
-                'label'       => Craft::t('influx', 'Columns'),
-                'columnTypes' => static::columnTypes(),
-                'enableWidth' => static::setting($field, 'enableWidthColumn'),
-                'enableAlign' => static::setting($field, 'enableAlignmentColumn'),
-                'addLabel'    => Craft::t('influx', 'add column'),
-                'emptyHint'   => Craft::t('influx', 'Add a column to start mapping this table.'),
+            'extra'   => fn(MappingSchemaBuilder $b)   => $b->note([
+                'text' => Craft::t('influx', 'Map a node holding the whole table: an object with a “columns” list and a “values” list of rows. A column is a label, or an object with “label” plus any of “type”, “align” and “width”. Rows are positional against the columns; a short row leaves the rest empty. Column types: {types}.', [
+                    'types' => implode(', ', array_keys(static::columnTypes())),
+                ]),
             ]),
         ]);
     }
 
     /**
-     * Addressed when any active column mapping is addressed for this item — the
-     * node-less rule {@see \GlueAgency\Influx\fields\Table::addressed()} uses.
-     * Declared columns alone are not enough: a mapping the feed never reaches
-     * must leave the field alone rather than blanking it to bare headings.
-     */
-    public function addressed(FieldContext $context): bool
-    {
-        foreach ($this->activeColumnMappings($context->mapping) as $sub) {
-            if ($sub->addressedBy($context->item)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The whole field value: the declared columns, plus rows index-zipped from
-     * the mapped columns' value lists.
+     * The feed's table as Table Maker stores one.
      *
-     * Both halves are positional and share one order — Table Maker reads a cell
-     * as `$row[$i]` against `$columns[$i]`, so a row is a fixed-width list with a
-     * null wherever a column's list doesn't reach that far, never a sparse map.
-     *
-     * The columns are written even when no row survives: `addressed()` was true,
-     * so the feed is authoritative, and a table of headings with no rows is what
-     * "the feed carries none of these" looks like.
+     * A node resolving to something that isn't a table clears the field rather
+     * than throwing: `addressed()` was true, so the feed is authoritative, and an
+     * empty table is what "this item has none" looks like. The same goes for a
+     * table with no columns — there is nothing for the values to hang on.
      *
      * @return array{columns: list<array<string, mixed>>, rows: list<list<mixed>>}
      */
     public function parse(FieldContext $context): mixed
     {
-        $columns = $this->declaredColumns($context->mapping);
-        $subs = $this->activeColumnMappings($context->mapping);
-        $lists = [];
+        $value = $context->mapping->resolve($context->item);
+        $columns = is_array($value) ? static::columnsFrom($value['columns'] ?? []) : [];
 
-        foreach ($columns as $column) {
-            $sub = $subs[$column['id']] ?? null;
-            $resolved = $sub?->resolve($context->item);
-            $lists[] = $resolved === null ? [] : $this->valueList($resolved);
+        if ($columns === []) {
+            return ['columns' => [], 'rows' => []];
         }
 
-        $rowCount = $this->maxLength($lists);
         $rows = [];
 
-        for ($i = 0; $i < $rowCount; $i++) {
-            $row = [];
+        foreach (is_array($value['values'] ?? null) ? $value['values'] : [] as $row) {
+            $cells = is_array($row) ? array_values($row) : [];
+            $built = [];
 
             foreach ($columns as $index => $column) {
-                $row[] = array_key_exists($i, $lists[$index])
-                    ? $this->coerceCell((string) ($column['type'] ?? ''), $lists[$index][$i])
+                // Positional, padded, and truncated: a cell past the last column
+                // has nowhere to be stored, and a missing one is empty rather
+                // than a reason to shift its neighbours left.
+                $built[] = array_key_exists($index, $cells)
+                    ? $this->coerceCell($column['type'], $cells[$index])
                     : null;
             }
 
-            $rows[] = $row;
+            $rows[] = $built;
         }
 
-        return ['columns' => $this->storableColumns($columns), 'rows' => $rows];
+        return ['columns' => static::storableColumns($columns), 'rows' => $rows];
     }
 
     /**
-     * Compare the columns and the rows, and nothing else.
+     * Compare columns and rows, never the derived `table` preview.
      *
-     * The stored value carries a third key Craft never asked for: `table`, the
-     * rendered HTML preview Table Maker builds in `normalizeValue()` from the
-     * other two. It is derived, it is a Markup object, and it is regenerated on
-     * every read — comparing it would report a change on every single sync.
+     * Each side is reduced against its OWN columns, so a renamed heading or a
+     * retyped column shows up as the change it is — and when the columns do match,
+     * both sides reduce their cells by the same types, which is what stops a
+     * stored bool comparing unequal to the feed's "yes".
      */
     protected function valueDiffers(FieldContext $context, mixed $current, mixed $incoming): bool
     {
-        $columns = $this->declaredColumns($context->mapping);
-
-        return $this->fingerprint($current, $columns) !== $this->fingerprint($incoming, $columns);
+        return $this->fingerprint($current) !== $this->fingerprint($incoming);
     }
 
     /**
-     * One side's comparable form: the columns as their storable selves, and the
-     * rows as per-column reduced cells.
+     * One side's comparable form. Both sides are already in the STORED shape by
+     * the time they get here — the incoming one came out of {@see parse()} — so
+     * this reads Table Maker's keys, not the feed's.
      *
-     * Both sides walk the DECLARED columns rather than their own, so the two
-     * always have the same width and the same order even when the stored side
-     * predates a column the mapping has since added. A non-array value (a cleared
-     * field's null) fingerprints as no columns and no rows, so it differs from
-     * anything the feed produces and matches an incoming clear.
-     *
-     * @param list<array<string, mixed>> $columns declared columns
-     * @return array{columns: list<array<string, mixed>>, rows: list<list<mixed>>}
+     * @return array{columns: list<array<string, string>>, rows: list<list<mixed>>}
      */
-    protected function fingerprint(mixed $value, array $columns): array
+    protected function fingerprint(mixed $value): array
     {
         if (! is_array($value)) {
             return ['columns' => [], 'rows' => []];
         }
 
-        $storedColumns = is_array($value['columns'] ?? null) ? array_values($value['columns']) : [];
-        $print = ['columns' => [], 'rows' => []];
-
-        foreach (array_values($columns) as $index => $column) {
-            $print['columns'][] = $this->columnPrint($storedColumns[$index] ?? $column);
-        }
-
-        foreach (is_array($value['rows'] ?? null) ? $value['rows'] : [] as $row) {
-            $cells = is_array($row) ? array_values($row) : [];
-            $reduced = [];
-
-            foreach (array_values($columns) as $index => $column) {
-                $reduced[] = $this->cellPrint((string) ($column['type'] ?? ''), $cells[$index] ?? null);
-            }
-
-            $print['rows'][] = $reduced;
-        }
-
-        return $print;
-    }
-
-    /**
-     * One column's comparable form. Scalars only, so two prints compare with
-     * `===`, and only the keys Table Maker stores — a stored column may carry a
-     * decoded `options` array a declared one never has.
-     *
-     * @param array<string, mixed> $column
-     * @return array<string, string>
-     */
-    protected function columnPrint(array $column): array
-    {
-        return [
-            'heading' => trim((string) ($column['heading'] ?? '')),
-            'type'    => (string) ($column['type'] ?? 'singleline'),
-            'align'   => (string) ($column['align'] ?? ''),
-            'width'   => (string) ($column['width'] ?? ''),
-        ];
-    }
-
-    /**
-     * The declared columns, as a clean list of `{id, heading, type, align, width}`.
-     *
-     * Anything without an id is dropped: the id is what ties a column to its
-     * sub-mapping, and a column that lost it can't be mapped to anything. Stored
-     * config is operator-authored JSON, so nothing here trusts its shape.
-     *
-     * @return list<array<string, mixed>>
-     */
-    protected function declaredColumns(FieldMapping $mapping): array
-    {
         $columns = [];
+        $types = [];
 
-        foreach ((array) $mapping->option('columns', []) as $column) {
-            if (! is_array($column) || ($column['id'] ?? '') === '') {
-                continue;
-            }
-
+        foreach (is_array($value['columns'] ?? null) ? array_values($value['columns']) : [] as $column) {
+            $column = is_array($column) ? $column : [];
+            $types[] = (string) ($column['type'] ?? self::DEFAULT_TYPE);
             $columns[] = [
-                'id'      => (string) $column['id'],
-                'heading' => (string) ($column['heading'] ?? ''),
-                'type'    => isset(static::columnTypes()[$column['type'] ?? '']) ? (string) $column['type'] : 'singleline',
+                'heading' => trim((string) ($column['heading'] ?? '')),
+                'type'    => (string) ($column['type'] ?? self::DEFAULT_TYPE),
                 'align'   => (string) ($column['align'] ?? ''),
                 'width'   => (string) ($column['width'] ?? ''),
             ];
         }
 
-        return $columns;
+        $rows = [];
+
+        foreach (is_array($value['rows'] ?? null) ? $value['rows'] : [] as $row) {
+            $cells = is_array($row) ? array_values($row) : [];
+            $reduced = [];
+
+            foreach ($types as $index => $type) {
+                $reduced[] = $this->cellPrint($type, $cells[$index] ?? null);
+            }
+
+            $rows[] = $reduced;
+        }
+
+        return ['columns' => $columns, 'rows' => $rows];
     }
 
     /**
-     * The declared columns as Table Maker stores them — Influx's `id` stripped,
-     * since the stored shape is a positional list with no identity of its own.
+     * The feed's `columns` as a clean list of `{heading, type, align, width}`.
      *
-     * @param list<array<string, mixed>> $columns
+     * A bare string is its label — the terse form for the common table nobody
+     * needs to type or align. Anything without a usable label is dropped: an
+     * unlabelled column still occupies a position every row counts against, but a
+     * feed that ships one has a bug, and keeping it would silently widen the
+     * table with a blank heading.
+     *
+     * @return list<array{heading: string, type: string, align: string, width: string}>
+     */
+    protected static function columnsFrom(mixed $columns): array
+    {
+        $clean = [];
+
+        foreach (is_array($columns) ? $columns : [] as $column) {
+            if (is_scalar($column)) {
+                $column = ['label' => $column];
+            }
+
+            if (! is_array($column)) {
+                continue;
+            }
+
+            $heading = trim((string) ($column['label'] ?? ''));
+
+            if ($heading === '') {
+                continue;
+            }
+
+            $type = (string) ($column['type'] ?? '');
+            $clean[] = [
+                'heading' => $heading,
+                'type'    => isset(static::columnTypes()[$type]) ? $type : self::DEFAULT_TYPE,
+                'align'   => (string) ($column['align'] ?? ''),
+                // A feed may ship a width as a number; Table Maker stores a string.
+                'width' => (string) ($column['width'] ?? ''),
+            ];
+        }
+
+        return $clean;
+    }
+
+    /**
+     * The columns in Table Maker's own key order — the shape its `serializeValue()`
+     * round-trips and its editor reads back.
+     *
+     * @param list<array{heading: string, type: string, align: string, width: string}> $columns
      * @return list<array<string, mixed>>
      */
-    protected function storableColumns(array $columns): array
+    protected static function storableColumns(array $columns): array
     {
         return array_map(
             static fn(array $column): array => [
-                'heading' => (string) $column['heading'],
-                'width'   => (string) $column['width'],
-                'align'   => (string) $column['align'],
-                'type'    => (string) $column['type'],
+                'heading' => $column['heading'],
+                'width'   => $column['width'],
+                'align'   => $column['align'],
+                'type'    => $column['type'],
             ],
             $columns,
         );
-    }
-
-    /**
-     * This mapping's active per-column sub-mappings, keyed by column id.
-     *
-     * @return array<string, FieldMapping>
-     */
-    protected function activeColumnMappings(FieldMapping $mapping): array
-    {
-        $subs = [];
-
-        foreach ($mapping->subMappings() as $sub) {
-            if ($sub->isActive()) {
-                $subs[$sub->handle] = $sub;
-            }
-        }
-
-        return $subs;
-    }
-
-    /**
-     * A boolean field setting, defaulting to true when the property isn't there —
-     * the plugin may be absent, an older version may not declare it, and a Yii
-     * component throws on an unknown property rather than returning null.
-     */
-    protected static function setting(CraftFieldInterface $field, string $property): bool
-    {
-        return property_exists($field, $property) ? (bool) $field->$property : true;
     }
 }

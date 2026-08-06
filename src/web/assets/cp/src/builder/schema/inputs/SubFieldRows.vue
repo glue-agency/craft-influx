@@ -86,14 +86,15 @@
                           v-text="$t('missing mapping')"></span>
                     <code class="handle light" v-text="sub.handle"></code>
                 </label>
-                <!-- `cells: false` — the sub-field's own value comes entirely from
-                     its extras (a nested Table, Link or Table Maker), so it renders
-                     neither control, exactly as its top-level row does by declaring
-                     neither region. A node select and a text box there would write
-                     into slots no sync reads. The columns stay empty rather than
-                     collapsing, so every row's label still shares one edge. -->
-                <template v-if="sub.cells !== false">
+                <!-- Each cell renders only where the sub-field's own field declares
+                     that region, which is how a nested row ends up with exactly the
+                     cells its top-level row has. A nested Table or Link declares
+                     neither (its value is its sub-mappings); a nested Table Maker
+                     declares a source and no default (one node holds the whole
+                     structure). The tracks stay in place either way, so every row's
+                     label still shares one edge. -->
                 <v-searchable-select
+                    v-if="sub.cells?.source !== false"
                     :model-value="rowFor(sub.handle).node"
                     :options="sourceNodeOptions"
                     searchable
@@ -121,7 +122,7 @@
                      own list now, so an unset row reads as an empty cell here too
                      rather than as a labelled "—" a card row alone would show. -->
                 <component
-                    v-if="expanded || ! serverRendered(sub)"
+                    v-if="sub.cells?.default !== false && (expanded || ! serverRendered(sub))"
                     :is="controlFor(sub)"
                     :node="sub"
                     :model-value="rowFor(sub.handle).default"
@@ -129,7 +130,6 @@
                     :read-only="readOnly"
                     @update:model-value="updateRow(sub.handle, 'default', $event)"
                 />
-                </template>
 
                 <!-- This row's OWN extras — whatever its field declares at the top
                      level, because a nested field is configured the same way: a
