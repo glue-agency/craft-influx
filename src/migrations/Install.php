@@ -93,6 +93,7 @@ class Install extends Migration
             'itemsSkipped'   => $this->integer()->defaultValue(0),
             'itemsDeleted'   => $this->integer()->defaultValue(0),
             'itemsDisabled'  => $this->integer()->defaultValue(0),
+            'itemsErrored'   => $this->integer()->defaultValue(0),
             'startedAt'      => $this->dateTime()->notNull(),
             'finishedAt'     => $this->dateTime()->null(),
             'error'          => $this->text()->null(),

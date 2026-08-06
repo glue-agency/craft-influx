@@ -168,6 +168,7 @@ class LogPresenter
             'itemsSkipped'   => (int) $log->itemsSkipped,
             'itemsDeleted'   => (int) $log->itemsDeleted,
             'itemsDisabled'  => (int) $log->itemsDisabled,
+            'itemsErrored'   => (int) $log->itemsErrored,
         ];
     }
 
@@ -283,6 +284,7 @@ class LogPresenter
             'skipped'   => (int) $log->itemsSkipped,
             'disabled'  => (int) $log->itemsDisabled,
             'deleted'   => (int) $log->itemsDeleted,
+            'error'     => (int) $log->itemsErrored,
         ], (string) $log->status);
     }
 
@@ -297,7 +299,7 @@ class LogPresenter
      * order they render in; `seen` isn't one of them, being the leading progress
      * pill handled separately.
      *
-     * @param array{seen?: int, created?: int, updated?: int, unchanged?: int, skipped?: int, disabled?: int, deleted?: int} $counters
+     * @param array{seen?: int, created?: int, updated?: int, unchanged?: int, skipped?: int, disabled?: int, deleted?: int, error?: int} $counters
      * @return list<array{count: int, kind: string, color: string}>
      */
     public static function composeResultSegments(array $counters, string $status): array

@@ -4,7 +4,6 @@ namespace GlueAgency\Influx\services;
 
 use Craft;
 use craft\base\Component;
-use craft\db\Query;
 use craft\helpers\Db;
 use DateTime;
 use GlueAgency\Influx\db\Table;
@@ -482,14 +481,27 @@ class LogsService extends Component
      */
     protected function queryErrorLogCount(): int
     {
-        return (int) LogRecord::find()
-            ->where(['status' => RunStatus::ERROR->value])
-            ->orWhere(['id' => (new Query())
-                ->select(['logId'])
-                ->from(Table::LOG_ITEMS)
-                ->where(['action' => ItemAction::ERROR->value]),
-            ])
-            ->count();
+        return (int) LogRecord::find()->where(self::erroredCondition())->count();
+    }
+
+    /**
+     * What "this log has errors" means — for the nav badge and for the Logs
+     * overview's Error filter alike, because the two disagreeing is what sent an
+     * operator looking for errors that were never findable: the badge counted a
+     * run that finished `ok` with a handful of error items, and filtering the
+     * overview by Error matched on run status only, so the very log the badge
+     * was pointing at wasn't in the results.
+     *
+     * A failed RUN and a completed run with failed ITEMS stay different facts —
+     * the status column still says which — but both are "needs a look", which is
+     * the question the badge and that filter are asked.
+     *
+     * Reads the counter column rather than a subquery over the items table, so
+     * the badge's COUNT stays one table scan.
+     */
+    protected static function erroredCondition(): array
+    {
+        return ['or', ['status' => RunStatus::ERROR->value], ['>', 'itemsErrored', 0]];
     }
 
     /**
@@ -542,6 +554,10 @@ class LogsService extends Component
      * the filters the Logs overview toolbar exposes. A null filter is ignored,
      * so `paginate($page, $perPage)` still returns everything.
      *
+     * `error` is the one status that isn't a plain column match: it selects
+     * everything the nav badge counts ({@see erroredCondition()}), so following
+     * the badge to this list actually finds the logs it was counting.
+     *
      * @return array{logs: LogRecord[], total: int}
      */
     public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null): array
@@ -552,7 +568,11 @@ class LogsService extends Component
             $query->andWhere(['linkHandle' => $linkHandle]);
         }
 
-        if ($status !== null && $status !== '') {
+        if ($status === RunStatus::ERROR->value) {
+            // Matches the nav badge's definition, not the status column's — see
+            // {@see erroredCondition()}.
+            $query->andWhere(self::erroredCondition());
+        } elseif ($status !== null && $status !== '') {
             $query->andWhere(['status' => $status]);
         }
 

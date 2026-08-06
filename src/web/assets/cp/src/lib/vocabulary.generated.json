@@ -53,6 +53,12 @@
             "tone": null
         },
         {
+            "key": "itemsErrored",
+            "action": "error",
+            "label": "error",
+            "tone": "bad"
+        },
+        {
             "key": "itemsDisabled",
             "action": "disabled",
             "label": "disabled",

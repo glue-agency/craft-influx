@@ -44,6 +44,23 @@ class LogPresenterResultSegmentsTest extends Unit
         $this->assertSame([], LogPresenter::composeResultSegments([], 'ok'));
     }
 
+    public function testErroredItemsGetTheirOwnRedPill(): void
+    {
+        // A run that errored on some items still FINISHES ok — only the run
+        // itself failing sets an error status — so without this pill its summary
+        // read as a clean created/unchanged run while the nav badge insisted the
+        // log needed a look.
+        $this->assertSame([
+            ['count' => 4, 'kind' => 'created', 'color' => 'green'],
+            ['count' => 90, 'kind' => 'unchanged', 'color' => 'gray'],
+            ['count' => 2, 'kind' => 'error', 'color' => 'red'],
+        ], LogPresenter::composeResultSegments([
+            'created'   => 4,
+            'unchanged' => 90,
+            'error'     => 2,
+        ], 'ok'));
+    }
+
     public function testRunningRunLeadsWithSeenProgressPill(): void
     {
         $segments = LogPresenter::composeResultSegments([

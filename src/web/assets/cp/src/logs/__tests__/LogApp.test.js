@@ -61,11 +61,32 @@ describe('LogApp', () => {
         const w = mountApp();
 
         expect(w.findAll('.influx-split-item').length).toBe(2);
-        // Seven counters (seen + six actions); "seen" shows the itemsSeen total.
+        // Eight counters (seen + seven actions); "seen" shows the itemsSeen total.
         const counters = w.findAll('.influx-counter');
-        expect(counters.length).toBe(7);
+        expect(counters.length).toBe(8);
         expect(counters[0].text()).toContain('2');
         expect(counters[0].text().toLowerCase()).toContain('seen');
+    });
+
+    it('offers an error counter to filter by', async () => {
+        // The counter row IS the filter, and errors were the one action with no
+        // counter — so a run reporting errors gave no way to reach the rows that
+        // caused them short of paging the whole list.
+        window.Craft.sendActionRequest = vi.fn(() => Promise.resolve({
+            data: { items: [], total: 0, counters: {}, done: false },
+        }));
+
+        const w = mountApp();
+        await flushPromises();
+
+        const errors = w.findAll('.influx-counter').find((c) => c.text().toLowerCase().includes('error'));
+        expect(errors).toBeDefined();
+
+        await errors.trigger('click');
+        await flushPromises();
+
+        expect(w.vm.activeAction).toBe('error');
+        expect(window.Craft.sendActionRequest.mock.calls.find((c) => c[1].includes('status=error'))).toBeTruthy();
     });
 
     it('chips the user a run was triggered by, beside the trigger label', () => {

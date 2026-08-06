@@ -80,6 +80,26 @@ class LogBufferLifecycleTest extends Unit
         $this->assertSame(1, $logs->bufferedRowCount(5));
     }
 
+    public function testAnErrorItemAdvancesItsOwnCounter(): void
+    {
+        // Errors were the one action with no counter column, so nothing here
+        // moved when an item threw — which left the run summarising itself as
+        // clean and the log viewer with no error chip to filter by.
+        $logs = $this->service();
+        $log = $this->log(31);
+
+        $logs->recordItem($log, ItemAction::ERROR, null, 'abc', 'boom');
+        $logs->recordItem($log, ItemAction::ERROR, null, 'def', 'boom');
+        $logs->recordItem($log, ItemAction::CREATED, 11, 'ghi');
+
+        // The in-memory record, which the progress callbacks and after-run
+        // events read...
+        $this->assertSame(2, $log->itemsErrored);
+        $this->assertSame(1, $log->itemsCreated);
+        // ...and the delta flush() turns into the `[[col]] + n` update.
+        $this->assertSame(['itemsErrored' => 2, 'itemsCreated' => 1], $logs->bufferedDeltas(31));
+    }
+
     public function testEveryBufferedValueLandsUnderItsOwnColumn(): void
     {
         $logs = $this->service();
@@ -207,6 +227,16 @@ class LogBufferLifecycleTest extends Unit
             public function bufferedRowByColumn(int $logId, int $index = 0): array
             {
                 return array_combine(self::ITEM_COLUMNS, $this->buffers[$logId]->rows()[$index]);
+            }
+
+            /**
+             * The per-column deltas flush() would apply.
+             *
+             * @return array<string, int>
+             */
+            public function bufferedDeltas(int $logId): array
+            {
+                return $this->buffers[$logId]->counterDeltas();
             }
 
             public function mappingsMaxBytes(): int

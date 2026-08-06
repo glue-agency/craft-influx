@@ -21,6 +21,7 @@ use GlueAgency\Influx\db\Table;
  * @property int $itemsSkipped
  * @property int $itemsDeleted
  * @property int $itemsDisabled
+ * @property int $itemsErrored
  * @property string $startedAt
  * @property ?string $finishedAt
  * @property ?string $error

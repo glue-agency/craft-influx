@@ -47,10 +47,22 @@ class ItemActionTest extends Unit
         $this->assertSame(['updated'], ItemAction::UPDATED->filterGroup());
     }
 
-    public function testUncountedErrorMatchesOnlyItself(): void
+    public function testErrorOwnsItsCounterAlone(): void
     {
-        // ERROR has no counter, so it can't group by one — itself only.
+        // No per-site sibling to pull in, so the group is itself — but it IS
+        // counted, which is what puts an error chip on the filter row.
         $this->assertSame(['error'], ItemAction::ERROR->filterGroup());
+        $this->assertSame('itemsErrored', ItemAction::ERROR->counterAttribute());
+    }
+
+    public function testEveryActionIsCounted(): void
+    {
+        // An uncounted action is an unfilterable one: the counter row IS the log
+        // viewer's filter, so ERROR having no column left a run reporting errors
+        // the operator could only find by paging the whole item list.
+        foreach (ItemAction::cases() as $case) {
+            $this->assertNotNull($case->counterAttribute(), "{$case->value} has no counter, so nothing can filter to it.");
+        }
     }
 
     public function testCountedCasesAreOneBasePerCounterInDisplayOrder(): void
@@ -60,6 +72,7 @@ class ItemActionTest extends Unit
             'updated',
             'unchanged',
             'skipped',
+            'error',
             'disabled',
             'deleted',
         ], array_map(

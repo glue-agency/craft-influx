@@ -21,10 +21,9 @@ enum ItemAction: string
 
     /**
      * One case per distinct log counter, in canonical order: the base of each
-     * counter group (a per-site variant shares its base's counter, so it folds
-     * into it) with ERROR dropped, having no counter of its own. THE display
-     * order for both the overviews' result pills and the log viewer's counter
-     * row, so the two can't drift.
+     * counter group, a per-site variant sharing its base's counter and folding
+     * into it. THE display order for both the overviews' result pills and the
+     * log viewer's counter row, so the two can't drift.
      *
      * @return list<self>
      */
@@ -47,9 +46,15 @@ enum ItemAction: string
     }
 
     /**
-     * The log counter column this action increments, or null when the action has
-     * no column of its own — errors are visible as `error` rows and through the
-     * nav's error badge instead.
+     * The log counter column this action increments. Every action owns one,
+     * including ERROR — the counter row IS the log viewer's item filter, so an
+     * action without a column was an action the operator could not filter to.
+     * A run that errored on a dozen items finished `ok`, summarised itself as
+     * created/updated/unchanged, and left the error rows reachable only by
+     * paging the whole list, while the nav badge insisted the log needed a look.
+     *
+     * Kept nullable: an action added later can be counted under an existing
+     * column or, deliberately, under none.
      */
     public function counterAttribute(): ?string
     {
@@ -58,9 +63,9 @@ enum ItemAction: string
             self::UPDATED   => 'itemsUpdated',
             self::UNCHANGED => 'itemsUnchanged',
             self::SKIPPED   => 'itemsSkipped',
+            self::ERROR     => 'itemsErrored',
             self::DISABLED, self::DISABLED_FOR_SITE => 'itemsDisabled',
             self::DELETED, self::DELETED_FOR_SITE => 'itemsDeleted',
-            self::ERROR => null,
         };
     }
 
@@ -69,8 +74,8 @@ enum ItemAction: string
      * shares its counter ({@see counterAttribute()}). The UI's filters are the
      * counters, and a counter groups an action with its per-site sibling
      * (`deleted` + `deleted-for-site`, `disabled` + `disabled-for-site`), so the
-     * filtered list must group them the same way or it undercounts. Actions
-     * with no shared counter (or none — errors) match only themselves.
+     * filtered list must group them the same way or it undercounts. An action
+     * owning its counter alone matches only itself.
      *
      * @return string[]
      */
