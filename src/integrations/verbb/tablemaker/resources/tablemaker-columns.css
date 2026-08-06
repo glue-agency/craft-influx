@@ -6,66 +6,85 @@
    the integration's CSS travels with the integration. cssCodeSplit is off, so it
    lands in the one bundle either way. */
 
-/* The card body is a three-track subgrid (schema-form.css), so anything dropped
-   in it auto-places into the FIRST track — which is what squeezed this table into
-   the Field column with two thirds of the card empty beside it. Both the table and
-   the empty hint span the tracks instead; they aren't mapping rows and have no
-   business lining up with the Field / Source node / Default value columns. */
-.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-tablemaker-columns,
-.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-mapping-group-empty {
+/* The headings and rows join the card's tracks the way a sub-field row does
+   (schema-form.css), so a column's controls sit directly above the mapping row
+   that configures it: heading under Field, type/align under Source node, width
+   under Default value. Left to auto-place they'd stack into the first track,
+   which is what squeezed the old <table> into the Field column. */
+.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-tablemaker-headings,
+.influx-schema-form .influx-subfields-group > .influx-mapping-group-body > .influx-tablemaker-row {
     grid-column: 1 / -1;
+    display: grid;
+    /* Fixed template first as the no-subgrid fallback, matching the card's own. */
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: subgrid;
+    column-gap: 12px;
+    align-items: center;
+    /* The same side inset the card's rows take, so the tracks stay put. */
+    padding: 6px 12px;
 }
 
-.influx-tablemaker-columns {
-    width: 100%;
-    border-collapse: collapse;
-    /* Its cells carry the card's 12px side inset instead — border-collapse
-       ignores padding on the table itself. */
-    table-layout: fixed;
-}
-
-.influx-tablemaker-columns th {
-    padding: 6px 6px 6px 12px;
+.influx-schema-form .influx-tablemaker-headings {
+    padding-top: 6px;
+    padding-bottom: 6px;
     font-size: 11px;
     font-weight: 600;
     color: #777;
-    text-align: left;
     text-transform: uppercase;
     letter-spacing: .04em;
     background: #f3f7fc;
     border-bottom: 1px solid rgba(0, 0, 0, .06);
 }
 
-.influx-tablemaker-columns td {
-    padding: 6px 6px 6px 12px;
+.influx-schema-form .influx-tablemaker-row {
     border-bottom: 1px solid rgba(0, 0, 0, .05);
-    vertical-align: top;
 }
 
-.influx-tablemaker-columns tr:last-child td { border-bottom: none; }
+.influx-schema-form .influx-tablemaker-row:last-child { border-bottom: none; }
 
-/* The heading column carries the row; the rest size to their controls, so a
-   long heading doesn't squeeze the type select into two lines. */
-.influx-tablemaker-columns th:first-child,
-.influx-tablemaker-columns td:first-child { width: 40%; }
-
-.influx-tablemaker-columns .influx-tablemaker-actions {
-    width: 28px;
-    padding-right: 12px;
-    text-align: right;
+/* Halved, so Type and Align split the Source-node track evenly — and the pair
+   keeps its own gap rather than butting together. */
+.influx-schema-form .influx-tablemaker-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    min-width: 0;
 }
 
-/* Bigger than the surrounding chrome — it's a × glyph standing in for a word,
-   and it needs a hit area. */
-.influx-tablemaker-columns .influx-tablemaker-actions button {
-    font-size: 15px;
-    line-height: 1;
-    padding: 2px 4px;
+/* Craft's reorder handle sits in a gutter of its own, mirroring the chevron
+   gutter a sub-field label carries — so the heading input's left edge lines up
+   with the field names in the Cells card below it. */
+.influx-schema-form .influx-tablemaker-heading-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
 }
 
-.influx-tablemaker-columns .influx-tablemaker-actions button:hover {
-    color: #cf1124;
-    text-decoration: none;
+.influx-schema-form .influx-tablemaker-heading-cell .move {
+    flex: none;
+    cursor: grab;
+    color: #98a3ae;
+}
+
+.influx-schema-form .influx-tablemaker-heading-cell .move:active { cursor: grabbing; }
+.influx-schema-form .influx-tablemaker-row.is-dragging { opacity: .5; }
+
+/* The delete rides inside the last track, after the width, rather than hanging
+   off the row — the track then still ends where Default value does. */
+.influx-schema-form .influx-tablemaker-width-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.influx-schema-form .influx-tablemaker-width-cell input { flex: 1 1 auto; }
+
+.influx-schema-form .influx-tablemaker-width-cell .delete {
+    flex: none;
+    /* Pushed to the track's right edge when there's no width input to fill it. */
+    margin-left: auto;
 }
 
 .influx-schema-form .influx-mapping-group-empty {

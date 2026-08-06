@@ -27,51 +27,74 @@
         <p v-if="! columns.length" class="influx-mapping-group-empty light"
            v-text="node.emptyHint || $t('Add a column to start mapping this table.')"></p>
 
-        <table v-else class="influx-tablemaker-columns">
-            <thead>
-                <tr>
-                    <th v-text="$t('Heading')"></th>
-                    <th v-text="$t('Type')"></th>
-                    <th v-if="node.enableAlign" v-text="$t('Align')"></th>
-                    <th v-if="node.enableWidth" v-text="$t('Width')"></th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="(column, index) in columns" :key="column.id">
-                    <td>
-                        <input type="text" class="text fullwidth" :value="column.heading" :disabled="readOnly"
-                               @input="patch(index, 'heading', $event.target.value)" />
-                    </td>
-                    <td>
-                        <div class="select">
-                            <select :value="column.type" :disabled="readOnly"
-                                    @change="patch(index, 'type', $event.target.value)">
-                                <option v-for="(label, value) in node.columnTypes" :key="value"
-                                        :value="value" v-text="label"></option>
-                            </select>
-                        </div>
-                    </td>
-                    <td v-if="node.enableAlign">
-                        <div class="select">
-                            <select :value="column.align" :disabled="readOnly"
-                                    @change="patch(index, 'align', $event.target.value)">
-                                <option v-for="opt in ALIGNMENTS" :key="opt.value"
-                                        :value="opt.value" v-text="$t(opt.label)"></option>
-                            </select>
-                        </div>
-                    </td>
-                    <td v-if="node.enableWidth">
-                        <input type="text" class="text fullwidth" :value="column.width" :disabled="readOnly"
-                               @input="patch(index, 'width', $event.target.value)" />
-                    </td>
-                    <td class="influx-tablemaker-actions">
-                        <button v-if="! readOnly" type="button" class="influx-clear-link"
-                                :title="$t('Remove')" @click="removeColumn(index)">&times;</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        <!-- Headings and rows are siblings on the card's subgrid rather than a
+             <table>, so a column's controls land on the very tracks its mapping
+             row uses in the Cells card below: heading under Field, type/align
+             under Source node, width under Default value. A table would have
+             measured its own columns and drifted off them. -->
+        <template v-else>
+            <div class="influx-tablemaker-headings">
+                <div v-text="$t('Heading')"></div>
+                <div class="influx-tablemaker-pair">
+                    <span v-text="$t('Type')"></span>
+                    <span v-if="node.enableAlign" v-text="$t('Align')"></span>
+                </div>
+                <div v-text="node.enableWidth ? $t('Width') : ''"></div>
+            </div>
+
+            <div
+                v-for="(column, index) in columns"
+                :key="column.id"
+                class="influx-tablemaker-row"
+                :class="{ 'is-dragging': draggingIndex === index }"
+                @dragover.prevent
+                @drop.prevent="dropOn(index)"
+            >
+                <div class="influx-tablemaker-heading-cell">
+                    <!-- Craft's own handle and glyph. Reordering is real work here:
+                         it decides the written column order, and the cell mappings
+                         ride along untouched because they're keyed by column id. -->
+                    <a
+                        v-if="! readOnly"
+                        class="move icon"
+                        role="button"
+                        :title="$t('Reorder')"
+                        :draggable="true"
+                        @dragstart="draggingIndex = index"
+                        @dragend="draggingIndex = null"
+                    ></a>
+                    <input type="text" class="text fullwidth" :value="column.heading" :disabled="readOnly"
+                           @input="patch(index, 'heading', $event.target.value)" />
+                </div>
+
+                <div class="influx-tablemaker-pair">
+                    <div class="select">
+                        <select :value="column.type" :disabled="readOnly"
+                                @change="patch(index, 'type', $event.target.value)">
+                            <option v-for="(label, value) in node.columnTypes" :key="value"
+                                    :value="value" v-text="label"></option>
+                        </select>
+                    </div>
+                    <div v-if="node.enableAlign" class="select">
+                        <select :value="column.align" :disabled="readOnly"
+                                @change="patch(index, 'align', $event.target.value)">
+                            <option v-for="opt in ALIGNMENTS" :key="opt.value"
+                                    :value="opt.value" v-text="$t(opt.label)"></option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- The delete rides in the last track beside the width rather than
+                     outside it, so the track still lines up with Default value. -->
+                <div class="influx-tablemaker-width-cell">
+                    <input v-if="node.enableWidth" type="text" class="text fullwidth"
+                           :value="column.width" :disabled="readOnly"
+                           @input="patch(index, 'width', $event.target.value)" />
+                    <a v-if="! readOnly" class="delete icon" role="button" :title="$t('Delete')"
+                       @click.prevent="removeColumn(index)"></a>
+                </div>
+            </div>
+        </template>
     </v-mapping-group-card>
 
     <!-- The cells, as the same table every other sub-field card renders — so a
@@ -134,6 +157,8 @@ export default {
 
     data() {
         return {
+            // Which row the handle is currently dragging, or null.
+            draggingIndex: null,
             ALIGNMENTS: [
                 { value: '', label: 'Default' },
                 { value: 'left', label: 'Left' },
@@ -214,6 +239,26 @@ export default {
             delete fields[removed.id];
 
             this.write(this.columns.filter((_, i) => i !== index), fields);
+        },
+
+        /**
+         * Drop the dragged column at this index. The cell mappings are untouched:
+         * they're keyed by column id, which is the whole reason the id exists —
+         * on a positional key every mapping would follow the slot rather than the
+         * column and silently re-point.
+         */
+        dropOn(index) {
+            const from = this.draggingIndex;
+            this.draggingIndex = null;
+
+            if (from === null || from === index) {
+                return;
+            }
+
+            const columns = [...this.columns];
+            columns.splice(index, 0, ...columns.splice(from, 1));
+
+            this.write(columns, this.channels.fields || {});
         },
 
         patch(index, key, value) {

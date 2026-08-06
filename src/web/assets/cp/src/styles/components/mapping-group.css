@@ -47,13 +47,10 @@
     cursor: pointer;
 }
 
-/* Colour restated on hover, not just inherited: Craft's CP styles a bare
-   <button> blue on hover, which is exactly the link-ness this deliberately
-   isn't. Underline alone is the affordance. */
-.influx-clear-link:hover {
-    color: #444;
-    text-decoration: underline;
-}
+/* Craft's CP takes a bare <button> to link-blue on hover, and that is left
+   alone deliberately: gray is the RESTING state, so the control sits quietly
+   beside the pills until it's pointed at, and then reads as the link it is. */
+.influx-clear-link:hover { text-decoration: underline; }
 
 /* Static (non-collapsible) header — informational, no toggle affordance. */
 .influx-mapping-group.is-static .influx-mapping-group-header {

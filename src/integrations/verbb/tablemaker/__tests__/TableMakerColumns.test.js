@@ -33,7 +33,7 @@ describe('TableMakerColumns', () => {
     it('starts empty, with a hint rather than a headless table', () => {
         const w = mountCard();
 
-        expect(w.find('.influx-tablemaker-columns').exists()).toBe(false);
+        expect(w.find('.influx-tablemaker-row').exists()).toBe(false);
         expect(w.findComponent({ name: 'SubFieldRows' }).exists()).toBe(false);
         expect(w.find('.influx-mapping-group-empty').exists()).toBe(true);
     });
@@ -79,7 +79,7 @@ describe('TableMakerColumns', () => {
             fields: { c1: { node: 'x.day' }, c2: { node: 'x.from' } },
         });
 
-        await w.findAll('.influx-tablemaker-actions button')[1].trigger('click');
+        await w.findAll('.influx-tablemaker-width-cell .delete')[1].trigger('click');
 
         const { options, fields } = emitted(w);
         expect(options.columns.map((c) => c.id)).toEqual(['c1']);
@@ -89,15 +89,43 @@ describe('TableMakerColumns', () => {
     it('prunes the columns key off options when the last column goes', async () => {
         const w = mountCard({ options: { columns: [twoColumns[0]] }, fields: {} });
 
-        await w.find('.influx-tablemaker-actions button').trigger('click');
+        await w.find('.influx-tablemaker-width-cell .delete').trigger('click');
 
         expect(emitted(w).options).toEqual({});
+    });
+
+    it('reorders columns by their handle, carrying the mappings along', async () => {
+        // Column order IS the written table's order. The cell mappings don't move
+        // with it because they're keyed by id — on a positional key every mapping
+        // would follow the slot instead of the column and silently re-point.
+        const w = mountCard({
+            options: { columns: twoColumns },
+            fields: { c1: { node: 'x.day' }, c2: { node: 'x.from' } },
+        });
+
+        await w.findAll('.influx-tablemaker-heading-cell .move')[1].trigger('dragstart');
+        await w.findAll('.influx-tablemaker-row')[0].trigger('drop');
+
+        const { options, fields } = emitted(w);
+        expect(options.columns.map((c) => c.id)).toEqual(['c2', 'c1']);
+        expect(fields).toEqual({ c1: { node: 'x.day' }, c2: { node: 'x.from' } });
+    });
+
+    it('ignores a drop that goes nowhere', async () => {
+        const w = mountCard({ options: { columns: twoColumns }, fields: {} });
+
+        // Onto itself, and with nothing being dragged at all.
+        await w.findAll('.influx-tablemaker-heading-cell .move')[0].trigger('dragstart');
+        await w.findAll('.influx-tablemaker-row')[0].trigger('drop');
+        await w.findAll('.influx-tablemaker-row')[1].trigger('drop');
+
+        expect(w.emitted('update:channels')).toBeUndefined();
     });
 
     it('edits a heading in place', async () => {
         const w = mountCard({ options: { columns: twoColumns }, fields: {} });
 
-        await w.findAll('.influx-tablemaker-columns input[type="text"]')[0].setValue('Weekday');
+        await w.findAll('.influx-tablemaker-heading-cell input')[0].setValue('Weekday');
 
         expect(emitted(w).options.columns[0].heading).toBe('Weekday');
         expect(emitted(w).options.columns[1]).toEqual(twoColumns[1]);
@@ -139,7 +167,7 @@ describe('TableMakerColumns', () => {
             node: { ...node, enableWidth: false, enableAlign: false },
         });
 
-        expect(w.findAll('.influx-tablemaker-columns thead th').map((h) => h.text()))
+        expect(w.findAll('.influx-tablemaker-headings > *').map((h) => h.text()))
             .toEqual(['Heading', 'Type', '']);
     });
 
@@ -155,7 +183,7 @@ describe('TableMakerColumns', () => {
         const w = mountCard({ options: { columns: twoColumns } }, { readOnly: true });
 
         expect(w.find('.add-column').exists()).toBe(false);
-        expect(w.find('.influx-tablemaker-actions button').exists()).toBe(false);
-        expect(w.find('.influx-tablemaker-columns input[type="text"]').attributes('disabled')).toBeDefined();
+        expect(w.find('.influx-tablemaker-width-cell .delete').exists()).toBe(false);
+        expect(w.find('.influx-tablemaker-heading-cell input').attributes('disabled')).toBeDefined();
     });
 });
