@@ -36,6 +36,12 @@
         <template v-slot:default="{ expanded }">
             <p v-if="node.instructions" class="light sub-fields-hint" v-html="node.instructions" />
 
+            <!-- Why this group is closed, where it is: a card can be rendered
+                 read-only by a setting on the row above it, and a table that
+                 silently refuses edits is worse than one that says why. Escaped,
+                 unlike the instructions — this one interpolates a handle. -->
+            <p v-if="notice" class="light sub-fields-hint" v-text="notice"></p>
+
             <!-- A group without sub-fields still gets its card when the consumer
                  supplies an empty-state hint (MatrixFields: a block type with no
                  custom fields) — the hint says why there are no rows to map. -->
@@ -211,6 +217,9 @@ export default {
         // Rendered instead of the column headings when node.subFields is
         // empty; without it the (row-less) headings still render.
         emptyHint: { type: String, default: null },
+        // Rendered above the rows whatever they are — for a card the row above
+        // has closed, which needs to say so where the rows are.
+        notice: { type: String, default: null },
     },
 
     data() {

@@ -41,7 +41,9 @@ const mountExtras = (props = {}) => mount(MappingExtras, {
         nodeOptions: [{ value: 'images.0.alt', label: 'images.0.alt' }],
         ...props,
     },
-    global: { mocks: { $t: (s) => s } },
+    // Mirrors installT's Craft-less fallback, placeholders included — a label
+    // that interpolates a handle is only worth asserting once it's substituted.
+    global: { mocks: { $t: (s, params) => (params ? s.replace(/\{(\w+)\}/g, (m, k) => params[k] ?? m) : s) } },
 });
 
 const written = (wrapper) => wrapper.emitted('update:mapping').at(-1)[0];
@@ -227,18 +229,48 @@ describe('MappingExtras matrix blocks', () => {
     });
 
     /**
-     * Only the list block sources put a node on a Matrix row, and their
-     * sub-field paths are relative to one list item — which discovery, having
-     * only ever produced absolute paths, would flag as missing on every row.
+     * A Matrix card's sub-field paths are relative to one item of the list the
+     * row names — which discovery, having only ever produced absolute paths,
+     * would flag as missing on every row.
      */
-    it('withholds the discovered nodes from a matrix card whose row reads a list', () => {
-        const discovered = [{ value: 'quotes.text', label: 'quotes.text' }];
+    it('withholds the discovered nodes from a matrix card', () => {
+        const wrapper = mountMatrix({
+            mapping: { node: 'content' },
+            discoveredNodes: [{ value: 'quotes.text', label: 'quotes.text' }],
+        });
 
-        const grouped = mountMatrix({ mapping: {}, discoveredNodes: discovered });
-        expect(grouped.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toEqual(discovered);
+        expect(wrapper.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+    });
 
-        const list = mountMatrix({ mapping: { node: 'content' }, discoveredNodes: discovered });
-        expect(list.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+    /**
+     * A single-type list has one block type by definition, so once one card
+     * carries rows the others close rather than letting a second type be mapped.
+     */
+    it('locks the other block types out under a single-type list', () => {
+        const mapping = {
+            node: 'content',
+            options: { blockSource: 'listSingle' },
+            blocks: { quote: { fields: { quote: { node: 'quote' } } } },
+        };
+
+        const cards = mountMatrix({ mapping }).findAllComponents(MatrixFields);
+
+        expect(cards[0].props('node').blockType).toBe('quote');
+        expect(cards[0].vm.lockedOut).toBe(false);
+        expect(cards[1].vm.lockedOut).toBe(true);
+        expect(cards[1].text()).toContain('quote');
+    });
+
+    it('leaves every block type open under the keyed and noded lists', () => {
+        const mapping = {
+            node: 'content',
+            options: { blockSource: 'listByKey' },
+            blocks: { quote: { fields: { quote: { node: 'quote' } } } },
+        };
+
+        const cards = mountMatrix({ mapping }).findAllComponents(MatrixFields);
+
+        expect(cards.map((card) => card.vm.lockedOut)).toEqual([false, false]);
     });
 
     it('never showIf-gates a matrix card', () => {

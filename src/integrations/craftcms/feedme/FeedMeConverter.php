@@ -418,35 +418,33 @@ class FeedMeConverter
      * Pick the block source a converted Matrix field should read with, and
      * rewrite its child paths to suit.
      *
-     * This is a FIDELITY fix, not an enhancement. Feed Me walks the feed rather
-     * than the field config and sorts on the array index it finds in each node
-     * path, so its blocks come out in the feed's own order, interleaved across
-     * types. Influx's default grouped source emits one whole block type after
-     * the other — so a converted link that carried `text, quote, text` produced
-     * `text, text, quote`, silently. A Feed Me Matrix mapping is list-shaped by
-     * construction (its paths only match anything because an index sits in
-     * them), so a list source is the faithful reading.
+     * A Matrix builds its blocks from ONE list, so the conversion's job is to
+     * find which node that is and rebase the child paths onto a list item. Feed
+     * Me stores paths index-free, which is what makes the shape readable: every
+     * child of every type shares the list node as its first segment, and under
+     * the wrapper shape each type's children then share ONE more segment naming
+     * the type ({@see MatrixBlockSource::LIST_BY_KEY}). Flat children under a
+     * single mapped type are {@see MatrixBlockSource::LIST_SINGLE}.
      *
-     * Feed Me stores paths index-free, which is what makes the shape readable:
-     * every child of every type shares the list node as its first segment, and
-     * under the wrapper shape each type's children then share ONE more segment
-     * naming the type ({@see \GlueAgency\Influx\enums\MatrixBlockSource::LIST_BY_KEY}).
-     * Flat children under a single configured type are LIST_SINGLE. Anything
-     * else — types disagreeing on the list node, or several types whose
-     * children sit flat and so can't be told apart — keeps the grouped source
-     * and warns, because that ambiguity is one Feed Me itself resolves by
-     * first-match-wins rather than correctly.
+     * Two shapes can't be read, and both leave the row WITHOUT a node so the
+     * builder shows it as unfinished rather than the sync guessing: block types
+     * mapped out of different feed nodes, and several types whose children sit
+     * flat under one list and so can't be told apart. That second one is the
+     * ambiguity Feed Me itself resolves by attributing a shared child handle to
+     * whichever type was configured first — a guess worth warning about rather
+     * than inheriting. A node-less Matrix row is never addressed, so until it's
+     * finished the field is left alone rather than cleared.
      *
      * @param array<string, array> $blocks converted per-type trees
      * @return array{node: ?string, options: array<string, mixed>, blocks: array<string, array>}
      */
     protected function deriveBlockSource(string $handle, array $blocks): array
     {
-        $grouped = ['node' => null, 'options' => [], 'blocks' => $blocks];
+        $unfinished = ['node' => null, 'options' => [], 'blocks' => $blocks];
         $segments = $this->blockChildSegments($blocks);
 
         if ($segments === []) {
-            return $grouped;
+            return $unfinished;
         }
 
         $listNodes = [];
@@ -458,16 +456,16 @@ class FeedMeConverter
         }
 
         if (count($listNodes) > 1) {
-            $this->warn("Matrix field '{$handle}' maps block types from different feed nodes, so its blocks are grouped by type rather than kept in the feed's order; set a block source in the builder if the feed carries them as one list.");
+            $this->warn("Matrix field '{$handle}' maps block types from different feed nodes, but a Matrix builds its blocks from one list; pick that list and rebase the block fields on it in the builder.");
 
-            return $grouped;
+            return $unfinished;
         }
 
         $node = (string) array_key_first($listNodes);
 
         return $this->keyedBlockSource($handle, $blocks, $segments, $node)
             ?? $this->singleBlockSource($handle, $blocks, $segments, $node)
-            ?? $grouped;
+            ?? $unfinished;
     }
 
     /**
@@ -546,11 +544,11 @@ class FeedMeConverter
     }
 
     /**
-     * The flat reading: one configured block type whose children sit directly
-     * under the list node. More than one type in that shape is the case Feed Me
+     * The flat reading: one mapped block type whose children sit directly under
+     * the list node. More than one type in that shape is the case Feed Me
      * resolves by first-match-wins — two types sharing a child handle are
-     * attributed to whichever was configured first — so it warns and stays
-     * grouped rather than inheriting the guess.
+     * attributed to whichever was configured first — so it warns and leaves the
+     * row unfinished rather than inheriting the guess.
      *
      * @param array<string, array> $blocks
      * @param array<string, array<string, list<string>>> $segments
@@ -559,7 +557,7 @@ class FeedMeConverter
     protected function singleBlockSource(string $handle, array $blocks, array $segments, string $node): ?array
     {
         if (count($blocks) > 1) {
-            $this->warn("Matrix field '{$handle}' maps several block types out of one flat list, which gives no way to tell an item's type apart; its blocks are grouped by type rather than kept in the feed's order.");
+            $this->warn("Matrix field '{$handle}' maps several block types out of one flat list, which gives no way to tell an item's type apart; give the list a block-type key or node in the builder, or map a single block type.");
 
             return null;
         }

@@ -1,11 +1,17 @@
 <template>
-    <p class="light">
-        {{ node.text }}
-        <!-- The text itself is escaped, so a note that needs to point somewhere
-             carries the target as its own key rather than markup. -->
-        <a v-if="node.url" :href="node.url" target="_blank" rel="noopener noreferrer"
-           v-text="node.linkText || node.url"></a>
-    </p>
+    <div class="influx-note">
+        <p v-if="node.text" class="light">
+            {{ node.text }}
+            <!-- The text itself is escaped, so a note that needs to point somewhere
+                 carries the target as its own key rather than markup. -->
+            <a v-if="node.url" :href="node.url" target="_blank" rel="noopener noreferrer"
+               v-text="node.linkText || node.url"></a>
+        </p>
+        <!-- A worked example, where the shortest true answer is a feed snippet
+             rather than a sentence. Escaped like the text, and preformatted:
+             the whitespace is the explanation. -->
+        <pre v-if="node.example" class="influx-note-example"><code v-text="node.example"></code></pre>
+    </div>
 </template>
 
 <script>
@@ -17,7 +23,10 @@
  * the extras it belongs to, and a Preparse field's "can't be mapped" note takes
  * the source cell the node select would have occupied.
  *
- * Binds nothing — it has no slot, reads no value and emits no write.
+ * Binds nothing — it has no slot, reads no value and emits no write. Which is
+ * also what makes it the right carrier for a showIf-gated explanation: several
+ * notes can describe the same setting's alternatives, and only the one matching
+ * the current value renders.
  */
 export default {
     name: 'NoteField',

@@ -281,3 +281,23 @@
 }
 
 .influx-schema-form .hint { padding: 0; font-size: 12px; margin: 2px 0 6px; }
+
+/* A note's worked example — a feed snippet where a sentence wouldn't land.
+   Preformatted, so it scrolls sideways rather than wrapping JSON at whatever
+   width the extras card happens to be. */
+.influx-note-example {
+    margin: 4px 0 6px;
+    padding: 8px 10px;
+    background: #f8f9fb;
+    border: 1px solid rgba(0, 0, 0, .08);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.influx-note-example code {
+    background: none;
+    padding: 0;
+    white-space: pre;
+}

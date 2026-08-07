@@ -220,12 +220,12 @@ describe('isMapped', () => {
     });
 
     /**
-     * A Matrix declares a source cell for its list block sources, but the
-     * default grouped source maps entirely through its block trees and never
-     * picks a node.
+     * A Matrix builds its blocks from a list it names on the row, so block
+     * trees alone are an unfinished row rather than a mapped one — which is
+     * exactly what the Feed Me converter leaves behind for a shape it can't
+     * read.
      */
-    it('counts a stored blocks channel even where a source cell exists', () => {
-        expect(isMapped(withSource, { blocks: { text: { fields: { body: { node: 'x' } } } } })).toBe(true);
-        expect(isMapped(withSource, { blocks: {} })).toBe(false);
+    it('does not count block trees without the list node they read', () => {
+        expect(isMapped(withSource, { blocks: { text: { fields: { body: { node: 'x' } } } } })).toBe(false);
     });
 });

@@ -40,7 +40,9 @@
              value. Rendered after the options card, as their own group cards
              spanning all three columns so their rows read like parent mapping rows.
              Matrix cards come off the raw schema: every block type renders at once,
-             so they are never showIf-gated. -->
+             so they are never showIf-gated. They do get the row's options — a card
+             whose meaning depends on a setting (which block type a single-type
+             list is for) can only know it from there. -->
         <component
             :is="controlFor(node)"
             v-for="(node, idx) in cardNodes"
@@ -49,6 +51,7 @@
             :channels="channelsFor(node)"
             :node-options="nodeOptions"
             :discovered-nodes="discoveredNodesFor(node)"
+            :mapping-options="mapping.options || {}"
             :read-only="readOnly"
             @update:channels="writeCard($event)"
         />
@@ -146,14 +149,13 @@ export default {
 
         /**
          * The discovered nodes a card checks its saved paths against — none for
-         * a Matrix card whose row reads a list. Only the list block sources put
-         * a node on a Matrix row, and their sub-field paths are relative to one
-         * list item while discovery only ever produced absolute ones, so every
-         * such path would read as missing. Null is already this prop's "nothing
-         * to check against".
+         * a Matrix card. Its sub-field paths are relative to one item of the
+         * list the row names, and discovery only ever produced absolute paths,
+         * so every one of them would read as missing. Null is already this
+         * prop's "nothing to check against".
          */
         discoveredNodesFor(node) {
-            return node.type === 'matrixFields' && this.mapping.node ? null : this.discoveredNodes;
+            return node.type === 'matrixFields' ? null : this.discoveredNodes;
         },
 
         /** showIf conditions resolve against the same declared-default fallback. */

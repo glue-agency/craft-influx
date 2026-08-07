@@ -174,6 +174,7 @@ class LinkBuilderTranslations
             ],
             'schema/inputs/MatrixFields.vue' => [
                 'This block type has no mappable sub-fields.',
+                'A single-type list maps one block type, and “{type}” is already mapped.',
             ],
             'tabs/AuthTab.vue' => [
                 'Authentication type',

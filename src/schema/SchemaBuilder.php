@@ -151,10 +151,27 @@ class SchemaBuilder
         return $this->push(['type' => self::LIGHTSWITCH] + $config);
     }
 
-    /** Static explanatory text — for placeholders like the Matrix stub. */
+    /**
+     * Static explanatory text — for placeholders like the Matrix stub.
+     *
+     * An optional `example` renders below the text as a preformatted block, for
+     * the cases where the shortest true answer is a worked feed snippet rather
+     * than a sentence. Escaped and whitespace-preserving, so it carries JSON
+     * without markup and without a formatter.
+     *
+     * Unlike its siblings this builds its node key by key rather than folding
+     * `$config` in whole, because `text` and `url` decide what renders and a
+     * stray key would read as markup. Everything else in `$config` still rides
+     * along — `showIf` above all, which is what lets several notes describe one
+     * setting's alternatives and only the matching one appear.
+     */
     public function note(array $config = []): static
     {
         $node = ['type' => self::NOTE, 'text' => $config['text'] ?? ''];
+
+        if (($config['example'] ?? '') !== '') {
+            $node['example'] = (string) $config['example'];
+        }
 
         // An optional trailing link, for a note whose real answer is elsewhere —
         // a feed format an integration documents in its own README, say. Kept as
@@ -166,7 +183,7 @@ class SchemaBuilder
             $node['linkText'] = (string) ($config['linkText'] ?? $config['url']);
         }
 
-        return $this->push($node);
+        return $this->push($node + array_diff_key($config, array_flip(['text', 'example', 'url', 'linkText'])));
     }
 
     /**

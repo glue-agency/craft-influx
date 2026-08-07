@@ -22,55 +22,47 @@ use GlueAgency\Influx\sync\item\RemoteItem;
 use Throwable;
 
 /**
- * Mapping strategy for Craft's Matrix field. Turns a remote list into Matrix
+ * Mapping strategy for Craft's Matrix field. Turns ONE remote list into Matrix
  * blocks across ANY of the field's block types (Feed Me-style) — the mapping
  * carries a per-block-type sub-mapping tree under a `blocks` channel
  * ({@see FieldMapping::blockMappings()}), keyed by block-type handle. Each
  * entry is itself a node-less FieldMapping-shaped config
- * (`{fields: {...}, nativeFields: {...}}`) whose child node paths are ABSOLUTE
- * (resolved against the top-level item, exactly like relational sub-mappings).
+ * (`{fields: {...}, nativeFields: {...}}`) whose child node paths are RELATIVE
+ * to one element of that list.
  *
- * The persisted shape mirrors Feed Me's:
+ * The persisted shape:
  *
  *   mappings[<matrixHandle>] = {
+ *       node: 'content_blocks',
+ *       options: { blockSource: 'listByKey' },
  *       blocks: {
- *           text:  { fields: { body: { node: 'content.body' } } },
- *           quote: { fields: { text: { node: 'quotes.text' } },
- *                    nativeFields: { title: { node: 'quotes.author' } } },
+ *           text:  { fields: { body: { node: 'body' } } },
+ *           quote: { fields: { text: { node: 'quote' } },
+ *                    nativeFields: { title: { node: 'author' } } },
  *       },
  *   }
  *
- * WHERE the blocks come from is the row's `options.blockSource`
- * ({@see MatrixBlockSource}), and it decides both the feed shape and whether
- * block ORDER survives:
+ * The row's node is the list; {@see RemoteItem::each()} reads it positionally
+ * and one block is emitted per element IN FEED ORDER, with a continuous `newN`
+ * counter (new1, new2, … global). Only active children
+ * ({@see FieldMapping::isActive()}) contribute, and a child absent from an
+ * element simply leaves its key off THAT block — nothing shifts. Each child
+ * value is coerced through its own strategy via a synthetic single-value
+ * {@see RemoteItem} + {@see FieldContext::descend()}.
  *
- * GROUPED (the default, and the original engine) reads no node of its own —
- * every child node is ABSOLUTE against the whole item. Only active children
- * ({@see FieldMapping::isActive()}) contribute; {@see RemoteItem}'s
- * collapsed-list semantics turn `seasons.year` into the list of every season's
- * year; blocks are built by index-zipping those per-child value lists; a
- * per-index missing value just leaves that key absent on that block. ACROSS
- * block types its blocks are GROUPED BY TYPE, never interleaved: the field's
- * block types are walked in their DECLARED order ({@see blockTypeHandles()})
- * and each configured type emits all of its zipped blocks. It is the only
- * source that can build blocks from lists in UNRELATED parts of the item.
+ * How an element names its block type is the row's `options.blockSource`
+ * ({@see MatrixBlockSource}) — its own key, a discriminator node, or not at all.
+ * An element naming no mapped type is SKIPPED: a feed carrying a type the link
+ * doesn't map is data, not a broken mapping. A misconfigured ROW does throw — a
+ * source with no node, LIST_SINGLE with more than one type mapped, or a node
+ * holding something that isn't a list.
  *
- * The LIST_* sources read ONE list node ({@see RemoteItem::each()}) and emit one
- * block per element IN FEED ORDER, with child nodes RELATIVE to the element.
- * That positional read is also what keeps blocks of the same type aligned: a
- * collapsed list drops nulls, so under GROUPED a sub-field absent from one
- * block shifts every later value of that sub-field up a block. They differ only
- * in how an element names its type — not at all (LIST_SINGLE), by its own key
- * (LIST_BY_KEY), or by a discriminator node (LIST_BY_NODE) — with the latter two
- * matching against each type's `sourceKey` option, defaulting to its handle.
- * An element naming no configured type is SKIPPED; a misconfigured row (a list
- * source with no node, LIST_SINGLE with more than one type configured) throws.
+ * Note what this deliberately can't do: build blocks out of lists in UNRELATED
+ * parts of an item. An earlier engine could, off absolute per-type paths, but
+ * the field's declared type order decided its output — so a feed carrying
+ * `text, quote, text` got `text, text, quote` and no feed shape could ask for
+ * otherwise. Blocks come from one list now, and the list decides the order.
  *
- * Either way the `newN` counter runs continuously (new1, new2, … global), so
- * block output order is deterministic.
- *
- * The parent Matrix mapping row's node is read by the LIST_* sources only —
- * under GROUPED its value comes entirely from the per-type sub-mappings.
  * Extends {@see Field} directly (NOT
  * {@see DefaultField}, NOT {@see RelationalField}): it neither writes related
  * ids nor persists sub-elements — it builds Craft's flat serialized Matrix
@@ -95,15 +87,7 @@ use Throwable;
  *
  * Both fingerprints are ordered lists compared whole, so a feed that only
  * REORDERS its blocks reads as a difference and is written through — which is
- * the point of the LIST_* sources, and costs GROUPED nothing (its order is a
- * function of the field config, so it can't change on its own).
- *
- * Known GROUPED limitation — array-valued child nodes mis-fan: a child node
- * that resolves to a flat array for ONE block is indistinguishable from
- * per-block scalar values (both arrive as a list to the zip), so it is spread
- * across blocks rather than stored as one block's array value. The LIST_*
- * sources don't have this problem — they read each element separately, so an
- * array under a child node is unambiguously that block's value.
+ * the whole point of reading the list positionally.
  */
 class Matrix extends Field
 {
@@ -118,7 +102,7 @@ class Matrix extends Field
      * still gets a card.
      *
      * A block type that exposes a native Title leads with a title row, ahead of
-     * the custom fields, in the same order {@see appendTypeBlocks()} fills a
+     * the custom fields, in the same order {@see buildBlock()} fills a
      * block in. Rows carry an optional `channel` key that routes where the SPA
      * writes them: `nativeFields` for the title, ABSENT for a custom field —
      * absent means the `fields` channel, which is the stored shape that predates
@@ -127,10 +111,8 @@ class Matrix extends Field
     public function schema(CraftFieldInterface $field): MappingSchema
     {
         return MappingSchemaBuilder::make()->mapping([
-            // The source cell is the LIST_* sources' list node; GROUPED ignores
-            // it (its value comes entirely from the sub-mappings below), which
-            // the block-source select's instructions say. There's no default
-            // cell either way — a whole set of blocks isn't a value to type in.
+            // The source cell is the list the blocks are built from. No default
+            // cell: a whole set of blocks isn't a value to type into a box.
             'source'  => true,
             'default' => false,
             'extra'   => function(MappingSchemaBuilder $b) use ($field) {
@@ -177,12 +159,18 @@ class Matrix extends Field
     }
 
     /**
-     * The settings that pick a block source and feed it: the source itself, the
-     * discriminator node LIST_BY_NODE reads, and one feed-alias box per block
-     * type for the two sources that match a key.
+     * The settings that pick a block source and feed it: the source itself, a
+     * worked example of the shape it expects, the discriminator node
+     * LIST_BY_NODE reads, and one feed-alias box per block type for the two
+     * sources that match a key.
      *
-     * The aliases are gated on those two sources rather than on "any list"
-     * because LIST_SINGLE matches no key at all, and they're one flat option per
+     * The example is one showIf-gated note per source rather than prose on the
+     * select, because the question a developer actually has here is "what does
+     * my JSON have to look like", and three lines of it answer that faster than
+     * a paragraph describing it. Notes bind nothing, so gating them is free.
+     *
+     * The aliases are gated on the two key-matching sources
+     * ({@see MatrixBlockSource::matchesKey()}), and they're one flat option per
      * type ({@see sourceKeyOption()}) rather than one nested map, since an
      * extras leaf binds exactly one option key.
      *
@@ -190,47 +178,56 @@ class Matrix extends Field
      */
     protected function blockSourceNodes(MappingSchemaBuilder $b, array $blockTypes): void
     {
-        $byKey = [MatrixBlockSource::LIST_BY_KEY->value, MatrixBlockSource::LIST_BY_NODE->value];
-
         $b->select([
             'handle'  => 'blockSource',
-            'label'   => Craft::t('influx', 'Blocks come from'),
+            'label'   => Craft::t('influx', 'Data type'),
             'options' => [
                 [
-                    'value' => MatrixBlockSource::GROUPED->value,
-                    'label' => Craft::t('influx', 'A list per block type (grouped)'),
-                ],
-                [
-                    'value' => MatrixBlockSource::LIST_SINGLE->value,
-                    'label' => Craft::t('influx', 'One list, all of one block type'),
-                ],
-                [
                     'value' => MatrixBlockSource::LIST_BY_KEY->value,
-                    'label' => Craft::t('influx', 'One list, block type from each item’s key'),
+                    'label' => Craft::t('influx', 'A list, each item keyed by its block type'),
                 ],
                 [
                     'value' => MatrixBlockSource::LIST_BY_NODE->value,
-                    'label' => Craft::t('influx', 'One list, block type from a node'),
+                    'label' => Craft::t('influx', 'A list, each item naming its block type in a node'),
+                ],
+                [
+                    'value' => MatrixBlockSource::LIST_SINGLE->value,
+                    'label' => Craft::t('influx', 'A list, all of one block type'),
                 ],
             ],
-            'default'      => MatrixBlockSource::GROUPED->value,
+            'default'      => MatrixBlockSource::fallback()->value,
             'instructions' => Craft::t(
                 'influx',
-                'Grouped reads a list per block type from the paths on the rows below, and emits one block type '
-                . 'after the other. The other three read the one list in the source cell and keep the feed’s own '
-                . 'block order — their sub-field paths are relative to a list item (<code>image</code>), not to the '
-                . 'whole item.',
+                'Blocks are built from the list in the source cell, one per item, in the feed’s own order. '
+                . 'The sub-field paths below are relative to ONE item (<code>image</code>), not to the whole item.',
             ),
-        ])
-            ->text([
-                'handle'       => 'typeNode',
-                'label'        => Craft::t('influx', 'Block type node'),
-                'default'      => 'type',
-                'instructions' => Craft::t('influx', 'The path, within one list item, naming its block type.'),
-                'showIf'       => [
-                    ['handle' => 'blockSource', 'equals' => MatrixBlockSource::LIST_BY_NODE->value],
-                ],
+        ]);
+
+        foreach ($this->blockSourceExamples($blockTypes) as $source => $example) {
+            $b->note([
+                'text'    => Craft::t('influx', 'The feed shape this expects:'),
+                'example' => $example,
+                'showIf'  => [['handle' => 'blockSource', 'equals' => $source]],
             ]);
+        }
+
+        $b->text([
+            'handle'       => 'typeNode',
+            'label'        => Craft::t('influx', 'Block type node'),
+            'default'      => 'type',
+            'instructions' => Craft::t('influx', 'The path, within one list item, naming its block type.'),
+            'showIf'       => [
+                ['handle' => 'blockSource', 'equals' => MatrixBlockSource::LIST_BY_NODE->value],
+            ],
+        ]);
+
+        $keyed = array_map(
+            static fn(MatrixBlockSource $source): string => $source->value,
+            array_filter(
+                MatrixBlockSource::cases(),
+                static fn(MatrixBlockSource $source): bool => $source->matchesKey(),
+            ),
+        );
 
         foreach ($blockTypes as $blockType) {
             $b->text([
@@ -238,9 +235,85 @@ class Matrix extends Field
                 'label'        => Craft::t('influx', 'Feed key for “{name}”', ['name' => $blockType['name']]),
                 'default'      => $blockType['handle'],
                 'instructions' => Craft::t('influx', 'What the feed calls this block type, if not its handle.'),
-                'showIf'       => [['handle' => 'blockSource', 'in' => $byKey]],
+                'showIf'       => [['handle' => 'blockSource', 'in' => array_values($keyed)]],
             ]);
         }
+    }
+
+    /**
+     * A worked feed snippet per block source, written in the FIELD'S OWN block
+     * types and their real sub-field handles — a generic `{"type": "text"}` makes
+     * the reader translate, and translating is where the shape gets misread.
+     *
+     * Two types and two sub-fields is the most that stays scannable in a hint,
+     * so longer layouts are elided with `…` rather than printed whole.
+     *
+     * @param list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}> $blockTypes
+     * @return array<string, string>
+     */
+    protected function blockSourceExamples(array $blockTypes): array
+    {
+        $first = $blockTypes[0];
+        $second = $blockTypes[1] ?? null;
+        $firstFields = $this->exampleFieldHandles($first);
+        $secondFields = $this->exampleFieldHandles($second ?? $first);
+
+        $pairs = static fn(array $handles): string => implode(', ', array_map(
+            static fn(string $handle): string      => "\"{$handle}\": \"…\"",
+            $handles,
+        ));
+
+        $keyed = ["  { \"{$first['handle']}\": { {$pairs($firstFields)} } },"];
+        $noded = ["  { \"type\": \"{$first['handle']}\", {$pairs($firstFields)} },"];
+
+        if ($second !== null) {
+            $keyed[] = "  { \"{$second['handle']}\": { {$pairs($secondFields)} } },";
+            $noded[] = "  { \"type\": \"{$second['handle']}\", {$pairs($secondFields)} },";
+        }
+
+        $keyed[] = "  { \"{$first['handle']}\": { {$pairs($firstFields)} } }";
+        $noded[] = "  { \"type\": \"{$first['handle']}\", {$pairs($firstFields)} }";
+
+        $single = [
+            "  { {$pairs($firstFields)} },",
+            "  { {$pairs($firstFields)} }",
+        ];
+
+        return [
+            MatrixBlockSource::LIST_BY_KEY->value  => $this->exampleList($keyed),
+            MatrixBlockSource::LIST_BY_NODE->value => $this->exampleList($noded),
+            MatrixBlockSource::LIST_SINGLE->value  => $this->exampleList($single),
+        ];
+    }
+
+    /**
+     * Up to two mappable sub-field handles of one block type — enough to show
+     * where a block's values sit without printing a whole layout. A type with no
+     * mappable fields at all still needs something between the braces, so it
+     * borrows the generic name.
+     *
+     * @param array{handle: string, layout: ?FieldLayout, hasTitleField: bool} $blockType
+     * @return list<string>
+     */
+    protected function exampleFieldHandles(array $blockType): array
+    {
+        $handles = $blockType['hasTitleField'] ? ['title'] : [];
+
+        foreach ($blockType['layout']?->getCustomFields() ?? [] as $customField) {
+            $handles[] = $customField->handle;
+        }
+
+        return array_slice($handles, 0, 2) ?: ['field'];
+    }
+
+    /**
+     * The rows wrapped as the list the row's source node points at.
+     *
+     * @param list<string> $rows
+     */
+    protected function exampleList(array $rows): string
+    {
+        return "[\n" . implode("\n", $rows) . "\n]";
     }
 
     /**
@@ -258,43 +331,25 @@ class Matrix extends Field
 
 
     /**
-     * A GROUPED row is addressed via its per-type sub-mappings, never its own
-     * (absent) node — so it's addressed when ANY active sub-mapping (custom
-     * `fields` or `nativeFields`), in ANY configured block-type tree, is
-     * addressed for this item. A row whose every configured type has only
-     * inactive or entirely-unaddressed children leaves the field untouched.
-     *
-     * A LIST_* row is addressed by its OWN node instead: its child nodes are
-     * relative to a list element, so resolving them against the whole item
-     * answers nothing. It still needs one active child somewhere — a row that
-     * names a list but configures nothing to read out of it is half-built, and
-     * clearing the field over that would be the destructive reading of an
-     * operator's unfinished work. Note that a PRESENT but EMPTY list IS
-     * addressed: the feed is explicitly carrying no blocks, so {@see parse()}
-     * returns the empty value that clears the field.
+     * The row is addressed by its OWN node: its child nodes are relative to a
+     * list element, so resolving them against the whole item answers nothing.
+     * It still needs one active child somewhere — a row that names a list but
+     * maps nothing out of it is half-built, and clearing the field over that
+     * would be the destructive reading of an operator's unfinished work. Note
+     * that a PRESENT but EMPTY list IS addressed: the feed is explicitly
+     * carrying no blocks, so {@see parse()} returns the empty value that clears
+     * the field.
      */
     public function addressed(FieldContext $context): bool
     {
-        if ($this->blockSource($context)->isList()) {
-            return $context->mapping->addressedBy($context->item)
-                && $this->hasActiveChildren($context);
-        }
-
-        foreach ($context->mapping->blockMappings() as $typeMapping) {
-            foreach ($this->activeChildren($typeMapping) as $sub) {
-                if ($sub->addressedBy($context->item)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return $context->mapping->addressedBy($context->item)
+            && $this->hasActiveChildren($context);
     }
 
     /**
-     * Whether ANY configured block type has an active child at all —
-     * item-independent, unlike the per-item walk {@see addressed()} runs for
-     * GROUPED.
+     * Whether ANY mapped block type has an active child at all —
+     * item-independent, unlike the per-item test {@see addressed()} pairs it
+     * with.
      */
     protected function hasActiveChildren(FieldContext $context): bool
     {
@@ -308,33 +363,35 @@ class Matrix extends Field
     }
 
     /**
-     * The row's configured block source, defaulting to {@see
-     * MatrixBlockSource::GROUPED} — which is what an unset option means AND
-     * what an unrecognised one falls back to: a stored value from a newer
-     * version of the plugin must not turn into a destructive reinterpretation
-     * of the feed.
+     * The row's configured block source, falling back to
+     * {@see MatrixBlockSource::fallback()} for both an unset option and an
+     * unrecognised one.
      */
     protected function blockSource(FieldContext $context): MatrixBlockSource
     {
         $stored = $context->mapping->option('blockSource');
 
         if (! is_string($stored)) {
-            return MatrixBlockSource::GROUPED;
+            return MatrixBlockSource::fallback();
         }
 
-        return MatrixBlockSource::tryFrom($stored) ?? MatrixBlockSource::GROUPED;
+        return MatrixBlockSource::tryFrom($stored) ?? MatrixBlockSource::fallback();
     }
 
     /**
-     * Build the flat serialized Matrix value from the mapping's per-block-type
-     * sub-mapping trees, through whichever source the row configures
-     * ({@see MatrixBlockSource}). An empty result is still returned as an
-     * explicit clear rather than null: {@see addressed()} was true, so the feed
-     * is authoritative even when every child resolved to null.
+     * Build the flat serialized Matrix value: one block per element of the row's
+     * list node, in feed order. An empty result is still returned as an explicit
+     * clear rather than null — {@see addressed()} was true, so the feed is
+     * authoritative even when it carried no blocks at all.
      *
-     * @throws MappingValueException when a configured block-type handle is
-     * unknown for the field, a throwaway block can't be built, or a list source
-     * is misconfigured / points at something that isn't a list
+     * An element that names no mapped block type is skipped: a feed carrying a
+     * type the link doesn't map is data, not misconfiguration, and failing the
+     * whole item over it would let one unmapped type take an entire sync down.
+     * A row that can't be read at all IS misconfiguration, and throws.
+     *
+     * @throws MappingValueException when a mapped block-type handle is unknown
+     * for the field, a throwaway block can't be built, or the row is
+     * misconfigured / points at something that isn't a list
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
      */
     public function parse(FieldContext $context): mixed
@@ -351,24 +408,7 @@ class Matrix extends Field
             }
         }
 
-        $source = $this->blockSource($context);
-
-        if ($source->isList()) {
-            return $this->parseList($context, $source, $configured);
-        }
-
-        $blocks = [];
-        $index = 0;
-
-        foreach ($fieldHandles as $typeHandle) {
-            if (! isset($configured[$typeHandle])) {
-                continue;
-            }
-
-            $index = $this->appendTypeBlocks($context, $typeHandle, $configured[$typeHandle], $blocks, $index);
-        }
-
-        return $blocks;
+        return $this->parseList($context, $this->blockSource($context), $configured);
     }
 
     /**
@@ -533,10 +573,9 @@ class Matrix extends Field
 
     /**
      * One block, built from one list element. The same row shape and the same
-     * per-child coercion {@see appendTypeBlocks()} produces, reading the element
-     * instead of a zipped index — so a child absent from THIS element leaves its
-     * key off THIS block and nothing shifts, and a child handle the block type's
-     * layout doesn't expose is skipped silently.
+     * per-child coercion the row shape needs. A child absent from THIS element
+     * leaves its key off THIS block and nothing shifts, and a child handle the
+     * block type's layout doesn't expose is skipped silently.
      *
      * @return array<string, mixed>
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
@@ -586,108 +625,6 @@ class Matrix extends Field
         }
 
         return $row;
-    }
-
-    /**
-     * Zip one block type's active children into blocks, appending them to
-     * `$blocks` with sequential `new{N}` keys continued from `$index`. Returns
-     * the updated index so the caller keeps the counter continuous across types.
-     *
-     * A child resolving to null contributes no per-block values, and a child
-     * handle that isn't on the block type's own layout is skipped silently.
-     *
-     * @param array<string, mixed> $blocks accumulator, mutated in place
-     * @throws MappingValueException when the throwaway block can't be built
-     * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
-     */
-    protected function appendTypeBlocks(
-        FieldContext $context,
-        string $typeHandle,
-        FieldMapping $typeMapping,
-        array &$blocks,
-        int $index,
-    ): int {
-        $customLists = [];
-        $customSubs = [];
-
-        foreach ($this->activeSubMappings($typeMapping) as $sub) {
-            $resolved = $sub->resolve($context->item);
-
-            if ($resolved === null) {
-                continue;
-            }
-
-            $customLists[$sub->handle] = $this->valueList($resolved);
-            $customSubs[$sub->handle] = $sub;
-        }
-
-        $nativeLists = [];
-
-        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
-            $resolved = $sub->resolve($context->item);
-
-            if ($resolved === null) {
-                continue;
-            }
-
-            $nativeLists[$sub->handle] = $this->valueList($resolved);
-        }
-
-        // array_values on BOTH: a custom handle can collide with a native one,
-        // and a merge keyed by handle would drop one of the two lists.
-        $blockCount = $this->maxLength([...array_values($customLists), ...array_values($nativeLists)]);
-
-        if ($blockCount === 0) {
-            return $index;
-        }
-
-        $blockElement = $this->blockElement($context, $typeHandle);
-
-        if ($blockElement === null) {
-            throw new MappingValueException(
-                "Matrix mapping '{$context->handle}' could not build a block of type '{$typeHandle}'.",
-            );
-        }
-
-        $layout = $blockElement->getFieldLayout();
-
-        for ($i = 0; $i < $blockCount; $i++) {
-            $row = [
-                'type'    => $typeHandle,
-                'enabled' => true,
-            ];
-
-            foreach ($nativeLists as $handle => $values) {
-                if (array_key_exists($i, $values)) {
-                    $row[$handle] = (string) $values[$i];
-                }
-            }
-
-            foreach ($customLists as $handle => $values) {
-                if (! array_key_exists($i, $values)) {
-                    continue;
-                }
-
-                $childCraftField = $layout?->getFieldByHandle($handle);
-
-                if ($childCraftField === null) {
-                    continue;
-                }
-
-                $row['fields'][$handle] = $this->coerceChildValue(
-                    $context,
-                    $blockElement,
-                    $customSubs[$handle],
-                    $childCraftField,
-                    $values[$i],
-                );
-            }
-
-            $index++;
-            $blocks['new' . $index] = $row;
-        }
-
-        return $index;
     }
 
     /**
@@ -764,7 +701,7 @@ class Matrix extends Field
      * strategy so it lines up with the current-block fingerprint.
      *
      * Every mapped leaf is printed, missing ones as null. A child resolving to
-     * null contributes no per-block value, so {@see appendTypeBlocks()} leaves it
+     * null contributes no per-block value, so {@see buildBlock()} leaves it
      * out of the row entirely — while the current side reads
      * `getSerializedFieldValues()`, which returns each requested handle whether
      * it holds a value or not. Keying on presence would make those two shapes
@@ -900,10 +837,7 @@ class Matrix extends Field
         $mapped = $this->mappedLeaves($context);
         $pairing = $this->pairBlocks($rows, $blocks, $mapped);
 
-        $source = $this->blockSource($context);
-        $elementsByType = $source->isList()
-            ? $this->listElementsByType($context, $source, $typeMappings)
-            : null;
+        $elementsByType = $this->listElementsByType($context, $this->blockSource($context), $typeMappings);
 
         $children = [];
         $ordinals = [];
@@ -923,9 +857,7 @@ class Matrix extends Field
 
             if ($typeMapping !== null) {
                 if (! isset($lists[$type])) {
-                    $lists[$type] = $elementsByType !== null
-                        ? $this->elementLists($typeMapping, $elementsByType[$type] ?? [])
-                        : $this->resolvedLists($context, $typeMapping);
+                    $lists[$type] = $this->elementLists($typeMapping, $elementsByType[$type] ?? []);
                 }
 
                 $results = $this->incomingChildRows(
@@ -1224,32 +1156,7 @@ class Matrix extends Field
     }
 
     /**
-     * One block type's active sub-mappings resolved to per-block value lists —
-     * the same resolve-and-{@see valueList()} step {@see appendTypeBlocks()} zips
-     * into blocks, so indexing a list by a block's ordinal among the incoming
-     * rows of its type recovers the feed value that block was built from. Called
-     * once per type per collection (the caller memoizes), because one resolve
-     * walks the whole item and the same list serves every block of the type.
-     *
-     * @return array{native: array<string, list<mixed>>, fields: array<string, list<mixed>>}
-     */
-    protected function resolvedLists(FieldContext $context, FieldMapping $typeMapping): array
-    {
-        $lists = ['native' => [], 'fields' => []];
-
-        foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
-            $lists['native'][$sub->handle] = $this->valueList($sub->resolve($context->item));
-        }
-
-        foreach ($this->activeSubMappings($typeMapping) as $sub) {
-            $lists['fields'][$sub->handle] = $this->valueList($sub->resolve($context->item));
-        }
-
-        return $lists;
-    }
-
-    /**
-     * The LIST_* counterpart to {@see resolvedLists()}: the list elements each
+     * The list elements each
      * block type claimed, in feed order, so the nth element of a type is the one
      * the nth incoming row of that type was built from. Runs
      * {@see assignType()} — the very walk {@see parseList()} ran — so the two
@@ -1282,7 +1189,7 @@ class Matrix extends Field
 
     /**
      * One block type's per-block value lists read from ITS elements — the
-     * LIST_* shape of what {@see resolvedLists()} zips out of the whole item.
+     * value the drill-down's Feed column reads back.
      * Positional by construction: one entry per element, nulls included, so a
      * child absent from one block keeps the later ones where they are.
      *
@@ -1334,12 +1241,12 @@ class Matrix extends Field
     /**
      * The mapped rows of one incoming block — the type's active NATIVE
      * sub-mappings first, then its custom ones: the order
-     * {@see appendTypeBlocks()} fills a row in.
+     * {@see buildBlock()} fills a row in.
      *
      * `$raw` is this block's slice of the per-type value lists
      * ({@see rawSlice()}). A handle the row doesn't carry AND the slice has no
      * value for at this index is the per-index missing value — the case
-     * {@see appendTypeBlocks()} leaves the key off the row for — so it reports as
+     * {@see buildBlock()} leaves the key off the row for — so it reports as
      * unaddressed rather than as a bare null, and never as changed.
      *
      * @param array<string, mixed> $row
@@ -1491,7 +1398,7 @@ class Matrix extends Field
     /**
      * One incoming block's label — the block's own title, never its type's name.
      * A mapped native `title` sub-mapping puts the incoming title straight on the
-     * row ({@see appendTypeBlocks()}), so that wins; without one, the PARTNER
+     * row ({@see buildBlock()}), so that wins; without one, the PARTNER
      * block's stored title still names the very block the reader is looking at,
      * and survives a feed that doesn't map titles at all.
      *

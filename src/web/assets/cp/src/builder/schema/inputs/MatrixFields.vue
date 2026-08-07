@@ -9,7 +9,8 @@
         :rows="typeRows"
         :node-options="nodeOptions"
         :discovered-nodes="discoveredNodes"
-        :read-only="readOnly"
+        :read-only="readOnly || lockedOut"
+        :notice="lockedOut ? lockedOutHint : null"
         :empty-hint="$t('This block type has no mappable sub-fields.')"
         @update:rows="mergeTypeRows"
     />
@@ -49,11 +50,13 @@ import { flattenChannels, splitChannels } from '../../lib/channels.js';
  * alike.
  *
  * Matrix-specific rules:
- *   - what a node path is RELATIVE TO depends on the row's `blockSource`: under
- *     `grouped` it's an absolute item path (`seasons.year`), under the three
- *     list sources it's a path within one list item (`image`). The select
- *     offering the paths only ever discovered absolute ones, so a list source's
- *     paths are typed rather than picked — the select allows custom values;
+ *   - node paths are RELATIVE to one item of the list the Matrix row names
+ *     (`image`), never absolute against the whole feed item. Discovery only
+ *     ever produced absolute paths, so these are typed rather than picked —
+ *     the select allows custom values, and gets handed no discovered nodes to
+ *     check them against (MappingExtras.discoveredNodesFor);
+ *   - a single-type list locks every card but the one already mapped
+ *     ({@see lockedOut}), which is why this card reads the row's options;
  *   - emptied slices collapse away: a channel map with no rows drops off its
  *     type entry, and an entry left with nothing drops the type out of
  *     `blocks` (an all-empty `blocks` then prunes off the mapping in
@@ -75,12 +78,42 @@ export default {
         // The sample's discovered flatNodes — the "is the node still live"
         // signal. Null when no sample has been fetched. See SubFieldRows.
         discoveredNodes: { type: Array, default: null },
+        // The Matrix row's own options — read for `blockSource`, which decides
+        // whether more than one block type may be mapped at all.
+        mappingOptions: { type: Object, default: () => ({}) },
         readOnly: { type: Boolean, default: false },
     },
 
     computed: {
         blocks() {
             return this.channels.blocks || {};
+        },
+
+        /** The handles of the OTHER block types that already carry rows. */
+        otherMappedTypes() {
+            return Object.keys(this.blocks).filter((type) => (
+                type !== this.node.blockType && Object.keys(flattenChannels(this.blocks[type])).length > 0
+            ));
+        },
+
+        /**
+         * Whether this card is closed for business: a single-type list has one
+         * block type by definition, so once another card carries rows this one
+         * can't also be mapped. Locked rather than hidden — switching sources
+         * shouldn't make an operator's existing work disappear, and clearing the
+         * other card's rows re-opens the choice.
+         *
+         * The strategy throws on this at sync time too, for config written
+         * outside the builder; this is what stops it being reachable here.
+         */
+        lockedOut() {
+            return this.mappingOptions.blockSource === 'listSingle' && this.otherMappedTypes.length > 0;
+        },
+
+        lockedOutHint() {
+            return this.$t('A single-type list maps one block type, and “{type}” is already mapped.', {
+                type: this.otherMappedTypes[0],
+            });
         },
 
         /** This card's own type entry — both channels, or nothing saved yet. */
