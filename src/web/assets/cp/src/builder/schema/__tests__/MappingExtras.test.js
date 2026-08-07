@@ -261,6 +261,26 @@ describe('MappingExtras matrix blocks', () => {
         expect(cards[1].text()).toContain('quote');
     });
 
+    /**
+     * Switching an already-two-type mapping to a single-type list must not lock
+     * both cards: "clear nodes" is itself gated on the card being editable, so
+     * that would leave no way out but changing the setting back.
+     */
+    it('keeps a populated card open so a two-type conflict stays resolvable', () => {
+        const mapping = {
+            node: 'content',
+            options: { blockSource: 'listSingle' },
+            blocks: {
+                quote: { fields: { quote: { node: 'quote' } } },
+                stat: { fields: { number: { node: 'number' } } },
+            },
+        };
+
+        const cards = mountMatrix({ mapping }).findAllComponents(MatrixFields);
+
+        expect(cards.map((card) => card.vm.lockedOut)).toEqual([false, false]);
+    });
+
     it('leaves every block type open under the keyed and noded lists', () => {
         const mapping = {
             node: 'content',

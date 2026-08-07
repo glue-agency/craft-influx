@@ -98,16 +98,24 @@ export default {
 
         /**
          * Whether this card is closed for business: a single-type list has one
-         * block type by definition, so once another card carries rows this one
-         * can't also be mapped. Locked rather than hidden — switching sources
-         * shouldn't make an operator's existing work disappear, and clearing the
-         * other card's rows re-opens the choice.
+         * block type by definition, so once another card carries rows an EMPTY
+         * one can't start a second. Locked rather than hidden — switching
+         * sources shouldn't make an operator's existing work disappear, and
+         * clearing the other card's rows re-opens the choice.
          *
-         * The strategy throws on this at sync time too, for config written
-         * outside the builder; this is what stops it being reachable here.
+         * A card carrying rows of its own is never locked, which is the part
+         * that matters: switching an already-two-type mapping to a single-type
+         * list would otherwise lock BOTH cards, and "clear nodes" is itself
+         * gated on the card being editable — no way out but changing the
+         * setting back. Leaving populated cards open means the conflict is
+         * always resolvable where it is. The strategy still throws on two mapped
+         * types at sync time, which is the backstop for config written outside
+         * the builder.
          */
         lockedOut() {
-            return this.mappingOptions.blockSource === 'listSingle' && this.otherMappedTypes.length > 0;
+            return this.mappingOptions.blockSource === 'listSingle'
+                && Object.keys(this.typeRows).length === 0
+                && this.otherMappedTypes.length > 0;
         },
 
         lockedOutHint() {

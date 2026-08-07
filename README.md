@@ -162,7 +162,7 @@ public function schema(CraftFieldInterface $field): MappingSchema
 }
 ```
 
-`true` is the region's preset, and an ABSENT region is an absent cell — which is the whole vocabulary for "this field has no default to pick" (a Matrix declares neither cell, because its value comes from its sub-mappings) and for "this field can't be mapped at all" (a Preparse field declares a source region holding nothing but a `note()`). There is no flag beside the regions saying either thing.
+`true` is the region's preset, and an ABSENT region is an absent cell — which is the whole vocabulary for "this field has no default to pick" (a Matrix declares a source cell for the list its blocks come from, but no default — a set of blocks isn't a value to type into a box) and for "this field can't be mapped at all" (a Preparse field declares a source region holding nothing but a `note()`). There is no flag beside the regions saying either thing.
 
 For a node type the builder doesn't ship, `SchemaBuilder::node('myType', [...])` passes it through; the CP renders an unrecognised type as a labeled text input on the node's handle rather than dropping it. To render it properly instead, add a component and one line to `builder/schema/registry.js`.
 
