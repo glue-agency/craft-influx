@@ -58,6 +58,7 @@
 <script>
 import { controlFor } from './registry.js';
 import { channelsFor as nodeChannels, readChannels, readNode, writeChannels, writeNode } from '../lib/slots.js';
+import { isVisible } from '../lib/conditions.js';
 
 /**
  * A mapping row's extras — the `extra` region its field's strategy declared,
@@ -105,15 +106,11 @@ export default {
 
     computed: {
         /**
-         * Nodes whose showIf conditions all pass against the stored options. A
-         * condition without `equals` means "truthy".
+         * Nodes whose showIf conditions all pass against the stored options
+         * ({@see ../lib/conditions.js} owns the grammar).
          */
         visibleNodes() {
-            return this.nodes.filter((node) => (node.showIf || []).every((cond) => (
-                'equals' in cond
-                    ? this.resolvedValue(cond.handle) === cond.equals
-                    : !! this.mapping.options?.[cond.handle]
-            )));
+            return this.nodes.filter((node) => isVisible(node, this.resolvedValue));
         },
 
         /** The leaf nodes — everything that isn't a sub-mapping card. */

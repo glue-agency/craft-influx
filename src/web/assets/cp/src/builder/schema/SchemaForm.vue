@@ -20,6 +20,7 @@
 
 <script>
 import { controlFor } from './registry.js';
+import { isVisible } from '../lib/conditions.js';
 
 /**
  * A flat schema rendered as stacked Craft `.field` blocks — heading,
@@ -64,17 +65,13 @@ export default {
 
     computed: {
         /**
-         * Nodes whose showIf conditions all pass against the current options. A
-         * condition without `equals` means "truthy". Each survivor is resolved so a
-         * `optionsBy` node carries the list its parent's value names.
+         * Nodes whose showIf conditions all pass against the current options
+         * ({@see ../lib/conditions.js} owns the grammar). Each survivor is
+         * resolved so a `optionsBy` node carries the list its parent's value names.
          */
         visibleNodes() {
             return this.schema
-                .filter((node) => (node.showIf || []).every((cond) => (
-                    'equals' in cond
-                        ? this.resolvedValue(cond.handle) === cond.equals
-                        : !! this.options[cond.handle]
-                )))
+                .filter((node) => isVisible(node, this.resolvedValue))
                 .map((node) => this.withResolvedOptions(node));
         },
     },

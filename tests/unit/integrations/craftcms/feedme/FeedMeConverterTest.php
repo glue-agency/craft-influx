@@ -346,6 +346,11 @@ class FeedMeConverterTest extends Unit
         $this->assertNoWarningMatching('/Matrix/', $conversion);
     }
 
+    /**
+     * One block type reading a flat list: the list node moves onto the Matrix
+     * row and the child path is rebased onto a list item, so the blocks keep
+     * the order Feed Me gave them.
+     */
     public function testMatrixBlockChildNodePathsSwapSlashesForDots(): void
     {
         $link = $this->convert([
@@ -359,9 +364,117 @@ class FeedMeConverterTest extends Unit
         ])->link;
 
         $this->assertSame(
-            ['blocks' => ['quote' => ['fields' => ['text' => ['node' => 'quotes.text']]]]],
+            [
+                'node'    => 'quotes',
+                'options' => ['blockSource' => 'listSingle'],
+                'blocks'  => ['quote' => ['fields' => ['text' => ['node' => 'text']]]],
+            ],
             $link->mappings['contentBlocks'],
         );
+    }
+
+    /**
+     * Feed Me sorts blocks on the array index in each node path, so its output
+     * follows the feed rather than the field's type order. The wrapper shape —
+     * each type's children sharing one segment under the list node — converts to
+     * the source that reads it the same way.
+     */
+    public function testMatrixBlocksUnderPerTypeKeysConvertToTheKeyedListSource(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'text' => ['fields' => [
+                            'body'  => ['node' => 'content_blocks/text/text'],
+                            'image' => ['node' => 'content_blocks/text/image'],
+                        ]],
+                        'quote' => ['fields' => [
+                            'quote' => ['node' => 'content_blocks/quote/quote'],
+                        ]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            [
+                'node'    => 'content_blocks',
+                'options' => ['blockSource' => 'listByKey'],
+                'blocks'  => [
+                    'text' => ['fields' => [
+                        'body'  => ['node' => 'text'],
+                        'image' => ['node' => 'image'],
+                    ]],
+                    'quote' => ['fields' => ['quote' => ['node' => 'quote']]],
+                ],
+            ],
+            $conversion->link->mappings['contentBlocks'],
+        );
+        $this->assertNoWarningMatching('/Matrix/', $conversion);
+    }
+
+    /**
+     * A feed key that isn't the Craft handle rides along as the type's alias
+     * rather than forcing the operator to rename the block type.
+     */
+    public function testAFeedKeyUnlikeTheHandleBecomesAnAlias(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'text' => ['fields' => ['body' => ['node' => 'content_blocks/textBlock/text']]],
+                    ],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(
+            ['blockSource' => 'listByKey', 'sourceKey_text' => 'textBlock'],
+            $link->mappings['contentBlocks']['options'],
+        );
+    }
+
+    /**
+     * The shape Feed Me itself can't resolve: several types whose children sit
+     * flat under one list, where its own path matching attributes a shared child
+     * handle to whichever type was configured first. Influx won't inherit that
+     * guess — it stays grouped and says so.
+     */
+    public function testSeveralFlatBlockTypesStayGroupedWithAWarning(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'text'  => ['fields' => ['body' => ['node' => 'content_blocks/body']]],
+                        'quote' => ['fields' => ['quote' => ['node' => 'content_blocks/quote']]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('node', $conversion->link->mappings['contentBlocks']);
+        $this->assertArrayNotHasKey('options', $conversion->link->mappings['contentBlocks']);
+        $this->assertWarningMatching('/no way to tell an item/', $conversion);
+    }
+
+    public function testBlockTypesReadingDifferentNodesStayGroupedWithAWarning(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'text'  => ['fields' => ['body' => ['node' => 'paragraphs/text']]],
+                        'quote' => ['fields' => ['quote' => ['node' => 'quotes/text']]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertArrayNotHasKey('node', $conversion->link->mappings['contentBlocks']);
+        $this->assertWarningMatching('/different feed nodes/', $conversion);
     }
 
     public function testMatrixBlockWithOnlyNoImportChildIsOmitted(): void

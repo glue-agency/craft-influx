@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoMatchMappings, clearMappings, discoveredNodes, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { autoMatchMappings, clearMappings, discoveredNodes, isMapped, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -201,5 +201,31 @@ describe('autoMatchMappings', () => {
         expect(before).toEqual({ title: { node: 'meta.headline' } });
 
         expect(autoMatchMappings({}, null, null, null)).toEqual({ mappings: {}, matched: [] });
+    });
+});
+
+describe('isMapped', () => {
+    const withSource = { handle: 'body', mapping: { source: [{ type: 'sourceNode' }] } };
+    const withoutSource = { handle: 'table', mapping: { source: [] } };
+
+    it('reads a source-cell field off its picked node', () => {
+        expect(isMapped(withSource, { node: 'body' })).toBe(true);
+        expect(isMapped(withSource, {})).toBe(false);
+        expect(isMapped(withSource, null)).toBe(false);
+    });
+
+    it('counts anything saved on a field that renders no source cell', () => {
+        expect(isMapped(withoutSource, { fields: { a: { node: 'x' } } })).toBe(true);
+        expect(isMapped(withoutSource, {})).toBe(false);
+    });
+
+    /**
+     * A Matrix declares a source cell for its list block sources, but the
+     * default grouped source maps entirely through its block trees and never
+     * picks a node.
+     */
+    it('counts a stored blocks channel even where a source cell exists', () => {
+        expect(isMapped(withSource, { blocks: { text: { fields: { body: { node: 'x' } } } } })).toBe(true);
+        expect(isMapped(withSource, { blocks: {} })).toBe(false);
     });
 });

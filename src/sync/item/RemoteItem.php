@@ -132,6 +132,45 @@ class RemoteItem
     }
 
     /**
+     * Enumerate a LIST node as one item per element, in feed order — the read
+     * {@see get()} deliberately cannot do. Its collapsed-list semantics fan the
+     * remaining path over every element and drop nulls, so `blocks.image` over
+     * a list whose second element carries no image yields a two-value list
+     * whose second value belongs to the THIRD element. Reading each element as
+     * its own item keeps position, and lets a child path be relative to the
+     * element (`image`) instead of absolute against the whole feed item.
+     *
+     * Null means "that node holds no list" — absent, scalar, or an object —
+     * which is a different answer from the empty list a present-but-empty node
+     * gives, and callers act on the two differently. Elements that aren't
+     * arrays are skipped: nothing can resolve a path against a scalar.
+     *
+     * The path must address the list itself. A path that fans THROUGH a
+     * mid-way list still collapses on the way, per {@see get()} — only the
+     * final hop is read positionally.
+     *
+     * @return list<self>|null
+     */
+    public function each(string $path): ?array
+    {
+        $value = $this->get($path);
+
+        if (! is_array($value) || ! array_is_list($value)) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach ($value as $element) {
+            if (is_array($element)) {
+                $items[] = new self($element);
+            }
+        }
+
+        return $items;
+    }
+
+    /**
      * The raw decoded payload — for log rows, event payloads, and debug
      * output, which all store/show the item as-is.
      */

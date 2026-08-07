@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\integrations\craftcms\feedme;
 
 use Craft;
 use craft\helpers\StringHelper;
+use GlueAgency\Influx\enums\MatrixBlockSource;
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
@@ -353,7 +354,14 @@ class FeedMeConverter
                 $blocks = $this->convertMatrixBlocks((string) $handle, $info['blocks']);
 
                 if ($blocks !== []) {
-                    $mappings[$handle] = FieldMapping::make((string) $handle, blocks: $blocks);
+                    $derived = $this->deriveBlockSource((string) $handle, $blocks);
+
+                    $mappings[$handle] = FieldMapping::make(
+                        (string) $handle,
+                        node: $derived['node'],
+                        options: $derived['options'],
+                        blocks: $derived['blocks'],
+                    );
                 }
 
                 continue;
@@ -404,6 +412,191 @@ class FeedMeConverter
         }
 
         return $converted;
+    }
+
+    /**
+     * Pick the block source a converted Matrix field should read with, and
+     * rewrite its child paths to suit.
+     *
+     * This is a FIDELITY fix, not an enhancement. Feed Me walks the feed rather
+     * than the field config and sorts on the array index it finds in each node
+     * path, so its blocks come out in the feed's own order, interleaved across
+     * types. Influx's default grouped source emits one whole block type after
+     * the other — so a converted link that carried `text, quote, text` produced
+     * `text, text, quote`, silently. A Feed Me Matrix mapping is list-shaped by
+     * construction (its paths only match anything because an index sits in
+     * them), so a list source is the faithful reading.
+     *
+     * Feed Me stores paths index-free, which is what makes the shape readable:
+     * every child of every type shares the list node as its first segment, and
+     * under the wrapper shape each type's children then share ONE more segment
+     * naming the type ({@see \GlueAgency\Influx\enums\MatrixBlockSource::LIST_BY_KEY}).
+     * Flat children under a single configured type are LIST_SINGLE. Anything
+     * else — types disagreeing on the list node, or several types whose
+     * children sit flat and so can't be told apart — keeps the grouped source
+     * and warns, because that ambiguity is one Feed Me itself resolves by
+     * first-match-wins rather than correctly.
+     *
+     * @param array<string, array> $blocks converted per-type trees
+     * @return array{node: ?string, options: array<string, mixed>, blocks: array<string, array>}
+     */
+    protected function deriveBlockSource(string $handle, array $blocks): array
+    {
+        $grouped = ['node' => null, 'options' => [], 'blocks' => $blocks];
+        $segments = $this->blockChildSegments($blocks);
+
+        if ($segments === []) {
+            return $grouped;
+        }
+
+        $listNodes = [];
+
+        foreach ($segments as $childSegments) {
+            foreach ($childSegments as $path) {
+                $listNodes[$path[0]] = true;
+            }
+        }
+
+        if (count($listNodes) > 1) {
+            $this->warn("Matrix field '{$handle}' maps block types from different feed nodes, so its blocks are grouped by type rather than kept in the feed's order; set a block source in the builder if the feed carries them as one list.");
+
+            return $grouped;
+        }
+
+        $node = (string) array_key_first($listNodes);
+
+        return $this->keyedBlockSource($handle, $blocks, $segments, $node)
+            ?? $this->singleBlockSource($handle, $blocks, $segments, $node)
+            ?? $grouped;
+    }
+
+    /**
+     * Every mapped child's node path, split into segments, keyed by block type
+     * and child handle. Children with no node (a "use default" row) carry no
+     * path and so say nothing about the shape.
+     *
+     * @param array<string, array> $blocks
+     * @return array<string, array<string, list<string>>>
+     */
+    protected function blockChildSegments(array $blocks): array
+    {
+        $segments = [];
+
+        foreach ($blocks as $typeHandle => $typeConfig) {
+            foreach ($typeConfig['fields'] ?? [] as $childHandle => $childConfig) {
+                $node = $childConfig['node'] ?? null;
+
+                if (is_string($node) && $node !== '') {
+                    $segments[$typeHandle][$childHandle] = explode('.', $node);
+                }
+            }
+        }
+
+        return $segments;
+    }
+
+    /**
+     * The wrapper reading: under the list node each type's children share one
+     * more segment, and no two types share the same one. Null when the shape
+     * isn't that, which hands the decision to the next reading.
+     *
+     * @param array<string, array> $blocks
+     * @param array<string, array<string, list<string>>> $segments
+     * @return array{node: string, options: array<string, mixed>, blocks: array<string, array>}|null
+     */
+    protected function keyedBlockSource(string $handle, array $blocks, array $segments, string $node): ?array
+    {
+        $keys = [];
+
+        foreach ($segments as $typeHandle => $childSegments) {
+            $typeKeys = [];
+
+            foreach ($childSegments as $path) {
+                if (count($path) < 3) {
+                    return null;
+                }
+
+                $typeKeys[$path[1]] = true;
+            }
+
+            if (count($typeKeys) !== 1) {
+                return null;
+            }
+
+            $keys[$typeHandle] = (string) array_key_first($typeKeys);
+        }
+
+        if (count(array_unique($keys)) !== count($keys)) {
+            return null;
+        }
+
+        $options = ['blockSource' => MatrixBlockSource::LIST_BY_KEY->value];
+
+        foreach ($keys as $typeHandle => $key) {
+            if ($key !== $typeHandle) {
+                $options['sourceKey_' . $typeHandle] = $key;
+            }
+        }
+
+        return [
+            'node'    => $node,
+            'options' => $options,
+            'blocks'  => $this->rebaseBlockChildren($blocks, $segments, 2),
+        ];
+    }
+
+    /**
+     * The flat reading: one configured block type whose children sit directly
+     * under the list node. More than one type in that shape is the case Feed Me
+     * resolves by first-match-wins — two types sharing a child handle are
+     * attributed to whichever was configured first — so it warns and stays
+     * grouped rather than inheriting the guess.
+     *
+     * @param array<string, array> $blocks
+     * @param array<string, array<string, list<string>>> $segments
+     * @return array{node: string, options: array<string, mixed>, blocks: array<string, array>}|null
+     */
+    protected function singleBlockSource(string $handle, array $blocks, array $segments, string $node): ?array
+    {
+        if (count($blocks) > 1) {
+            $this->warn("Matrix field '{$handle}' maps several block types out of one flat list, which gives no way to tell an item's type apart; its blocks are grouped by type rather than kept in the feed's order.");
+
+            return null;
+        }
+
+        foreach ($segments as $childSegments) {
+            foreach ($childSegments as $path) {
+                if (count($path) < 2) {
+                    return null;
+                }
+            }
+        }
+
+        return [
+            'node'    => $node,
+            'options' => ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+            'blocks'  => $this->rebaseBlockChildren($blocks, $segments, 1),
+        ];
+    }
+
+    /**
+     * Drop the leading segments a list source now reads for itself, leaving each
+     * child node relative to one list item — `content_blocks.text.image` becomes
+     * `image`.
+     *
+     * @param array<string, array> $blocks
+     * @param array<string, array<string, list<string>>> $segments
+     * @return array<string, array>
+     */
+    protected function rebaseBlockChildren(array $blocks, array $segments, int $drop): array
+    {
+        foreach ($segments as $typeHandle => $childSegments) {
+            foreach ($childSegments as $childHandle => $path) {
+                $blocks[$typeHandle]['fields'][$childHandle]['node'] = implode('.', array_slice($path, $drop));
+            }
+        }
+
+        return $blocks;
     }
 
     /**

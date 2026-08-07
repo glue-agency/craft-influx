@@ -33,6 +33,14 @@ namespace GlueAgency\Influx\schema;
  * [{label, options}]), `showIf`. A type outside the consts below goes through
  * {@see node()} and renders as a labeled text input rather than vanishing.
  *
+ * `showIf` is a list of conditions, ALL of which must pass for the node to
+ * render: `['handle' => 'mode', 'equals' => 'url']` (exactly that value),
+ * `['handle' => 'mode', 'in' => ['a', 'b']]` (any of them), or a bare
+ * `['handle' => 'upload']` (truthy). Each resolves against the saved value
+ * falling back to the node's declared `default`, so a condition on an untouched
+ * control tests what the operator actually sees. The grammar lives in the SPA's
+ * `builder/lib/conditions.js`; both renderers share it.
+ *
  * Loosely modeled on Formie's SchemaHelper, deliberately tiny.
  */
 class SchemaBuilder

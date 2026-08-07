@@ -49,8 +49,11 @@ import { flattenChannels, splitChannels } from '../../lib/channels.js';
  * alike.
  *
  * Matrix-specific rules:
- *   - node paths are ABSOLUTE item paths (`seasons.year`), resolved against
- *     the top-level item — never relative to the block;
+ *   - what a node path is RELATIVE TO depends on the row's `blockSource`: under
+ *     `grouped` it's an absolute item path (`seasons.year`), under the three
+ *     list sources it's a path within one list item (`image`). The select
+ *     offering the paths only ever discovered absolute ones, so a list source's
+ *     paths are typed rather than picked — the select allows custom values;
  *   - emptied slices collapse away: a channel map with no rows drops off its
  *     type entry, and an entry left with nothing drops the type out of
  *     `blocks` (an all-empty `blocks` then prunes off the mapping in

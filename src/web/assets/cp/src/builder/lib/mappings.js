@@ -81,6 +81,12 @@ export function setMappingSlot(mappings, handle, key, value) {
  * region (holding a note), so it falls to the node rule and is never mapped, which
  * is exactly right.
  *
+ * A stored `blocks` channel counts on its own even where a source cell IS
+ * declared. A Matrix renders one because its list block sources read a node, but
+ * the default grouped source never picks one — it's mapped entirely through its
+ * per-block-type trees, and would otherwise report as unmapped on every link
+ * that has always worked.
+ *
  * @param {import('../types.js').MappableField} field
  * @param {?import('../types.js').Mapping} mapping
  * @returns {boolean}
@@ -90,7 +96,7 @@ export function isMapped(field, mapping) {
         return Object.keys(mapping || {}).length > 0;
     }
 
-    return !! mapping?.node;
+    return !! mapping?.node || Object.keys(mapping?.blocks || {}).length > 0;
 }
 
 /**

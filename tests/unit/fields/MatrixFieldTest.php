@@ -12,6 +12,7 @@ use craft\fields\PlainText;
 use craft\models\FieldLayout;
 use DateTime;
 use DateTimeZone;
+use GlueAgency\Influx\enums\MatrixBlockSource;
 use GlueAgency\Influx\exceptions\MappingDepthException;
 use GlueAgency\Influx\exceptions\MappingValueException;
 use GlueAgency\Influx\fields\Date;
@@ -33,11 +34,13 @@ use Throwable;
  * child-coercion, addressed gate, error path, and change-detection logic can
  * be exercised without a running Craft.
  *
- * Mappings live under the Feed Me-shaped `blocks` channel: one node-less
- * sub-mapping tree per block-type handle ({@see FieldMapping::blockMappings()}),
- * whose child node paths are absolute (resolved against the top-level item) and
- * index-zipped into blocks. Blocks are grouped by type in the field's declared
- * order, with a continuous `newN` counter across types.
+ * Mappings live under the Feed Me-shaped `blocks` channel: one sub-mapping tree
+ * per block-type handle ({@see FieldMapping::blockMappings()}). What those
+ * trees' node paths mean depends on the row's `options.blockSource`
+ * ({@see MatrixBlockSource}): under the default GROUPED they're absolute paths
+ * index-zipped into blocks that come out grouped by type, and under the three
+ * LIST_* sources they're relative to one element of a single list node, which
+ * emits blocks in feed order. Both keep a continuous `newN` counter.
  */
 class MatrixFieldTest extends Unit
 {
@@ -291,20 +294,397 @@ class MatrixFieldTest extends Unit
         $this->assertSame('quote', $blocks['new2']['type']);
     }
 
+    // -- list block sources ---------------------------------------------------
+
+    /**
+     * The whole point: a feed ordered text, quote, text, text lands in that
+     * order. Under GROUPED the same feed comes out text, text, text, quote,
+     * because the field's declared type order decides it.
+     */
+    public function testKeyedListKeepsTheFeedsOwnBlockOrderAcrossTypes(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['season' => ['year' => 2020]],
+                ['quote'  => ['text' => 'a quote']],
+                ['season' => ['year' => 2021]],
+                ['season' => ['year' => 2022]],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $blocks = $strategy->parse($this->context(
+            $item,
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_BY_KEY->value],
+        ));
+
+        $this->assertSame(['new1', 'new2', 'new3', 'new4'], array_keys($blocks));
+        $this->assertSame(
+            ['season', 'quote', 'season', 'season'],
+            array_column($blocks, 'type'),
+        );
+        $this->assertSame('coerced:2020', $blocks['new1']['fields']['year']);
+        $this->assertSame('coerced:a quote', $blocks['new2']['fields']['text']);
+        $this->assertSame('coerced:2022', $blocks['new4']['fields']['year']);
+    }
+
+    /**
+     * The same-type alignment bug, which is what a positional read fixes: the
+     * middle block carries no `summary`, and under GROUPED the collapsed list
+     * drops that null so the THIRD summary lands on the SECOND block.
+     */
+    public function testASingleTypeListKeepsBlocksAlignedAcrossAMissingChild(): void
+    {
+        $data = [
+            'content' => [
+                ['year' => 2020, 'summary' => 'first'],
+                ['year' => 2021],
+                ['year' => 2022, 'summary' => 'third'],
+            ],
+        ];
+
+        $strategy = $this->strategy(['season' => ['year', 'notes']]);
+        $mapping = [
+            'season' => [
+                'fields' => [
+                    'year'  => ['node' => 'year'],
+                    'notes' => ['node' => 'summary'],
+                ],
+            ],
+        ];
+
+        $blocks = $strategy->parse($this->context(
+            new RemoteItem($data),
+            $mapping,
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        ));
+
+        $this->assertSame('coerced:first', $blocks['new1']['fields']['notes']);
+        $this->assertArrayNotHasKey('notes', $blocks['new2']['fields']);
+        $this->assertSame('coerced:third', $blocks['new3']['fields']['notes']);
+
+        // The grouped read of the very same feed, mis-shifted — absolute paths,
+        // and `content.summary` collapses to a dense two-value list.
+        $grouped = $this->strategy(['season' => ['year', 'notes']])->parse($this->context(
+            new RemoteItem($data),
+            [
+                'season' => [
+                    'fields' => [
+                        'year'  => ['node' => 'content.year'],
+                        'notes' => ['node' => 'content.summary'],
+                    ],
+                ],
+            ],
+        ));
+
+        $this->assertSame('coerced:third', $grouped['new2']['fields']['notes']);
+    }
+
+    public function testTheDiscriminatorSourceReadsTheTypeOffEachElement(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['type' => 'quote', 'text' => 'a quote'],
+                ['type' => 'season', 'year' => 2020],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $blocks = $strategy->parse($this->context(
+            $item,
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_BY_NODE->value],
+        ));
+
+        $this->assertSame(['quote', 'season'], array_column($blocks, 'type'));
+        $this->assertSame('coerced:a quote', $blocks['new1']['fields']['text']);
+    }
+
+    public function testTheDiscriminatorNodeAndTheTypeAliasesAreConfigurable(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['component' => 'seizoen', 'year' => 2020],
+                ['component' => 'citaat', 'text' => 'a quote'],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $blocks = $strategy->parse($this->context(
+            $item,
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: [
+                'blockSource'      => MatrixBlockSource::LIST_BY_NODE->value,
+                'typeNode'         => 'component',
+                'sourceKey_season' => 'seizoen',
+                'sourceKey_quote'  => 'citaat',
+            ],
+        ));
+
+        $this->assertSame(['season', 'quote'], array_column($blocks, 'type'));
+    }
+
+    /**
+     * A feed carrying a block type the link doesn't map is data, not a broken
+     * mapping — one unmapped type must not take the whole item down.
+     */
+    public function testAnElementNamingNoConfiguredTypeIsSkipped(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['type' => 'season', 'year' => 2020],
+                ['type' => 'gallery', 'images' => ['a.jpg']],
+                ['type' => 'season', 'year' => 2021],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $blocks = $strategy->parse($this->context(
+            $item,
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_BY_NODE->value],
+        ));
+
+        $this->assertSame(['new1', 'new2'], array_keys($blocks));
+        $this->assertSame('coerced:2021', $blocks['new2']['fields']['year']);
+    }
+
+    /**
+     * Metadata beside the payload must not be mistaken for the type key, and
+     * the element's own key order decides which of two type keys wins.
+     */
+    public function testTheKeyedSourceIgnoresSiblingKeysThatNameNoType(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['id' => 4182, 'sort' => 1, 'season' => ['year' => 2020]],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $blocks = $strategy->parse($this->context(
+            $item,
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_BY_KEY->value],
+        ));
+
+        $this->assertCount(1, $blocks);
+        $this->assertSame('coerced:2020', $blocks['new1']['fields']['year']);
+    }
+
+    public function testAnEmptyListClearsTheFieldRatherThanLeavingItAlone(): void
+    {
+        $context = $this->context(
+            new RemoteItem(['content' => []]),
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        );
+
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $this->assertTrue($strategy->addressed($context));
+        $this->assertSame([], $strategy->parse($context));
+    }
+
+    public function testAListSourceIsAddressedByItsOwnNode(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $mapping = ['season' => ['fields' => ['year' => ['node' => 'year']]]];
+
+        // The node the row names is absent from this item — nothing to say.
+        $this->assertFalse($strategy->addressed($this->context(
+            new RemoteItem(['other' => [['year' => 2020]]]),
+            $mapping,
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        )));
+
+        // Present — even though no child node resolves against the whole item,
+        // which is the test GROUPED would apply.
+        $this->assertTrue($strategy->addressed($this->context(
+            new RemoteItem(['content' => [['year' => 2020]]]),
+            $mapping,
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        )));
+    }
+
+    /**
+     * A row naming a list but configuring nothing to read out of it is
+     * half-built; clearing the field over that would be the destructive reading
+     * of unfinished work.
+     */
+    public function testAListSourceWithNoActiveChildrenIsNotAddressed(): void
+    {
+        $this->assertFalse($this->strategy(['season' => ['year']])->addressed($this->context(
+            new RemoteItem(['content' => [['year' => 2020]]]),
+            ['season' => ['fields' => ['year' => []]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        )));
+    }
+
+    public function testAListSourceWithoutANodeThrows(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $this->expectException(MappingValueException::class);
+        $strategy->parse($this->context(
+            new RemoteItem(['content' => [['year' => 2020]]]),
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        ));
+    }
+
+    public function testASingleTypeListWithMoreThanOneTypeConfiguredThrows(): void
+    {
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+
+        $this->expectException(MappingValueException::class);
+        $strategy->parse($this->context(
+            new RemoteItem(['content' => [['year' => 2020]]]),
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        ));
+    }
+
+    public function testANodeHoldingSomethingOtherThanAListThrows(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $this->expectException(MappingValueException::class);
+        $strategy->parse($this->context(
+            new RemoteItem(['content' => ['year' => 2020]]),
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        ));
+    }
+
+    /**
+     * An unrecognised stored source — a link written by a newer version of the
+     * plugin — reads as GROUPED rather than reinterpreting the feed.
+     */
+    public function testAnUnknownStoredBlockSourceFallsBackToGrouped(): void
+    {
+        $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
+
+        $blocks = $this->strategy(['season' => ['year']])->parse($this->context(
+            $item,
+            ['season' => ['fields' => ['year' => ['node' => 'seasons.year']]]],
+            options: ['blockSource' => 'somethingElse'],
+        ));
+
+        $this->assertSame('coerced:2020', $blocks['new1']['fields']['year']);
+    }
+
+    /**
+     * A feed that only REORDERS its blocks must be written through — which the
+     * ordered fingerprint comparison already gives, since the two sides are
+     * compared as lists rather than as sets.
+     */
+    public function testReorderingAloneReadsAsAChange(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $context = $this->context(
+            new RemoteItem([]),
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        );
+
+        $current = $this->fakeQuery([
+            $this->fakeBlock('season', ['year' => 2020]),
+            $this->fakeBlock('season', ['year' => 2021]),
+        ]);
+
+        $sameOrder = [
+            'new1' => ['type' => 'season', 'enabled' => true, 'fields' => ['year' => 2020]],
+            'new2' => ['type' => 'season', 'enabled' => true, 'fields' => ['year' => 2021]],
+        ];
+        $swapped = [
+            'new1' => ['type' => 'season', 'enabled' => true, 'fields' => ['year' => 2021]],
+            'new2' => ['type' => 'season', 'enabled' => true, 'fields' => ['year' => 2020]],
+        ];
+
+        $this->assertFalse($strategy->exposedValueDiffers($context, $current, $sameOrder));
+        $this->assertTrue($strategy->exposedValueDiffers($context, $current, $swapped));
+    }
+
+    /**
+     * The drill-down's Feed column reads each block's raw value off the element
+     * it was built from, so an interleaved list reports per block rather than
+     * off a type-wide zipped list.
+     */
+    public function testTheDrillDownReadsRawValuesPerListElement(): void
+    {
+        $item = new RemoteItem([
+            'content' => [
+                ['season' => ['year' => 2020]],
+                ['quote'  => ['text' => 'a quote']],
+                ['season' => ['year' => 2022]],
+            ],
+        ]);
+
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $context = $this->context(
+            $item,
+            [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_BY_KEY->value],
+        );
+
+        $children = $strategy->collectChildren($context, $strategy->parse($context), null);
+
+        $this->assertCount(3, $children);
+        $this->assertSame([2020, 'a quote', 2022], [
+            $this->rowsByHandle($children[0])['year']->rawValue,
+            $this->rowsByHandle($children[1])['text']->rawValue,
+            $this->rowsByHandle($children[2])['year']->rawValue,
+        ]);
+    }
+
     // -- schema ---------------------------------------------------------------
 
     public function testTitleLeadsTheCardOfABlockTypeThatHasOne(): void
     {
         $strategy = $this->strategy(['season' => ['year', 'notes']]);
-        $nodes = $strategy->exposedSchema([
+        $cards = $this->cards($strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
-        ]);
+        ]));
 
-        $this->assertCount(1, $nodes);
-        $this->assertSame('matrixFields', $nodes[0]['type']);
-        $this->assertSame('season', $nodes[0]['blockType']);
+        $this->assertCount(1, $cards);
+        $this->assertSame('matrixFields', $cards[0]['type']);
+        $this->assertSame('season', $cards[0]['blockType']);
 
-        $subFields = $nodes[0]['subFields'];
+        $subFields = $cards[0]['subFields'];
         $this->assertSame(['title', 'year', 'notes'], array_column($subFields, 'handle'));
         $this->assertSame('nativeFields', $subFields[0]['channel']);
         $this->assertSame('Title', $subFields[0]['label']);
@@ -315,26 +695,26 @@ class MatrixFieldTest extends Unit
         // A block type can relabel its title element ("Season name"), and that
         // is what the editor sees on the block — so it names the row too.
         $strategy = $this->strategy(['season' => ['year']]);
-        $nodes = $strategy->exposedSchema([
+        $cards = $this->cards($strategy->exposedSchema([
             [
                 'handle'        => 'season',
                 'name'          => 'Season',
                 'hasTitleField' => true,
                 'titleLabel'    => 'Season name',
             ],
-        ]);
+        ]));
 
-        $this->assertSame('Season name', $nodes[0]['subFields'][0]['label']);
+        $this->assertSame('Season name', $cards[0]['subFields'][0]['label']);
     }
 
     public function testABlockTypeWithoutATitleFieldGetsNoTitleRow(): void
     {
         $strategy = $this->strategy(['season' => ['year']]);
-        $nodes = $strategy->exposedSchema([
+        $cards = $this->cards($strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
-        ]);
+        ]));
 
-        $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
+        $this->assertSame(['year'], array_column($cards[0]['subFields'], 'handle'));
     }
 
     public function testCustomRowsCarryNoChannel(): void
@@ -342,24 +722,79 @@ class MatrixFieldTest extends Unit
         // An absent `channel` IS the custom-field channel — the stored shape
         // that predates the key, so a custom row must never gain one.
         $strategy = $this->strategy(['season' => ['year']]);
-        $nodes = $strategy->exposedSchema([
+        $cards = $this->cards($strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
-        ]);
+        ]));
 
-        $this->assertArrayNotHasKey('channel', $nodes[0]['subFields'][1]);
+        $this->assertArrayNotHasKey('channel', $cards[0]['subFields'][1]);
     }
 
     public function testEachBlockTypeGetsItsOwnCard(): void
     {
         $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
-        $nodes = $strategy->exposedSchema([
+        $cards = $this->cards($strategy->exposedSchema([
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
             ['handle' => 'quote', 'name' => 'Quote', 'hasTitleField' => true],
+        ]));
+
+        $this->assertSame(['season', 'quote'], array_column($cards, 'blockType'));
+        $this->assertSame(['year'], array_column($cards[0]['subFields'], 'handle'));
+        $this->assertSame(['title', 'text'], array_column($cards[1]['subFields'], 'handle'));
+    }
+
+    public function testTheBlockSourceSelectLeadsTheExtrasAndDefaultsToGrouped(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
         ]);
 
-        $this->assertSame(['season', 'quote'], array_column($nodes, 'blockType'));
-        $this->assertSame(['year'], array_column($nodes[0]['subFields'], 'handle'));
-        $this->assertSame(['title', 'text'], array_column($nodes[1]['subFields'], 'handle'));
+        $this->assertSame('blockSource', $nodes[0]['handle']);
+        $this->assertSame('select', $nodes[0]['type']);
+        $this->assertSame(MatrixBlockSource::GROUPED->value, $nodes[0]['default']);
+        $this->assertSame(
+            ['grouped', 'listSingle', 'listByKey', 'listByNode'],
+            array_column($nodes[0]['options'], 'value'),
+        );
+    }
+
+    public function testTheTypeNodeShowsOnlyForTheDiscriminatorSource(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+        ]);
+
+        $typeNode = $this->nodeByHandle($nodes, 'typeNode');
+
+        $this->assertSame('type', $typeNode['default']);
+        $this->assertSame(
+            [['handle' => 'blockSource', 'equals' => 'listByNode']],
+            $typeNode['showIf'],
+        );
+    }
+
+    /**
+     * One alias box per block type, defaulting to the handle, and shown only for
+     * the two sources that match a feed key against it.
+     */
+    public function testEachBlockTypeGetsAFeedKeyBoxForTheKeyMatchingSources(): void
+    {
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+            ['handle' => 'quote', 'name' => 'Quote', 'hasTitleField' => false],
+        ]);
+
+        foreach (['season', 'quote'] as $typeHandle) {
+            $alias = $this->nodeByHandle($nodes, 'sourceKey_' . $typeHandle);
+
+            $this->assertSame($typeHandle, $alias['default']);
+            $this->assertSame(
+                [['handle' => 'blockSource', 'in' => ['listByKey', 'listByNode']]],
+                $alias['showIf'],
+            );
+        }
     }
 
     public function testAFieldWithoutBlockTypesRendersANote(): void
@@ -1088,7 +1523,7 @@ class MatrixFieldTest extends Unit
         $context = $this->context(
             $item,
             ['season' => ['fields' => ['year' => ['node' => 'seasons.year']]]],
-            FieldContext::MAX_DEPTH,
+            depth: FieldContext::MAX_DEPTH,
         );
         $strategy = $this->strategy(['season' => ['year']]);
 
@@ -1413,22 +1848,66 @@ class MatrixFieldTest extends Unit
     /**
      * A Matrix top-level FieldContext. `$blocks` is the per-block-type
      * sub-mapping tree map ({typeHandle: {fields, nativeFields}}), wrapped into
-     * the mapping's `blocks` channel.
+     * the mapping's `blocks` channel; `$node` and `$options` are the row's own
+     * source node and settings, which only the list block sources read.
      *
      * @param array<string, mixed> $blocks
+     * @param array<string, mixed> $options
      */
-    protected function context(RemoteItem $item, array $blocks, int $depth = 0, bool $dryRun = false): FieldContext
-    {
+    protected function context(
+        RemoteItem $item,
+        array $blocks,
+        ?string $node = null,
+        array $options = [],
+        int $depth = 0,
+        bool $dryRun = false,
+    ): FieldContext {
         return new FieldContext(
             craftField: $this->createMock(CraftFieldInterface::class),
             handle: 'seasons',
-            mapping: FieldMapping::fromConfig('seasons', ['blocks' => $blocks]),
+            mapping: FieldMapping::fromConfig('seasons', [
+                'blocks'  => $blocks,
+                'node'    => $node,
+                'options' => $options,
+            ]),
             item: $item,
             link: FakeLink::make(),
             element: $this->createMock(ElementInterface::class),
             dryRun: $dryRun,
             depth: $depth,
         );
+    }
+
+    /**
+     * The block-type cards out of an extras region — the settings that pick a
+     * block source lead it, so a card is never at a fixed index.
+     *
+     * @param list<array<string, mixed>> $nodes
+     * @return list<array<string, mixed>>
+     */
+    protected function cards(array $nodes): array
+    {
+        return array_values(array_filter(
+            $nodes,
+            static fn(array $node): bool => ($node['type'] ?? null) === 'matrixFields',
+        ));
+    }
+
+    /**
+     * One extras node by handle.
+     *
+     * @param list<array<string, mixed>> $nodes
+     * @return array<string, mixed>
+     */
+    protected function nodeByHandle(array $nodes, string $handle): array
+    {
+        foreach ($nodes as $node) {
+            if (($node['handle'] ?? null) === $handle) {
+                return $node;
+            }
+        }
+
+        $this->fail("No schema node with handle '{$handle}'.");
     }
 
     /**
