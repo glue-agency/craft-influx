@@ -48,7 +48,7 @@
             :node="node"
             :channels="channelsFor(node)"
             :node-options="nodeOptions"
-            :discovered-nodes="discoveredNodes"
+            :discovered-nodes="discoveredNodesFor(node)"
             :read-only="readOnly"
             @update:channels="writeCard($event)"
         />
@@ -142,6 +142,18 @@ export default {
 
         channelsFor(node) {
             return readChannels(this.mapping, node);
+        },
+
+        /**
+         * The discovered nodes a card checks its saved paths against — none for
+         * a Matrix card whose row reads a list. Only the list block sources put
+         * a node on a Matrix row, and their sub-field paths are relative to one
+         * list item while discovery only ever produced absolute ones, so every
+         * such path would read as missing. Null is already this prop's "nothing
+         * to check against".
+         */
+        discoveredNodesFor(node) {
+            return node.type === 'matrixFields' && this.mapping.node ? null : this.discoveredNodes;
         },
 
         /** showIf conditions resolve against the same declared-default fallback. */

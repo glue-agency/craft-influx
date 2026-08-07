@@ -226,6 +226,21 @@ describe('MappingExtras matrix blocks', () => {
         expect(cards[1].text()).toContain('Number');
     });
 
+    /**
+     * Only the list block sources put a node on a Matrix row, and their
+     * sub-field paths are relative to one list item — which discovery, having
+     * only ever produced absolute paths, would flag as missing on every row.
+     */
+    it('withholds the discovered nodes from a matrix card whose row reads a list', () => {
+        const discovered = [{ value: 'quotes.text', label: 'quotes.text' }];
+
+        const grouped = mountMatrix({ mapping: {}, discoveredNodes: discovered });
+        expect(grouped.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toEqual(discovered);
+
+        const list = mountMatrix({ mapping: { node: 'content' }, discoveredNodes: discovered });
+        expect(list.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+    });
+
     it('never showIf-gates a matrix card', () => {
         // Even a failing showIf leaves the card rendered — gating only applies to
         // the leaf controls.
