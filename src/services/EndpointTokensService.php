@@ -12,8 +12,8 @@ use craft\fields\PlainText;
 use craft\fields\RadioButtons;
 use GlueAgency\Influx\events\DefineEndpointTokensEvent;
 use GlueAgency\Influx\events\DefineEndpointTokenSuggestionsEvent;
+use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\targets\support\EntryTypeResolver;
 
 /**
  * Builds the `{token}` substitution map for a link's Resource Endpoint URL
@@ -195,10 +195,9 @@ class EndpointTokensService extends Component
 
     /**
      * {@see suggestions()} for an element type / criteria combination rather than
-     * a stored link — what the LinkBuilder SPA asks for when the user changes the
-     * section / entry-type dropdowns. The transient link stub the suggestions are
-     * derived from is built here, by the owner, so callers don't have to know the
-     * shape.
+     * a stored link — what the LinkBuilder SPA asks for when the user changes a
+     * criteria dropdown. The transient link stub the suggestions are derived from
+     * is built here, by the owner, so callers don't have to know the shape.
      */
     public function suggestionsFor(string $elementType, array $criteria): array
     {
@@ -223,22 +222,19 @@ class EndpointTokensService extends Component
     }
 
     /**
-     * Custom fields on the entry type that the configured link points at,
-     * or an empty list when the link has no section/type yet. Used by the
-     * token picker; runtime token-building reads the live element's layout.
+     * Custom fields on the layout the configured link writes to, or an empty list
+     * when its criteria don't resolve one yet. Used by the token picker; runtime
+     * token-building reads the live element's layout.
+     *
+     * Asks the target ({@see \GlueAgency\Influx\targets\ElementTargetInterface::fieldLayout()})
+     * rather than resolving a section and entry type itself, which is what used to
+     * leave this picker empty for every element type but Entry.
      *
      * @return list<\craft\base\FieldInterface>
      */
     protected function customFieldsForLink(Link $link): array
     {
-        $resolved = (new EntryTypeResolver())->tryResolve($link);
-
-        if (! $resolved) {
-            return [];
-        }
-
-        [, $entryType] = $resolved;
-        $layout = $entryType->getFieldLayout();
+        $layout = Influx::getInstance()->targets->forLink($link)?->fieldLayout($link);
 
         return $layout ? $layout->getCustomFields() : [];
     }

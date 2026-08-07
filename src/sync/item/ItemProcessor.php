@@ -127,7 +127,7 @@ class ItemProcessor
 
     /**
      * Phase 3 — persist the populated element through the target
-     * ({@see ElementTargetInterface::save()}, which saves with validation OFF —
+     * ({@see ElementTargetInterface::save()}, which saves WITH validation —
      * deliberate, and documented there). Pass-through for dry-runs and skips; a
      * failed save becomes {@see ItemAction::ERROR} carrying
      * {@see commitFailureMessage()}.
@@ -136,9 +136,11 @@ class ItemProcessor
      * existing elements skip the save. Either way, a committed create/update
      * item then runs the target's {@see ElementTargetInterface::afterCommit()}
      * hook, so a target can reconcile state that lives outside the element save
-     * (e.g. user-group membership) even for an otherwise-unchanged element.
+     * (e.g. user-group membership) even for an otherwise-unchanged element. The
+     * item rides along for the hook's sake: a per-item side effect (a user's photo
+     * URL) can only be read from the feed, and only after the element has an id.
      */
-    public function commit(SyncContext $context, ItemSyncResult $draft): ItemSyncResult
+    public function commit(SyncContext $context, RemoteItem $item, ItemSyncResult $draft): ItemSyncResult
     {
         if ($context->dryRun || $draft->element === null || $draft->decision->isSkip()) {
             return $draft;
@@ -167,7 +169,7 @@ class ItemProcessor
             );
         }
 
-        $context->target->afterCommit($context, $draft->element, $draft->isNew);
+        $context->target->afterCommit($context, $draft->element, $item, $draft->isNew);
 
         return $draft;
     }

@@ -103,7 +103,7 @@ class SyncButtonPresenter
 
         if (! $matchAttr || $element->{$matchAttr} === null || $element->{$matchAttr} === '') {
             $enabled = false;
-            $reason = Craft::t('influx', 'This entry has no value for the match field, so it can’t be synced from remote.');
+            $reason = Craft::t('influx', 'This element has no value for the match field, so it can’t be synced from remote.');
         } elseif ($this->cooldownRemaining($link, $element) > 0) {
             $enabled = false;
             $reason = Craft::t('influx', 'Recently synced');

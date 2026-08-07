@@ -29,28 +29,16 @@
             <v-field-errors :messages="errors.elementType" />
         </div>
 
-        <div class="field" v-if="usesCriteria('section')">
-            <div class="heading"><label for="builder-section" v-text="$t('Section')"></label></div>
-            <div class="input ltr">
-                <div class="select">
-                    <select id="builder-section" v-model="section" :disabled="readOnly">
-                        <option v-for="o in options.sections" :key="o.value" :value="o.value" v-text="o.label"></option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <div class="field" v-if="usesCriteria('type')">
-            <div class="heading"><label for="builder-entryType" v-text="$t('Entry type')"></label></div>
-            <div class="input ltr">
-                <div class="select">
-                    <select id="builder-entryType" v-model="entryType" :disabled="readOnly">
-                        <option value="" v-text="$t('— select —')"></option>
-                        <option v-for="o in entryTypeOptions" :key="o.value" :value="o.value" v-text="o.label"></option>
-                    </select>
-                </div>
-            </div>
-        </div>
+        <!-- Whatever the selected target scopes on — section + entry type for
+             entries, a volume or group for the others. The target declares the
+             form; nothing here knows any criteria key by name. -->
+        <v-schema-form
+            v-if="criteriaSchema.length"
+            :schema="criteriaSchema"
+            :options="link.elementCriteria"
+            :read-only="readOnly"
+            @update:options="onCriteriaChange"
+        />
 
         <hr>
         <h2 v-text="$t('Endpoint')"></h2>
@@ -154,6 +142,7 @@ import OffsetPresetsTable from '../OffsetPresetsTable.vue';
 import SiteEndpointsTable from '../SiteEndpointsTable.vue';
 import LightSwitch from '../LightSwitch.vue';
 import FieldErrors from '../FieldErrors.vue';
+import SchemaForm from '../schema/SchemaForm.vue';
 
 export default {
     name: 'GeneralTab',
@@ -205,11 +194,24 @@ export default {
                 .find((o) => o.value === this.link.elementType);
         },
 
+        // The target's own criteria form. Empty for a type with nothing to scope
+        // on (Users), and before an element type is resolved.
+        criteriaSchema() {
+            return this.currentElementType?.criteriaSchema || [];
+        },
+
         // Non-localizable element types (Users) can't run per-site, so the
         // site-specific endpoint controls are hidden for them. Defaults to
         // true until an element type is resolved.
         supportsMultiSite() {
             return this.currentElementType ? this.currentElementType.multiSite !== false : true;
+        },
+
+        // An element type whose elements are declared in project config rather
+        // than conjured by a feed (Global Sets) is never created by a run, so the
+        // `create` policy isn't offered. Same default-to-true rule as multi-site.
+        supportsCreating() {
+            return this.currentElementType ? this.currentElementType.creating !== false : true;
         },
 
         // An element type whose target can't enumerate "everything a link owns"
@@ -221,6 +223,9 @@ export default {
 
         /**
          * The processing checkboxes to render.
+         *
+         * `create` is dropped for an element type that can't be created, and the
+         * save drops the stored value to match (Link::pruneProcessingForTarget()).
          *
          * The missing-element policies are dropped for a non-sweeping element
          * type, so the operator can't tick a policy its run would only skip.
@@ -240,34 +245,12 @@ export default {
             const actions = this.options.processingActions || [];
 
             return actions.filter((o) => {
+                if (o.creating) return this.supportsCreating;
                 if (! o.missingPolicy) return true;
                 if (! this.supportsSweeping) return false;
 
                 return !!o.forSite === this.siteEndpointsMode;
             });
-        },
-
-        section: {
-            get() { return this.link.elementCriteria.section || ''; },
-            set(v) {
-                this.link.elementCriteria = {
-                    ...this.link.elementCriteria,
-                    section: v || null,
-                    type: null,
-                };
-            },
-        },
-
-        entryType: {
-            get() { return this.link.elementCriteria.type || ''; },
-            set(v) {
-                this.link.elementCriteria = { ...this.link.elementCriteria, type: v || null };
-            },
-        },
-
-        entryTypeOptions() {
-            const map = this.options.sectionEntryTypes[this.section] || {};
-            return Object.entries(map).map(([handle, label]) => ({ value: handle, label }));
         },
 
         // Validation errors keyed by attribute. Each input's `<field-errors>`
@@ -321,11 +304,21 @@ export default {
     },
 
     methods: {
-        // Whether the selected element type scopes on the given criteria key
-        // (e.g. entries use 'section' / 'type'; users use none) — drives which
-        // criteria dropdowns render.
-        usesCriteria(key) {
-            return (this.currentElementType?.criteria || []).includes(key);
+        // A criteria dropdown cleared back to its "— select —" row posts '', and a
+        // dependent one cleared by its parent posts null — both meaning "not set",
+        // which is what Link::criterion() reads either of as. Dropped outright
+        // rather than stored, so the saved YAML carries only the criteria that say
+        // something.
+        onCriteriaChange(next) {
+            const criteria = {};
+
+            for (const [key, value] of Object.entries(next)) {
+                if (value !== '' && value !== null && value !== undefined) {
+                    criteria[key] = value;
+                }
+            }
+
+            this.link.elementCriteria = criteria;
         },
 
         // Switching element type invalidates the previous type's criteria and,
@@ -353,6 +346,6 @@ export default {
         },
     },
 
-    components: { 'v-tokenized-input': TokenizedInput, 'v-offset-presets-table': OffsetPresetsTable, 'v-site-endpoints-table': SiteEndpointsTable, 'v-light-switch': LightSwitch, 'v-field-errors': FieldErrors },
+    components: { 'v-tokenized-input': TokenizedInput, 'v-offset-presets-table': OffsetPresetsTable, 'v-site-endpoints-table': SiteEndpointsTable, 'v-light-switch': LightSwitch, 'v-field-errors': FieldErrors, 'v-schema-form': SchemaForm },
 };
 </script>

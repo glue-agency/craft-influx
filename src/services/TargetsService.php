@@ -4,16 +4,20 @@ namespace GlueAgency\Influx\services;
 
 use GlueAgency\Influx\events\RegisterTargetsEvent;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\AssetTarget;
+use GlueAgency\Influx\targets\CategoryTarget;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use GlueAgency\Influx\targets\EntryTarget;
+use GlueAgency\Influx\targets\GlobalSetTarget;
+use GlueAgency\Influx\targets\TagTarget;
 use GlueAgency\Influx\targets\UserTarget;
 
 /**
  * Registry of element-target adapters, keyed by the element-type FQCN each one
- * declares. Built-ins are seeded into the registration event payload before
- * triggering, so listeners can append new targets, override built-ins (by
- * re-adding under the same element type), or remove them entirely — see
- * {@see AbstractRegistry} for the shared mechanics.
+ * declares. One per native Craft element type ships built-in; they're seeded into
+ * the registration event payload before triggering, so listeners can append new
+ * targets, override built-ins (by re-adding under the same element type), or
+ * remove them entirely — see {@see AbstractRegistry} for the shared mechanics.
  *
  *   Event::on(
  *       TargetsService::class,
@@ -54,7 +58,11 @@ class TargetsService extends AbstractRegistry
     protected function defaults(): array
     {
         return [
+            AssetTarget::class,
+            CategoryTarget::class,
             EntryTarget::class,
+            GlobalSetTarget::class,
+            TagTarget::class,
             UserTarget::class,
         ];
     }

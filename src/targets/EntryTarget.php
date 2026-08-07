@@ -12,6 +12,7 @@ use craft\fieldlayoutelements\entries\EntryTitleField;
 use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
 use craft\models\EntryType;
+use craft\models\FieldLayout;
 use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
@@ -19,6 +20,7 @@ use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\NativeAttributes;
+use GlueAgency\Influx\schema\SchemaBuilder;
 use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\support\EntryTypeResolver;
@@ -51,6 +53,83 @@ class EntryTarget extends AbstractElementTarget
     public static function criteriaKeys(): array
     {
         return [self::CRITERIA_SECTION, self::CRITERIA_TYPE];
+    }
+
+    /**
+     * Section, then the entry types OF that section — the one criteria surface
+     * with a cascade, and the case `dependsOn` / `optionsBy` exist for. Craft 5
+     * shares entry types across sections, so a flat list would offer types the
+     * picked section doesn't have; the per-section lists are shipped up front
+     * because the whole project-config view is a handful of handles, and a fetch
+     * per section change would be a round-trip for data the page already had.
+     *
+     * @return list<array>
+     */
+    public static function criteriaSchema(): array
+    {
+        $sections = [self::criteriaPlaceholder()];
+        $typesBySection = [];
+
+        foreach (Compat::getAllSections() as $section) {
+            $sections[] = ['value' => $section->handle, 'label' => $section->name];
+
+            $types = [self::criteriaPlaceholder()];
+
+            foreach ($section->getEntryTypes() as $entryType) {
+                $types[] = ['value' => $entryType->handle, 'label' => $entryType->name];
+            }
+
+            $typesBySection[$section->handle] = $types;
+        }
+
+        return SchemaBuilder::make()
+            ->select([
+                'handle'  => self::CRITERIA_SECTION,
+                'label'   => Craft::t('app', 'Section'),
+                'options' => $sections,
+            ])
+            ->select([
+                'handle'    => self::CRITERIA_TYPE,
+                'label'     => Craft::t('app', 'Entry Type'),
+                'dependsOn' => self::CRITERIA_SECTION,
+                'optionsBy' => $typesBySection,
+            ])
+            ->toArray();
+    }
+
+    /**
+     * "Movies / Feature" — the section, then the entry type when one is pinned.
+     * Falls back to the stored handle when a section or type has since been
+     * removed, so the overview never goes blank on config drift.
+     */
+    public function criteriaLabel(Link $link): ?string
+    {
+        $sectionHandle = $link->criterion(self::CRITERIA_SECTION);
+
+        if (! $sectionHandle) {
+            return null;
+        }
+
+        $section = Compat::getSectionByHandle($sectionHandle);
+        $parts = [$section?->name ?? $sectionHandle];
+
+        $typeHandle = $link->criterion(self::CRITERIA_TYPE);
+
+        if ($typeHandle) {
+            $typeName = null;
+
+            foreach ($section?->getEntryTypes() ?? [] as $entryType) {
+                if ($entryType->handle === $typeHandle) {
+                    $typeName = $entryType->name;
+
+                    break;
+                }
+            }
+
+            $parts[] = $typeName ?? $typeHandle;
+        }
+
+        return implode(' / ', $parts);
     }
 
     /**
@@ -281,6 +360,22 @@ class EntryTarget extends AbstractElementTarget
                 Craft::t('influx', 'Content'),
             ),
         );
+    }
+
+    /**
+     * The resolved entry type's layout — entry types own their own field layout in
+     * Craft 5, and a section without a resolvable type has none to report.
+     */
+    public function fieldLayout(Link $link): ?FieldLayout
+    {
+        $resolved = (new EntryTypeResolver())->tryResolve($link);
+
+        if (! $resolved) {
+            return null;
+        }
+        [, $entryType] = $resolved;
+
+        return $entryType->getFieldLayout();
     }
 
     /**

@@ -19,6 +19,13 @@ use Throwable;
  *
  * Lookup by URL falls back to upload only when explicitly enabled — that's
  * the same boundary FeedMe draws via `options.upload`.
+ *
+ * Two entry points, because there are two kinds of caller. A field strategy wants
+ * a saved Asset it can relate to ({@see uploadFromUrl()}); an element target owns
+ * the element the engine is about to save and only wants the FILE
+ * ({@see downloadToTemp()} + {@see filenameFor()}), so it can hand it to that
+ * element instead of committing a second one behind the engine's back. Both share
+ * this class's HTTP client, its redirect policy and its scheme guard.
  */
 class AssetUploadService extends Component
 {
@@ -112,7 +119,16 @@ class AssetUploadService extends Component
         }
     }
 
-    protected function filenameFor(string $url): string
+    /**
+     * The safe filename a remote URL lands under, falling back to a hash of the
+     * URL when the path carries no basename at all.
+     *
+     * Public because the callers that download a file themselves
+     * ({@see \GlueAgency\Influx\targets\AssetTarget}, {@see \GlueAgency\Influx\targets\UserTarget})
+     * need the same name this service would have chosen — a second spelling of it
+     * is how the same URL ends up stored twice.
+     */
+    public function filenameFor(string $url): string
     {
         $name = basename(parse_url($url, PHP_URL_PATH) ?: '');
 
@@ -128,10 +144,20 @@ class AssetUploadService extends Component
      * anything else (`file://`, …) would turn a feed value into a local-file
      * read / SSRF vector.
      *
+     * Public because the element targets that own the saved element can't go
+     * through {@see uploadFromUrl()}: that one saves the asset itself, while a
+     * target hands the temp file to the element and lets the engine's own
+     * {@see \GlueAgency\Influx\targets\ElementTargetInterface::save()} commit it.
+     * They get the file, this keeps owning HOW it's fetched — including the scheme
+     * guard, which is the whole reason a feed URL is safe to follow.
+     *
+     * The caller owns the returned path and must unlink it; Craft moves it into the
+     * volume on save, so an asset save that lands leaves nothing behind.
+     *
      * @throws AssetUploadException when the download fails or the server
      * answers with a non-2xx status.
      */
-    protected function downloadToTemp(string $url): string
+    public function downloadToTemp(string $url): string
     {
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
 

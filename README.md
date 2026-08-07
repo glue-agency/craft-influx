@@ -1,6 +1,6 @@
 # Influx
 
-Connect Craft elements to external JSON APIs. A lighter, Project-Config-backed alternative to FeedMe that **hydrates existing element types** (Entries and Users today, any element type through a target adapter) instead of owning its own element type.
+Connect Craft elements to external JSON APIs. A lighter, Project-Config-backed alternative to FeedMe that **hydrates existing element types** (every native Craft one — entries, assets, categories, tags, users and globals — and any other through a target adapter) instead of owning its own element type.
 
 ## Why another sync plugin
 
@@ -91,23 +91,34 @@ Each registry hands out one shared prototype instance per registered class, buil
 
 ### Targets
 
-A `target` is an adapter for one element type. The plugin ships `EntryTarget` (for `craft\elements\Entry`) and `UserTarget` (for `craft\elements\User`).
+A `target` is an adapter for one element type. The plugin ships one per native Craft element type:
 
-> **Note:** `UserTarget` is under active development — treat it as experimental. Its mapping options (group membership, user-specific attributes) and behaviour may still change before release.
+| Target | Element type | Scopes on | Notes |
+| --- | --- | --- | --- |
+| `EntryTarget` | `craft\elements\Entry` | section + entry type | `title` / `slug` / `enabled` / `postDate` / `expiryDate` / `author` |
+| `AssetTarget` | `craft\elements\Asset` | volume | the file arrives through a native **File URL** row; `filename` / `title` / `alt` follow the volume's layout |
+| `CategoryTarget` | `craft\elements\Category` | category group | `title` / `slug` / `enabled` / `parent`, so a feed can build the tree |
+| `TagTarget` | `craft\elements\Tag` | tag group | `title` / `enabled` — Craft derives a tag's slug, so no row for it |
+| `UserTarget` | `craft\elements\User` | — | names / `email` / `enabled` / `newPassword`, plus groups, photo, suspension and activation |
+| `GlobalSetTarget` | `craft\elements\GlobalSet` | global set | **update-only** — a global set is declared in project config, never created by a feed |
 
 Third-party plugins register their own through `TargetsService::EVENT_REGISTER_TARGETS` or `->targets->register()` (see [Registries](#registries)); targets are keyed by the `elementType()` they declare.
 
-A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and own every write to it — `save()` plus disable / disable-for-site / delete / delete-for-site. Every write to the synced element routes through the target instead of Craft's element API, so a target can save with whatever flags its element type needs; the base implementation is Craft's own save with validation off (the feed is authoritative — same policy Feed Me imports run on). Related elements a mapping creates on the fly are the strategies' own business, not the target's.
+A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and own every write to it — `save()` plus disable / disable-for-site / delete / delete-for-site. Every write to the synced element routes through the target instead of Craft's element API, so a target can save with whatever flags its element type needs; the base implementation is Craft's own save with validation on (see `AbstractElementTarget::save()` for the trade). Related elements a mapping creates on the fly are the strategies' own business, not the target's.
 
-Three static capabilities let a target describe its element type to the builder and the sync engine:
+Five static capabilities let a target describe its element type to the builder and the sync engine:
 
-- **`supportsMultiSite()`** — whether links can carry site-specific endpoints and be swept per-site. Localizable types (Entry) return `true`; global, non-localizable ones (User) return `false`, so their links always run once against a single endpoint and the CP hides the site-specific controls. `Link` rejects site endpoints configured against a non-multi-site target as a server-side backstop.
-- **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on, rendered as extra dropdowns on the builder's General tab (Entry uses `['section', 'type']`; User has none). The target owns those key names as constants (`EntryTarget::CRITERIA_SECTION`), and stored criteria are read through `Link::criterion($key)`.
+- **`supportsMultiSite()`** — whether links can carry site-specific endpoints and be swept per-site. Localizable types (Entry, Asset, Category, Tag, GlobalSet) return `true`; global, non-localizable ones (User) return `false`, so their links always run once against a single endpoint and the CP hides the site-specific controls. `Link` rejects site endpoints configured against a non-multi-site target as a server-side backstop.
+- **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on (Entry uses `['section', 'type']`; User has none). The target owns those key names as constants (`EntryTarget::CRITERIA_SECTION`), and stored criteria are read through `Link::criterion($key)`.
+- **`criteriaSchema()`** — the dropdowns that fill those keys in, as a `SchemaBuilder` schema the builder's General tab renders directly. Two node keys shape a cascade: `dependsOn` names the handle a node's list is keyed on, and `optionsBy` is that list per parent value — how Entry narrows its entry-type dropdown to the picked section. A new element type therefore needs no CP change at all.
+- **`supportsCreating()`** — whether a feed may create elements of this type at all. `GlobalSetTarget` returns `false`; the builder drops the `create` policy for it, a save drops it from stored config with a notice, and `buildNew()` throwing is the last line of defence.
 - **`supportsSweeping()`** — whether links to this type can be swept for elements missing from the feed. A sweep acts on the complement of what a run saw, so it needs a target that can enumerate "everything this link owns" (`missingElementsQuery()`). Types with no scoping dimension (User: the candidate set would be every user in the system) return `false`, and the builder then leaves the disable-/delete-missing policies out of the processing checkboxes; a stored policy from before that gets a reported skip in the run's log rather than silently doing nothing.
 
-A target that partitions its element type also implements **`claimCells()`** — the comparable cells two links intersect on when Influx warns that both define a resource mapping for the same elements (entries expand to `"{section} {entryType}"`; the base reports one `*` sentinel, so two links of an unpartitioned type always overlap).
+Two per-link members round it out. **`claimCells()`** reports the comparable cells two links intersect on when Influx warns that both define a resource mapping for the same elements (entries expand to `"{section} {entryType}"`, the group- and volume-scoped types report their group handle; the base reports one `*` sentinel, so two links of an unpartitioned type always overlap). **`criteriaLabel()`** is how the Links overview reads a link's scope back — "Movies / Feature", a volume or a group name.
 
-A target also reports which fields a link may map to: `getMappableFields()` returns a `list<MappableField>` — its element type's native attributes, declared with the same `SchemaBuilder` the mapping extras use, plus the custom fields on the resolved field layout, grouped the way the element editor groups them. Natives the element type hides are left out by omission: an entry type with `hasTitleField` off never offers `title`. A stored mapping for a handle the target no longer offers is pruned the next time the link is saved.
+A target also reports which fields a link may map to: `getMappableFields()` returns a `list<MappableField>` — its element type's native attributes, declared with the same `SchemaBuilder` the mapping extras use, plus the custom fields on the layout `fieldLayout()` resolves, grouped the way the element editor groups them. Natives the element type hides are left out by omission: an entry type with `hasTitleField` off never offers `title`, and a volume without the Alt layout element never offers `alt`. A stored mapping for a handle the target no longer offers is pruned the next time the link is saved.
+
+Some element state can't be written by an element save at all. A target claims those handles with **`ownsAttribute()`** — the applier then leaves them alone — and reconciles them in **`afterCommit()`**, which runs with both the feed row and an element that has an id. That's how `UserTarget` handles group membership, the user photo, suspension and activation, and how `GlobalSetTarget` keeps a `handle` mapping row that exists only to say where the match value comes from without ever writing it.
 
 ### Mappings
 
@@ -221,16 +232,15 @@ Anything in there treats the other plugin as optional: integrations read its tab
 
 ## Roadmap
 
-Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), and mapping strategies for every native Craft field type — relations, options, dates, assets, rich text, Matrix, Table, Content Block, Addresses, Link, and the single-value types (Time, Money, Colour, Country, Icon, JSON, Range). Plain Text, Number and Email stay on the `DefaultField` fallback deliberately: a raw write is the right write for them.
+Shipped since the alpha: queue-job-based runs (one job per site, one feed page per step, resumable), missing-element reconciliation (disable / disable-for-site / delete / delete-for-site, gated by endpoint shape), mapping strategies for every native Craft field type — relations, options, dates, assets, rich text, Matrix, Table, Content Block, Addresses, Link, and the single-value types (Time, Money, Colour, Country, Icon, JSON, Range) — and a target for every native Craft element type. Plain Text, Number and Email stay on the `DefaultField` fallback deliberately: a raw write is the right write for them.
 
 Still open:
 
-- [ ] **More element-type targets.** Links can hydrate Entries (`EntryTarget`) today, with `UserTarget` (Users) under active development. Add target adapters for the other element types:
-  - [ ] Assets (`craft\elements\Asset`)
-  - [ ] Categories (`craft\elements\Category`)
+- [ ] **Targets for third-party element types.** The native six all ship; these arrive when their plugin is installed, following the same optional-dependency rule as the other integrations:
   - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
+- [ ] **`id` and `uri` as match attributes.** Both are offered in the Match dropdown, but `Link::validateMatch()` needs the match attribute to have a mapping row with a source node — and neither has one, since neither is writable. `GlobalSetTarget`'s claimed `handle` row is the shape of the fix.
 - [ ] **Strategies for third-party field types.** The same extension point, for the field types sites actually install alongside the natives. [Super Table](https://github.com/verbb/super-table) 4.x is entry-type based on Craft 5, so it's structurally what `Matrix` already does; [Linkit](https://github.com/presseddigital/linkit)'s value object mirrors the native Link field. SEOmatic's `SeoSettings` and Freeform's form picker are container-shaped and still on the fallback. (CKEditor and Redactor already work — both extend `craft\htmlfield\HtmlField`, which `RichText` is keyed on.)
 - [ ] **Match-by lookup for element-typed links.** A `Link` mapping pointing at an entry, asset or category takes the element's ID; matching a title or slug the way the relational strategies do would need the match-by apparatus for a single lookup.
 - [ ] **Per-address drill-down in the inspectors.** `Matrix` and `Table` report what happened to each child; an `Addresses` row reports as one value.

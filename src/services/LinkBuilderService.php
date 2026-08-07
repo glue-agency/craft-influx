@@ -125,9 +125,10 @@ class LinkBuilderService extends Component
      * (`{success: false, message, errors}`) on validation failure — never throws
      * for validation; the controller turns the envelope into a 400.
      *
-     * The processing policy is healed to the endpoint shape here — rather than
-     * left to {@see LinksService::saveLink()}, which repeats it idempotently —
-     * so the response can report what changed.
+     * The processing policy is healed here — dropping what the target doesn't
+     * support, then swapping the missing-element policies to the endpoint shape —
+     * rather than left to {@see LinksService::saveLink()}, which repeats both
+     * idempotently, so the response can report what changed.
      *
      * @param array $payload Raw JSON body posted by the SPA.
      * @return array{success: true, link: array}|array{success: false, message: string, errors: array<string, string[]>}
@@ -143,6 +144,7 @@ class LinkBuilderService extends Component
 
         $this->serializer->apply($link, $payload);
 
+        $dropped = $link->pruneProcessingForTarget();
         $migrations = $link->migrateProcessingForEndpointShape();
 
         if (! $plugin->links->saveLink($link)) {
@@ -155,8 +157,18 @@ class LinkBuilderService extends Component
 
         $result = ['success' => true, 'link' => $this->serializer->serialize($link)];
 
+        $notices = [];
+
+        if ($dropped) {
+            $notices[] = $this->processingDropNotice($link, $dropped);
+        }
+
         if ($migrations) {
-            $result['notice'] = $this->processingMigrationNotice($migrations);
+            $notices[] = $this->processingMigrationNotice($migrations);
+        }
+
+        if ($notices) {
+            $result['notice'] = implode(' ', $notices);
         }
 
         $warning = $this->overlapWarning($link);
@@ -239,6 +251,24 @@ class LinkBuilderService extends Component
         return Craft::t('influx', 'Adjusted the missing-element policy {reason}: {changes}.', [
             'reason'  => $reason,
             'changes' => implode(', ', $changes),
+        ]);
+    }
+
+    /**
+     * Human-readable summary of the policies dropped because the link's element
+     * type doesn't support them ({@see Link::pruneProcessingForTarget()}) — config
+     * carried over from another element type, or the `create` default a new link
+     * starts on. Names the element type, since that's the reason.
+     *
+     * @param list<string> $dropped
+     */
+    protected function processingDropNotice(Link $link, array $dropped): string
+    {
+        $labels = array_map(fn(string $value): string => '“' . $this->processingActionLabel($value) . '”', $dropped);
+
+        return Craft::t('influx', 'Dropped {policies}: {elementType} links can’t create elements.', [
+            'policies'    => implode(', ', $labels),
+            'elementType' => Influx::getInstance()->targets->friendlyNameFor($link->elementType),
         ]);
     }
 

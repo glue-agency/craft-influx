@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\targets;
 
 use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappableField;
@@ -20,8 +21,9 @@ use GlueAgency\Influx\sync\SyncContext;
  * type, grouped into six concerns:
  *   1. Identity + capabilities — which element class, what to call it, and which
  *      of the engine's features apply to it ({@see supportsMultiSite()},
- *      {@see criteriaKeys()}, {@see supportsSweeping()}). All static: the CP asks
- *      them per element type, before any link exists.
+ *      {@see criteriaKeys()}, {@see criteriaSchema()}, {@see supportsCreating()},
+ *      {@see supportsSweeping()}). All static: the CP asks them per element type,
+ *      before any link exists.
  *   2. Claiming — which links and which elements are this target's business
  *      ({@see handles()}, {@see targetsElement()}, {@see claimsElement()}), and
  *      the comparable scope two links overlap on ({@see claimCells()}).
@@ -35,7 +37,8 @@ use GlueAgency\Influx\sync\SyncContext;
  *   5. Destructive writes + the missing-elements sweep ({@see disable()},
  *      {@see disableForSite()}, {@see delete()}, {@see deleteForSite()},
  *      {@see missingElementsQuery()}).
- *   6. Schema — the fields a link may map to ({@see getMappableFields()}).
+ *   6. Schema — the fields a link may map to ({@see getMappableFields()}), and the
+ *      layout they come from ({@see fieldLayout()}).
  *
  * {@see AbstractElementTarget} implements every member a target doesn't have to
  * think about, so a new target is `elementType()` + `findByMatchValue()` +
@@ -87,6 +90,41 @@ interface ElementTargetInterface
      * @return list<string>
      */
     public static function criteriaKeys(): array;
+
+    /**
+     * The criteria dropdowns themselves, as a {@see \GlueAgency\Influx\schema\SchemaBuilder}
+     * schema the builder's General tab renders straight into `elementCriteria`.
+     * The UI twin of {@see criteriaKeys()}: that one is the server-side contract
+     * (what {@see Link::criterion()} may be asked for, what a save may keep), this
+     * one is how an operator fills it in. A target declaring criteria keys should
+     * declare a node per key, and the base returns `[]` for a type with none.
+     *
+     * Every node's `handle` IS the criteria key, so the same constants name both.
+     * Two node keys exist for this surface and are honoured by
+     * `SchemaForm.vue`: `dependsOn` (the handle whose value this node's list is
+     * keyed on — changing the parent clears this node) and `optionsBy` (that list,
+     * as `parentValue => [{value, label}]`). Entry's entry-type dropdown is the
+     * case they exist for: entry types are per section, so the list can't be one
+     * flat array. {@see EntryTarget::criteriaSchema()}
+     *
+     * Static because the CP asks per element type, before any link exists — which
+     * also means the option lists are resolved against Craft at request time.
+     *
+     * @return list<array>
+     */
+    public static function criteriaSchema(): array;
+
+    /**
+     * Whether a feed may CREATE elements of this type, or only update ones that
+     * already exist. False for a type whose elements are brought into being in the
+     * CP and only ever hydrated by a feed — a Global Set, which exists because
+     * someone declared it in project config
+     * ({@see \GlueAgency\Influx\targets\GlobalSetTarget}). The builder then doesn't
+     * offer the `create` policy at all and a save drops it
+     * ({@see Link::pruneProcessingForTarget()}); {@see buildNew()} throwing is the
+     * last line of defence. {@see AbstractElementTarget} defaults to true.
+     */
+    public static function supportsCreating(): bool;
 
     /**
      * Whether links to this element type can be swept for elements that are
@@ -147,6 +185,17 @@ interface ElementTargetInterface
      * @return list<string>
      */
     public function claimCells(Link $link): array;
+
+    /**
+     * How the link's criteria read in the CP — "Movies / Feature" for an entry
+     * link, the volume's name for an asset one. Null when nothing is configured
+     * yet, or when the element type carries no criteria at all. Formatting belongs
+     * to the target for the same reason {@see claimCells()} does: only it knows
+     * what its keys mean, and only it can turn a stored handle back into the name
+     * an editor recognises (falling back to the handle when the section / group /
+     * volume has since been removed).
+     */
+    public function criteriaLabel(Link $link): ?string;
 
     /**
      * Find an existing element matching the given key value, or null.
@@ -239,8 +288,17 @@ interface ElementTargetInterface
      * state that lives OUTSIDE the element save (e.g. user-group membership,
      * which a save doesn't persist). $isNew distinguishes a freshly-created
      * element from an updated one. No-op by default.
+     *
+     * The $item is here because this is the ONE hook that runs with both the feed
+     * row and an element that has an id, which is exactly what a side effect
+     * needing both requires: a user's photo comes from a feed node, and
+     * `Users::saveUserPhoto()` can't run until the user exists
+     * ({@see \GlueAgency\Influx\targets\UserTarget::afterCommit()}). Reading it
+     * goes through the same {@see FieldMapping::resolve()} a mapping row would use,
+     * so a handle claimed by {@see ownsAttribute()} still honours its configured
+     * node and default.
      */
-    public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void;
+    public function afterCommit(SyncContext $context, ElementInterface $element, RemoteItem $item, bool $isNew): void;
 
     /**
      * Persist the element, reporting whether the save landed. The engine's ONE
@@ -248,7 +306,7 @@ interface ElementTargetInterface
      * are: so a third-party target can save with whatever flags its element type
      * needs (its own propagation, search-index or resave policy) instead of the
      * engine hardcoding Craft's defaults. {@see AbstractElementTarget::save()}
-     * runs Craft's own save with validation OFF — see there for why.
+     * runs Craft's own save WITH validation — see there for why.
      */
     public function save(ElementInterface $element): bool;
 
@@ -297,4 +355,18 @@ interface ElementTargetInterface
      * @return list<MappableField>
      */
     public function getMappableFields(Link $link): array;
+
+    /**
+     * The field layout this link's custom-field mappings address — the resolved
+     * entry type's for an entry, the volume's for an asset, the single global one
+     * for a user. Null when the criteria don't resolve one yet.
+     *
+     * The primitive behind {@see getMappableFields()}, exposed because a second
+     * consumer needs the layout WITHOUT the mapping schemas built off it:
+     * {@see \GlueAgency\Influx\services\EndpointTokensService} only wants the
+     * custom fields' handles and types for its Resource Endpoint token picker, and
+     * used to reach them through Entry's own resolver — which is why that picker
+     * was silently empty for every non-Entry link.
+     */
+    public function fieldLayout(Link $link): ?FieldLayout;
 }

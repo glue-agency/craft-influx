@@ -32,22 +32,58 @@ const bootstrapPayload = () => ({
         processing: ['create', 'update'],
     },
     options: {
+        // Mirrors LinkBuilderOptionsPresenter::elementTypeOptions(): each target
+        // ships its own criteria form plus its three capability flags. Entry's
+        // entry-type node is keyed on the picked section, the cascade the
+        // `dependsOn` / `optionsBy` pair exists for.
         elementTypes: [
-            { value: 'craft\\elements\\Entry', label: 'Entry', criteria: ['section', 'type'], multiSite: true, sweeping: true },
-            { value: 'craft\\elements\\User', label: 'User', criteria: [], multiSite: false, sweeping: false },
+            {
+                value: 'craft\\elements\\Entry',
+                label: 'Entry',
+                criteria: ['section', 'type'],
+                criteriaSchema: [
+                    {
+                        type: 'select',
+                        handle: 'section',
+                        label: 'Section',
+                        options: [{ value: '', label: '— select —' }, { value: 'news', label: 'News' }],
+                    },
+                    {
+                        type: 'select',
+                        handle: 'type',
+                        label: 'Entry Type',
+                        dependsOn: 'section',
+                        optionsBy: {
+                            news: [{ value: '', label: '— select —' }, { value: 'article', label: 'Article' }],
+                        },
+                    },
+                ],
+                multiSite: true,
+                creating: true,
+                sweeping: true,
+            },
+            { value: 'craft\\elements\\User', label: 'User', criteria: [], criteriaSchema: [], multiSite: false, creating: true, sweeping: false },
+            {
+                value: 'craft\\elements\\GlobalSet',
+                label: 'Global Set',
+                criteria: ['set'],
+                criteriaSchema: [{ type: 'select', handle: 'set', label: 'Global Set', options: [] }],
+                multiSite: true,
+                creating: false,
+                sweeping: false,
+            },
         ],
-        sections: [],
-        sectionEntryTypes: {},
-        // Mirrors LinkBuilderOptionsPresenter::processingActionOptions(): the
-        // writes carry missingPolicy false, the four sweep policies true, and
-        // forSite marks the two of those that act per site.
+        // Mirrors processingActionOptions(): the writes carry missingPolicy
+        // false, the four sweep policies true, forSite marks the two of those
+        // that act per site, and `creating` marks the one a non-creating target
+        // doesn't get.
         processingActions: [
-            { value: 'create', label: 'Create', note: '', missingPolicy: false, forSite: false },
-            { value: 'update', label: 'Update', note: '', missingPolicy: false, forSite: false },
-            { value: 'disable', label: 'Disable globally', note: '', missingPolicy: true, forSite: false },
-            { value: 'delete', label: 'Delete globally', note: '', missingPolicy: true, forSite: false },
-            { value: 'disable-for-site', label: 'Disable for site', note: '', missingPolicy: true, forSite: true },
-            { value: 'delete-for-site', label: 'Delete for site', note: '', missingPolicy: true, forSite: true },
+            { value: 'create', label: 'Create', note: '', creating: true, missingPolicy: false, forSite: false },
+            { value: 'update', label: 'Update', note: '', creating: false, missingPolicy: false, forSite: false },
+            { value: 'disable', label: 'Disable globally', note: '', creating: false, missingPolicy: true, forSite: false },
+            { value: 'delete', label: 'Delete globally', note: '', creating: false, missingPolicy: true, forSite: false },
+            { value: 'disable-for-site', label: 'Disable for site', note: '', creating: false, missingPolicy: true, forSite: true },
+            { value: 'delete-for-site', label: 'Delete for site', note: '', creating: false, missingPolicy: true, forSite: true },
         ],
         sites: [],
     },
@@ -172,5 +208,94 @@ describe('GeneralTab processing actions', () => {
 
         expect(tab.supportsSweeping).toBe(true);
         expect(tab.processingActions).toHaveLength(4);
+    });
+
+    it('drops create for an element type that cannot be created', async () => {
+        const wrapper = mountTab();
+        const tab = wrapper.vm;
+
+        store.link.elementType = 'craft\\elements\\GlobalSet';
+        await nextTick();
+
+        expect(tab.supportsCreating).toBe(false);
+        // A global set is declared in project config, so update is all that's left.
+        expect(tab.processingActions.map((o) => o.value)).toEqual(['update']);
+        expect(wrapper.findAll('.checkbox-group input[type="checkbox"]')).toHaveLength(1);
+    });
+
+    it('defaults to creatable while no element type is resolved', async () => {
+        const tab = mountTab().vm;
+
+        store.link.elementType = 'vendor\\elements\\Widget';
+        await nextTick();
+
+        expect(tab.supportsCreating).toBe(true);
+    });
+});
+
+describe('GeneralTab target criteria', () => {
+    beforeEach(async () => {
+        vi.useFakeTimers();
+        vi.clearAllMocks();
+        api.bootstrap.mockResolvedValue(bootstrapPayload());
+        api.mappableFields.mockResolvedValue({ fields: [], groups: [], matchOptions: [] });
+        api.endpointTokenSuggestions.mockResolvedValue({ suggestions: [] });
+        await store.load(1);
+        vi.clearAllTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
+    it('renders the selected target’s own criteria form', () => {
+        const wrapper = mountTab();
+
+        // Two selects, from Entry's schema alone — nothing in the tab names a
+        // criteria key.
+        expect(wrapper.vm.criteriaSchema).toHaveLength(2);
+        expect(wrapper.findAll('.influx-schema-form select')).toHaveLength(2);
+    });
+
+    it('renders no criteria form for an element type with nothing to scope on', async () => {
+        const wrapper = mountTab();
+
+        store.link.elementType = 'craft\\elements\\User';
+        await nextTick();
+
+        expect(wrapper.vm.criteriaSchema).toEqual([]);
+        expect(wrapper.find('.influx-schema-form').exists()).toBe(false);
+    });
+
+    it('drops a cleared dropdown rather than storing an empty criterion', () => {
+        const tab = mountTab().vm;
+
+        // '' from the select's sentinel row, null from a parent clearing its
+        // dependent — Link::criterion() reads either as "not set".
+        tab.onCriteriaChange({ section: 'news', type: '' });
+        expect(store.link.elementCriteria).toEqual({ section: 'news' });
+
+        tab.onCriteriaChange({ section: 'news', type: null });
+        expect(store.link.elementCriteria).toEqual({ section: 'news' });
+    });
+
+    it('narrows the dependent dropdown to the picked parent’s list', async () => {
+        const wrapper = mountTab();
+
+        store.link.elementCriteria = { section: 'news', type: null };
+        await nextTick();
+
+        const [, entryType] = wrapper.findAll('.influx-schema-form select');
+
+        expect(entryType.findAll('option').map((o) => o.attributes('value')))
+            .toEqual(['', 'article']);
+    });
+
+    it('offers a dependent dropdown nothing until its parent is picked', () => {
+        const wrapper = mountTab();
+        const [, entryType] = wrapper.findAll('.influx-schema-form select');
+
+        expect(entryType.findAll('option')).toHaveLength(0);
     });
 });

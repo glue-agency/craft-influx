@@ -5,7 +5,6 @@ namespace GlueAgency\Influx\web;
 use Craft;
 use craft\web\twig\variables\Cp;
 use GlueAgency\Influx\enums\ProcessingAction;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\MappableField;
 
@@ -19,8 +18,10 @@ use GlueAgency\Influx\schema\MappableField;
  * ({@see LinkBuilderSerializer}, {@see LogPresenter}, {@see ItemRowPresenter}).
  *
  * Everything here resolves against Craft at call time — registered targets,
- * sections, sites, auth strategies, env vars — which makes it presentation
- * rather than state.
+ * sites, auth strategies, env vars — which makes it presentation rather than
+ * state. The one thing NOT here is the per-element-type criteria form: each
+ * target declares its own ({@see \GlueAgency\Influx\targets\ElementTargetInterface::criteriaSchema()}),
+ * so a new element type needs no option list of its own here.
  */
 class LinkBuilderOptionsPresenter
 {
@@ -34,8 +35,6 @@ class LinkBuilderOptionsPresenter
     {
         return [
             'elementTypes'      => $this->elementTypeOptions(),
-            'sections'          => $this->sectionOptions(),
-            'sectionEntryTypes' => $this->sectionEntryTypes(),
             'sites'             => $this->siteOptions(),
             'processingActions' => $this->processingActionOptions(),
             'authTypes'         => $this->authTypeOptions(),
@@ -44,10 +43,16 @@ class LinkBuilderOptionsPresenter
     }
 
     /**
-     * `criteria`, `multiSite` and `sweeping` are the target's capability flags,
-     * which the General tab reacts to — which criteria dropdowns to render,
-     * whether the site-specific endpoint controls are offered, and whether the
-     * missing-element processing policies are.
+     * Everything the General tab reacts to for the selected element type: the
+     * target's own criteria form (`criteriaSchema`, rendered by the same
+     * SchemaForm the Authentication tab uses) plus its three capability flags —
+     * whether the site-specific endpoint controls are offered, whether `create`
+     * is, and whether the missing-element policies are.
+     *
+     * `criteria` is the bare key list. It stays alongside the schema because the
+     * SPA needs to know which keys belong to the type at all — independently of
+     * whether the schema has a control for each — and because a target may
+     * declare keys it doesn't render (one derived from another feed setting, say).
      */
     public function elementTypeOptions(): array
     {
@@ -55,39 +60,14 @@ class LinkBuilderOptionsPresenter
 
         foreach (Influx::getInstance()->targets->all() as $target) {
             $out[] = [
-                'value'     => $target::elementType(),
-                'label'     => $target::friendlyName(),
-                'criteria'  => $target::criteriaKeys(),
-                'multiSite' => $target::supportsMultiSite(),
-                'sweeping'  => $target::supportsSweeping(),
+                'value'          => $target::elementType(),
+                'label'          => $target::friendlyName(),
+                'criteria'       => $target::criteriaKeys(),
+                'criteriaSchema' => $target::criteriaSchema(),
+                'multiSite'      => $target::supportsMultiSite(),
+                'creating'       => $target::supportsCreating(),
+                'sweeping'       => $target::supportsSweeping(),
             ];
-        }
-
-        return $out;
-    }
-
-    public function sectionOptions(): array
-    {
-        $out = [['value' => '', 'label' => Craft::t('influx', '— select —')]];
-
-        foreach (Compat::getAllSections() as $section) {
-            $out[] = ['value' => $section->handle, 'label' => $section->name];
-        }
-
-        return $out;
-    }
-
-    public function sectionEntryTypes(): array
-    {
-        $out = [];
-
-        foreach (Compat::getAllSections() as $section) {
-            $types = [];
-
-            foreach ($section->getEntryTypes() as $type) {
-                $types[$type->handle] = $type->name;
-            }
-            $out[$section->handle] = $types;
         }
 
         return $out;
@@ -111,7 +91,8 @@ class LinkBuilderOptionsPresenter
      * `missingPolicy` marks the four sweep policies, which the General tab hides
      * for an element type whose target reports no sweeping support, and `forSite`
      * marks the two of those that act per site, which it hides unless the link
-     * uses site-specific endpoints. The whole list ships either way, since both
+     * uses site-specific endpoints. `creating` marks the one the tab hides for a
+     * target that can't create. The whole list ships either way, since all three
      * of those change without a reload.
      */
     public function processingActionOptions(): array
@@ -123,6 +104,7 @@ class LinkBuilderOptionsPresenter
                 'value'         => $action->value,
                 'label'         => $action->label(),
                 'note'          => $action->note(),
+                'creating'      => $action === ProcessingAction::CREATE,
                 'missingPolicy' => $action->isMissingPolicy(),
                 'forSite'       => $action->isForSite(),
             ];

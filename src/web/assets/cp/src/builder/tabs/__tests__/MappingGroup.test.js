@@ -48,7 +48,7 @@ const bootstrapPayload = (mappings, meta) => ({
         offset: {},
         mappings,
     },
-    options: { elementTypes: [], sections: [], sectionEntryTypes: {}, processingActions: [], sites: [] },
+    options: { elementTypes: [], processingActions: [], sites: [] },
     meta: { isNew: false, uid: 'link-uid-1', csrfTokenName: 'CRAFT_CSRF_TOKEN', csrfToken: 'x', envSuggestions: [], ...meta },
 });
 

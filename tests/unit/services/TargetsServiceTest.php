@@ -3,10 +3,18 @@
 namespace GlueAgency\Influx\Tests\unit\services;
 
 use Codeception\Test\Unit;
+use craft\elements\Asset;
+use craft\elements\Category;
 use craft\elements\Entry;
+use craft\elements\GlobalSet;
+use craft\elements\Tag;
 use craft\elements\User;
 use GlueAgency\Influx\services\TargetsService;
+use GlueAgency\Influx\targets\AssetTarget;
+use GlueAgency\Influx\targets\CategoryTarget;
 use GlueAgency\Influx\targets\EntryTarget;
+use GlueAgency\Influx\targets\GlobalSetTarget;
+use GlueAgency\Influx\targets\TagTarget;
 use GlueAgency\Influx\targets\UserTarget;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
@@ -17,15 +25,30 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
  */
 class TargetsServiceTest extends Unit
 {
+    /**
+     * One target per native Craft element type. Pinned as a set rather than as a
+     * count, so adding one is a deliberate edit here.
+     */
     public function testRegistersTheBuiltInsKeyedByElementType(): void
     {
         $service = new TargetsService();
 
         $all = $service->all();
 
-        $this->assertSame([Entry::class, User::class], array_keys($all));
-        $this->assertInstanceOf(EntryTarget::class, $all[Entry::class]);
-        $this->assertInstanceOf(UserTarget::class, $all[User::class]);
+        $expected = [
+            Asset::class     => AssetTarget::class,
+            Category::class  => CategoryTarget::class,
+            Entry::class     => EntryTarget::class,
+            GlobalSet::class => GlobalSetTarget::class,
+            Tag::class       => TagTarget::class,
+            User::class      => UserTarget::class,
+        ];
+
+        $this->assertSame(array_keys($expected), array_keys($all));
+
+        foreach ($expected as $elementType => $targetClass) {
+            $this->assertInstanceOf($targetClass, $all[$elementType]);
+        }
     }
 
     public function testForLinkResolvesTheStoredElementType(): void

@@ -98,6 +98,48 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Default: nothing to fill in, matching the empty {@see criteriaKeys()}. A
+     * target that declares keys declares a node per key here.
+     *
+     * @return list<array>
+     */
+    public static function criteriaSchema(): array
+    {
+        return [];
+    }
+
+    /**
+     * Default: nothing to show, since the base declares no criteria. Targets that
+     * do override this to name what the link is scoped to.
+     */
+    public function criteriaLabel(Link $link): ?string
+    {
+        return null;
+    }
+
+    /**
+     * The leading "nothing picked" row every criteria dropdown opens with — one
+     * spelling of the sentinel, shared by every target that declares criteria.
+     * Its empty value is what {@see Link::criterion()} reads back as null.
+     *
+     * @return array{value: string, label: string}
+     */
+    protected static function criteriaPlaceholder(): array
+    {
+        return ['value' => '', 'label' => Craft::t('influx', '— select —')];
+    }
+
+    /**
+     * Default: creatable. Almost every element type can be brought into being by
+     * a feed; the exception is one whose elements are declared in project config
+     * ({@see \GlueAgency\Influx\targets\GlobalSetTarget}), which overrides to false.
+     */
+    public static function supportsCreating(): bool
+    {
+        return true;
+    }
+
+    /**
      * Default: sweepable. Most element types can enumerate what a link owns, so
      * the builder offers the missing-element policies; a type that can't (see
      * {@see \GlueAgency\Influx\targets\UserTarget}) overrides this to false and
@@ -291,7 +333,7 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * Default: no post-commit side effects. Targets override when they manage
      * state outside the element save (see {@see \GlueAgency\Influx\targets\UserTarget}).
      */
-    public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void
+    public function afterCommit(SyncContext $context, ElementInterface $element, RemoteItem $item, bool $isNew): void
     {
     }
 
@@ -374,11 +416,19 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * Default: no layout, matching the empty {@see getMappableFields()}.
+     */
+    public function fieldLayout(Link $link): ?FieldLayout
+    {
+        return null;
+    }
+
+    /**
      * Mapping descriptors for the custom fields on a field layout, walked tab by
      * tab so they keep the element editor's own grouping. Targets differ only in
-     * how they reach the layout (per entry type, the global user layout, ...)
-     * and in what an unnamed tab falls back to — a missing layout yields nothing
-     * so a target with unresolved criteria still reports its natives.
+     * how they reach the layout ({@see fieldLayout()}) and in what an unnamed tab
+     * falls back to — a missing layout yields nothing so a target with unresolved
+     * criteria still reports its natives.
      *
      * @return list<MappableField>
      */

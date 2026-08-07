@@ -389,6 +389,52 @@ class Link extends Model
     }
 
     /**
+     * Drop the processing policies the link's target doesn't support, returning
+     * the dropped values (empty when nothing changed). Idempotent.
+     *
+     * Today that's `create` for a target reporting
+     * {@see ElementTargetInterface::supportsCreating()} = false — a Global Set
+     * exists because project config declares it, so a feed can only ever hydrate
+     * one. Since {@see ProcessingAction::defaults()} includes `create`, a link
+     * switched to such a type carries it by default and would otherwise sit on a
+     * policy every run ignores.
+     *
+     * Healed rather than rejected, the same trade
+     * {@see migrateProcessingForEndpointShape()} makes: the operator gets a saved
+     * link and a notice, not a validation error on a checkbox the builder had
+     * already hidden.
+     *
+     * The sweep policies are NOT pruned here. They're gated by
+     * {@see ElementTargetInterface::supportsSweeping()} and already report a
+     * skipped sweep at run time ({@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}),
+     * which is a louder signal than silently dropping them would be.
+     *
+     * @return list<string>
+     */
+    public function pruneProcessingForTarget(): array
+    {
+        if (! is_array($this->processing)) {
+            return [];
+        }
+
+        $target = $this->target();
+
+        if (! $target || $target::supportsCreating()) {
+            return [];
+        }
+
+        $dropped = array_values(array_intersect($this->processing, [ProcessingAction::CREATE->value]));
+
+        if ($dropped === []) {
+            return [];
+        }
+
+        $this->processing = array_values(array_diff($this->processing, $dropped));
+
+        return $dropped;
+    }
+
+    /**
      * Reject site-specific endpoints on an element type whose target doesn't
      * support multi-site (Users are global, non-localizable). The builder hides
      * the site-specific controls for such types, so this only bites config

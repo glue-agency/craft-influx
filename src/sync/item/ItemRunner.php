@@ -115,7 +115,7 @@ class ItemRunner
         ]);
         $this->service->trigger(SynchronizationService::EVENT_AFTER_ITEM_MAPPING, $afterMappingEvent);
 
-        $result = $this->processor->commit($context, $result);
+        $result = $this->processor->commit($context, $item, $result);
 
         $plugin->logs->recordItem(
             $log,

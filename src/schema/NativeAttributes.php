@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\schema;
 use Craft;
 use craft\elements\User;
 use craft\models\EntryType;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\helpers\Compat;
 
 /**
@@ -15,6 +16,10 @@ use GlueAgency\Influx\helpers\Compat;
  * {@see \GlueAgency\Influx\targets\EntryTarget}). They used to be written out
  * per call site, which is how a Users relation ended up offering `slug` and
  * `title` — neither of which a user has — while hiding `username` and `email`.
+ *
+ * A `…Matchable()` without a `…Writable()` twin means the type has identifiers
+ * but nothing this apparatus writes: a global set is matched by its handle, which
+ * is project config and never a mapping's business.
  *
  * Two shapes, because the two vocabularies genuinely differ:
  *
@@ -166,6 +171,87 @@ class NativeAttributes
         $layout = Craft::$app?->getFields()->getLayoutByType(User::class);
 
         return $layout === null || $layout->isFieldIncluded('fullName');
+    }
+
+    /**
+     * Asset identifiers. `filename` is the natural key a file feed carries; the
+     * title is offered only where a volume layout includes it, since Craft treats
+     * an asset's Title as an optional native layout element and a volume can drop
+     * it — the same `isFieldIncluded()` probe {@see assetWritable()} applies to
+     * both of its optional rows.
+     *
+     * No `url`: it isn't a queryable column ({@see \GlueAgency\Influx\fields\Assets}
+     * matches one by basename and then compares `getUrl()`), so an option here
+     * would promise a lookup no query can perform.
+     *
+     * @param FieldLayout|null $layout The volume's layout, or null when it can't be
+     * resolved — which gates nothing, since hiding a row on a failed lookup would
+     * look like Craft doesn't support it.
+     * @return list<array{value: string, label: string}>
+     */
+    public static function assetMatchable(?FieldLayout $layout = null): array
+    {
+        $options = [
+            ['value' => 'id',       'label' => Craft::t('influx', 'ID (id)')],
+            ['value' => 'filename', 'label' => static::labelWithHandle(Craft::t('app', 'Filename'), 'filename')],
+        ];
+
+        if (static::layoutIncludes($layout, 'title')) {
+            $options[] = ['value' => 'title', 'label' => static::labelWithHandle(Craft::t('app', 'Title'), 'title')];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Asset attributes a mapping can write. `filename` renames the file on save;
+     * `title` and `alt` are each offered only where a volume layout includes them
+     * — `craft\fieldlayoutelements\assets\AssetTitleField` and `AltField` are
+     * optional native layout elements in both Craft 4 and 5, so the probe needs no
+     * version seam and doubles as the reason a Craft 4.0–4.3 install (no `alt` at
+     * all) never sees that row.
+     *
+     * @param FieldLayout|null $layout
+     * @return list<array{handle: string, label: string}>
+     */
+    public static function assetWritable(?FieldLayout $layout = null): array
+    {
+        $rows = [['handle' => 'filename', 'label' => Craft::t('app', 'Filename')]];
+
+        if (static::layoutIncludes($layout, 'title')) {
+            $rows[] = ['handle' => 'title', 'label' => Craft::t('app', 'Title')];
+        }
+
+        if (static::layoutIncludes($layout, 'alt')) {
+            $rows[] = ['handle' => 'alt', 'label' => Craft::t('app', 'Alternative Text')];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Whether a layout exposes an optional native attribute. A null layout means
+     * "couldn't resolve", which offers the attribute rather than dropping it — the
+     * same lenience the entry-type gates take on an empty type list.
+     */
+    protected static function layoutIncludes(?FieldLayout $layout, string $attribute): bool
+    {
+        return $layout === null || $layout->isFieldIncluded($attribute);
+    }
+
+    /**
+     * Global set identifiers. A global set has no title and no slug — it's named by
+     * its handle, which is also the only thing a feed can plausibly carry to say
+     * WHICH set an item is for.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public static function globalSetMatchable(): array
+    {
+        return [
+            ['value' => 'id',     'label' => Craft::t('influx', 'ID (id)')],
+            ['value' => 'handle', 'label' => static::labelWithHandle(Craft::t('app', 'Handle'), 'handle')],
+        ];
     }
 
     /** @return list<array{value: string, label: string}> */

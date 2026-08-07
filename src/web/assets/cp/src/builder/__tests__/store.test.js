@@ -292,4 +292,28 @@ describe('store', () => {
         expect(store.ui.errors.siteEndpoints).toHaveLength(1);
         expect(api.save).not.toHaveBeenCalled();
     });
+
+    it('refetches on ANY criteria key, not a known few', async () => {
+        // The signature serializes the whole criteria object, so a key belonging
+        // to an element type this file has never heard of still triggers the
+        // refetch — the drift the consolidated watcher exists to prevent.
+        vi.clearAllMocks();
+
+        store.link.elementCriteria = { volume: 'images' };
+        await nextTick();
+
+        expect(api.mappableFields).toHaveBeenCalledWith('craft\\elements\\Entry', { volume: 'images' });
+        expect(api.endpointTokenSuggestions).toHaveBeenCalledTimes(1);
+    });
+
+    it('doesn’t refetch when only the criteria key ORDER changes', async () => {
+        store.link.elementCriteria = { section: 'news', type: 'article' };
+        await nextTick();
+        vi.clearAllMocks();
+
+        store.link.elementCriteria = { type: 'article', section: 'news' };
+        await nextTick();
+
+        expect(api.mappableFields).not.toHaveBeenCalled();
+    });
 });

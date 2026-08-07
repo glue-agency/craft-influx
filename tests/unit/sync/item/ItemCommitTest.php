@@ -10,6 +10,7 @@ use GlueAgency\Influx\enums\SyncDecision;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\ItemProcessor;
 use GlueAgency\Influx\sync\item\ItemSyncResult;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\AbstractElementTarget;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
@@ -23,9 +24,9 @@ use RuntimeException;
  *   - the save routes through the TARGET ({@see AbstractElementTarget::save()}),
  *     the same surface the sweep's disable/delete go through, so a third-party
  *     target can save with its own flags;
- *   - a failed save reports something an operator can act on. Saves run with
- *     validation OFF, so `getErrors()` is normally empty on failure and the old
- *     `json_encode(getErrors())` could only ever say `[]`.
+ *   - a failed save reports something an operator can act on. A target's save can
+ *     fail without populating `getErrors()` at all (a `beforeSave` veto), and the
+ *     old `json_encode(getErrors())` could then only ever say `[]`.
  *
  * The target is a spy over the base, so no Craft boot and no database.
  */
@@ -36,7 +37,7 @@ class ItemCommitTest extends Unit
         $target = $this->target(saves: true);
         $context = $this->context($target);
 
-        $result = (new ItemProcessor())->commit($context, $this->draft(changed: true));
+        $result = (new ItemProcessor())->commit($context, $this->item(), $this->draft(changed: true));
 
         $this->assertSame(1, $target->saveCalls, 'The engine never calls Craft directly — the target owns the write.');
         $this->assertSame(ItemAction::UPDATED, $result->action);
@@ -48,7 +49,7 @@ class ItemCommitTest extends Unit
         $target = $this->target(saves: true);
         $context = $this->context($target);
 
-        (new ItemProcessor())->commit($context, $this->draft(changed: false));
+        (new ItemProcessor())->commit($context, $this->item(), $this->draft(changed: false));
 
         $this->assertSame(0, $target->saveCalls);
         $this->assertSame(1, $target->afterCommitCalls);
@@ -59,7 +60,7 @@ class ItemCommitTest extends Unit
         $target = $this->target(saves: true);
         $context = $this->context($target, dryRun: true);
 
-        (new ItemProcessor())->commit($context, $this->draft(changed: true));
+        (new ItemProcessor())->commit($context, $this->item(), $this->draft(changed: true));
 
         $this->assertSame(0, $target->saveCalls);
         $this->assertSame(0, $target->afterCommitCalls);
@@ -70,7 +71,7 @@ class ItemCommitTest extends Unit
         $target = $this->target(saves: false);
         $context = $this->context($target);
 
-        $result = (new ItemProcessor())->commit($context, $this->draft(changed: true));
+        $result = (new ItemProcessor())->commit($context, $this->item(), $this->draft(changed: true));
 
         $this->assertSame(ItemAction::ERROR, $result->action);
         $this->assertNotSame('[]', $result->message, 'An empty error bag is not a report.');
@@ -85,7 +86,7 @@ class ItemCommitTest extends Unit
         $draft = $this->draft(changed: true);
         $draft->element->addError('title', 'Title cannot be blank.');
 
-        $result = (new ItemProcessor())->commit($context, $draft);
+        $result = (new ItemProcessor())->commit($context, $this->item(), $draft);
 
         $this->assertSame(ItemAction::ERROR, $result->action);
         $this->assertStringContainsString('Title cannot be blank.', (string) $result->message);
@@ -133,7 +134,7 @@ class ItemCommitTest extends Unit
                 return $this->saves;
             }
 
-            public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void
+            public function afterCommit(SyncContext $context, ElementInterface $element, RemoteItem $item, bool $isNew): void
             {
                 $this->afterCommitCalls++;
             }
@@ -151,6 +152,11 @@ class ItemCommitTest extends Unit
         $target->saves = $saves;
 
         return $target;
+    }
+
+    protected function item(): RemoteItem
+    {
+        return new RemoteItem([]);
     }
 
     protected function element(): Element

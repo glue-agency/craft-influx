@@ -39,6 +39,14 @@ import { controlFor } from './registry.js';
  * {@see inputs/SelectField} still upgrades a GROUPED list, whose headings only the
  * searchable one can render.
  *
+ * Two node keys beyond `showIf` shape a CASCADE, added for the element-target
+ * criteria form (a link's entry-type list is the picked section's, not every entry
+ * type there is): `dependsOn` names the handle this node's list is keyed on, and
+ * `optionsBy` is that list as `parentValue => options`. Changing the parent clears
+ * the child, since whatever was picked came from a list that no longer applies.
+ * Both are inert on a node that doesn't declare them, so the auth forms and
+ * mapping extras are unaffected.
+ *
  * Stateless: values come from `options`, edits emit a fully-merged replacement.
  */
 export default {
@@ -57,19 +65,36 @@ export default {
     computed: {
         /**
          * Nodes whose showIf conditions all pass against the current options. A
-         * condition without `equals` means "truthy".
+         * condition without `equals` means "truthy". Each survivor is resolved so a
+         * `optionsBy` node carries the list its parent's value names.
          */
         visibleNodes() {
-            return this.schema.filter((node) => (node.showIf || []).every((cond) => (
-                'equals' in cond
-                    ? this.resolvedValue(cond.handle) === cond.equals
-                    : !! this.options[cond.handle]
-            )));
+            return this.schema
+                .filter((node) => (node.showIf || []).every((cond) => (
+                    'equals' in cond
+                        ? this.resolvedValue(cond.handle) === cond.equals
+                        : !! this.options[cond.handle]
+                )))
+                .map((node) => this.withResolvedOptions(node));
         },
     },
 
     methods: {
         controlFor,
+
+        /**
+         * A `optionsBy` node's `options`, picked out by its `dependsOn` value —
+         * written onto a copy of the node rather than passed as a prop, so every
+         * control keeps reading its list from the one place (`node.options`).
+         * An unpicked or unknown parent yields an empty list.
+         */
+        withResolvedOptions(node) {
+            if (! node.optionsBy) return node;
+
+            const key = node.dependsOn ? this.resolvedValue(node.dependsOn) : null;
+
+            return { ...node, options: node.optionsBy[key] || [] };
+        },
 
         /**
          * Display value: the saved option, falling back to the node's declared
@@ -92,8 +117,21 @@ export default {
             return this.schema.find((n) => n.handle === handle)?.default;
         },
 
+        /**
+         * Dependents are cleared alongside the write: their option list is keyed on
+         * this node's value, so a stored pick from the previous list would survive
+         * as a value the new list doesn't offer.
+         */
         setOption(node, value) {
-            this.$emit('update:options', { ...this.options, [node.handle]: value });
+            const next = { ...this.options, [node.handle]: value };
+
+            for (const dependent of this.schema) {
+                if (dependent.dependsOn === node.handle) {
+                    next[dependent.handle] = null;
+                }
+            }
+
+            this.$emit('update:options', next);
         },
     },
 };

@@ -5,10 +5,17 @@ namespace GlueAgency\Influx\targets;
 use Craft;
 use craft\base\ElementInterface;
 use craft\elements\User;
+use craft\models\FieldLayout;
+use GlueAgency\Influx\fields\Lightswitch;
+use GlueAgency\Influx\Influx;
+use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\schema\NativeAttributes;
+use GlueAgency\Influx\services\AssetUploadService;
+use GlueAgency\Influx\sync\item\RemoteItem;
 use GlueAgency\Influx\sync\SyncContext;
+use Throwable;
 
 /**
  * Target for craft\elements\User.
@@ -37,13 +44,26 @@ use GlueAgency\Influx\sync\SyncContext;
  * {@see AbstractElementTarget::missingElementsQuery()} stays at its null default
  * as the last line of defence.
  *
- * User groups (a Pro-edition feature) are offered as a `groups` mapping field:
- * its config lives entirely in the extras schema — a lightswitch per group plus
- * `update` (also apply to existing users) and `remove` (make the selection
- * authoritative) toggles. Group membership isn't persisted by an element save,
- * so {@see afterCommit()} reconciles it via the Users service after each item
- * commits ({@see ownsAttribute()} keeps the mapping applier from treating
- * `groups` as a normal attribute).
+ * Four things about a user live OUTSIDE an element save, and all four are
+ * reconciled in {@see afterCommit()} through the Users service, with
+ * {@see ownsAttribute()} claiming their handles so the mapping applier doesn't
+ * try to assign them:
+ *
+ *   - `groups` (a Pro-edition feature) — config-only: a lightswitch per group plus
+ *     `update` (also apply to existing users) and `remove` (make the selection
+ *     authoritative) toggles, all held in the mapping's extras.
+ *   - `photo` — a remote image URL per item, downloaded through
+ *     {@see \GlueAgency\Influx\services\AssetUploadService} and handed to
+ *     `saveUserPhoto()`, which needs a user that already has an id.
+ *   - `suspended` — Craft's suspension flag is a user-record column the element
+ *     save doesn't touch; it moves through `suspendUser()` / `unsuspendUser()`.
+ *   - `activation` — config-only: whether a newly created user gets Craft's
+ *     activation email, or is activated outright. Without one of the two a synced
+ *     user is left pending with no way in.
+ *
+ * `newPassword` is deliberately NOT in that list: it's an ordinary attribute the
+ * element save hashes and persists ({@see User::beforeSave()}), so it rides the
+ * base assignment path like the other strings.
  */
 class UserTarget extends AbstractElementTarget
 {
@@ -52,6 +72,20 @@ class UserTarget extends AbstractElementTarget
      * two targets sharing a run's memo can't collide.
      */
     protected const MEMO_GROUP_IDS = 'userTarget.groupIdMap';
+
+    /**
+     * The handles this target reconciles itself, after the commit — see the class
+     * docblock for what each one is and why an element save can't carry it.
+     * {@see ownsAttribute()} reads this list, so a handle can't be claimed without
+     * appearing here.
+     */
+    protected const OWNED_HANDLES = ['groups', 'photo', 'suspended', 'activation'];
+
+    /**
+     * Reserved extras handles among the `groups` toggles — behaviour flags, never
+     * group selections. {@see reconcileGroups()} reads them as such.
+     */
+    protected const GROUP_FLAGS = ['groupsUpdate', 'groupsRemove'];
 
     public static function elementType(): string
     {
@@ -102,15 +136,14 @@ class UserTarget extends AbstractElementTarget
     }
 
     /**
-     * The `groups` field is config-only (its value is the selected groups +
-     * behaviour toggles held in the mapping's extras) and can't be written as
-     * an element attribute — a save doesn't persist group membership. Claiming
-     * it here keeps the mapping applier from trying; {@see afterCommit()} does
-     * the real work through the Users service.
+     * The four handles no element save can carry — group membership, the photo,
+     * the suspension flag and the activation policy. Claiming them keeps the
+     * mapping applier from trying to assign them; {@see afterCommit()} does the
+     * real work through the Users service.
      */
     public function ownsAttribute(Link $link, string $handle): bool
     {
-        return $handle === 'groups';
+        return in_array($handle, self::OWNED_HANDLES, true);
     }
 
     /**
@@ -132,16 +165,48 @@ class UserTarget extends AbstractElementTarget
         return array_merge(
             $this->nativeFieldDefinitions()->toArray(),
             $this->customFieldDescriptors(
-                Craft::$app->getFields()->getLayoutByType(User::class),
+                $this->fieldLayout($link),
                 Craft::t('influx', 'Profile'),
             ),
         );
     }
 
     /**
-     * Reconcile the synced user's group membership from the `groups` mapping's
-     * extras — group membership isn't written by an element save, so it's done
-     * here, after the item commits, through the Users service.
+     * There is exactly one user layout in a Craft install, so no criteria are
+     * involved in reaching it.
+     */
+    public function fieldLayout(Link $link): ?FieldLayout
+    {
+        return Craft::$app->getFields()->getLayoutByType(User::class);
+    }
+
+    /**
+     * Everything about the synced user that an element save doesn't carry, in the
+     * order Craft wants it: membership, then the photo, then the account state
+     * (suspension and activation are both about whether the person can log in, so
+     * they settle last).
+     *
+     * Each step is a no-op when its handle isn't mapped, so a link that only writes
+     * names and custom fields pays for none of this. Nothing here throws: a photo
+     * whose download or crop fails is logged and the item still counts as synced —
+     * the alternative is one broken image URL failing a whole user.
+     */
+    public function afterCommit(SyncContext $context, ElementInterface $element, RemoteItem $item, bool $isNew): void
+    {
+        if (! ($element instanceof User) || ! $element->id) {
+            return;
+        }
+
+        $mappings = $context->link->getMappingCollection();
+
+        $this->reconcileGroups($context, $element, $mappings->get('groups'), $isNew);
+        $this->reconcilePhoto($context, $element, $item, $mappings->get('photo'));
+        $this->reconcileSuspension($context, $element, $item, $mappings->get('suspended'));
+        $this->reconcileActivation($element, $mappings->get('activation'), $isNew);
+    }
+
+    /**
+     * Group membership from the `groups` mapping's extras.
      *
      * New users are always assigned the selected groups. Existing users are
      * only touched when `update` is on; `remove` then makes the selection
@@ -150,19 +215,12 @@ class UserTarget extends AbstractElementTarget
      * "not configured" — never a strip-all.
      *
      * The selection is read from the extras toggles whose handle matches a real
-     * group; `groupsUpdate` / `groupsRemove` are reserved behaviour handles and
-     * never count as group selections. The write is skipped when the resulting
-     * membership already equals the user's current groups, sparing the query and
-     * its events.
+     * group; {@see GROUP_FLAGS} are reserved behaviour handles and never count as
+     * group selections. The write is skipped when the resulting membership already
+     * equals the user's current groups, sparing the query and its events.
      */
-    public function afterCommit(SyncContext $context, ElementInterface $element, bool $isNew): void
+    protected function reconcileGroups(SyncContext $context, User $user, ?FieldMapping $mapping, bool $isNew): void
     {
-        if (! ($element instanceof User) || ! $element->id) {
-            return;
-        }
-
-        $mapping = $context->link->getMappingCollection()->get('groups');
-
         if (! $mapping) {
             return;
         }
@@ -180,7 +238,7 @@ class UserTarget extends AbstractElementTarget
         $selectedIds = [];
 
         foreach ($options as $handle => $on) {
-            if ($handle === 'groupsUpdate' || $handle === 'groupsRemove') {
+            if (in_array($handle, self::GROUP_FLAGS, true)) {
                 continue;
             }
 
@@ -193,7 +251,7 @@ class UserTarget extends AbstractElementTarget
             return;
         }
 
-        $currentIds = array_map(static fn($group): int => (int) $group->id, $element->getGroups());
+        $currentIds = array_map(static fn($group): int => (int) $group->id, $user->getGroups());
 
         $targetIds = $remove
             ? $selectedIds
@@ -208,7 +266,181 @@ class UserTarget extends AbstractElementTarget
             return;
         }
 
-        Craft::$app->getUsers()->assignUserToGroups($element->id, $targetIds);
+        Craft::$app->getUsers()->assignUserToGroups($user->id, $targetIds);
+    }
+
+    /**
+     * The user photo, from a remote URL the feed carries.
+     *
+     * Skipped when the user's current photo already has the filename that URL
+     * would land under — so a nightly re-sync doesn't re-download and re-crop every
+     * avatar. That makes the FILENAME the identity of a photo, which is the same
+     * trade {@see \GlueAgency\Influx\fields\Assets::matchExistingByUrl()} makes:
+     * a photo replaced at the same URL under the same name isn't picked up. Clearing
+     * the mapped value deletes the photo, since the feed is authoritative.
+     *
+     * Downloading goes through {@see \GlueAgency\Influx\services\AssetUploadService},
+     * which owns the http(s)-only guard that makes a feed-supplied URL safe to
+     * follow. The temp file is removed either way — Craft copies it into the user
+     * photo volume.
+     */
+    protected function reconcilePhoto(SyncContext $context, User $user, RemoteItem $item, ?FieldMapping $mapping): void
+    {
+        if (! $mapping) {
+            return;
+        }
+
+        $url = $mapping->resolve($item);
+
+        if ($url === null || $url === '') {
+            if ($user->photoId) {
+                $this->deletePhoto($user);
+            }
+
+            return;
+        }
+
+        $uploads = $this->uploads();
+        $filename = $uploads->filenameFor((string) $url);
+
+        if ($user->getPhoto()?->getFilename() === $filename) {
+            return;
+        }
+
+        $tempPath = null;
+
+        try {
+            $tempPath = $uploads->downloadToTemp((string) $url);
+            $this->savePhoto($user, $tempPath, $filename);
+        } catch (Throwable $e) {
+            Craft::warning(
+                "Couldn't set the photo for user {$user->id} from '{$url}': " . $e->getMessage(),
+                __METHOD__,
+            );
+        } finally {
+            if ($tempPath !== null && is_file($tempPath)) {
+                @unlink($tempPath);
+            }
+        }
+    }
+
+    /**
+     * Craft's suspension flag, which lives on the user record rather than on the
+     * element, so only `suspendUser()` / `unsuspendUser()` can move it.
+     *
+     * Distinct from `enabled` on purpose: a disabled user is hidden, a suspended
+     * one is locked out and told so. Truthy spellings come from
+     * {@see Lightswitch::coerce()}, the same coercion the inherited
+     * {@see AbstractElementTarget::parseEnabled()} uses, so an addressed-but-empty
+     * value reads as "not suspended". Already-correct state is left alone, since
+     * both calls fire events and destroy the user's sessions.
+     */
+    protected function reconcileSuspension(SyncContext $context, User $user, RemoteItem $item, ?FieldMapping $mapping): void
+    {
+        if (! $mapping) {
+            return;
+        }
+
+        $suspended = Lightswitch::coerce($mapping->resolve($item));
+
+        if ($suspended === $user->suspended) {
+            return;
+        }
+
+        try {
+            $this->setSuspended($user, $suspended);
+        } catch (Throwable $e) {
+            Craft::warning(
+                "Couldn't change the suspended state of user {$user->id}: " . $e->getMessage(),
+                __METHOD__,
+            );
+        }
+    }
+
+    /**
+     * Let a freshly created user in. A user the sync creates has no password and no
+     * verification code, so Craft leaves it PENDING — visible in the CP, unable to
+     * log in, and with nothing to send it a way in. The config-only `activation` row
+     * says which way out an operator wants: `email` sends Craft's own verification
+     * link so the person sets their own password, `activate` activates outright (for
+     * a feed that carries the password through `newPassword`, or a user who signs in
+     * through another provider), and the unset default leaves it pending.
+     *
+     * Only for a new user: re-activating or re-mailing an existing one on every sync
+     * would be both noise and a security annoyance. A user Craft doesn't consider
+     * pending is skipped too — a create that raced another sync.
+     */
+    protected function reconcileActivation(User $user, ?FieldMapping $mapping, bool $isNew): void
+    {
+        if (! $mapping || ! $isNew || ! $user->pending) {
+            return;
+        }
+
+        $policy = (string) $mapping->option('activation', '');
+
+        if ($policy === '') {
+            return;
+        }
+
+        try {
+            match ($policy) {
+                'activate' => $this->activate($user),
+                'email'    => $this->sendActivationEmail($user),
+                default    => null,
+            };
+        } catch (Throwable $e) {
+            Craft::warning(
+                "Couldn't activate user {$user->id}: " . $e->getMessage(),
+                __METHOD__,
+            );
+        }
+    }
+
+    /**
+     * The download service, as a seam — so a spec can exercise the fetch/skip
+     * decision without HTTP. Same seam {@see AssetTarget::uploads()} exposes, for
+     * the same reason.
+     */
+    protected function uploads(): AssetUploadService
+    {
+        return Influx::getInstance()->assetUpload;
+    }
+
+    /*
+     * The Users-service calls, one method each.
+     * =========================================================================
+     * Every out-of-band write above goes through one of these rather than calling
+     * the service inline, so the DECIDING — when a photo is worth re-downloading,
+     * which activation policy applies to whom — is specifiable without a booted
+     * Craft, and so a subclass can substitute its own account plumbing (an SSO
+     * install that activates users elsewhere).
+     */
+
+    protected function savePhoto(User $user, string $tempPath, string $filename): void
+    {
+        Craft::$app->getUsers()->saveUserPhoto($tempPath, $user, $filename);
+    }
+
+    protected function deletePhoto(User $user): void
+    {
+        Craft::$app->getUsers()->deleteUserPhoto($user);
+    }
+
+    protected function setSuspended(User $user, bool $suspended): void
+    {
+        $users = Craft::$app->getUsers();
+
+        $suspended ? $users->suspendUser($user) : $users->unsuspendUser($user);
+    }
+
+    protected function activate(User $user): void
+    {
+        Craft::$app->getUsers()->activateUser($user);
+    }
+
+    protected function sendActivationEmail(User $user): void
+    {
+        Craft::$app->getUsers()->sendActivationEmail($user);
     }
 
     /**
@@ -241,9 +473,13 @@ class UserTarget extends AbstractElementTarget
      * would fight that); fullName / firstName / lastName are all offered — a
      * feed may carry either the combined name or the split parts. The `groups`
      * field is appended when this install has user groups (a Pro-edition
-     * feature); `groupsUpdate` / `groupsRemove` are reserved handles among its
-     * extras — {@see afterCommit()} reads them as behaviour flags, never as
-     * group selections.
+     * feature); {@see GROUP_FLAGS} are reserved handles among its extras —
+     * {@see reconcileGroups()} reads them as behaviour flags, never as group
+     * selections.
+     *
+     * `newPassword`, `photo` and `suspended` are plain source-node rows; only
+     * `activation` is config-only, since "let this user in" is a policy rather than
+     * something a feed says per row.
      */
     protected function nativeFieldDefinitions(): MappingSchemaBuilder
     {
@@ -266,6 +502,51 @@ class UserTarget extends AbstractElementTarget
                             'true'  => Craft::t('app', 'Enabled'),
                             'false' => Craft::t('app', 'Disabled'),
                         ],
+                    ])
+                    // A user account can be live but locked out; `enabled` only
+                    // hides it. Reconciled through the Users service, which is the
+                    // only thing that can move the flag.
+                    ->select([
+                        'handle'  => 'suspended',
+                        'name'    => Craft::t('app', 'Suspended'),
+                        'options' => [
+                            'true'  => Craft::t('app', 'Suspended'),
+                            'false' => Craft::t('app', 'Active'),
+                        ],
+                    ])
+                    // A URL, so there's nothing to pick in the CP — the default cell
+                    // would be a second address to type, not a file to choose.
+                    ->text([
+                        'handle' => 'photo',
+                        'name'   => Craft::t('app', 'Photo'),
+                        'cells'  => ['default' => false],
+                    ])
+                    ->text([
+                        'handle' => 'newPassword',
+                        'name'   => Craft::t('app', 'Password'),
+                        // A default password would be the SAME password for every
+                        // user the feed creates, which is worse than none.
+                        'cells' => ['default' => false],
+                    ])
+                    ->text([
+                        'handle' => 'activation',
+                        'name'   => Craft::t('influx', 'Activation'),
+                        // A policy, not a value: the whole row is the select below.
+                        'cells' => ['source' => false, 'default' => false],
+                        // One select rather than two toggles, because the three
+                        // outcomes are mutually exclusive — a pair of switches would
+                        // let an operator ask for both and leave the target to guess.
+                        'extras' => fn(MappingSchemaBuilder $builder) => $builder->select([
+                            'handle'       => 'activation',
+                            'label'        => Craft::t('influx', 'New users'),
+                            'instructions' => Craft::t('influx', 'A user the sync creates has no password, so Craft leaves it pending — visible in the control panel, unable to sign in. This is how it gets a way in.'),
+                            'options'      => [
+                                ['value' => '',         'label' => Craft::t('influx', 'Leave pending')],
+                                ['value' => 'email',    'label' => Craft::t('influx', 'Send an activation email')],
+                                ['value' => 'activate', 'label' => Craft::t('influx', 'Activate immediately')],
+                            ],
+                            'default' => '',
+                        ]),
                     ]);
 
                 $userGroups = Craft::$app->getUserGroups()->getAllGroups();

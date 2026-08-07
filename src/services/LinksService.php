@@ -191,10 +191,11 @@ class LinksService extends Component
      * Writes to Project Config — the PC change handler {@see handleChangedLink}
      * then upserts the DB row. Mirrors craft-remote-entries' SourcesService::save.
      *
-     * Unmappable mapping handles are pruned and the missing-element policies
-     * healed to the endpoint shape before validation — hygiene rather than
-     * validation, so both run on forced saves too and stored config never keeps
-     * a handle the target can't write; both steps are idempotent. The link's
+     * Unmappable mapping handles are pruned, policies the target doesn't support
+     * dropped, and the missing-element policies healed to the endpoint shape
+     * before validation — hygiene rather than validation, so all three run on
+     * forced saves too and stored config never keeps a handle the target can't
+     * write or a policy it would only ignore; every step is idempotent. The link's
      * `id` is back-filled only after the PC write, since the row doesn't exist
      * until the change handler has run.
      */
@@ -204,6 +205,7 @@ class LinksService extends Component
 
         $this->pruneUnknownMappings($link);
 
+        $link->pruneProcessingForTarget();
         $link->migrateProcessingForEndpointShape();
 
         if ($runValidation && ! $link->validate()) {

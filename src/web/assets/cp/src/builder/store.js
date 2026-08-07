@@ -439,12 +439,17 @@ function autoFetchSample() {
 watch(() => root.link?.rootNode, () => autoFetchSample());
 
 /**
- * Element type + section + entry type together determine BOTH the mappable
+ * Element type + every criteria value together determine BOTH the mappable
  * field set (Mapping tab) and the endpoint tokens (General tab's Resource
  * Endpoint picker), so a change to any of them refetches both. Owned here —
  * not per-tab — so the trigger can't drift between the two tabs that render
  * the results (a fourth criteria key added in one watcher but forgotten in
  * the other was the failure this consolidation removes).
+ *
+ * The criteria are serialized wholesale rather than key by key, so a target
+ * declaring a key nothing here has heard of still triggers the refetch — the
+ * same drift, one level up, now that every element type brings its own keys.
+ * Sorted, so key order in the payload can't fake a change.
  *
  * Null until the link loads; the guard keeps the module-eval fire a no-op,
  * then load()'s assignment flips the signature and fetches once — the same
@@ -454,7 +459,12 @@ const criteriaSignature = computed(() => {
     if (! root.link) return null;
     const c = root.link.elementCriteria || {};
 
-    return `${root.link.elementType || ''}|${c.section || ''}|${c.type || ''}`;
+    const criteria = Object.keys(c)
+        .sort()
+        .map((key) => `${key}=${c[key] ?? ''}`)
+        .join('&');
+
+    return `${root.link.elementType || ''}|${criteria}`;
 });
 
 watch(criteriaSignature, (signature) => {

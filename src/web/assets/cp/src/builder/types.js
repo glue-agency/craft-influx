@@ -122,15 +122,17 @@
  * loosely typed here; LinkBuilderOptionsPresenter and LinkBuilderService own
  * their shapes. The non-obvious members:
  *
- *   options.elementTypes[]      {value, label, criteria, multiSite, sweeping}
- *   options.sectionEntryTypes   sectionHandle → {typeHandle: typeName} (a map, not a list)
- *   options.processingActions[] {value, label, note, missingPolicy}
+ *   options.elementTypes[]      {value, label, criteria, criteriaSchema, multiSite, creating, sweeping}
+ *                               — criteriaSchema is a SchemaForm schema over elementCriteria,
+ *                                 declared by the element target; the criteria dropdowns
+ *                                 render from it, so no criteria option list lives here.
+ *   options.processingActions[] {value, label, note, creating, missingPolicy, forSite}
  *   options.authStrategies[]    {type, schema} — schema definitions, not select options
  *   meta.envSuggestions[]       {kind, label, data: [{name, hint, type}]}
  *
  * @typedef {Object} BootstrapResponse
  * @property {LinkPayload} link
- * @property {Object} options elementTypes, sections, sectionEntryTypes, sites, processingActions, authTypes, authStrategies.
+ * @property {Object} options elementTypes, sites, processingActions, authTypes, authStrategies.
  * @property {Object} meta isNew, readOnly, handle, uid, csrfTokenName, csrfToken, envSuggestions.
  */
 

@@ -5,21 +5,19 @@ namespace GlueAgency\Influx\web;
 use Craft;
 use craft\helpers\Html;
 use craft\helpers\UrlHelper;
-use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\targets\EntryTarget;
 
 /**
  * Shapes a {@see Link} into what the CP screens display about it — the
  * human-readable labels the Links overview and read-only view templates render
- * (element-type name, section/entry-type criteria, configured-site names), the
- * "Endpoint" / "Resource" rows the log viewer shows for a run, and the debug
- * screen's selector options.
+ * (element-type name, target criteria, configured-site names), the "Endpoint" /
+ * "Resource" rows the log viewer shows for a run, and the debug screen's selector
+ * options.
  *
  * Extracted from the model so {@see Link} stays a plain state object: all of it
- * resolves against Craft (registered targets, sections, sites, elements) at
- * render time, which is a presentation concern, not model state.
+ * resolves against Craft (registered targets, sites, elements) at render time,
+ * which is a presentation concern, not model state.
  *
  * The log-viewer helpers take the run's primitives (`$elementId`,
  * `$siteHandle`) rather than a record, so the pure ones stay unit-testable
@@ -38,42 +36,18 @@ class LinkPresenter
     }
 
     /**
-     * Section + entry-type display labels for the target — e.g. "Movies /
-     * Feature" — resolved from the stored handles so the overview reads like
-     * the CP rather than echoing raw handles. Null when no section criteria is
-     * configured (the element type carries none, or it isn't set yet). Falls
-     * back to the handle when a section/type has since been removed.
+     * What the link is scoped to, as the overview shows it — "Movies / Feature"
+     * for an entry link, a volume or group name for the others. Null when nothing
+     * is configured or the element type carries no criteria.
+     *
+     * Formatting belongs to the target ({@see \GlueAgency\Influx\targets\ElementTargetInterface::criteriaLabel()}),
+     * which is the only thing that knows what its own criteria keys mean; this
+     * used to read Entry's two constants directly, so every other element type's
+     * column was blank.
      */
     public function targetCriteriaLabel(Link $link): ?string
     {
-        $sectionHandle = $link->criterion(EntryTarget::CRITERIA_SECTION);
-
-        if (! $sectionHandle) {
-            return null;
-        }
-
-        $section = Compat::getSectionByHandle($sectionHandle);
-        $parts = [$section?->name ?? $sectionHandle];
-
-        $typeHandle = $link->criterion(EntryTarget::CRITERIA_TYPE);
-
-        if ($typeHandle) {
-            $typeName = null;
-
-            if ($section) {
-                foreach ($section->getEntryTypes() as $type) {
-                    if ($type->handle === $typeHandle) {
-                        $typeName = $type->name;
-
-                        break;
-                    }
-                }
-            }
-
-            $parts[] = $typeName ?? $typeHandle;
-        }
-
-        return implode(' / ', $parts);
+        return Influx::getInstance()->targets->forLink($link)?->criteriaLabel($link);
     }
 
     /**

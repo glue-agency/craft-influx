@@ -23,6 +23,19 @@ const authSchema = [
     { type: 'lightswitch', handle: 'preflight', label: 'Preflight', showIf: [{ handle: 'name' }] },
 ];
 
+// The one schema shape with a cascade: a target's criteria form, where the
+// second dropdown's list is keyed on the first's value.
+const cascadeSchema = [
+    { type: 'select', handle: 'section', label: 'Section', options: [
+        { value: 'news', label: 'News' },
+        { value: 'movies', label: 'Movies' },
+    ] },
+    { type: 'select', handle: 'type', label: 'Entry Type', dependsOn: 'section', optionsBy: {
+        news: [{ value: 'article', label: 'Article' }],
+        movies: [{ value: 'feature', label: 'Feature' }, { value: 'short', label: 'Short' }],
+    } },
+];
+
 const mountForm = (props = {}) => mount(SchemaForm, {
     props: { schema: authSchema, options: {}, ...props },
     global: { mocks: { $t: (s) => s } },
@@ -94,6 +107,43 @@ describe('SchemaForm', () => {
 
         expect(wrapper.emitted('update:options').at(-1))
             .toEqual([{ placement: 'header', name: 'X-Api-Key', preflight: true }]);
+    });
+
+    it('keys a dependent select’s options on its parent’s value', async () => {
+        // The element-target criteria cascade: entry types belong to a section, so
+        // the list can't be one flat array.
+        const wrapper = mountForm({ schema: cascadeSchema, options: {} });
+
+        const options = () => wrapper.findAll('.field').at(1).findAll('option').map((o) => o.attributes('value'));
+
+        // Nothing picked yet — no list applies.
+        expect(options()).toEqual([]);
+
+        await wrapper.setProps({ options: { section: 'news' } });
+        expect(options()).toEqual(['article']);
+
+        await wrapper.setProps({ options: { section: 'movies' } });
+        expect(options()).toEqual(['feature', 'short']);
+    });
+
+    it('clears a dependent when its parent changes, since the old pick left the list', async () => {
+        const wrapper = mountForm({
+            schema: cascadeSchema,
+            options: { section: 'news', type: 'article' },
+        });
+
+        await wrapper.findAll('.select select').at(0).setValue('movies');
+
+        expect(wrapper.emitted('update:options').at(-1)).toEqual([{ section: 'movies', type: null }]);
+    });
+
+    it('leaves a node without optionsBy alone', async () => {
+        // Both keys are inert on the auth forms and mapping extras.
+        const wrapper = mountForm({ options: { placement: 'header' } });
+
+        await wrapper.findAll('.select select').at(0).setValue('query');
+
+        expect(wrapper.emitted('update:options').at(-1)).toEqual([{ placement: 'query' }]);
     });
 
     it('renders an unknown node type as a labeled text input', async () => {

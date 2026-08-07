@@ -7,7 +7,6 @@ use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\base\Plugin;
-use craft\elements\Entry;
 use craft\events\DefineHtmlEvent;
 use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
@@ -113,7 +112,7 @@ class Influx extends Plugin
             $this->registerCpRoutes();
             $this->registerCpTemplateRoots();
             $this->registerTwigExtensions();
-            $this->registerEntrySyncButton();
+            $this->registerSyncButton();
             $this->registerFieldIndicators();
             $this->registerGarbageCollection();
             $this->registerPermissions();
@@ -364,16 +363,23 @@ class Influx extends Plugin
     }
 
     /**
-     * Add a "Sync from remote" affordance to the edit page of any entry the
+     * Add a "Sync from remote" affordance to the edit page of any element the
      * plugin targets. Users without {@see PERMISSION_SYNC} get no button at all;
      * everything about WHAT gets offered and why — the resource-endpoint
      * requirement, the disabled states, the posted params — belongs to
      * {@see SyncButtonPresenter}, so this is the event wiring plus the
      * permission gate.
+     *
+     * Bound on the base {@see Element} class, not on a concrete one: Yii fires
+     * class-level handlers for subclasses, so one registration covers every
+     * registered target's element type — the same reason
+     * {@see registerFieldIndicators()} binds there. It used to be `Entry::class`,
+     * which is why the button never appeared for a user (or would have appeared
+     * for none of the targets added since).
      */
-    protected function registerEntrySyncButton(): void
+    protected function registerSyncButton(): void
     {
-        Event::on(Entry::class, Entry::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
+        Event::on(Element::class, Element::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
             if (! Craft::$app->getUser()->checkPermission(self::PERMISSION_SYNC)) {
                 return;
             }
