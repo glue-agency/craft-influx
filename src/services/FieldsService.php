@@ -84,7 +84,21 @@ class FieldsService extends AbstractRegistry
      */
     public function forCraftField(CraftFieldInterface $field): Field
     {
-        for ($class = $field::class; $class; $class = get_parent_class($class)) {
+        return $this->forCraftFieldClass($field::class);
+    }
+
+    /**
+     * The same resolution from a class NAME, for a caller that has the FQCN but no
+     * instance — a {@see \GlueAgency\Influx\schema\MappableField} descriptor carries
+     * `fieldClass` and nothing else, and looking the field up again just to ask its
+     * strategy a static question would be a query per row.
+     *
+     * An unknown or non-existent class walks to nothing and lands on the default
+     * strategy, same as a Craft field with no registered strategy.
+     */
+    public function forCraftFieldClass(string $class): Field
+    {
+        for (; $class; $class = get_parent_class($class)) {
             $strategy = $this->item($class);
 
             if ($strategy) {

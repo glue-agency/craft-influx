@@ -58,6 +58,15 @@ class Link extends Field
     /** Craft's own fallback when a field declares no types ({@see \craft\fields\linktypes\Url::id()}). */
     protected const DEFAULT_TYPE = 'url';
 
+    /**
+     * A Link field stores a structured value (type, url, label), not a single comparable one.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftLinkField::class;

@@ -91,6 +91,15 @@ use Throwable;
  */
 class Matrix extends Field
 {
+    /**
+     * A Matrix holds nested entries, not a value — its field value is an element query, so there is nothing for a feed to match on.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftMatrixField::class;

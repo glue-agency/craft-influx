@@ -32,6 +32,15 @@ use GlueAgency\Influx\sync\FieldContext;
  */
 class Json extends Field
 {
+    /**
+     * A Json field holds an arbitrary structure; matching one exactly is not identifying an element by it.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftJsonField::class;

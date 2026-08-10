@@ -135,6 +135,15 @@ class Addresses extends Field
      */
     protected ?CraftAddressElement $labelCarrier = null;
 
+    /**
+     * An Addresses field relates Address elements, so like every relation it stores ids of OTHER elements.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftAddressesField::class;

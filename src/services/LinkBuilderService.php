@@ -229,6 +229,23 @@ class LinkBuilderService extends Component
     }
 
     /**
+     * Whether a custom field may be offered as the Match attribute, asked of the
+     * field's own strategy ({@see \GlueAgency\Influx\fields\Field::matchable()}).
+     *
+     * A descriptor with no `fieldClass` can't be asked, so it's offered — the same
+     * default the base strategy takes, and the same restraint the rest of the
+     * plugin shows a type it can't identify.
+     */
+    protected function isMatchableField(MappableField $field): bool
+    {
+        if ($field->fieldClass === null) {
+            return true;
+        }
+
+        return Influx::getInstance()->fields->forCraftFieldClass($field->fieldClass)::matchable();
+    }
+
+    /**
      * Human-readable summary of a match key dropped because the link's element
      * type identifies its element from criteria instead
      * ({@see Link::pruneMatchForTarget()}) — config carried over from another
@@ -357,7 +374,7 @@ class LinkBuilderService extends Component
         $fieldOptions = [];
 
         foreach ($fields as $field) {
-            if ($field->native) {
+            if ($field->native || ! $this->isMatchableField($field)) {
                 continue;
             }
             $fieldOptions[] = [

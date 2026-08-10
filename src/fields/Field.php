@@ -64,6 +64,34 @@ abstract class Field
     }
 
     /**
+     * Whether this field type can serve as a link's MATCH attribute — the unique
+     * key an item is paired with an existing element by.
+     *
+     * Matching runs the stored value straight at an element query
+     * (`Entry::find()->{$handle}($value)`), so it only means anything for a field
+     * holding one comparable value that a feed can carry as an external
+     * identifier. Default true: that covers the scalar-ish types and, importantly,
+     * {@see DefaultField} — a field type Influx has no strategy for is usually a
+     * plain value, and refusing it by default would silently narrow the option list
+     * for every third-party field.
+     *
+     * A strategy returns false when its value can't identify anything. That's not
+     * the same as "the query would fail": a relation field's
+     * `BaseRelationField::queryCondition()` builds a perfectly valid condition — it
+     * just filters by relation to an element ID, so the only feed value that could
+     * ever match is Craft's own id for the related element, which is not an
+     * identifier for the element being matched. Offering it produced a match key
+     * that silently matched nothing.
+     *
+     * Read by {@see \GlueAgency\Influx\services\LinkBuilderService::mappableFields()}
+     * when it builds the Match attribute dropdown.
+     */
+    public static function matchable(): bool
+    {
+        return true;
+    }
+
+    /**
      * Resolve the remote item + per-field mapping into the value the element
      * field should hold.
      *

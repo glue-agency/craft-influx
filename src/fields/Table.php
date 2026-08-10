@@ -69,6 +69,15 @@ class Table extends Field
     // strategy writing a table of Craft-typed cells.
     use TableCells;
 
+    /**
+     * A Table holds rows, stored as one JSON blob. A feed value can't identify an element through it.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftTableField::class;

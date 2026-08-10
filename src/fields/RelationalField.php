@@ -29,6 +29,17 @@ use yii\base\Model;
 abstract class RelationalField extends Field
 {
     /**
+     * A relation field stores element IDS, so it can't identify the element that
+     * holds it: the only feed value that would ever match is Craft's own id for the
+     * RELATED element. Covers Entries / Users / Categories / Tags (through
+     * {@see Relation}) and Assets. See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
+    /**
      * Relational fields compare by their ordered list of related ids. The
      * comparison is order-SENSITIVE: relation and asset fields persist their
      * order, so a feed that reorders the same ids is a real change. A

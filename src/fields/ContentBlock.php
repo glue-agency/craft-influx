@@ -40,6 +40,15 @@ use GlueAgency\Influx\sync\FieldContext;
  */
 class ContentBlock extends Field
 {
+    /**
+     * A Content Block holds nested content, not a value of its own.
+     * See {@see Field::matchable()}.
+     */
+    public static function matchable(): bool
+    {
+        return false;
+    }
+
     public static function craftFieldClass(): ?string
     {
         return CraftContentBlockField::class;
