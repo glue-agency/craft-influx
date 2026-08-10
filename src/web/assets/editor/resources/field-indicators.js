@@ -28,6 +28,16 @@
         '<rect x="20" y="44" width="60" height="20" rx="10" opacity="0.6"/>' +
         '<rect x="20" y="74" width="60" height="20" rx="10" opacity="0.3"/></svg>';
 
+    // Native attributes Craft renders under a DIFFERENT name than the handle a
+    // mapping writes. An asset's Filename is the one: renaming an asset is a move,
+    // so Craft renders that field as data-attribute="newLocation" (id
+    // "new-filename-field") and nothing on the page answers to `filename`. Without
+    // the alias an asset link mapping `filename` registered its handle and then
+    // decorated nothing at all.
+    var ATTRIBUTE_ALIASES = {
+        filename: ['newLocation'],
+    };
+
     function escape(handle) {
         return (window.CSS && CSS.escape) ? CSS.escape(handle) : handle;
     }
@@ -37,12 +47,18 @@
     // handle present in both the main pane and the sidebar meta is covered, then
     // keep only the OUTERMOST ones ({@see outermost}).
     function fieldsFor(handle) {
-        var h = escape(handle);
-        var selectors = [
-            '.field[data-attribute="' + h + '"]',
-            '#fields-' + h + '-field',
-            '#' + h + '-field',
-        ];
+        var names = [handle].concat(ATTRIBUTE_ALIASES[handle] || []);
+        var selectors = [];
+
+        names.forEach(function (name) {
+            var h = escape(name);
+            selectors.push(
+                '.field[data-attribute="' + h + '"]',
+                '#fields-' + h + '-field',
+                '#' + h + '-field'
+            );
+        });
+
         var found = new Set();
 
         selectors.forEach(function (selector) {

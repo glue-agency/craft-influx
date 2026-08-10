@@ -7,12 +7,14 @@ use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\base\Plugin;
+use craft\events\CreateFieldLayoutFormEvent;
 use craft\events\DefineHtmlEvent;
 use craft\events\RebuildConfigEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\helpers\UrlHelper;
+use craft\models\FieldLayout;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\services\UserPermissions;
@@ -75,6 +77,20 @@ class Influx extends Plugin
      * Influx CP access. Admins always pass.
      */
     public const PERMISSION_SYNC = 'influx:sync';
+
+    /**
+     * Mapped field handles collected so far this request, for
+     * {@see registerFieldIndicators()}.
+     *
+     * Request-scoped state on the plugin because the thing it accumulates across
+     * is a request: {@see FieldLayout::EVENT_CREATE_FORM} fires once per rendered
+     * layout, and a page with nested layouts (a Matrix block's entry type) fires it
+     * several times for different elements. The JS var takes one flat handle list,
+     * so each firing has to widen the same set rather than replace it.
+     *
+     * @var list<string>
+     */
+    protected array $fieldIndicatorHandles = [];
 
     public static function config(): array
     {
@@ -332,23 +348,50 @@ class Influx extends Plugin
      * — so an editor sees at a glance which values are Influx-managed and may be
      * overwritten on the next sync.
      *
-     * Registered on the base {@see Element} event rather than per element type:
-     * Yii fires class-level handlers for every subclass, and
-     * {@see LinksService::mappedHandlesForElement()} returns nothing for types
-     * without an Influx target — so this self-limits to Entries and Users today
-     * and covers any future target type with no extra wiring.
+     * Hooked on {@see FieldLayout::EVENT_CREATE_FORM} — the one thing EVERY edit
+     * screen does, whoever wrote it. Craft's element editor calls
+     * `createForm()`, and so do the screens that bypass it entirely: Global Sets
+     * render `globals/_edit.twig`, and a third-party element type like Solspace
+     * Calendar's Event renders its own template off its own route. None of those
+     * reach {@see Element::EVENT_DEFINE_ADDITIONAL_BUTTONS}, which this used to
+     * listen on, so the indicator simply never appeared there.
      *
-     * Placement is client-side: the additional-buttons event can only append to
-     * the edit page's #action-buttons row, and Craft exposes no cross-version
-     * per-field render event, so the mapped-handle set is handed to a small
-     * vanilla-JS asset ({@see FieldIndicatorAsset}) that decorates fields by
-     * handle. No permission gate — the indicator is purely informational.
+     * The layout event is what the CP template hooks those screens offer can't be:
+     * universal. It needs no per-element-type declaration, can't be withheld by a
+     * plugin author who forgot a `{% hook %}`, and carries the element — which a
+     * layout-level template hook does not.
+     *
+     * THREE GUARDS, because `createForm()` is called in more places than an edit
+     * screen: a static render is read-only and gets no marks, a non-CP request has
+     * no CP asset bundle to speak of, and the field-layout DESIGNER calls it with
+     * no element at all.
+     *
+     * ACCUMULATES. Nested layouts fire this too — a Matrix block's entry type has
+     * its own — so handles are unioned across the request rather than overwritten,
+     * which a second {@see View::registerJsVar()} call would do. Re-registering
+     * only when the union actually grew keeps the common single-layout page to one
+     * emitted statement.
+     *
+     * Placement stays client-side: Craft renders its own field indicators inside
+     * {@see \craft\helpers\Cp::fieldHtml()}, which fires no event and never
+     * populates its `labelExtra` slot from a field layout, so there is no
+     * server-side seam to write into. The mapped-handle set goes to a small
+     * vanilla-JS asset ({@see FieldIndicatorAsset}) that decorates by handle and
+     * mimics Craft's `<craft-tooltip>` treatment. No permission gate — the
+     * indicator is purely informational.
      */
     protected function registerFieldIndicators(): void
     {
-        Event::on(Element::class, Element::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
-            /** @var ElementInterface $element */
-            $element = $event->sender;
+        Event::on(FieldLayout::class, FieldLayout::EVENT_CREATE_FORM, function(CreateFieldLayoutFormEvent $event) {
+            if ($event->static || ! Craft::$app->getRequest()->getIsCpRequest()) {
+                return;
+            }
+
+            $element = $event->element;
+
+            if (! $element || ! $element->id) {
+                return;
+            }
 
             $handles = $this->links->mappedHandlesForElement($element);
 
@@ -356,9 +399,17 @@ class Influx extends Plugin
                 return;
             }
 
+            $union = array_values(array_unique(array_merge($this->fieldIndicatorHandles, $handles)));
+
+            if (count($union) === count($this->fieldIndicatorHandles)) {
+                return;
+            }
+
+            $this->fieldIndicatorHandles = $union;
+
             $view = Craft::$app->getView();
             $view->registerAssetBundle(FieldIndicatorAsset::class);
-            $view->registerJsVar('influxFieldIndicators', $handles);
+            $view->registerJsVar('influxFieldIndicators', $union);
         });
     }
 

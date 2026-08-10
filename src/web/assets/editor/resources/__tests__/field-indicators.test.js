@@ -91,6 +91,41 @@ describe('field indicators', () => {
         expect(marks()).toHaveLength(2);
     });
 
+    /**
+     * An asset's Filename is the one native Craft renders under a different name
+     * than the handle a mapping writes: renaming an asset is a MOVE, so the field
+     * is `data-attribute="newLocation"` with id `new-filename-field`, and nothing
+     * on the page answers to `filename`. Before the alias, an asset link mapping
+     * `filename` registered its handle and then decorated nothing at all.
+     */
+    it('marks an asset filename field through its newLocation alias', () => {
+        document.body.innerHTML = `
+            <div id="new-filename-field" class="field first" data-attribute="newLocation">
+                <div class="heading"><label id="new-filename-label">Filename</label></div>
+                <div class="input"><input id="new-filename" name="newFilename" type="text"></div>
+            </div>
+        `;
+
+        runAsset(['filename']);
+
+        expect(marks()).toHaveLength(1);
+        expect(document.querySelector('#new-filename-label .influx-field-indicator')).not.toBeNull();
+    });
+
+    it('still marks a field that does answer to its own handle', () => {
+        // The alias is additive — it must not stop a plain native from matching.
+        document.body.innerHTML = `
+            <div id="title-field" class="field" data-attribute="title">
+                <div class="heading"><label id="title-label">Title</label></div>
+                <div class="input"><input type="text"></div>
+            </div>
+        `;
+
+        runAsset(['title']);
+
+        expect(marks()).toHaveLength(1);
+    });
+
     it('leaves unmapped fields alone', () => {
         document.body.innerHTML = fieldHtml('test_plain_text', '<input type="text">');
 
