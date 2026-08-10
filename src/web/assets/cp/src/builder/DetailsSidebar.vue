@@ -149,7 +149,7 @@ export default {
         },
 
         fetchTitle() {
-            if (! this.canSample) return this.$t('Set a Base Endpoint on the General tab first');
+            if (! this.canSample) return this.$t('Set a Link Endpoint on the General tab first');
             if (this.ui.sampleError) return this.$t('Last attempt failed: {message}', { message: this.ui.sampleError });
             if (this.ui.sampleWarning) return this.$t('Sample incomplete: {message}', { message: this.ui.sampleWarning });
             if (this.ui.sample?.url) return this.$t('Last fetched from {url}', { url: this.ui.sample.url });

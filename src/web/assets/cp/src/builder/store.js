@@ -59,7 +59,7 @@ const initial = () => ({
     // does NOT touch root.link — the value stays in the editor; only the
     // outbound copy is emptied (see outboundLink()), and the canonical stripped
     // link comes back on save and reloads into state.
-    siteEndpointsMode: false,     // "Site-specific endpoints"
+    siteEndpointsMode: false,     // "Per-site Link endpoint"
     supportsItemEndpoint: false,  // "Resource Endpoint supported"
     supportsOffset: false,        // "Partial import"
 });
@@ -188,7 +188,7 @@ async function save(options = {}) {
     // hidden base endpoint would satisfy the model rule), so it's the one
     // validation that lives client-side.
     if (root.siteEndpointsMode && !hasAnySiteEndpoint()) {
-        const message = t('Add at least one site endpoint, or turn site-specific endpoints off.');
+        const message = t('Add at least one site endpoint, or turn Per-site Link endpoint off.');
         root.errors = { siteEndpoints: [message] };
         notifyError(message);
         return { success: false, errors: root.errors };
@@ -474,7 +474,7 @@ watch(criteriaSignature, (signature) => {
 });
 
 /**
- * Flip the General tab's "Site-specific endpoints" switch. Off keeps any
+ * Flip the General tab's "Per-site Link endpoint" switch. Off keeps any
  * configured siteEndpoints in state (the editor is just hidden), so the user
  * can toggle without losing rows; save() drops them from the outbound payload
  * when the switch is off, which strips them from the persisted config.

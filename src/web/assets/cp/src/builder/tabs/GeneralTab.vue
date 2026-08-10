@@ -43,11 +43,11 @@
         <hr>
         <h2 v-text="$t('Endpoint')"></h2>
 
-        <!-- In site-specific mode every site lists its own URL, so the base
+        <!-- In per-site mode every site lists its own URL, so the single link
              endpoint is hidden rather than shown as dead config. Its value
              is kept — flipping the switch back restores it untouched. -->
         <div class="field" v-if="! siteEndpointsMode" :class="{ 'has-errors': errors.endpoint?.length }">
-            <div class="heading"><label v-text="$t('Base Endpoint')"></label></div>
+            <div class="heading"><label v-text="$t('Link Endpoint')"></label></div>
             <div class="instructions"><p v-html="$t('JSON URL, or an <code>@alias</code> pointing to a local JSON file.')"></p></div>
             <div class="input ltr">
                 <v-tokenized-input
@@ -62,7 +62,7 @@
         </div>
 
         <div class="field" v-if="supportsMultiSite">
-            <div class="heading"><label class="lightswitch-label" v-text="$t('Site-specific endpoints')"></label></div>
+            <div class="heading"><label class="lightswitch-label" v-text="$t('Per-site Link endpoint')"></label></div>
             <div class="instructions"><p v-text="$t('Enable if the external service supports resource localisation.')"></p></div>
             <div class="input">
                 <v-light-switch v-model="siteEndpointsMode" :disabled="readOnly" />
