@@ -78,6 +78,38 @@ class FeedMeConverter
     protected const UNSUPPORTED_NATIVE_HANDLES = ['parent', 'id', 'localeEnabled'];
 
     /**
+     * Truthy spellings Feed Me accepts that Influx reads as FALSE.
+     *
+     * Both plugins agree on `1` / `true` / `on` / `yes` — Feed Me via
+     * `filter_var(FILTER_VALIDATE_BOOLEAN)`, Influx via
+     * {@see \GlueAgency\Influx\fields\Lightswitch::TRUTHY_VALUES} — and Feed Me then
+     * adds these on top (`helpers/BaseHelper::parseBoolean()`), where Influx's
+     * "anything unrecognized is false" rule flips them. A silent value change, not
+     * a config one, so the conversion can only warn about it: the fix is in the
+     * feed, or a `SynchronizationService::EVENT_AFTER_ITEM_MAPPING` listener.
+     *
+     * Feed Me runs each through `Craft::t('feed-me', …)`, so a translated CP may
+     * accept different spellings again — one more reason to name these as the
+     * English baseline rather than promise a complete list.
+     */
+    protected const FEEDME_ONLY_TRUTHY_VALUES = ['open', 'enabled', 'live', 'active', 'y'];
+
+    /**
+     * Feed Me field classes whose values go through `parseBoolean()`, and so carry
+     * the {@see FEEDME_ONLY_TRUTHY_VALUES} divergence. Table joins Lightswitch
+     * because its lightswitch/checkbox CELLS are coerced the same way
+     * ({@see \GlueAgency\Influx\fields\TableCells::BOOLEAN_TYPES}).
+     */
+    protected const BOOLEAN_FIELD_CLASSES = ['craft\fields\Lightswitch', 'craft\fields\Table'];
+
+    /**
+     * Native attribute handles coerced the same way — Feed Me's
+     * `base/Element::parseEnabled()` against
+     * {@see \GlueAgency\Influx\targets\AbstractElementTarget::parseEnabled()}.
+     */
+    protected const BOOLEAN_NATIVE_HANDLES = ['enabled'];
+
+    /**
      * Feed Me date-format sentinels (stored, confusingly, under
      * `options.match`) → Influx `options.format` strings for
      * `DateTime::createFromFormat`. Lenient `n`/`j` tokens stand in for Feed
@@ -102,15 +134,22 @@ class FeedMeConverter
     ];
 
     /**
-     * duplicateHandle value → Influx processing action. `disableForSite` is
-     * handled separately (approximated to `disable` with a warning).
+     * duplicateHandle value → Influx processing action. Feed Me's whole vocabulary,
+     * and exactly it: `helpers/DuplicateHelper` declares these five and no more.
+     *
+     * There is no `deleteForSite` to map — Feed Me's per-site policy covers disable
+     * only. A feed scoped to one site still reaches
+     * {@see ProcessingAction::DELETE_FOR_SITE}, just not from here:
+     * {@see Link::migrateProcessingForEndpointShape()} narrows `delete` to it on
+     * save because {@see convertEndpoint()} gave the link a site endpoint, which is
+     * the same rule that protects a hand-built link.
      */
     protected const PROCESSING_MAP = [
-        'add'           => ProcessingAction::CREATE,
-        'update'        => ProcessingAction::UPDATE,
-        'disable'       => ProcessingAction::DISABLE,
-        'delete'        => ProcessingAction::DELETE,
-        'deleteForSite' => ProcessingAction::DELETE_FOR_SITE,
+        'add'            => ProcessingAction::CREATE,
+        'update'         => ProcessingAction::UPDATE,
+        'disable'        => ProcessingAction::DISABLE,
+        'disableForSite' => ProcessingAction::DISABLE_FOR_SITE,
+        'delete'         => ProcessingAction::DELETE,
     ];
 
     /**
@@ -148,10 +187,16 @@ class FeedMeConverter
         $link->elementCriteria = $this->convertElementCriteria($feed, $link->elementType);
         $link->processing = $this->convertProcessing($this->decode($feed['duplicateHandle'] ?? null));
         $link->mappings = $this->convertMappings($this->decode($feed['fieldMapping'] ?? null), true);
-        $link->match = $this->convertMatch($this->decode($feed['fieldUnique'] ?? null), $link->mappings);
+        // Criteria are already set, so the target can say whether this link needs a
+        // match at all. One that doesn't (a Global Set, a Single section) has no
+        // match to convert — and converting anyway would warn the operator to "set
+        // the match attribute in the builder", where the control isn't shown.
+        $link->match = $link->requiresMatch()
+            ? $this->convertMatch($this->decode($feed['fieldUnique'] ?? null), $link->mappings)
+            : [];
 
-        if (! empty($feed['singleton'])) {
-            $this->warn('Feed is a singleton; Influx has no singleton mode — the match attribute decides which element each item updates.');
+        if (! empty($feed['singleton']) && $link->requiresMatch()) {
+            $this->warn('Feed is a singleton, but this link still matches per item; check that the match attribute picks the element you expect.');
         }
 
         if (empty($feed['setEmptyValues'])) {
@@ -270,8 +315,15 @@ class FeedMeConverter
     }
 
     /**
-     * duplicateHandle → processing. Unknown flags warn instead of failing so
-     * a feed from a newer/older Feed Me still converts.
+     * duplicateHandle → processing. Every Feed Me flag has a counterpart
+     * ({@see PROCESSING_MAP}), so nothing is approximated here; unknown flags warn
+     * instead of failing so a feed from a newer/older Feed Me still converts.
+     *
+     * The result is only the flags' direct translation. Whether the pair a policy
+     * belongs to survives is decided on save, against the link's endpoint shape
+     * and its target's capabilities ({@see Link::migrateProcessingForEndpointShape()},
+     * {@see Link::pruneProcessingForTarget()}) — both of which report what they
+     * changed, so the import prints it.
      *
      * @param array $duplicateHandle e.g. ['add', 'update']
      * @return string[]
@@ -285,19 +337,13 @@ class FeedMeConverter
                 continue;
             }
 
-            if (isset(self::PROCESSING_MAP[$flag])) {
-                $processing[] = self::PROCESSING_MAP[$flag]->value;
+            if (! isset(self::PROCESSING_MAP[$flag])) {
+                $this->warn("Unknown duplicate handling flag '{$flag}' was dropped.");
 
                 continue;
             }
 
-            if ($flag === 'disableForSite') {
-                $processing[] = ProcessingAction::DISABLE->value;
-                $this->warn("'Disable missing elements for site' is not supported; approximated to 'disable'.");
-
-                continue;
-            }
-            $this->warn("Unknown duplicate handling flag '{$flag}' was dropped.");
+            $processing[] = self::PROCESSING_MAP[$flag]->value;
         }
 
         $processing = array_values(array_unique($processing));
@@ -669,6 +715,8 @@ class FeedMeConverter
 
         $options = is_array($info['options'] ?? null) ? $this->cleanOptions($info['options']) : [];
 
+        $this->warnBooleanCoercion($handle, $info);
+
         if (ltrim((string) ($info['field'] ?? ''), '\\') === 'craft\fields\Assets') {
             $options = $this->translateAssetOptions($handle, $options);
         } else {
@@ -684,6 +732,36 @@ class FeedMeConverter
             useDefault: $useDefault,
             options: $options,
             fields: is_array($info['fields'] ?? null) ? $this->convertMappings($info['fields'], false) : [],
+        );
+    }
+
+    /**
+     * Warn when a converted mapping writes somewhere both plugins coerce to a
+     * boolean, because they don't agree on what's true.
+     *
+     * The only conversion warning about a RUNTIME difference rather than a config
+     * one: nothing in the link can be adjusted to fix it, so the operator is told
+     * what to look for in the feed instead. Fires per mapping, since which rows
+     * are affected is the useful part — a feed shipping `"active"` silently turns
+     * a lightswitch off after conversion, and an `enabled` mapping doing the same
+     * unpublishes everything it touches.
+     *
+     * @param array $info One `fieldMapping` entry, as Feed Me stored it.
+     */
+    protected function warnBooleanCoercion(string $handle, array $info): void
+    {
+        $isBooleanField = in_array(ltrim((string) ($info['field'] ?? ''), '\\'), self::BOOLEAN_FIELD_CLASSES, true);
+        $isBooleanNative = ! empty($info['attribute']) && in_array($handle, self::BOOLEAN_NATIVE_HANDLES, true);
+
+        if (! $isBooleanField && ! $isBooleanNative) {
+            return;
+        }
+
+        $values = implode("', '", self::FEEDME_ONLY_TRUTHY_VALUES);
+        $this->warn(
+            "'{$handle}' is read as a boolean, and Influx accepts fewer truthy values than Feed Me: "
+            . "'{$values}' counted as true in Feed Me but are false in Influx (both accept '1', 'true', 'on', 'yes'). "
+            . 'Check what this node actually ships.',
         );
     }
 

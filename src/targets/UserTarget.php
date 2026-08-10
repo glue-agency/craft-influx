@@ -39,8 +39,9 @@ use Throwable;
  * "everything it owns" without a scope, and sweeping every user in the system —
  * potentially disabling admins or the current user — is not a safe default. User
  * links therefore create / update only. The builder omits the disable-/
- * delete-missing policies for them, {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}
- * reports a skipped sweep for config that still carries one, and the base
+ * delete-missing policies for them and {@see Link::pruneProcessingForTarget()}
+ * drops them from a saved link, {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}
+ * reports a skipped sweep for config that reached a run anyway, and the base
  * {@see AbstractElementTarget::missingElementsQuery()} stays at its null default
  * as the last line of defence.
  *

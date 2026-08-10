@@ -18,23 +18,25 @@
                 />
             </div>
 
-            <hr>
-            <h2 v-text="$t('Match key')"></h2>
+            <template v-if="requiresMatch">
+                <hr>
+                <h2 v-text="$t('Match key')"></h2>
 
-            <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
-                <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
-                <div class="input ltr">
-                    <v-searchable-select
-                        v-model="matchAttribute"
-                        :options="ui.mappable.matchOptions"
-                        :disabled="readOnly"
-                        searchable
-                        :placeholder="$t('Select an attribute…')"
-                        :search-placeholder="$t('Search attributes…')"
-                    />
+                <div class="field" :class="{ 'has-errors': ui.errors.match?.length }">
+                    <div class="heading"><label for="builder-match-attribute">{{ $t('Match attribute') }} <span class="influx-required" aria-hidden="true">*</span></label></div>
+                    <div class="input ltr">
+                        <v-searchable-select
+                            v-model="matchAttribute"
+                            :options="ui.mappable.matchOptions"
+                            :disabled="readOnly"
+                            searchable
+                            :placeholder="$t('Select an attribute…')"
+                            :search-placeholder="$t('Search attributes…')"
+                        />
+                    </div>
+                    <v-field-errors :messages="ui.errors.match" />
                 </div>
-                <v-field-errors :messages="ui.errors.match" />
-            </div>
+            </template>
         </template>
     </div>
 </template>
@@ -83,6 +85,21 @@ export default {
                 .map(handle => mappings[handle].node)
                 .filter(Boolean);
             return mergeNodeOptions(store.ui.sample?.flatNodes ?? [], savedNodes);
+        },
+
+        /**
+         * Whether this link identifies its element by a match value — a Global Set
+         * link, or an Entry link scoped to a Single, doesn't: its criteria already
+         * name the one element.
+         *
+         * Comes with the mappable-fields response rather than with the element-type
+         * capability flags, because for entries the answer depends on the section —
+         * and that response is what already refetches when the criteria change.
+         * Same tolerant default as GeneralTab's flags: absent reads as true, so an
+         * older payload keeps showing the control.
+         */
+        requiresMatch() {
+            return this.ui.mappable?.requiresMatch !== false;
         },
 
         matchAttribute: {

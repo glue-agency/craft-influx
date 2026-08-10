@@ -430,12 +430,18 @@ class SynchronizationService extends Component
         $plugin = Influx::getInstance();
         $target = $this->resolveTarget($link);
 
-        if (! ($matchAttr = $link->matchAttribute())) {
-            throw new InfluxException("Link '{$link->handle}' has no match attribute.");
-        }
+        // A match-less link identifies its element from criteria, and the element to
+        // write is the one the caller handed us — so there is nothing to look up and
+        // no attribute to demand. Only a matching link has to prove the element
+        // carries the key its feed will be searched by.
+        if ($link->requiresMatch()) {
+            if (! ($matchAttr = $link->matchAttribute())) {
+                throw new InfluxException("Link '{$link->handle}' has no match attribute.");
+            }
 
-        if (! $element->$matchAttr) {
-            throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
+            if (! $element->$matchAttr) {
+                throw new InfluxException("Element #{$element->id} has no value on '{$matchAttr}'.");
+            }
         }
 
         $siteHandles = $this->elementSyncSites($link, $element);

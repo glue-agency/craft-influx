@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\enums;
 
 use Craft;
+use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
  * What a sync run is allowed to do with the elements a link manages. Stored
@@ -83,8 +84,9 @@ enum ProcessingAction: string
      * Whether this policy is a missing-elements sweep rather than a write — the
      * four disable/delete cases, which only apply to an element type whose target
      * can enumerate what a link owns
-     * ({@see \GlueAgency\Influx\targets\ElementTargetInterface::supportsSweeping()}).
-     * The builder hides these checkboxes for a type that can't sweep.
+     * ({@see ElementTargetInterface::supportsSweeping()}). The builder hides these
+     * checkboxes for a type that can't sweep, and a save prunes them from stored
+     * config ({@see unsupportedReason()}).
      *
      * Derived from the global ⇄ per-site pairing rather than listed again: having
      * a counterpart in either direction is exactly what makes a case a
@@ -124,6 +126,37 @@ enum ProcessingAction: string
             self::DELETE_FOR_SITE  => self::DELETE,
             default                => null,
         };
+    }
+
+    /**
+     * Why a target can't honour this policy, or null when it can — the single
+     * gate deciding what {@see \GlueAgency\Influx\models\Link::pruneProcessingForTarget()}
+     * drops, and the sentence both surfaces that report a drop print (the
+     * builder's save notice and the Feed Me importer's warnings), so classifying
+     * and explaining can't drift apart.
+     *
+     * Only the two capabilities that gate a policy are consulted.
+     * `supportsMultiSite()` deliberately isn't: a non-multi-site target already
+     * rejects site-specific endpoints, and {@see \GlueAgency\Influx\models\Link::migrateProcessingForEndpointShape()}
+     * folds the `-for-site` pair back onto its global counterpart for a link
+     * without them — pruning there would report a drop where a swap is what
+     * actually happens.
+     */
+    public function unsupportedReason(ElementTargetInterface $target): ?string
+    {
+        if ($this === self::CREATE && ! $target::supportsCreating()) {
+            return Craft::t('influx', '{elementType} links can’t create elements.', [
+                'elementType' => $target::friendlyName(),
+            ]);
+        }
+
+        if ($this->isMissingPolicy() && ! $target::supportsSweeping()) {
+            return Craft::t('influx', '{elementType} links can’t tell which elements are missing from the feed.', [
+                'elementType' => $target::friendlyName(),
+            ]);
+        }
+
+        return null;
     }
 
     /**

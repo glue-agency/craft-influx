@@ -133,11 +133,13 @@ interface ElementTargetInterface
      * ({@see missingElementsQuery()}). A type with no scoping dimension — User,
      * where the candidate set would be every user in the system — returns false,
      * and the builder then doesn't offer the disable-/delete-missing policies for
-     * it at all. {@see AbstractElementTarget} defaults to true; a non-sweeping
-     * target overrides it, and
+     * it at all and a save drops them ({@see Link::pruneProcessingForTarget()}).
+     * {@see AbstractElementTarget} defaults to true; a non-sweeping target
+     * overrides it, and
      * {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()} is the
-     * server-side backstop that reports a skipped sweep for config still
-     * carrying one of those policies.
+     * server-side backstop that reports a skipped sweep for config that reached a
+     * run anyway — Project Config applies straight to the row, never through the
+     * prune.
      */
     public static function supportsSweeping(): bool;
 
@@ -198,13 +200,56 @@ interface ElementTargetInterface
     public function criteriaLabel(Link $link): ?string;
 
     /**
+     * Whether a link to this element type identifies its elements by a match
+     * value at all.
+     *
+     * False for a target whose criteria already name ONE element: a Global Set
+     * ({@see \GlueAgency\Influx\targets\GlobalSetTarget}), or an Entry link whose
+     * section is a Craft Single ({@see \GlueAgency\Influx\targets\EntryTarget}).
+     * There is nothing to disambiguate, so a match key would be ceremony — and
+     * worse than ceremony, since it makes the operator nominate a feed node to
+     * identify an element the config had already pinned.
+     *
+     * Link-scoped and NOT static, unlike the {@see supportsCreating()} trio: for
+     * entries the answer depends on the link's own section, so it can't be known
+     * per element type before a link exists. A target that can't resolve its
+     * criteria must answer TRUE — "can't tell" has to mean "still expects a
+     * match", or a half-configured link would quietly stop needing one.
+     *
+     * Answering false is half of a pair; {@see findWithoutMatch()} is the other.
+     * {@see \GlueAgency\Influx\models\Link::requiresMatch()} is the one reader,
+     * consulted by validation, the save-time prune, the builder, the sync engine
+     * and the dry-run inspector alike.
+     */
+    public function requiresMatch(Link $link): bool;
+
+    /**
      * Find an existing element matching the given key value, or null.
      * A per-site run passes $siteId and the lookup may scope to that site; a
      * siteless run passes null and the lookup must span all sites. Both
      * converge on the same canonical element as long as the match field is
      * not translatable — the precondition multi-site links rely on.
+     *
+     * Only called when {@see requiresMatch()} is true; a link that needs no match
+     * resolves through {@see findWithoutMatch()} instead.
      */
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface;
+
+    /**
+     * The one element this link's criteria name, without consulting the feed —
+     * the resolution path for a target reporting {@see requiresMatch()} = false.
+     * Null when the criteria don't resolve (no set configured, a section that has
+     * since been removed), which the engine reads the same way it reads a match
+     * that found nothing.
+     *
+     * $siteId scopes the lookup exactly as it does for {@see findByMatchValue()},
+     * so a per-site run writes localized values onto the right row.
+     *
+     * {@see AbstractElementTarget} throws, so overriding {@see requiresMatch()}
+     * without this fails loudly rather than resolving every item to null — the
+     * same contract {@see buildNew()} enforces for a non-creating target.
+     */
+    public function findWithoutMatch(Link $link, ?int $siteId = null): ?ElementInterface;
 
     /**
      * Build a fresh element pre-populated with all link-mandated attributes

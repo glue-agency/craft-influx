@@ -240,19 +240,13 @@ class NativeAttributes
     }
 
     /**
-     * Global set identifiers. A global set has no title and no slug — it's named by
-     * its handle, which is also the only thing a feed can plausibly carry to say
-     * WHICH set an item is for.
-     *
-     * @return list<array{value: string, label: string}>
+     * No global-set list. A global set is named by its handle, which is project
+     * config rather than content — and a link to one needs no identifier at all,
+     * since its `set` criterion already names the single element
+     * ({@see \GlueAgency\Influx\targets\GlobalSetTarget::requiresMatch()}). The
+     * method this replaces offered `id` and `handle` as match keys for a match that
+     * no longer exists.
      */
-    public static function globalSetMatchable(): array
-    {
-        return [
-            ['value' => 'id',     'label' => Craft::t('influx', 'ID (id)')],
-            ['value' => 'handle', 'label' => static::labelWithHandle(Craft::t('app', 'Handle'), 'handle')],
-        ];
-    }
 
     /** @return list<array{value: string, label: string}> */
     public static function categoryMatchable(): array

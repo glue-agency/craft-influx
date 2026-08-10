@@ -517,8 +517,12 @@ class FeedMeConverterTest extends Unit
 
     public function testProcessingFlagsTranslate(): void
     {
+        // Feed Me's whole vocabulary, each with a direct counterpart — including
+        // `disableForSite`, which used to be flattened onto the global `disable`.
+        // Whether the per-site half survives is the save's call, against the link's
+        // endpoint shape; the conversion no longer pre-empts it.
         $conversion = $this->convert([
-            'duplicateHandle' => ['add', 'update', 'disable', 'delete', 'disableForSite'],
+            'duplicateHandle' => ['add', 'update', 'disable', 'disableForSite', 'delete'],
         ]);
 
         $this->assertSame(
@@ -526,11 +530,55 @@ class FeedMeConverterTest extends Unit
                 ProcessingAction::CREATE->value,
                 ProcessingAction::UPDATE->value,
                 ProcessingAction::DISABLE->value,
+                ProcessingAction::DISABLE_FOR_SITE->value,
                 ProcessingAction::DELETE->value,
             ],
             $conversion->link->processing,
         );
-        $this->assertWarningMatching('/disable/i', $conversion);
+    }
+
+    public function testAnUnknownProcessingFlagWarnsAndIsDropped(): void
+    {
+        $conversion = $this->convert(['duplicateHandle' => ['add', 'deleteForSite']]);
+
+        $this->assertSame([ProcessingAction::CREATE->value], $conversion->link->processing);
+        $this->assertWarningMatching('/deleteForSite/', $conversion);
+    }
+
+    public function testABooleanTargetWarnsAboutTheNarrowerTruthyVocabulary(): void
+    {
+        // A runtime divergence rather than a config one: Feed Me counts 'active' /
+        // 'live' / 'y' as true, Influx reads them as false. Nothing in the link can
+        // fix it, so the conversion has to say so per affected row.
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'showBanner' => ['field' => 'craft\fields\Lightswitch', 'node' => 'visible'],
+                'specs'      => ['field' => 'craft\fields\Table', 'node' => 'specs'],
+                'enabled'    => ['attribute' => 1, 'node' => 'is_live'],
+                'importId'   => ['node' => 'external_id'],
+            ],
+        ]);
+
+        $this->assertWarningMatching("/'showBanner' is read as a boolean/", $conversion);
+        $this->assertWarningMatching("/'specs' is read as a boolean/", $conversion);
+        $this->assertWarningMatching("/'enabled' is read as a boolean/", $conversion);
+        $this->assertNoWarningMatching("/'importId' is read as a boolean/", $conversion);
+    }
+
+    public function testAPlainFieldNeverWarnsAboutBooleans(): void
+    {
+        $this->assertNoWarningMatching('/read as a boolean/', $this->convert());
+    }
+
+    public function testANonNativeHandleNamedEnabledIsNotTreatedAsTheNativeFlag(): void
+    {
+        // Only the ATTRIBUTE `enabled` goes through the boolean coercion; a custom
+        // field that happens to share the handle is whatever its own type says.
+        $conversion = $this->convert([
+            'fieldMapping' => ['enabled' => ['field' => 'craft\fields\PlainText', 'node' => 'state']],
+        ]);
+
+        $this->assertNoWarningMatching('/read as a boolean/', $conversion);
     }
 
     public function testFirstUsableUniqueBecomesTheMatchAttribute(): void

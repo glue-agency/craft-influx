@@ -127,6 +127,13 @@
  *                                 declared by the element target; the criteria dropdowns
  *                                 render from it, so no criteria option list lives here.
  *   options.processingActions[] {value, label, note, creating, missingPolicy, forSite}
+ *   ui.mappable                 {fields, groups, matchOptions, requiresMatch}
+ *                               — `requiresMatch` is false for a link whose criteria name ONE
+ *                                 element (a Global Set, an Entry link on a Craft Single), which
+ *                                 is why it rides here rather than with the element-type flags
+ *                                 above: for entries it depends on the section, so only the
+ *                                 criteria can answer it — and this is the response that
+ *                                 refetches when they change. Absent reads as true.
  *   options.authStrategies[]    {type, schema} — schema definitions, not select options
  *   meta.envSuggestions[]       {kind, label, data: [{name, hint, type}]}
  *

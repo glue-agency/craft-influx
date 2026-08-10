@@ -13,6 +13,7 @@ use GlueAgency\Influx\db\Table;
 use GlueAgency\Influx\events\LinkEvent;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\schema\MappingSlots;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 
 /**
@@ -191,11 +192,13 @@ class LinksService extends Component
      * Writes to Project Config — the PC change handler {@see handleChangedLink}
      * then upserts the DB row. Mirrors craft-remote-entries' SourcesService::save.
      *
-     * Unmappable mapping handles are pruned, policies the target doesn't support
-     * dropped, and the missing-element policies healed to the endpoint shape
-     * before validation — hygiene rather than validation, so all three run on
-     * forced saves too and stored config never keeps a handle the target can't
-     * write or a policy it would only ignore; every step is idempotent. The link's
+     * Mappings are pruned to what the target can still write — unmappable handles
+     * and, within the survivors, slots with no control left ({@see pruneMappings()})
+     * — policies the target doesn't support are dropped, and the missing-element
+     * policies healed to the endpoint shape, all before validation. Hygiene rather
+     * than validation, so every step runs on forced saves too and stored config
+     * never keeps a handle the target can't write, a slot the builder can't show,
+     * or a policy a run would only ignore; every step is idempotent. The link's
      * `id` is back-filled only after the PC write, since the row doesn't exist
      * until the change handler has run.
      */
@@ -203,8 +206,9 @@ class LinksService extends Component
     {
         $isNew = ! $link->id;
 
-        $this->pruneUnknownMappings($link);
+        $this->pruneMappings($link);
 
+        $link->pruneMatchForTarget();
         $link->pruneProcessingForTarget();
         $link->migrateProcessingForEndpointShape();
 
@@ -259,13 +263,29 @@ class LinksService extends Component
     }
 
     /**
-     * Drop mapping entries whose handle the target doesn't report as
-     * mappable — stale natives after a rename, custom fields removed from the
-     * entry type's layout, or natives the entry type now hides
+     * Bring the link's stored mappings back in line with the target's field
+     * surface, in two passes over the one reported surface: whole entries whose
+     * HANDLE is no longer mappable, then the individual SLOTS of the survivors
+     * that no longer have a control.
+     *
+     * A handle goes stale on a rename, a custom field removed from the entry
+     * type's layout, or a native the entry type now hides
      * ({@see \GlueAgency\Influx\targets\EntryTarget::nativeFieldDefinitions()}).
+     * A SLOT goes stale while the handle stays put, because what a row renders is
+     * its field strategy's business and that changes underneath stored config: a
+     * custom-field integration is hooked and a single-node field becomes
+     * sub-fields-only, a Preparse strategy declares the field computed
+     * ({@see \GlueAgency\Influx\integrations\jalendport\preparse\PreparseField::schema()}),
+     * an option the field used to offer is gone. The leftover slot has no cell to
+     * edit it and no cell to clear it — only a "missing mapping" badge on a row
+     * that looks correctly filled in. {@see MappingSlots} is the rule for what a
+     * row's regions can still write.
+     *
      * Pruning at save time keeps the stored config (Project Config YAML + DB row)
-     * in lockstep with the target's field surface; re-adding a field simply makes
-     * its handle mappable again.
+     * in lockstep with that surface; re-adding a field, or unhooking the
+     * integration, simply makes its handle or its slot writable again — but the
+     * value it held is gone, which is the cost of the config saying only what the
+     * builder can show.
      *
      * WHERE THIS RUNS: only from {@see saveLink()} — i.e. a builder save
      * ({@see LinkBuilderService::save()}) or a Feed Me import
@@ -282,7 +302,7 @@ class LinksService extends Component
      * section/type yet), and pruning then would throw away every
      * custom-field mapping on a half-configured link.
      */
-    protected function pruneUnknownMappings(Link $link): void
+    protected function pruneMappings(Link $link): void
     {
         $target = $this->targetForLink($link);
 
@@ -300,7 +320,7 @@ class LinksService extends Component
         $hasCustomFields = false;
 
         foreach ($mappable as $field) {
-            $known[$field->handle] = true;
+            $known[$field->handle] = $field;
 
             if (! $field->native) {
                 $hasCustomFields = true;
@@ -313,13 +333,66 @@ class LinksService extends Component
 
         $unknown = array_diff_key($link->mappings, $known);
 
-        if (empty($unknown)) {
+        if ($unknown !== []) {
+            $link->mappings = array_intersect_key($link->mappings, $known);
+            Craft::info(
+                "Dropped unmappable mapping handle(s) on link '{$link->handle}': " . implode(', ', array_keys($unknown)),
+                __METHOD__,
+            );
+        }
+
+        $this->pruneMappingSlots($link, $known);
+    }
+
+    /**
+     * Second pass of {@see pruneMappings()}: strip each surviving mapping's
+     * unwritable slots. Runs after the handle pass, so every handle here is
+     * guaranteed to have a descriptor to prune against.
+     *
+     * A mapping emptied of every slot is dropped outright rather than left as an
+     * empty entry — the same contract the builder's own writers keep
+     * (`builder/lib/slots.js` prunes an empty slot, the row drops an emptied
+     * mapping) and what {@see Link::getConfig()}'s empty-shape rule expects.
+     *
+     * @param array<string, \GlueAgency\Influx\schema\MappableField> $known Descriptors by handle.
+     */
+    protected function pruneMappingSlots(Link $link, array $known): void
+    {
+        $mappings = [];
+        $stripped = [];
+
+        foreach ($link->mappings as $handle => $mapping) {
+            if (! is_array($mapping)) {
+                $mappings[$handle] = $mapping;
+
+                continue;
+            }
+
+            $pruned = MappingSlots::prune($mapping, $known[$handle]->mapping);
+
+            foreach (array_keys(array_diff_key($mapping, $pruned)) as $slot) {
+                $stripped[] = "{$handle}.{$slot}";
+            }
+
+            // An options slot can lose keys without losing the slot itself.
+            if (isset($pruned['options'], $mapping['options']) && $pruned['options'] !== $mapping['options']) {
+                foreach (array_keys(array_diff_key($mapping['options'], $pruned['options'])) as $option) {
+                    $stripped[] = "{$handle}.options.{$option}";
+                }
+            }
+
+            if ($pruned !== []) {
+                $mappings[$handle] = $pruned;
+            }
+        }
+
+        if ($stripped === []) {
             return;
         }
 
-        $link->mappings = array_intersect_key($link->mappings, $known);
+        $link->mappings = $mappings;
         Craft::info(
-            "Dropped unmappable mapping handle(s) on link '{$link->handle}': " . implode(', ', array_keys($unknown)),
+            "Stripped unwritable mapping slot(s) on link '{$link->handle}': " . implode(', ', $stripped),
             __METHOD__,
         );
     }

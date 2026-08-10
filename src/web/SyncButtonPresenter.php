@@ -101,7 +101,11 @@ class SyncButtonPresenter
 
         $matchAttr = $link->matchAttribute();
 
-        if (! $matchAttr || $element->{$matchAttr} === null || $element->{$matchAttr} === '') {
+        // A match-less link needs no key on the element: the element IS what the
+        // link writes, so the only thing that can hold the action back is the
+        // cooldown. Demanding a match value here left a global-set link's button
+        // permanently disabled with a reason no operator could act on.
+        if ($link->requiresMatch() && (! $matchAttr || $element->{$matchAttr} === null || $element->{$matchAttr} === '')) {
             $enabled = false;
             $reason = Craft::t('influx', 'This element has no value for the match field, so it can’t be synced from remote.');
         } elseif ($this->cooldownRemaining($link, $element) > 0) {

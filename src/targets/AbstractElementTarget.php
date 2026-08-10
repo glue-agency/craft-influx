@@ -7,6 +7,7 @@ use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fieldlayoutelements\CustomField;
 use craft\models\FieldLayout;
+use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\helpers\Compat;
@@ -44,11 +45,19 @@ abstract class AbstractElementTarget implements ElementTargetInterface
      * halves are already per-target / per-link abstractions
      * ({@see targetsElement()}, {@see Link::matchAttribute()}), so no target has
      * ever needed its own version.
+     *
+     * A link that identifies its element from criteria ({@see Link::requiresMatch()})
+     * claims on the structural test alone — there is no match value to be missing,
+     * so requiring one would report that such a link claims nothing.
      */
     public function claimsElement(Link $link, ElementInterface $element): bool
     {
         if (! $this->targetsElement($link, $element)) {
             return false;
+        }
+
+        if (! $link->requiresMatch()) {
+            return true;
         }
 
         $matchAttr = $link->matchAttribute();
@@ -148,6 +157,43 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     public static function supportsSweeping(): bool
     {
         return true;
+    }
+
+    /**
+     * Default: a link identifies its elements by a match value. True for every
+     * element type whose criteria name a SET of elements — which is all of them
+     * except a Global Set, and an Entry link scoped to a Craft Single
+     * ({@see \GlueAgency\Influx\targets\GlobalSetTarget},
+     * {@see \GlueAgency\Influx\targets\EntryTarget}).
+     *
+     * Link-scoped rather than static because the entry case can only be answered
+     * once the link's section is known. See
+     * {@see ElementTargetInterface::requiresMatch()} for the contract, including
+     * why an unresolvable criterion must still answer true.
+     */
+    public function requiresMatch(Link $link): bool
+    {
+        return true;
+    }
+
+    /**
+     * No criteria-only resolution by default: a target reaching here declared it
+     * needs no match value but never said what element to write instead, which is
+     * a half-implemented target rather than a runtime condition.
+     *
+     * Throwing for the same reason {@see buildNew()} does on a non-creating
+     * target: silence would resolve every item to null and report a run of skips
+     * that looks like a feed problem.
+     *
+     * @throws InfluxException always.
+     */
+    public function findWithoutMatch(Link $link, ?int $siteId = null): ?ElementInterface
+    {
+        throw new InfluxException(sprintf(
+            "%s reports that link '%s' needs no match value but doesn't implement findWithoutMatch().",
+            static::class,
+            $link->handle,
+        ));
     }
 
     /**

@@ -8,6 +8,7 @@ use craft\elements\Entry;
 use craft\fields\PlainText;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappableField;
+use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\services\LinksService;
 use GlueAgency\Influx\targets\AbstractElementTarget;
 use GlueAgency\Influx\targets\ElementTargetInterface;
@@ -18,7 +19,7 @@ use RuntimeException;
  * The other half of the hidden-native decision: a native the entry type stopped
  * reporting ({@see EntryNativeVisibilityTest}) is unmappable, so the link's
  * stored mapping for it is dropped by
- * {@see LinksService::pruneUnknownMappings()} — the same path that already drops
+ * {@see LinksService::pruneMappings()} — the same path that already drops
  * a custom field removed from its layout. That happens on the NEXT save of the
  * link (a builder save or a Feed Me import), not on a project-config apply.
  *
@@ -101,10 +102,15 @@ class EntryMappingPruneTest extends Unit
      */
     protected function surface(): array
     {
+        // Real regions, so the slot pass ({@see LinksService::pruneMappingSlots()})
+        // runs for these rows rather than bailing — a surviving handle's `node`
+        // has to survive the second pass too.
+        $row = MappingSchemaBuilder::make()->mapping(['source' => true, 'default' => true])->toArray();
+
         return [
-            MappableField::native('title', 'Title', 'Native'),
-            MappableField::native('slug', 'Slug', 'Native'),
-            MappableField::custom('importId', 'Import ID', 'Content', PlainText::class, ['schema' => []]),
+            MappableField::native('title', 'Title', 'Native', $row),
+            MappableField::native('slug', 'Slug', 'Native', $row),
+            MappableField::custom('importId', 'Import ID', 'Content', PlainText::class, $row),
         ];
     }
 
@@ -143,7 +149,7 @@ class EntryMappingPruneTest extends Unit
 
             public function prune(Link $link): void
             {
-                $this->pruneUnknownMappings($link);
+                $this->pruneMappings($link);
             }
 
             protected function targetForLink(Link $link): ?ElementTargetInterface

@@ -12,13 +12,13 @@ use GlueAgency\Influx\targets\GlobalSetTarget;
 use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
- * GlobalSetTarget: update-only, and matched on the one identifier a global set
- * has.
+ * GlobalSetTarget: update-only, and matchless.
  *
- * The three things worth pinning are the ones that make it different from every
- * other target — it can't create, it can't be swept, and its `handle` row exists
- * only so the match value has a source node to come from (nothing writes it,
- * since a handle is project config).
+ * What makes it different from every other target: it can't create, it can't be
+ * swept, and it needs no match value — its `set` criterion already names the one
+ * element, so there is nothing to disambiguate and no native row to offer. The
+ * `handle` CLAIM outlives the row it used to describe, as a guard against a
+ * mapping saved before the row was removed reaching `$element->handle`.
  */
 class GlobalSetTargetTest extends Unit
 {
@@ -43,8 +43,13 @@ class GlobalSetTargetTest extends Unit
         (new GlobalSetTarget())->buildNew($this->link(['set' => 'siteSettings']));
     }
 
-    public function testTheHandleRowIsClaimedSoNothingWritesIt(): void
+    public function testHandleStaysClaimedEvenThoughNoRowOffersItAnyMore(): void
     {
+        // The claim is now a guard, not a UI concern: nothing prunes a stale
+        // `mappings.handle` from stored config (LinksService::pruneMappings() skips
+        // project-config/apply and bails on a layout with no custom fields), and
+        // without the claim it would route through the generic native path and
+        // assign $element->handle from the feed — rewriting project config.
         $target = new GlobalSetTarget();
         $link = $this->link(['set' => 'siteSettings']);
 
@@ -52,18 +57,40 @@ class GlobalSetTargetTest extends Unit
         $this->assertFalse($target->ownsAttribute($link, 'someField'));
     }
 
-    public function testTheHandleRowExistsSoTheMatchValueHasASource(): void
+    public function testItNeedsNoMatchAndOffersNoNativeRowOrMatchOption(): void
     {
-        // Link::validateMatch() requires the match attribute to have a mapping with
-        // a source node, so the matchable identifier needs a row of its own.
-        $fields = (new GlobalSetTarget())->getMappableFields($this->link([]));
-        $handles = array_map(static fn(MappableField $field): string => $field->handle, $fields);
+        $target = new GlobalSetTarget();
+        $link = $this->link(['set' => 'siteSettings']);
 
-        $this->assertSame(['handle'], $handles);
-        $this->assertContains('handle', array_column(
-            (new GlobalSetTarget())->matchableNativeAttributes($this->link([])),
-            'value',
-        ));
+        $this->assertFalse($target->requiresMatch($link));
+        $this->assertSame([], $target->matchableNativeAttributes($link));
+
+        // No native group at all — a global set has no attribute a feed may write,
+        // so an unresolvable set reports nothing rather than a lone `handle` row.
+        $fields = $target->getMappableFields($this->link([]));
+        $this->assertSame([], array_map(static fn(MappableField $field): string => $field->handle, $fields));
+    }
+
+    public function testItResolvesTheCriterionsSetWithoutConsultingTheFeed(): void
+    {
+        $target = $this->targetResolving($this->set('footer'));
+
+        $this->assertNotNull($target->findWithoutMatch($this->link(['set' => 'footer'])));
+
+        // findByMatchValue stays honest for an out-of-band caller: same element,
+        // whatever value it was handed.
+        $this->assertNotNull($target->findByMatchValue($this->link(['set' => 'footer']), 'anything'));
+        $this->assertNotNull($target->findByMatchValue($this->link(['set' => 'footer']), null));
+    }
+
+    public function testAnUnsetCriterionResolvesNothing(): void
+    {
+        // The criterion is what identifies the element now, so without one there is
+        // nothing to write — where before, "no criterion" meant the feed's own value
+        // stood.
+        $target = $this->targetResolving($this->set('footer'));
+
+        $this->assertNull($target->findWithoutMatch($this->link([])));
     }
 
     public function testTheSetCriterionGatesTargeting(): void
@@ -82,19 +109,6 @@ class GlobalSetTargetTest extends Unit
             }
         };
         $this->assertFalse($target->targetsElement($link, $notASet));
-    }
-
-    public function testTheCriterionRejectsAMatchOutsideIt(): void
-    {
-        // The usual match attribute here IS `handle`, so scoping the query on the
-        // criterion would have overwritten the feed's own value and resolved every
-        // item to the configured set. The criterion is a boundary, not a default.
-        $target = $this->targetResolving($this->set('footer'));
-
-        $this->assertNull($target->findByMatchValue($this->link(['set' => 'siteSettings']), 'footer'));
-        $this->assertNotNull($target->findByMatchValue($this->link(['set' => 'footer']), 'footer'));
-        // No criterion configured: whatever the feed named stands.
-        $this->assertNotNull($target->findByMatchValue($this->link([]), 'footer'));
     }
 
     public function testAScopedLinkClaimsExactlyItsSet(): void
@@ -118,7 +132,6 @@ class GlobalSetTargetTest extends Unit
         return FakeLink::make([
             'elementType'     => GlobalSet::class,
             'elementCriteria' => $criteria,
-            'match'           => ['attribute' => 'handle'],
         ]);
     }
 
@@ -141,7 +154,7 @@ class GlobalSetTargetTest extends Unit
         $target = new class() extends GlobalSetTarget {
             public ?GlobalSet $found = null;
 
-            protected function queryOne(string $matchAttr, mixed $matchValue, ?int $siteId): ?GlobalSet
+            protected function queryOne(string $handle, ?int $siteId): ?GlobalSet
             {
                 return $this->found;
             }

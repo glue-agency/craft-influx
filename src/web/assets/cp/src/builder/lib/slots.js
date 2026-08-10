@@ -27,6 +27,13 @@
  * channels rather than one value — CONTAINER_CHANNELS below names them per node
  * type, since that is a fact about the stored shape and this module owns those.
  *
+ * PHP HAS A TWIN: schema/MappingSlots.php answers the same question server-side,
+ * so a save can strip the slots a row no longer renders a control for (a field
+ * type that grew sub-fields, a Preparse field, a dropped option). Neither side can
+ * call the other — the regions are already on the wire by the time this runs — so
+ * the two tables are pinned against each other by __tests__/slots.test.js and
+ * tests/unit/schema/MappingSlotsTest.php. Change one, change both.
+ *
  * Pure, so it is unit-tested without mounting anything.
  */
 

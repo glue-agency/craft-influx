@@ -43,6 +43,11 @@ class ItemProcessor
     public function resolve(SyncContext $context, RemoteItem $item): ItemResolution
     {
         $link = $context->link;
+
+        if (! $link->requiresMatch()) {
+            return $this->resolveSingle($context);
+        }
+
         $matchValue = $link->matchValue($item);
 
         if ($matchValue === null || $matchValue === '') {
@@ -52,6 +57,34 @@ class ItemProcessor
         $element = $context->target->findByMatchValue($link, $matchValue, $context->siteId);
 
         return new ItemResolution($matchValue, $element, SyncDecision::decide($link, $matchValue, $element));
+    }
+
+    /**
+     * Resolve for a link whose target names one element from its criteria — no
+     * match value is read, and the item's own content is all it contributes.
+     *
+     * FIRST ITEM WINS. Every item in such a feed would resolve to the same
+     * element, so the pass claims it once ({@see \GlueAgency\Influx\sync\RunMemo::claim()})
+     * and every later item is skipped with a reason instead of overwriting what the
+     * one before it wrote. The claim is per {@see SyncContext}, so a site-endpoint
+     * link still fills the element once per site.
+     *
+     * The claim is taken BEFORE resolution, so an unresolvable criterion still
+     * consumes it: one item then reports the real problem (no element, no create)
+     * and the rest report the shape mismatch, rather than every item repeating the
+     * same failure.
+     */
+    protected function resolveSingle(SyncContext $context): ItemResolution
+    {
+        $link = $context->link;
+
+        if (! $context->memo->claim('itemProcessor.singleElement.' . $link->handle)) {
+            return new ItemResolution(null, null, SyncDecision::SKIP_SINGLE_ELEMENT_TAKEN);
+        }
+
+        $element = $context->target->findWithoutMatch($link, $context->siteId);
+
+        return new ItemResolution(null, $element, SyncDecision::decide($link, null, $element));
     }
 
     /**
@@ -221,6 +254,14 @@ class ItemProcessor
             $node = $link->getMappingCollection()->get($matchAttr)?->node ?? '?';
 
             return "Remote item has no value at match path '{$node}' (match attribute: {$matchAttr}).";
+        }
+
+        // On a match-less link "no element" can't mean "the feed named one that
+        // doesn't exist yet" — nothing was looked up. It means the criteria resolve
+        // to nothing, which the generic label would have blamed on the `create`
+        // policy.
+        if ($decision === SyncDecision::SKIP_NO_CREATE && ! $link->requiresMatch()) {
+            return "Link '{$link->handle}' has no element to write to — check its element criteria.";
         }
 
         return $decision->label();

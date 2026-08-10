@@ -5,9 +5,11 @@ namespace GlueAgency\Influx\integrations\craftcms\feedme\services;
 use Craft;
 use craft\base\Component;
 use craft\db\Query;
+use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConverter;
 use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeImportResult;
+use GlueAgency\Influx\models\Link;
 use InvalidArgumentException;
 
 /**
@@ -72,6 +74,14 @@ class FeedMeService extends Component
      * handle can't collide with them, or with one generated earlier in this
      * batch.
      *
+     * Feed Me's duplicate-handling flags don't know about Influx's target
+     * capabilities, so a feed can convert to a policy the element type can't
+     * honour — `delete missing` on a user feed, say. The prune that
+     * {@see LinksService::saveLink()} would run silently is run here instead, up
+     * front and idempotently, so the drops join the conversion warnings the
+     * command already prints; a dry run reports them too, since it previews the
+     * config a real import would save.
+     *
      * @return list<FeedMeImportResult>
      */
     public function importFeeds(array $feeds, bool $dryRun = false, bool $force = false): array
@@ -89,8 +99,10 @@ class FeedMeService extends Component
             $link->handle = $this->uniqueHandle($link->handle, $takenHandles);
             $takenHandles[] = $link->handle;
 
+            $warnings = array_merge($conversion->warnings, $this->processingDropWarnings($link));
+
             if ($dryRun) {
-                $results[] = new FeedMeImportResult($feed, $link, $conversion->warnings);
+                $results[] = new FeedMeImportResult($feed, $link, $warnings);
 
                 continue;
             }
@@ -99,13 +111,33 @@ class FeedMeService extends Component
             $results[] = new FeedMeImportResult(
                 $feed,
                 $link,
-                $conversion->warnings,
+                $warnings,
                 $saved,
                 $saved ? [] : $link->getErrorSummary(true),
             );
         }
 
         return $results;
+    }
+
+    /**
+     * Prune the policies the converted link's target can't honour and phrase each
+     * as a conversion warning. The reason text comes from
+     * {@see \GlueAgency\Influx\enums\ProcessingAction::unsupportedReason()} via the
+     * prune, so it matches what the link builder shows for the same drop.
+     *
+     * @return string[]
+     */
+    protected function processingDropWarnings(Link $link): array
+    {
+        $warnings = [];
+
+        foreach ($link->pruneProcessingForTarget() as $drop) {
+            $label = ProcessingAction::tryFrom($drop['action'])?->label() ?? $drop['action'];
+            $warnings[] = "Dropped the '{$label}' processing action; {$drop['reason']}";
+        }
+
+        return $warnings;
     }
 
     /**

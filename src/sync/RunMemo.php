@@ -39,4 +39,27 @@ class RunMemo
 
         return $this->entries[$key];
     }
+
+    /**
+     * True for the FIRST caller of $key in this run and false for every one after
+     * — the "only one of these may proceed" primitive, for work a run must do at
+     * most once even though the loop reaches it repeatedly
+     * ({@see \GlueAgency\Influx\sync\item\ItemProcessor::resolve()} claiming the one
+     * element a match-less link writes).
+     *
+     * Distinct from {@see remember()}: that one answers "what is it", memoizing a
+     * value every caller then shares. This one answers "is it mine", where the
+     * point is precisely that callers get DIFFERENT answers. Same key space, so an
+     * owner must not use one key for both.
+     */
+    public function claim(string $key): bool
+    {
+        if (array_key_exists($key, $this->entries)) {
+            return false;
+        }
+
+        $this->entries[$key] = true;
+
+        return true;
+    }
 }

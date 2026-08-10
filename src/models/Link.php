@@ -389,13 +389,16 @@ class Link extends Model
     }
 
     /**
-     * Drop the processing policies the link's target doesn't support, returning
-     * the dropped values (empty when nothing changed). Idempotent.
+     * Drop every processing policy the link's target can't honour, returning them
+     * as `[['action' => …, 'reason' => …], …]` in the order they were configured
+     * (empty when nothing changed). Idempotent.
      *
-     * Today that's `create` for a target reporting
-     * {@see ElementTargetInterface::supportsCreating()} = false — a Global Set
-     * exists because project config declares it, so a feed can only ever hydrate
-     * one. Since {@see ProcessingAction::defaults()} includes `create`, a link
+     * {@see ProcessingAction::unsupportedReason()} is the whole rule: `create` for
+     * a target that can't create — a Global Set exists because project config
+     * declares it, so a feed can only ever hydrate one — and the four
+     * missing-element policies for a target that can't enumerate what the link
+     * owns, like a User link, where the candidate set would be every user in the
+     * system. Since {@see ProcessingAction::defaults()} includes `create`, a link
      * switched to such a type carries it by default and would otherwise sit on a
      * policy every run ignores.
      *
@@ -404,12 +407,20 @@ class Link extends Model
      * link and a notice, not a validation error on a checkbox the builder had
      * already hidden.
      *
-     * The sweep policies are NOT pruned here. They're gated by
-     * {@see ElementTargetInterface::supportsSweeping()} and already report a
-     * skipped sweep at run time ({@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}),
-     * which is a louder signal than silently dropping them would be.
+     * MUST run before {@see migrateProcessingForEndpointShape()} — both callers do.
+     * Reversed, a link losing its sweep policies would report the swap the
+     * migration made to a policy this method is about to delete.
      *
-     * @return list<string>
+     * A value the enum doesn't know passes through untouched, as it does there:
+     * nothing can say whether a policy it can't name is supported.
+     *
+     * Pruning stored config does NOT retire the run-time capability guard in
+     * {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()} — Project
+     * Config applies straight to the row
+     * ({@see \GlueAgency\Influx\services\LinksService::handleChangedLink()}),
+     * never through here, so hand-edited YAML still reaches a run.
+     *
+     * @return list<array{action: string, reason: string}>
      */
     public function pruneProcessingForTarget(): array
     {
@@ -419,19 +430,60 @@ class Link extends Model
 
         $target = $this->target();
 
-        if (! $target || $target::supportsCreating()) {
+        if (! $target) {
             return [];
         }
 
-        $dropped = array_values(array_intersect($this->processing, [ProcessingAction::CREATE->value]));
+        $dropped = [];
+        $kept = [];
+
+        foreach ($this->processing as $action) {
+            $reason = ProcessingAction::tryFrom((string) $action)?->unsupportedReason($target);
+
+            if ($reason === null) {
+                $kept[] = $action;
+
+                continue;
+            }
+
+            $dropped[] = ['action' => (string) $action, 'reason' => $reason];
+        }
 
         if ($dropped === []) {
             return [];
         }
 
-        $this->processing = array_values(array_diff($this->processing, $dropped));
+        $this->processing = array_values($kept);
 
         return $dropped;
+    }
+
+    /**
+     * Drop a stored match the link's target has no use for, returning the dropped
+     * attribute name (null when nothing changed). Idempotent.
+     *
+     * The third of the save-time heals, and the same trade as
+     * {@see pruneProcessingForTarget()}: a link switched onto a Global Set, or a
+     * section switched to a Single, carries a match key that now names nothing the
+     * engine will ever read, and the operator gets a saved link plus a notice
+     * rather than a validation error on a control the builder had already hidden.
+     *
+     * ONE DIRECTION ONLY. The reverse — a Single switched to a Channel — can't be
+     * healed: a match value can't be conjured, and picking the attribute is a
+     * decision only the operator can make. That direction stays a validation error
+     * from {@see validateMatch()}.
+     */
+    public function pruneMatchForTarget(): ?string
+    {
+        $attribute = $this->matchAttribute();
+
+        if ($attribute === null || $this->requiresMatch()) {
+            return null;
+        }
+
+        $this->match = [];
+
+        return $attribute;
     }
 
     /**
@@ -458,12 +510,23 @@ class Link extends Model
      * The match value is always read from the matched field's mapping node, so
      * the attribute needs an active mapping with a source node — hence the
      * second check.
+     *
+     * A link whose target identifies its element from criteria alone
+     * ({@see requiresMatch()}) is exempt: no match is the correct state there, and
+     * a stored one is dropped by {@see pruneMatchForTarget()} rather than rejected.
+     * A match that IS configured on such a link still has to be coherent, so it
+     * falls through to the mapping check below — the exemption is from needing one,
+     * not from it being well-formed.
      */
     public function validateMatch(string $attribute): void
     {
         $value = $this->$attribute;
 
         if (! is_array($value) || empty($value['attribute'])) {
+            if (! $this->requiresMatch()) {
+                return;
+            }
+
             $this->addError($attribute, 'Match must declare an `attribute`.');
 
             return;
@@ -705,6 +768,28 @@ class Link extends Model
     public function matchAttribute(): ?string
     {
         return $this->match['attribute'] ?? null;
+    }
+
+    /**
+     * Whether this link identifies its element by a match value at all — THE one
+     * reader of {@see ElementTargetInterface::requiresMatch()}, consulted by
+     * validation, the save-time prune, the builder's payload, the sync engine
+     * ({@see \GlueAgency\Influx\sync\item\ItemProcessor::resolve()}) and the
+     * dry-run inspector ({@see \GlueAgency\Influx\enums\SyncDecision::decide()}).
+     *
+     * One reader is what lets the engine stay free of element-type checks: nothing
+     * downstream asks what kind of link it's looking at, only whether a match is
+     * expected.
+     *
+     * An unregistered element type answers TRUE — the same restraint
+     * {@see pruneProcessingForTarget()} shows an unknown policy. Nothing can say a
+     * match is unnecessary for a target it can't find, and guessing "not needed"
+     * would turn a typo'd `elementType` into a link that resolves every item to
+     * nothing without ever failing validation.
+     */
+    public function requiresMatch(): bool
+    {
+        return $this->target()?->requiresMatch($this) ?? true;
     }
 
     /**

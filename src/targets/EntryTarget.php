@@ -13,6 +13,7 @@ use craft\helpers\ElementHelper;
 use craft\helpers\StringHelper;
 use craft\models\EntryType;
 use craft\models\FieldLayout;
+use craft\models\Section;
 use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
@@ -235,6 +236,46 @@ class EntryTarget extends AbstractElementTarget
             ->{$matchAttr}($matchValue);
 
         return $this->scopeToLink($query, $link, $siteId)->one();
+    }
+
+    /**
+     * A Craft Single holds exactly one entry, which the section criterion already
+     * names — so a link scoped to one needs no match value, the same way a Global
+     * Set link doesn't ({@see ElementTargetInterface::requiresMatch()}).
+     *
+     * Anything else needs a match: a channel or structure names a set of entries,
+     * and so does an unresolved criterion. A section handle that doesn't resolve
+     * (unset, or since removed) answers TRUE deliberately — "can't tell" must not
+     * quietly relax the requirement on a half-configured link.
+     */
+    public function requiresMatch(Link $link): bool
+    {
+        return $this->section($link)?->type !== Section::TYPE_SINGLE;
+    }
+
+    /**
+     * The single entry the link's section holds. Scoped through the same
+     * {@see scopeToLink()} definition the match lookup uses, so "which entries this
+     * link owns" stays one rule — a Single's section simply narrows it to one row.
+     */
+    public function findWithoutMatch(Link $link, ?int $siteId = null): ?Entry
+    {
+        if ($link->criterion(self::CRITERIA_SECTION) === null) {
+            return null;
+        }
+
+        return $this->scopeToLink(Entry::find()->status(null), $link, $siteId)->one();
+    }
+
+    /**
+     * The link's section, or null when it isn't set or no longer exists. Isolated
+     * as a seam so {@see requiresMatch()} is testable without a booted Craft.
+     */
+    protected function section(Link $link): ?Section
+    {
+        $handle = $link->criterion(self::CRITERIA_SECTION);
+
+        return $handle !== null ? Compat::getSectionByHandle($handle) : null;
     }
 
     /**
@@ -537,7 +578,7 @@ class EntryTarget extends AbstractElementTarget
      *
      * Consequences of leaving one out, all deliberate:
      *  - a link's stored mapping for that handle is dropped the next time the
-     *    link is saved ({@see \GlueAgency\Influx\services\LinksService::pruneUnknownMappings()});
+     *    link is saved ({@see \GlueAgency\Influx\services\LinksService::pruneMappings()});
      *  - until that save the stale mapping still syncs. For `title` on a
      *    `hasTitleField = false` type that's a no-op with churn: Craft's own
      *    `Entry::beforeSave()` calls `updateTitle()`, which overwrites the mapped

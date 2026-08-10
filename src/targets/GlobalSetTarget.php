@@ -8,8 +8,6 @@ use craft\elements\GlobalSet;
 use craft\models\FieldLayout;
 use GlueAgency\Influx\exceptions\InfluxException;
 use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\schema\MappingSchemaBuilder;
-use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\schema\SchemaBuilder;
 
 /**
@@ -26,16 +24,26 @@ use GlueAgency\Influx\schema\SchemaBuilder;
  * drops it from a saved link, and {@see buildNew()} throwing is the last line of
  * defence). Nor can it be swept: "every global set this link owns" is exactly one
  * element, always present, so {@see supportsSweeping()} = false and the
- * disable-/delete-missing policies are never offered.
+ * disable-/delete-missing policies are never offered — and dropped from a saved
+ * link by the same prune.
  *
- * Matching still works the ordinary way, off the link's match key — no special
- * case in the engine. A global set has no title and no slug, so the identifier a
- * feed can carry is its `handle` ({@see NativeAttributes::globalSetMatchable()}),
- * which is why {@see nativeFieldDefinitions()} declares a `handle` row: the match
- * value has to come from a mapping with a source node ({@see Link::validateMatch()}),
- * and that row is where the operator says which node it is. Nothing writes it —
- * {@see ownsAttribute()} claims it, the way {@see UserTarget} claims `groups` — a
- * handle is project config, not content.
+ * NO MATCH KEY, and no native mappable rows at all. {@see CRITERIA_SET} already
+ * names exactly one element, so there is nothing for a match value to
+ * disambiguate: {@see requiresMatch()} = false and {@see findWithoutMatch()}
+ * resolves the set straight from the criterion. A global set has no title and no
+ * slug either, so the only identifier a feed could have carried was the set's own
+ * `handle` — which is project config, not content, and asking an operator to
+ * nominate a feed node for it was asking them to re-state something the criterion
+ * had already pinned.
+ *
+ * {@see ownsAttribute()} still claims `handle` even though no row offers it. That
+ * claim is now a GUARD rather than a UI concern: a link saved before the row was
+ * removed keeps `mappings.handle` in stored config (nothing prunes it — see
+ * {@see \GlueAgency\Influx\services\LinksService::pruneMappings()}, which never
+ * runs on `project-config/apply` and bails on a layout with no custom fields), and
+ * without the claim that stale row would route through the generic native path and
+ * assign `$element->handle` from the feed. Rewriting project config out of a JSON
+ * payload is the one failure worth keeping four dead-looking lines for.
  *
  * Global set content IS per-site, so unlike User this target supports multi-site:
  * a link can carry one endpoint per site and write localized values to the same
@@ -46,10 +54,9 @@ class GlobalSetTarget extends AbstractElementTarget
     public const CRITERIA_SET = 'set';
 
     /**
-     * The mapping handle the match value is read from. Declared as a constant
-     * because two members have to agree on it: the descriptor
-     * {@see nativeFieldDefinitions()} declares and the {@see ownsAttribute()} claim
-     * that keeps the applier from writing it.
+     * The set's own handle. No longer offered as a mappable row — it's kept as a
+     * constant because {@see ownsAttribute()} still names it to keep a stale stored
+     * mapping from reaching the element (see the class docblock).
      */
     protected const HANDLE_HANDLE = 'handle';
 
@@ -152,45 +159,43 @@ class GlobalSetTarget extends AbstractElementTarget
     }
 
     /**
-     * The set the item's match value names, within the set the link is scoped to.
-     * A siteless run resolves the canonical row; a per-site run resolves the row
-     * for that site, so the localized content lands on the right one.
-     *
-     * The criterion is checked on the RESULT rather than added to the query. The
-     * usual match attribute here is `handle`, which is the same query refinement
-     * the criterion would use — so scoping the query would have let the criterion
-     * silently overwrite the feed's own value, resolving every item to the
-     * configured set no matter what it said. Checked afterwards, the criterion
-     * stays what it is everywhere else: a boundary the match has to fall inside.
+     * A global-set link never matches, so this is unreachable through the engine
+     * ({@see \GlueAgency\Influx\sync\item\ItemProcessor::resolve()} routes a
+     * no-match target to {@see findWithoutMatch()}). Kept honest rather than
+     * removed — the interface still declares it — by resolving the same element
+     * regardless of the value, so an out-of-band caller gets the link's set rather
+     * than a lie about having looked something up.
      */
     public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?GlobalSet
     {
-        $matchAttr = $link->matchAttribute();
-
-        if (! $matchAttr || $matchValue === null || $matchValue === '') {
-            return null;
-        }
-
-        $set = $this->queryOne($matchAttr, $matchValue, $siteId);
-
-        if ($set === null) {
-            return null;
-        }
-
-        $criterion = $link->criterion(self::CRITERIA_SET);
-
-        return $criterion === null || $set->handle === $criterion ? $set : null;
+        return $this->findWithoutMatch($link, $siteId);
     }
 
     /**
-     * The lookup itself, isolated as a seam so the criterion check above is
-     * testable without a booted Craft.
+     * The set {@see CRITERIA_SET} names. Null when the link names none — the
+     * criterion is what identifies the element now, so an unset one leaves nothing
+     * to write, which the engine reports the way it reports a match that found
+     * nothing.
+     *
+     * A siteless run resolves the canonical row; a per-site run resolves the row
+     * for that site, so localized content lands on the right one.
      */
-    protected function queryOne(string $matchAttr, mixed $matchValue, ?int $siteId): ?GlobalSet
+    public function findWithoutMatch(Link $link, ?int $siteId = null): ?GlobalSet
+    {
+        $handle = $link->criterion(self::CRITERIA_SET);
+
+        return $handle !== null ? $this->queryOne($handle, $siteId) : null;
+    }
+
+    /**
+     * The lookup itself, isolated as a seam so the resolution above is testable
+     * without a booted Craft.
+     */
+    protected function queryOne(string $handle, ?int $siteId): ?GlobalSet
     {
         $query = GlobalSet::find()
             ->status(null)
-            ->{$matchAttr}($matchValue);
+            ->handle($handle);
 
         if ($siteId) {
             $query->siteId($siteId);
@@ -199,6 +204,14 @@ class GlobalSetTarget extends AbstractElementTarget
         }
 
         return $query->one();
+    }
+
+    /**
+     * The criterion names one element, so there is nothing to match on.
+     */
+    public function requiresMatch(Link $link): bool
+    {
+        return false;
     }
 
     /**
@@ -217,56 +230,41 @@ class GlobalSetTarget extends AbstractElementTarget
     }
 
     /**
-     * The `handle` row is config-only: it exists so the match value has a mapping
-     * with a source node, and a global set's handle is project config that no sync
-     * may rewrite. Claiming it here keeps the mapping applier from trying.
+     * A set's handle is project config that no sync may rewrite. No row offers it
+     * any more, so this exists purely to neutralise a mapping saved before the row
+     * was removed — see the class docblock for why that mapping outlives the
+     * change and what the claim prevents.
      */
     public function ownsAttribute(Link $link, string $handle): bool
     {
         return $handle === self::HANDLE_HANDLE;
     }
 
+    /**
+     * Nothing: a link that needs no match value has no match options to offer.
+     */
     public function matchableNativeAttributes(Link $link): array
     {
-        return NativeAttributes::globalSetMatchable();
+        return [];
     }
 
     /**
-     * Custom fields come from the configured set's own field layout, so they keep
-     * their globals-editor grouping; an unresolvable set leaves the `handle` row
-     * alone, which is enough to configure the match key with.
+     * Only the configured set's own field layout — a global set has no native
+     * attribute a feed may write, so there is no native group at all. An
+     * unresolvable set reports nothing, which is the honest answer: without a set
+     * there is no layout and nothing to map.
      */
     public function getMappableFields(Link $link): array
     {
-        return array_merge(
-            $this->nativeFieldDefinitions()->toArray(),
-            $this->customFieldDescriptors(
-                $this->fieldLayout($link),
-                Craft::t('influx', 'Content'),
-            ),
+        return $this->customFieldDescriptors(
+            $this->fieldLayout($link),
+            Craft::t('influx', 'Content'),
         );
     }
 
     public function fieldLayout(Link $link): ?FieldLayout
     {
         return $this->set($link)?->getFieldLayout();
-    }
-
-    /**
-     * The one native row: the set's handle, purely as a place to declare which feed
-     * node identifies the set. No default cell — a default would make every item
-     * resolve to the same set regardless of what the feed said, which is what
-     * {@see Link::matchValue()} already refuses to allow for a match value.
-     */
-    protected function nativeFieldDefinitions(): MappingSchemaBuilder
-    {
-        return MappingSchemaBuilder::make()
-            ->group(Craft::t('influx', 'Native'), fn(MappingSchemaBuilder $group) => $group
-                ->text([
-                    'handle' => self::HANDLE_HANDLE,
-                    'name'   => Craft::t('app', 'Handle'),
-                    'cells'  => ['default' => false],
-                ]));
     }
 
     /**

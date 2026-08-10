@@ -144,6 +144,7 @@ class LinkBuilderService extends Component
 
         $this->serializer->apply($link, $payload);
 
+        $droppedMatch = $link->pruneMatchForTarget();
         $dropped = $link->pruneProcessingForTarget();
         $migrations = $link->migrateProcessingForEndpointShape();
 
@@ -159,8 +160,12 @@ class LinkBuilderService extends Component
 
         $notices = [];
 
+        if ($droppedMatch !== null) {
+            $notices[] = $this->matchDropNotice($link, $droppedMatch);
+        }
+
         if ($dropped) {
-            $notices[] = $this->processingDropNotice($link, $dropped);
+            $notices[] = $this->processingDropNotice($dropped);
         }
 
         if ($migrations) {
@@ -224,6 +229,21 @@ class LinkBuilderService extends Component
     }
 
     /**
+     * Human-readable summary of a match key dropped because the link's element
+     * type identifies its element from criteria instead
+     * ({@see Link::pruneMatchForTarget()}) — config carried over from another
+     * element type, or a section switched to a Single. Names the element type,
+     * since that's the reason, and points at the criteria that took over.
+     */
+    protected function matchDropNotice(Link $link, string $attribute): string
+    {
+        return Craft::t('influx', 'Dropped the “{attribute}” match key: {elementType} links write the element their criteria name.', [
+            'attribute'   => $attribute,
+            'elementType' => Influx::getInstance()->targets->friendlyNameFor($link->elementType),
+        ]);
+    }
+
+    /**
      * Human-readable summary of a processing-policy migration
      * ({@see Link::migrateProcessingForEndpointShape()}), shown to the user as
      * a native CP notice after a save that swapped a global delete/disable for
@@ -258,18 +278,33 @@ class LinkBuilderService extends Component
      * Human-readable summary of the policies dropped because the link's element
      * type doesn't support them ({@see Link::pruneProcessingForTarget()}) — config
      * carried over from another element type, or the `create` default a new link
-     * starts on. Names the element type, since that's the reason.
+     * starts on.
      *
-     * @param list<string> $dropped
+     * Grouped by the reason the prune supplied, since one save can drop for more
+     * than one (a Global Set link can neither create nor sweep) and a policy
+     * listed under the wrong reason would read as a different bug. Group order
+     * follows first appearance in `$dropped`, which is configured order.
+     *
+     * @param list<array{action: string, reason: string}> $dropped
      */
-    protected function processingDropNotice(Link $link, array $dropped): string
+    protected function processingDropNotice(array $dropped): string
     {
-        $labels = array_map(fn(string $value): string => '“' . $this->processingActionLabel($value) . '”', $dropped);
+        $byReason = [];
 
-        return Craft::t('influx', 'Dropped {policies}: {elementType} links can’t create elements.', [
-            'policies'    => implode(', ', $labels),
-            'elementType' => Influx::getInstance()->targets->friendlyNameFor($link->elementType),
-        ]);
+        foreach ($dropped as $drop) {
+            $byReason[$drop['reason']][] = '“' . $this->processingActionLabel($drop['action']) . '”';
+        }
+
+        $sentences = [];
+
+        foreach ($byReason as $reason => $labels) {
+            $sentences[] = Craft::t('influx', 'Dropped {policies}: {reason}', [
+                'policies' => implode(', ', $labels),
+                'reason'   => $reason,
+            ]);
+        }
+
+        return implode(' ', $sentences);
     }
 
     /**
@@ -295,10 +330,19 @@ class LinkBuilderService extends Component
      * `matchOptions` comes back in the order the SPA's SearchableSelect expects
      * it: clear sentinel first, then the matchable natives, then custom fields.
      *
+     * `requiresMatch` rides HERE rather than with the per-element-type capability
+     * flags in {@see \GlueAgency\Influx\web\LinkBuilderOptionsPresenter::elementTypeOptions()},
+     * because unlike `creating` / `sweeping` / `multiSite` it isn't a fact about the
+     * element type: an Entry link needs no match when its section is a Single, which
+     * is only knowable from the criteria. This response is already the one the
+     * Mapping tab refetches whenever they change, so the flag arrives exactly when
+     * the answer can change.
+     *
      * @return array{
      *   fields: list<array>,
      *   groups: list<array>,
      *   matchOptions: list<array{label: ?string, kind: ?string, options: list<array{value: string, label: string}>}>,
+     *   requiresMatch: bool,
      * }
      */
     public function mappableFields(string $elementType, array $criteria): array
@@ -347,9 +391,10 @@ class LinkBuilderService extends Component
         }
 
         return [
-            'fields'       => MappableField::toArrays($fields),
-            'groups'       => $groups,
-            'matchOptions' => $matchOptions,
+            'fields'        => MappableField::toArrays($fields),
+            'groups'        => $groups,
+            'matchOptions'  => $matchOptions,
+            'requiresMatch' => $stub->requiresMatch(),
         ];
     }
 

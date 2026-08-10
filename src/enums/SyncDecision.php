@@ -23,6 +23,19 @@ enum SyncDecision: string
     case SKIP_NO_UPDATE = 'skip:no-update';
 
     /**
+     * A later item on a link that writes ONE element, which an earlier item in the
+     * same pass already took. Decided by {@see \GlueAgency\Influx\sync\item\ItemProcessor::resolve()}
+     * rather than by {@see decide()}, since it's a fact about the pass rather than
+     * about the item.
+     *
+     * A skip rather than a silent overwrite: without a match value every item
+     * resolves to the same element, so processing them all would leave whichever
+     * one happened to be last, and report a run of successful updates that hid the
+     * mismatch between the feed's shape and the target's.
+     */
+    case SKIP_SINGLE_ELEMENT_TAKEN = 'skip:single-element-taken';
+
+    /**
      * Decide what a sync run should do with one remote item given its match
      * value and the element (if any) that was found for it. Used by both
      * {@see \GlueAgency\Influx\sync\item\ItemRunner::run()} for
@@ -35,7 +48,11 @@ enum SyncDecision: string
      */
     public static function decide(Link $link, mixed $matchValue, ?ElementInterface $element): self
     {
-        if ($matchValue === null || $matchValue === '') {
+        // A link whose target resolves its element from criteria alone has no match
+        // value by design ({@see Link::requiresMatch()}), so an absent one isn't the
+        // "item carries no key" failure this branch names — it's the normal state,
+        // and the element (or its absence) decides on its own below.
+        if ($link->requiresMatch() && ($matchValue === null || $matchValue === '')) {
             return self::SKIP_NO_MATCH;
         }
 
@@ -71,11 +88,15 @@ enum SyncDecision: string
     public function label(): string
     {
         return match ($this) {
-            self::CREATE         => Craft::t('influx', 'Create'),
-            self::UPDATE         => Craft::t('influx', 'Update'),
-            self::SKIP_NO_MATCH  => Craft::t('influx', 'Remote item has no match value.'),
-            self::SKIP_NO_CREATE => Craft::t('influx', "No existing element and 'create' not enabled for this link."),
-            self::SKIP_NO_UPDATE => Craft::t('influx', "'update' not enabled for this link."),
+            self::CREATE                    => Craft::t('influx', 'Create'),
+            self::UPDATE                    => Craft::t('influx', 'Update'),
+            self::SKIP_NO_MATCH             => Craft::t('influx', 'Remote item has no match value.'),
+            self::SKIP_NO_CREATE            => Craft::t('influx', "No existing element and 'create' not enabled for this link."),
+            self::SKIP_NO_UPDATE            => Craft::t('influx', "'update' not enabled for this link."),
+            self::SKIP_SINGLE_ELEMENT_TAKEN => Craft::t(
+                'influx',
+                'This link writes a single element, which an earlier feed item already filled.',
+            ),
         };
     }
 }

@@ -3,7 +3,12 @@
 namespace GlueAgency\Influx\Tests\unit\enums;
 
 use Codeception\Test\Unit;
+use craft\base\ElementInterface;
 use GlueAgency\Influx\enums\ProcessingAction;
+use GlueAgency\Influx\models\Link;
+use GlueAgency\Influx\targets\AbstractElementTarget;
+use GlueAgency\Influx\targets\ElementTargetInterface;
+use LogicException;
 
 /**
  * Behaviour spec for {@see ProcessingAction} — the processing vocabulary a link
@@ -104,5 +109,93 @@ class ProcessingActionTest extends Unit
             $this->assertNotSame('', $case->note());
             $this->assertNotSame($case->label(), $case->note());
         }
+    }
+
+    public function testAFullyCapableTargetSupportsEveryPolicy(): void
+    {
+        $target = $this->target(creating: true, sweeping: true);
+
+        foreach (ProcessingAction::cases() as $case) {
+            $this->assertNull($case->unsupportedReason($target), "{$case->value} should be supported.");
+        }
+    }
+
+    public function testOnlyCreateIsGatedOnTheCreatingCapability(): void
+    {
+        $target = $this->target(creating: false, sweeping: true);
+
+        foreach (ProcessingAction::cases() as $case) {
+            $expected = $case === ProcessingAction::CREATE;
+            $this->assertSame($expected, $case->unsupportedReason($target) !== null, "{$case->value} gating.");
+        }
+    }
+
+    public function testOnlyTheMissingPoliciesAreGatedOnTheSweepingCapability(): void
+    {
+        $target = $this->target(creating: true, sweeping: false);
+
+        foreach (ProcessingAction::cases() as $case) {
+            $this->assertSame(
+                $case->isMissingPolicy(),
+                $case->unsupportedReason($target) !== null,
+                "{$case->value} gating.",
+            );
+        }
+    }
+
+    public function testTheTwoReasonsAreDistinctAndNameTheElementType(): void
+    {
+        $target = $this->target(creating: false, sweeping: false);
+
+        $create = ProcessingAction::CREATE->unsupportedReason($target);
+        $sweep = ProcessingAction::DELETE->unsupportedReason($target);
+
+        $this->assertNotSame($create, $sweep);
+        $this->assertStringContainsString('Widget', $create);
+        $this->assertStringContainsString('Widget', $sweep);
+    }
+
+    /**
+     * A target whose capabilities are whatever the test asks for. Not a real
+     * element type — {@see AbstractElementTarget::friendlyName()} falls back to
+     * the class basename, which keeps the reason assertable without a booted app.
+     */
+    protected function target(bool $creating, bool $sweeping): ElementTargetInterface
+    {
+        $target = new class() extends AbstractElementTarget {
+            public static bool $creating = true;
+
+            public static bool $sweeping = true;
+
+            public static function elementType(): string
+            {
+                return 'vendor\elements\Widget';
+            }
+
+            public static function supportsCreating(): bool
+            {
+                return static::$creating;
+            }
+
+            public static function supportsSweeping(): bool
+            {
+                return static::$sweeping;
+            }
+
+            public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface
+            {
+                return null;
+            }
+
+            public function buildNew(Link $link, ?int $siteId = null): ElementInterface
+            {
+                throw new LogicException('Not exercised here.');
+            }
+        };
+
+        $target::$creating = $creating;
+        $target::$sweeping = $sweeping;
+
+        return $target;
     }
 }
