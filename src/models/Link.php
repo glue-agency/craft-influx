@@ -243,9 +243,12 @@ class Link extends Model
     public array $processing = [];
 
     /**
-     * Sliding-window sync presets, e.g.
+     * Partial-import presets — the CP's "Partial import" switch, e.g.
      *   offset:
-     *     hour: { since: '-1 hour', queryParam: modified_since }
+     *     hour: { queryParam: modified_since, value: "{{ now|date_modify('-1 hour')|date('c', 'UTC') }}" }
+     *
+     * The value is Twig, rendered per run by {@see OffsetPreset} — which is also
+     * where the reason it isn't a date format lives.
      */
     public array $offset = [];
 

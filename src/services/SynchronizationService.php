@@ -111,6 +111,11 @@ class SynchronizationService extends Component
      * processing does the same — that site's log closes as failed (never left
      * 'running') and the next site still runs.
      *
+     * The offset preset resolves INSIDE that per-site region rather than once up
+     * front, so a preset that names nothing or renders to nothing fails a log the
+     * operator can read ({@see OffsetPreset}) instead of throwing past every log
+     * this run would have opened.
+     *
      * @param string|null $offset Key into $link->offset presets, applied as a query param.
      * @param RunOrigin|null $origin What started the run and who asked for it;
      * null means the console/programmatic origin this path has always defaulted
@@ -140,15 +145,13 @@ class SynchronizationService extends Component
         ?callable $onProgress = null,
     ): array {
         $origin ??= RunOrigin::console();
+        $offset = $this->requestedOffset($offset);
 
         $this->lifecycle->announce($link);
 
         $target = $this->resolveTarget($link);
         $this->requireSiteEndpoint($link, $siteHandle);
         $siteHandles = $this->syncScopes($link, $siteHandle);
-
-        $preset = OffsetPreset::forLink($link, $offset);
-        [$queryParams] = $preset?->resolve() ?? [[], null];
 
         $mutex = Craft::$app->getMutex();
         $lockKey = $this->syncLockKey($link);
@@ -161,13 +164,15 @@ class SynchronizationService extends Component
 
         try {
             foreach ($siteHandles as $handle) {
-                $log = $this->lifecycle->openLog($link, $origin, $handle, $preset?->handle);
+                $log = $this->lifecycle->openLog($link, $origin, $handle, $offset);
 
                 $this->lifecycle->run(
                     $link,
                     $log,
-                    function(LogRecord $log) use ($link, $target, $handle, $origin, $preset, $queryParams, $onProgress): void {
-                        $context = SyncContext::forSite($link, $target, $handle, $origin->trigger, offsetHandle: $preset?->handle);
+                    function(LogRecord $log) use ($link, $target, $handle, $origin, $offset, $onProgress): void {
+                        $context = SyncContext::forSite($link, $target, $handle, $origin->trigger, offsetHandle: $offset);
+                        [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+
                         $this->processSite($context, $queryParams, $log, $onProgress);
                     },
                     RunFailure::FAIL_AND_CONTINUE,
@@ -182,6 +187,22 @@ class SynchronizationService extends Component
         }
 
         return $logs;
+    }
+
+    /**
+     * Normalize a requested offset handle to "a handle, or nothing asked for".
+     *
+     * `--offset=` with nothing after it arrives as an empty string, and an empty
+     * string is not nothing: it would be stored as the log's `offsetHandle` and
+     * read by {@see \GlueAgency\Influx\sync\run\MissingElementsSweeper::plan()}
+     * as "this was an offset run", silencing the sweep on what is actually a
+     * full one.
+     */
+    protected function requestedOffset(?string $offset): ?string
+    {
+        $offset = trim((string) $offset);
+
+        return $offset !== '' ? $offset : null;
     }
 
     /**
@@ -286,8 +307,9 @@ class SynchronizationService extends Component
      * own queue step (it survives worker timeouts; the synchronous
      * {@see syncLink()} path is left untouched). A fetch failure fails the run
      * and stops, as does a scope that no longer resolves
-     * ({@see SyncContext::forSite()} throws when a configured site is gone —
-     * treated exactly like a fetch failure); per-item failures still become
+     * ({@see SyncContext::forSite()} throws when a configured site is gone) and
+     * an offset preset that won't resolve ({@see OffsetPreset}) — all three sit
+     * inside the same try and are treated exactly like a fetch failure; per-item failures still become
      * error rows and the run carries on, and a throw out of the closing
      * sweep/finish fails the log rather than leaving it 'running' forever.
      *
@@ -336,22 +358,21 @@ class SynchronizationService extends Component
 
         $batch = BatchState::fromArray($state);
         $target = $this->resolveTarget($link);
+        $offset = $this->requestedOffset($offset);
 
         $this->requireSiteEndpoint($link, $requestedSite);
 
-        $preset = OffsetPreset::forLink($link, $offset);
-        [$queryParams] = $preset?->resolve() ?? [[], null];
-
         if ($batch->logId === null) {
             $this->lifecycle->announce($link);
-            $log = $this->lifecycle->openLog($link, $origin, $requestedSite, $preset?->handle);
+            $log = $this->lifecycle->openLog($link, $origin, $requestedSite, $offset);
             $batch->logId = $log->id;
         } else {
             $log = $this->lifecycle->reopenLog($batch->logId);
         }
 
         try {
-            $context = SyncContext::forSite($link, $target, $requestedSite, $origin->trigger, offsetHandle: $preset?->handle);
+            $context = SyncContext::forSite($link, $target, $requestedSite, $origin->trigger, offsetHandle: $offset);
+            [$queryParams] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
             $page = $plugin->data->page($link, $requestedSite, $batch->cursorUrl, $queryParams, $batch->page);
         } catch (Throwable $e) {
             $this->lifecycle->fail($log, $e->getMessage());

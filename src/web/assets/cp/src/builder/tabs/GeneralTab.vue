@@ -78,17 +78,14 @@
         </div>
 
         <div class="field">
-            <div class="heading"><label class="lightswitch-label" v-text="$t('Sliding-window presets')"></label></div>
-            <div class="instructions"><p v-text="$t('Enable if the external service supports synchronisation by offset.')"></p></div>
+            <div class="heading"><label class="lightswitch-label" v-text="$t('Partial import')"></label></div>
+            <div class="instructions"><p v-text="$t('Enable if the external service can return only what changed.')"></p></div>
             <div class="input">
                 <v-light-switch v-model="supportsOffset" :disabled="readOnly" />
             </div>
         </div>
 
         <div class="field" v-if="supportsOffset">
-            <div class="instructions">
-                <p v-html="$t('Each preset becomes a button on the link page and a <code>--offset=KEY</code> option on the console command.')"></p>
-            </div>
             <v-offset-presets-table v-model="link.offset" :disabled="readOnly" />
         </div>
 

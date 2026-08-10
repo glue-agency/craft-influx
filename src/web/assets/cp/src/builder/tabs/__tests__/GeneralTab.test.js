@@ -27,7 +27,7 @@ const bootstrapPayload = () => ({
         elementCriteria: {},
         endpoint: 'https://example.test/feed.json',
         itemEndpoint: 'https://example.test/items/{id}',
-        offset: { hour: { since: '-1 hour', queryParam: 'modified_since' } },
+        offset: { hour: { queryParam: 'modified_since', value: "{{ now|date_modify('-1 hour')|date('c', 'UTC') }}" } },
         siteEndpoints: [],
         processing: ['create', 'update'],
     },
@@ -138,14 +138,14 @@ describe('GeneralTab feature toggles', () => {
         expect(store.link.itemEndpoint).toBe('https://example.test/items/{id}');
     });
 
-    it('keeps the sliding-window presets in state when its switch is turned off', async () => {
+    it('keeps the partial-import presets in state when its switch is turned off', async () => {
         const tab = mountTab().vm;
 
         tab.supportsOffset = false;
         await nextTick();
 
         expect(store.ui.supportsOffset).toBe(false);
-        expect(store.link.offset).toEqual({ hour: { since: '-1 hour', queryParam: 'modified_since' } });
+        expect(store.link.offset).toEqual({ hour: { queryParam: 'modified_since', value: "{{ now|date_modify('-1 hour')|date('c', 'UTC') }}" } });
     });
 });
 

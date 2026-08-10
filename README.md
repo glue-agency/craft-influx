@@ -93,7 +93,7 @@ Each registry hands out one shared prototype instance per registered class, buil
 
 ### Targets
 
-A `target` is an adapter for one element type. The plugin ships one per native Craft element type:
+A `target` is an adapter for one element type. The plugin ships one per native Craft element type, plus one for the third-party element types it supports out of the box:
 
 | Target | Element type | Scopes on | Notes |
 | --- | --- | --- | --- |
@@ -103,13 +103,15 @@ A `target` is an adapter for one element type. The plugin ships one per native C
 | `TagTarget` | `craft\elements\Tag` | tag group | `title` / `enabled` — Craft derives a tag's slug, so no row for it |
 | `UserTarget` | `craft\elements\User` | — | names / `email` / `enabled` / `newPassword`, plus groups, photo, suspension and activation |
 | `GlobalSetTarget` | `craft\elements\GlobalSet` | global set | **update-only** — a global set is declared in project config, never created by a feed |
+| `EventTarget` | `Solspace\Calendar\Elements\Event` | calendar | [Solspace Calendar](https://github.com/solspace/craft-calendar). `title` (when the calendar has a Title field) / `slug` / `enabled` / `startDate` / `endDate` / `allDay` / `postDate` / `author`. Recurrence is out of scope: it's one interdependent rule over nine columns, not a value a single mapping row can own |
 
 Third-party plugins register their own through `TargetsService::EVENT_REGISTER_TARGETS` or `->targets->register()` (see [Registries](#registries)); targets are keyed by the `elementType()` they declare.
 
 A target implements `ElementTargetInterface`: find existing element by match value, build a fresh one (with all the type-specific required attributes set), and own every write to it — `save()` plus disable / disable-for-site / delete / delete-for-site. Every write to the synced element routes through the target instead of Craft's element API, so a target can save with whatever flags its element type needs; the base implementation is Craft's own save with validation on (see `AbstractElementTarget::save()` for the trade). Related elements a mapping creates on the fly are the strategies' own business, not the target's.
 
-Five static capabilities let a target describe its element type to the builder and the sync engine, plus one per-link capability that can't be static:
+Six static capabilities let a target describe its element type to the builder and the sync engine, plus one per-link capability that can't be static:
 
+- **`isAvailable()`** — whether the element type is installed at all. That's what lets a target for a third-party element type ship in the box: an unavailable one is dropped from the built-in set before registration, so nothing downstream knows the concept exists. The base answers from the element class alone (`is_subclass_of()`), so a target usually declares nothing; `EventTarget` narrows it to also require Calendar's *plugin*, since the package can be in the vendor tree with the plugin uninstalled. Field strategies need no such gate — a strategy is filed under a class string only ever reached by looking a real field's class up against it, whereas the builder *iterates* the targets and asks each one for a criteria dropdown built from its own plugin's services.
 - **`supportsMultiSite()`** — whether links can carry site-specific endpoints and be swept per-site. Localizable types (Entry, Asset, Category, Tag, GlobalSet) return `true`; global, non-localizable ones (User) return `false`, so their links always run once against a single endpoint and the CP hides the site-specific controls. `Link` rejects site endpoints configured against a non-multi-site target as a server-side backstop.
 - **`criteriaKeys()`** — the `elementCriteria` keys the type scopes on (Entry uses `['section', 'type']`; User has none). The target owns those key names as constants (`EntryTarget::CRITERIA_SECTION`), and stored criteria are read through `Link::criterion($key)`.
 - **`criteriaSchema()`** — the dropdowns that fill those keys in, as a `SchemaBuilder` schema the builder's General tab renders directly. Two node keys shape a cascade: `dependsOn` names the handle a node's list is keyed on, and `optionsBy` is that list per parent value — how Entry narrows its entry-type dropdown to the picked section. A new element type therefore needs no CP change at all.
@@ -183,9 +185,36 @@ Set per-site endpoints and the link runs once per site — one queue job and one
 
 **Does it guarantee one element per match value?** No. It serialises runs; finding the element from the next site's pass still depends on the section's propagation, which is Craft's setting, not the plugin's.
 
-### Offset presets
+### Partial import
 
-A link can declare named sliding-window presets (`offset: { hour: { since: '-1 hour', queryParam: modified_since } }`) so a scheduled `--offset=hour` run only asks the feed for what changed recently, instead of re-fetching everything every time. `since` and `queryParam` are required; an optional `format` sets how the cutoff is formatted (ISO 8601 by default). An offset run never sweeps for missing elements — its seen-set only covers the window.
+A link can declare named presets — `offset` in config, **Partial import** in the CP — so a scheduled `--offset=hour` run only asks the feed for what changed recently, instead of re-fetching everything every time:
+
+```yaml
+offset:
+  hour:
+    queryParam: modified_since
+    value: "{{ now|date_modify('-1 hour')|date('c', 'UTC') }}"
+```
+
+Both keys are required. The **value is Twig**, rendered on every run with `now` available, and whatever it renders to is sent as `?modified_since=…` (Guzzle URL-encodes it — don't pre-encode).
+
+Writing the value rather than declaring a date format is deliberate: **only you know which timezone the API on the other end compares against.** `date('c')` alone formats in Craft's system timezone, so a site on `Europe/Brussels` sends `2026-08-10T14:58:45+02:00` — the right instant, spelled in local wall-clock. That is valid ISO 8601, and an API that reads it as wall-clock against a UTC column (Laravel binds a `DateTimeInterface` by calling `format('Y-m-d H:i:s')` on it, in the value's *own* timezone) sees a cutoff two hours in the future and returns nothing, run after run, reporting success as it goes. So say what you mean:
+
+| You want | Value |
+| --- | --- |
+| UTC ISO 8601 | `{{ now\|date_modify('-1 hour')\|date('c', 'UTC') }}` |
+| Local ISO 8601 | `{{ now\|date_modify('-1 hour')\|date('c') }}` |
+| Unix timestamp | `{{ now\|date_modify('-1 hour')\|date('U') }}` |
+| Plain date | `{{ now\|date_modify('-1 day')\|date('Y-m-d') }}` |
+| A duration the API resolves itself | `20 minutes` |
+
+That last row isn't a special case — a value with no Twig tags renders to itself, so any literal the API expects can be typed straight in.
+
+Prefer the `date_modify` **filter** over calling `now.modify()`: the filter works on a copy, the method mutates the `now` global in place.
+
+Two things a preset doesn't do. It never sweeps for missing elements — an offset run's seen-set only covers the window, so the complement isn't missing, just outside it. And it never fails quietly: a preset that doesn't exist, is half-written, or won't render fails that run's log with the reason, rather than dropping the parameter and fetching the whole feed as if nothing happened.
+
+Leave the window some slack. Nothing is watermarked — the value is recomputed from `now` on every run — so a run that is skipped, delayed, or fails takes its window's changes with it. Look back further than the interval you run on: a 15-minute schedule wants an hour's window, not fifteen minutes'.
 
 ### Backup
 
@@ -239,10 +268,11 @@ Shipped since the alpha: queue-job-based runs (one job per site, one feed page p
 
 Still open:
 
-- [ ] **Targets for third-party element types.** The native six all ship; these arrive when their plugin is installed, following the same optional-dependency rule as the other integrations:
-  - [ ] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
+- [ ] **Targets for third-party element types.** The native six ship, and so does Calendar's Event; the rest arrive when their plugin is installed, following the same optional-dependency rule as the other integrations — `isAvailable()` keeps each one inert until then:
+  - [x] Events — [Solspace Calendar](https://github.com/solspace/craft-calendar)
   - [ ] Products — [Craft Commerce](https://github.com/craftcms/commerce)
   - [ ] Variants — [Craft Commerce](https://github.com/craftcms/commerce)
+  - [ ] Recurrence for Calendar events — one `rrule` row parsed and expanded as a unit, the shape Calendar's own Feed Me integration uses
 - [ ] **`id` and `uri` as match attributes.** Both are offered in the Match dropdown, but `Link::validateMatch()` needs the match attribute to have a mapping row with a source node — and neither has one, since neither is writable. The fix is a read-only mapping row: a source-node cell whose value the applier never writes, which is what `GlobalSetTarget` used to do for `handle` before its match key went away.
 - [ ] **Require `elementCriteria` on a link that needs no match.** With `requiresMatch()` false the criteria are the only thing identifying the element, so an unset one resolves nothing and every item reports "no element to write to". That's a clear run-time report, but a validation error on save would be earlier and cheaper.
 - [ ] **Strategies for third-party field types.** The same extension point, for the field types sites actually install alongside the natives. [Super Table](https://github.com/verbb/super-table) 4.x is entry-type based on Craft 5, so it's structurally what `Matrix` already does; [Linkit](https://github.com/presseddigital/linkit)'s value object mirrors the native Link field. SEOmatic's `SeoSettings` and Freeform's form picker are container-shaped and still on the fallback. (CKEditor and Redactor already work — both extend `craft\htmlfield\HtmlField`, which `RichText` is keyed on.)

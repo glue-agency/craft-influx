@@ -61,7 +61,7 @@ const initial = () => ({
     // link comes back on save and reloads into state.
     siteEndpointsMode: false,     // "Site-specific endpoints"
     supportsItemEndpoint: false,  // "Resource Endpoint supported"
-    supportsOffset: false,        // "Sliding-window presets"
+    supportsOffset: false,        // "Partial import"
 });
 
 const root = reactive(initial());
@@ -487,7 +487,7 @@ function setSiteEndpointsMode(on) {
 }
 
 /**
- * Flip the "Resource Endpoint supported" / "Sliding-window presets" switches.
+ * Flip the "Resource Endpoint supported" / "Partial import" switches.
  * Like setSiteEndpointsMode() these keep the field's value in state and only
  * gate whether save() strips it from the outbound payload.
  */

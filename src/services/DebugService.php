@@ -42,6 +42,11 @@ class DebugService extends Component
      * The meta envelope is declared ONCE, defaulted to "nothing fetched", and
      * then either stamped with the failure or filled in from the page — a failed
      * fetch and a successful one can't describe the feed with different keys.
+     *
+     * An offset preset that won't resolve rides the same `error` key rather than
+     * throwing: a dry run exists to show the operator what a real run would do,
+     * and "your preset is broken" is precisely that. A sync run fails its log
+     * instead ({@see \GlueAgency\Influx\services\SynchronizationService::syncLink()}).
      */
     public function inspectSite(Link $link, ?string $siteHandle, int $limit, ?string $offset = null): Generator
     {
@@ -51,7 +56,15 @@ class DebugService extends Component
         $matchAttr = $link->matchAttribute();
         $matchNode = $matchAttr ? ($link->getMappingCollection()->get($matchAttr)?->node) : null;
 
-        [$queryParams, $offsetLabel] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+        $queryParams = [];
+        $offsetLabel = null;
+        $offsetError = null;
+
+        try {
+            [$queryParams, $offsetLabel] = OffsetPreset::forLink($link, $offset)?->resolve() ?? [[], null];
+        } catch (Throwable $e) {
+            $offsetError = $e->getMessage();
+        }
 
         if (! $target) {
             yield [
@@ -80,6 +93,14 @@ class DebugService extends Component
             'offsetQuery'    => $queryParams,
             'error'          => null,
         ];
+
+        if ($offsetError !== null) {
+            $meta['error'] = $offsetError;
+
+            yield ['type' => 'meta', 'data' => $meta];
+
+            return;
+        }
 
         $firstPage = null;
 

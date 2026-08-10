@@ -1,19 +1,15 @@
 <template>
     <div>
         <table class="editable fullwidth" :class="{ hidden: ! rows.length }">
-            <col v-for="i in 4" :key="i">
+            <col v-for="i in 3" :key="i">
             <col>
             <thead>
                 <tr>
                     <th class="singleline-cell textual" scope="col" v-text="$t('Handle')"></th>
-                    <th class="singleline-cell textual has-info" scope="col">
-                        {{ $t('Since') }}
-                        <span class="info" v-html="$t('Anything <code>DateTime::modify</code> accepts.')"></span>
-                    </th>
                     <th class="singleline-cell textual" scope="col" v-text="$t('Query param')"></th>
                     <th class="singleline-cell textual has-info" scope="col">
-                        {{ $t('Date format') }}
-                        <span class="info" v-html="$t('Anything <code>DateTime::format</code> accepts.')"></span>
+                        {{ $t('Value') }}
+                        <span class="info" v-text="$t('Supports Twig syntax. Evaluated on every run.')"></span>
                     </th>
                     <th class="thin">&nbsp;</th>
                 </tr>
@@ -24,13 +20,10 @@
                         <textarea rows="1" v-model="row.handle" :disabled="disabled" :placeholder="$t('e.g. last24h')" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.since" :disabled="disabled" placeholder="-1 day" @input="onChange"></textarea>
-                    </td>
-                    <td class="singleline-cell textual code">
                         <textarea rows="1" v-model="row.queryParam" :disabled="disabled" placeholder="updated_since" @input="onChange"></textarea>
                     </td>
                     <td class="singleline-cell textual code">
-                        <textarea rows="1" v-model="row.format" :disabled="disabled" placeholder="ATOM" @input="onChange"></textarea>
+                        <textarea rows="1" v-model="row.value" :disabled="disabled" :placeholder="valuePlaceholder" @input="onChange"></textarea>
                     </td>
                     <td class="thin action">
                         <button
@@ -57,11 +50,17 @@
 
 <script>
 /**
- * Editor for `link.offset` — the sliding-window preset map. Renders inside
+ * Editor for `link.offset` — the partial-import preset map. Renders inside
  * Craft's standard `table.editable.fullwidth` so the CP CSS handles cell
  * borders, focus rings, and dashed add button styling. Rows are kept as a
  * positional list internally and round-tripped to the `{handle: {...}}` shape
  * the link payload uses on emit.
+ *
+ * The value is a Twig template the server renders per run rather than a date
+ * format it derives, so the timezone and shape the remote API expects are stated
+ * here and nowhere else — see the OffsetPreset model for why. A row missing any
+ * of its three cells is dropped on emit rather than half-saved: the server
+ * treats an unfinished preset as a failed run, not a full fetch.
  */
 export default {
     name: 'OffsetPresetsTable',
@@ -76,6 +75,8 @@ export default {
     data() {
         return {
             rows: this.fromValue(this.modelValue),
+            // Not translated: it's the literal Twig to type, not prose about it.
+            valuePlaceholder: "{{ now|date_modify('-1 day')|date('c', 'UTC') }}",
         };
     },
 
@@ -106,9 +107,8 @@ export default {
         fromValue(value) {
             return Object.entries(value || {}).map(([handle, preset]) => ({
                 handle,
-                since:      preset?.since      ?? '',
                 queryParam: preset?.queryParam ?? '',
-                format:     preset?.format     ?? '',
+                value:      preset?.value      ?? '',
             }));
         },
 
@@ -116,19 +116,16 @@ export default {
             const out = {};
             for (const row of rows) {
                 const handle = (row.handle || '').trim();
-                const since = (row.since || '').trim();
                 const queryParam = (row.queryParam || '').trim();
-                if (! handle || ! since || ! queryParam) continue;
-                const entry = { since, queryParam };
-                const format = (row.format || '').trim();
-                if (format) entry.format = format;
-                out[handle] = entry;
+                const value = (row.value || '').trim();
+                if (! handle || ! queryParam || ! value) continue;
+                out[handle] = { queryParam, value };
             }
             return { value: out, serialized: JSON.stringify(out) };
         },
 
         addRow() {
-            this.rows.push({ handle: '', since: '', queryParam: '', format: '' });
+            this.rows.push({ handle: '', queryParam: '', value: '' });
         },
 
         removeRow(idx) {
