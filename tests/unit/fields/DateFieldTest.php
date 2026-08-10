@@ -22,7 +22,7 @@ use yii\base\Event;
  * Behaviour spec for the Date field strategy's explicit-format path: an
  * `options.format` on the mapping wins over the auto-detector. Parsing itself is
  * {@see Date::tryParse()}, shared with the native date attributes
- * ({@see \GlueAgency\Influx\targets\EntryTarget::assignDate()}) — only the policy
+ * ({@see \GlueAgency\Influx\targets\AbstractElementTarget::assignDate()}) — only the policy
  * for an unparseable value differs (error row here, no-op there).
  *
  * The auto-detect fallback (no format option) routes through Craft's

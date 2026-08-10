@@ -14,7 +14,6 @@ use craft\helpers\StringHelper;
 use craft\models\EntryType;
 use craft\models\FieldLayout;
 use craft\models\Section;
-use DateTimeInterface;
 use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
@@ -511,35 +510,6 @@ class EntryTarget extends AbstractElementTarget
     protected function parseExpiryDate(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
     {
         return $this->assignDate($element, 'expiryDate', $item, $mapping);
-    }
-
-    /**
-     * An empty value clears the date — the feed is authoritative. Parsing is
-     * {@see Date::tryParse()}, the same rule the custom Date field uses; the
-     * policy for its null differs on purpose: an unparseable value is a no-op
-     * here, because malformed feed data must not wipe a stored native date (the
-     * field strategy throws instead, surfacing an error row).
-     */
-    protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
-    {
-        $value = $mapping->resolve($item);
-        $before = $element->{$attr};
-
-        if ($value === null || $value === '') {
-            $element->{$attr} = null;
-
-            return $before !== null;
-        }
-
-        $parsed = Date::tryParse($value, $mapping->option('format'));
-
-        if ($parsed === null) {
-            return false;
-        }
-
-        $element->{$attr} = $parsed;
-
-        return ! ($before instanceof DateTimeInterface) || $before->getTimestamp() !== $parsed->getTimestamp();
     }
 
     /**

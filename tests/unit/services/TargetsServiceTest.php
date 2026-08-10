@@ -9,6 +9,7 @@ use craft\elements\Entry;
 use craft\elements\GlobalSet;
 use craft\elements\Tag;
 use craft\elements\User;
+use GlueAgency\Influx\integrations\solspace\calendar\EventTarget;
 use GlueAgency\Influx\services\TargetsService;
 use GlueAgency\Influx\targets\AssetTarget;
 use GlueAgency\Influx\targets\CategoryTarget;
@@ -20,11 +21,30 @@ use GlueAgency\Influx\Tests\unit\Support\FakeLink;
 
 /**
  * Conformance spec for the targets registry: built-ins keyed by element-type
- * FQCN, link resolution tolerant of a leading backslash in the stored type,
- * and the friendly-name fallback for an element type nothing is registered for.
+ * FQCN, the availability gate that keeps a target for an uninstalled plugin out
+ * of the set, link resolution tolerant of a leading backslash in the stored
+ * type, and the friendly-name fallback for an element type nothing is registered
+ * for.
  */
 class TargetsServiceTest extends Unit
 {
+    /**
+     * A built-in whose element type isn't installed never reaches the registry —
+     * the gate that lets Influx ship a target for a third-party element type. The
+     * builder ITERATES these to offer one row per element type, asking each for a
+     * criteria dropdown built from its own plugin's services, so an ungated one
+     * wouldn't sit unused: it would break the builder for every element type.
+     *
+     * Solspace Calendar isn't a dependency of this repo, so its target is the live
+     * example — and it stays inert even where a spec has loaded stub classes for
+     * it, since {@see EventTarget::isAvailable()} also requires the PLUGIN.
+     */
+    public function testAnUninstalledElementTypesTargetIsNotRegistered(): void
+    {
+        $this->assertFalse(EventTarget::isAvailable());
+        $this->assertArrayNotHasKey('Solspace\Calendar\Elements\Event', (new TargetsService())->all());
+    }
+
     /**
      * One target per native Craft element type. Pinned as a set rather than as a
      * count, so adding one is a deliberate edit here.

@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\Tests\unit\targets;
 use Codeception\Test\Unit;
 use craft\base\Element;
 use craft\base\ElementInterface;
+use craft\elements\Category;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\sync\item\RemoteItem;
@@ -18,6 +19,9 @@ use RuntimeException;
  * through a minimal concrete target (no section/type dimension, so it inherits
  * the base's structural targeting too):
  *
+ *   - isAvailable() answers from the declared element class alone, so a target
+ *     for an uninstalled plugin drops out of the registry without declaring
+ *     anything;
  *   - claimsElement() = structurally targeted PLUS a non-empty match value;
  *   - parseEnabled() is reached by the `parse{Handle}` dispatch even though it
  *     lives on the base — applyNativeAttribute()'s method_exists() lookup sees
@@ -28,6 +32,18 @@ use RuntimeException;
  */
 class AbstractElementTargetTest extends Unit
 {
+    public function testAvailabilityFollowsTheDeclaredElementClass(): void
+    {
+        // The whole of what a third-party target has to declare about its own
+        // installability: a present element class is available, an absent one is
+        // inert — and asking about a class that isn't there has to ANSWER rather
+        // than throw, since the registry asks before anything is loaded.
+        $this->assertTrue($this->targetFor(Category::class)::isAvailable());
+        $this->assertFalse($this->targetFor('vendor\\nowhere\\Widget')::isAvailable());
+        // "Is a Craft element", not merely "class exists".
+        $this->assertFalse($this->targetFor(RuntimeException::class)::isAvailable());
+    }
+
     public function testClaimsElementRequiresAMatchValueOnTopOfTargeting(): void
     {
         $target = $this->target();
@@ -135,6 +151,32 @@ class AbstractElementTargetTest extends Unit
                 throw new RuntimeException('not needed');
             }
         };
+    }
+
+    /** A target declaring the given element type and nothing else. */
+    protected function targetFor(string $elementType): AbstractElementTarget
+    {
+        $target = new class() extends AbstractElementTarget {
+            public static string $type = '';
+
+            public static function elementType(): string
+            {
+                return static::$type;
+            }
+
+            public function findByMatchValue(Link $link, mixed $matchValue, ?int $siteId = null): ?ElementInterface
+            {
+                return null;
+            }
+
+            public function buildNew(Link $link, ?int $siteId = null): ElementInterface
+            {
+                throw new RuntimeException('not needed');
+            }
+        };
+        $target::$type = $elementType;
+
+        return $target;
     }
 
     protected function element(mixed $match): Element

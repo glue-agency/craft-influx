@@ -7,7 +7,9 @@ use craft\base\ElementInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\fieldlayoutelements\CustomField;
 use craft\models\FieldLayout;
+use DateTimeInterface;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\fields\Date;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\helpers\Compat;
@@ -67,6 +69,21 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         }
 
         return $element->{$matchAttr} !== null && $element->{$matchAttr} !== '';
+    }
+
+    /**
+     * Default: available exactly when the declared element class loads and is a
+     * Craft element. `is_subclass_of()` autoloads by name and answers false for a
+     * class that isn't there instead of throwing, so this single line covers every
+     * built-in (Craft's own element classes are always present) and every
+     * third-party target whose plugin either ships its element class or doesn't.
+     *
+     * See {@see ElementTargetInterface::isAvailable()} for why targets are gated
+     * and field strategies aren't.
+     */
+    public static function isAvailable(): bool
+    {
+        return is_subclass_of(static::elementType(), ElementInterface::class);
     }
 
     /**
@@ -321,6 +338,41 @@ abstract class AbstractElementTarget implements ElementTargetInterface
         $element->enabled = in_array(true, $statuses, true) || $wasEnabled;
 
         return $wasForSite !== $new || $wasEnabled !== (bool) $element->enabled;
+    }
+
+    /**
+     * An empty value clears the date — the feed is authoritative. Parsing is
+     * {@see Date::tryParse()}, the same rule the custom Date field uses; the
+     * policy for its null differs on purpose: an unparseable value is a no-op
+     * here, because malformed feed data must not wipe a stored native date (the
+     * field strategy throws instead, surfacing an error row).
+     *
+     * Shared rather than per-target: every element type that carries a date
+     * attribute writes it the same way, and the two that do so far
+     * ({@see EntryTarget}'s postDate/expiryDate,
+     * {@see \GlueAgency\Influx\integrations\solspace\calendar\EventTarget}'s
+     * postDate) had no reason to differ.
+     */
+    protected function assignDate(ElementInterface $element, string $attr, RemoteItem $item, FieldMapping $mapping): bool
+    {
+        $value = $mapping->resolve($item);
+        $before = $element->{$attr};
+
+        if ($value === null || $value === '') {
+            $element->{$attr} = null;
+
+            return $before !== null;
+        }
+
+        $parsed = Date::tryParse($value, $mapping->option('format'));
+
+        if ($parsed === null) {
+            return false;
+        }
+
+        $element->{$attr} = $parsed;
+
+        return ! ($before instanceof DateTimeInterface) || $before->getTimestamp() !== $parsed->getTimestamp();
     }
 
     /**

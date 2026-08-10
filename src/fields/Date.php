@@ -101,8 +101,8 @@ class Date extends Field
 
     /**
      * THE date-parsing rule, shared with the native date attributes
-     * ({@see \GlueAgency\Influx\targets\EntryTarget::assignDate()} applies the
-     * same mapping option to postDate / expiryDate). An explicit `format`
+     * ({@see \GlueAgency\Influx\targets\AbstractElementTarget::assignDate()}
+     * applies the same mapping option to an element's native dates). An explicit `format`
      * option wins over the auto-detector — feeds that ship ambiguous strings
      * (e.g. `02/03/2024`) need to disambiguate manually — and `timestamp` is a UI
      * sentinel for Unix seconds, translated to the PHP `U` token here so the Vue

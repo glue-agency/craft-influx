@@ -59,6 +59,32 @@ interface ElementTargetInterface
     public static function elementType(): string;
 
     /**
+     * Whether this target's element type is actually there — the gate that keeps
+     * a target for an uninstalled plugin out of the registry
+     * ({@see \GlueAgency\Influx\services\TargetsService::defaults()}).
+     *
+     * A field STRATEGY needs no such gate, which is why only this side of the
+     * plugin has one. A strategy is filed under a class string it declares itself
+     * ({@see \GlueAgency\Influx\fields\Field::craftFieldClass()}) and is only ever
+     * reached by looking a field instance's own class up against those keys — so
+     * with the plugin absent its key is one nothing can ever hit, and the strategy
+     * is inert without being told ({@see \GlueAgency\Influx\fields\RichText}).
+     *
+     * A target is the opposite: the link builder ITERATES the registry to offer
+     * one row per element type, asking each for {@see friendlyName()} and
+     * {@see criteriaSchema()}. Those run whether or not a link of that type
+     * exists, and a criteria dropdown is built by querying the very services the
+     * missing plugin would have registered — so an ungated target doesn't sit
+     * unused, it breaks the builder for every element type.
+     *
+     * {@see AbstractElementTarget} answers this from the element class alone, so
+     * no target has to declare anything. One whose plugin can be PRESENT but not
+     * installed narrows it further — see
+     * {@see \GlueAgency\Influx\integrations\solspace\calendar\EventTarget::isAvailable()}.
+     */
+    public static function isAvailable(): bool;
+
+    /**
      * Human-readable label for this element type, used as the option label in
      * the link-edit dropdown and anywhere else the CP would otherwise show
      * a bare FQCN. Defaults to the element class's `displayName()`.
