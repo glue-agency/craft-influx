@@ -327,9 +327,13 @@
 
 .influx-counter:hover { background: var(--gray-050); }
 
-/* The wrapped row reads as a row of its own rather than as cells that ran out
-   of space. */
-.influx-counter--exception { border-top: 1px solid var(--hairline-color); }
+/* The divider between the two rows hangs off the OUTCOME cells, not off the
+   wrapped ones: the exception row is three cells wide, so a border above it
+   stopped under Deleted and left the line hanging mid-card. Drawn below the row
+   that does span the grid, it reaches the full width. */
+.influx-counter:not(.influx-counter--exception) {
+    border-bottom: 1px solid var(--hairline-color);
+}
 
 .influx-counter.is-active {
     background: hsl(208, 100%, 96%);
