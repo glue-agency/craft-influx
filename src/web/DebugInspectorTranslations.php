@@ -53,7 +53,7 @@ class DebugInspectorTranslations
                 'Link',
                 'Site',
                 'Default endpoint',
-                'Sliding window',
+                'Partial import',
                 'Whole feed',
                 'Limit',
                 'of {n}',

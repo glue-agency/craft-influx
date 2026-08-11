@@ -33,7 +33,7 @@
             </div>
 
             <div v-if="offsetHandles.length" class="influx-debug-field">
-                <label v-text="$t('Sliding window')"></label>
+                <label v-text="$t('Partial import')"></label>
                 <div class="select">
                     <select v-model="offset">
                         <option value="" v-text="$t('Whole feed')"></option>

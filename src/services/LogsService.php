@@ -130,7 +130,7 @@ class LogsService extends Component
      * it, who — both stored on the row, so a CP run can name the editor behind
      * it while a console run stays attributed to nobody.
      * @param string|null $siteHandle Site the run is scoped to (null = all).
-     * @param string|null $offsetHandle Sliding-window preset the run applied.
+     * @param string|null $offsetHandle Partial-import preset the run applied.
      * @param int|null $elementId Resource a single-element run was triggered for.
      */
     public function start(

@@ -20,7 +20,7 @@ class Install extends Migration
      *     attribution the column exists to keep, and a restrict would block
      *     deleting a user who ever pressed Sync. No index either — nothing
      *     filters on it, it's only read back per row for display.
-     *   - logs.offsetHandle — the sliding-window preset the run used.
+     *   - logs.offsetHandle — the partial-import preset the run used.
      *   - logs.elementId — the resource a single-element run was triggered for.
      *   - logs.status — running | ok | error.
      *   - logItems.action — created | updated | unchanged | skipped | disabled |

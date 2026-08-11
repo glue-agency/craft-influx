@@ -59,7 +59,7 @@ class EndpointResolver
     /**
      * Best-effort URL for human-facing debug display. Returns the env-resolved
      * URL, or the raw token when the env isn't set — never throws, since this
-     * is purely informational. Any extra query params (e.g. a sliding-window
+     * is purely informational. Any extra query params (e.g. a partial-import
      * preset's offset params) are merged in so the displayed endpoint matches
      * what the run actually fetches.
      *

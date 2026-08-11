@@ -28,7 +28,7 @@ abstract class AbstractLinkJob extends BaseJob
     /** Handle of the link being synced. */
     public string $linkHandle = '';
 
-    /** Sliding-window preset handle from the link's `offset` map, or null for a full run. */
+    /** Partial-import preset handle from the link's `offset` map, or null for a full run. */
     public ?string $offset = null;
 
     /**
@@ -88,7 +88,7 @@ abstract class AbstractLinkJob extends BaseJob
     }
 
     /**
-     * The sliding-window preset this run applies, or null for a full run. A
+     * The partial-import preset this run applies, or null for a full run. A
      * preset has no name of its own — its handle IS its label, here and
      * everywhere else in the UI.
      */

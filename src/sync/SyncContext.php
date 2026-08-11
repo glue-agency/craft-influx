@@ -42,7 +42,7 @@ class SyncContext
     public bool $dryRun = false;
 
     /**
-     * The sliding-window offset preset this run used (null = the full feed).
+     * The partial-import preset this run used (null = the full feed).
      * A partial (offset) run must NEVER run the missing-elements sweep: its
      * seen-set covers only the window, so the complement isn't missing — it's
      * just outside the slice. Deleting/disabling it would wipe everything

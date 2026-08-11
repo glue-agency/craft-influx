@@ -99,6 +99,7 @@
                     <th>{{ "Trigger"|t("influx") }}</th>
                     <th>{{ "User"|t("influx") }}</th>
                     <th>{{ "Site"|t("influx") }}</th>
+                    <th>{{ "Partial import"|t("influx") }}</th>
                     <th>{{ "Result"|t("influx") }}</th>
                     <th class="thin"></th>
                 </tr>
@@ -157,6 +158,18 @@
                            Links overview. #}
                         <td>
                             {{ influxSiteChip(log.siteHandle) }}
+                        </td>
+
+                        {# Partial import — the preset handle the run applied, or
+                           nothing for a full one: which slice a run fetched is
+                           what tells a green run with no changes apart from one
+                           that never asked for the rows. #}
+                        <td>
+                            {% if log.offsetHandle %}
+                                <code>{{ log.offsetHandle }}</code>
+                            {% else %}
+                                <span class="light">{{ "whole feed"|t("influx") }}</span>
+                            {% endif %}
                         </td>
 
                         {# Result — the six numeric columns as the shared pill

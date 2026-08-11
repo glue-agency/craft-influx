@@ -46,7 +46,7 @@ use Throwable;
  *   - DELETED: the whole element is destroyed, unscoped ({@see applyAction()}
  *     routes DELETED → target->delete()).
  *
- * Sliding-window guard: an offset run fetches only a slice of the feed, so its
+ * Partial-import guard: an offset run fetches only a slice of the feed, so its
  * seen-set is intentionally partial — the complement isn't missing, just outside
  * the window, and sweeping it would delete/disable everything beyond the slice.
  * Only a full sync (no offset) may sweep. That skip is expected behaviour, so

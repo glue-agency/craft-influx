@@ -79,7 +79,7 @@ class RunLifecycle
      * @param string|null $siteHandle The site this run is scoped to (null = the
      * primary/unscoped scope), recorded on the log so the viewer can show which
      * site's endpoint was fetched.
-     * @param string|null $offsetHandle The sliding-window preset the run was
+     * @param string|null $offsetHandle The partial-import preset the run was
      * triggered with (null = the full feed), recorded on the log.
      * @param int|null $elementId The resource a single-element run was triggered
      * for, recorded on the log so the viewer can name it.

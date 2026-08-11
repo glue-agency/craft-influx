@@ -63,7 +63,7 @@ class LogViewerTranslations
                 'Site',
                 'Trigger',
                 'User',
-                'Window',
+                'Partial import',
                 'started {d}',
                 'ran for {d}',
                 'Show only {label} items',

@@ -30,7 +30,7 @@
             </div>
 
             <!-- What the run was: the site it covered, the mechanism, who asked
-                 for it, and the window it fetched — each labelled, rather than
+                 for it, and the partial import it applied — each labelled, rather than
                  folded into the meta sentence, which keeps the timing. The site
                  and the user are Craft chips, server-rendered because the chip
                  renderer lives in PHP (an unscoped run chips the primary site). -->
@@ -47,8 +47,8 @@
                     <span class="influx-log-eyebrow" v-text="$t('User')"></span>
                     <span v-html="log.userChipHtml"></span>
                 </div>
-                <div v-if="log.offsetHandle" class="influx-log-fact influx-log-window">
-                    <span class="influx-log-eyebrow" v-text="$t('Window')"></span>
+                <div v-if="log.offsetHandle" class="influx-log-fact influx-log-offset">
+                    <span class="influx-log-eyebrow" v-text="$t('Partial import')"></span>
                     <span class="influx-log-fact-value" v-text="log.offsetHandle"></span>
                 </div>
             </div>
@@ -237,7 +237,7 @@
     color: var(--medium-text-color);
 }
 
-/* Run facts (site, trigger, user, window) — on the counters' own grid, over as
+/* Run facts (site, trigger, user, partial import) — on the counters' own grid, over as
    many tracks as there ARE counters (the template passes the count), so a fact
    cell sits in the same column as the counter cell under it. `auto-fit` can't do
    that here: with fewer facts than counters it collapses the empty tracks and
@@ -694,7 +694,7 @@ export default {
         },
 
         // The summary bar's own line is the timing, and only that: what the run
-        // was — site, trigger, user, window — sits in the labelled facts strip
+        // was — site, trigger, user, partial import — sits in the labelled facts strip
         // below, where the site chip can live.
         metaLine() {
             return this.log.startedAt ? this.$t('started {d}', { d: this.log.startedAt }) : '';

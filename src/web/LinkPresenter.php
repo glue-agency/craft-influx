@@ -148,7 +148,7 @@ class LinkPresenter
 
     /**
      * The debug screen's selector options for the link being inspected: its
-     * configured sites (display name per handle), its sliding-window preset
+     * configured sites (display name per handle), its partial-import preset
      * handles, and every link as a jump target. Request-scoped choices (which
      * site / offset is selected) stay with the controller — this only supplies
      * what there is to choose from.
