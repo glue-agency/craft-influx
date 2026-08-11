@@ -92,7 +92,6 @@
                     <th>{{ "Run"|t("influx") }}</th>
                     <th>{{ "Link"|t("influx") }}</th>
                     <th>{{ "Trigger"|t("influx") }}</th>
-                    <th>{{ "Partial import"|t("influx") }}</th>
                     <th>{{ "User"|t("influx") }}</th>
                     <th>{{ "Site"|t("influx") }}</th>
                     <th>{{ "Result"|t("influx") }}</th>
@@ -134,23 +133,19 @@
                             {% endif %}
                         </td>
 
-                        {# Trigger — the mechanism as its own label, the same one
-                           the filter above offers, chipped like the link and site
-                           beside it: a run's facts read as one vocabulary even
-                           where the fact isn't a component. #}
+                        {# Trigger — the mechanism, plus the partial-import preset
+                           it applied when there was one, both chipped like the
+                           link and site beside them: a run's facts read as one
+                           vocabulary even where the fact isn't a component. The
+                           preset rides along here rather than in a column of its
+                           own, which stood empty for every full run. #}
                         <td>
-                            {{ influxValueChip(triggers[log.trigger] ?? log.trigger) }}
-                        </td>
-
-                        {# Partial import — the preset handle the run applied, and
-                           nothing at all for a full run: the column answers
-                           "which slice did this fetch", which a full run doesn't
-                           have an answer to. Empty like the User cell rather than
-                           spelling out the absence on every row. #}
-                        <td>
-                            {% if log.offsetHandle %}
-                                {{ influxValueChip(log.offsetHandle) }}
-                            {% endif %}
+                            <div class="influx-pill-group">
+                                {{ influxValueChip(triggers[log.trigger] ?? log.trigger) }}
+                                {% if log.offsetHandle %}
+                                    {{ influxValueChip(log.offsetHandle) }}
+                                {% endif %}
+                            </div>
                         </td>
 
                         {# User — the person who asked for the run, as their user
