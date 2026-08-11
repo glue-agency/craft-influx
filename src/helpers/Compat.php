@@ -22,6 +22,7 @@ use craft\services\Sections;
 use DateTime;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\web\LinkChip;
+use GlueAgency\Influx\web\ValueChip;
 use yii\web\Response;
 
 /**
@@ -375,6 +376,38 @@ class Compat
         return $link->id
             ? Html::a($label, UrlHelper::cpUrl('influx/links/' . $link->id))
             : $label;
+    }
+
+    /**
+     * Chip HTML for a bare value — a run's trigger, the partial-import preset it
+     * applied. Exposed to Twig as `influxValueChip()`.
+     *
+     * Neither is a component, so there is nothing to look up and nothing to
+     * link: {@see ValueChip} adapts the label alone into something
+     * `Cp::chipHtml()` accepts, which is what lets a fact with no model behind it
+     * sit in a table next to the link and site chips without dressing itself
+     * differently. Craft 4, having no chip renderer at all, falls back to the
+     * gray pill the overviews used before chips — the same degradation
+     * {@see siteChipHtml()} makes, so a row stays legible either way.
+     *
+     * `autoReload` is off because it must be: the JS re-render asks the server
+     * for the component behind a chip, and this one has none.
+     *
+     * @param string|null $handle Second line under the label, for a value worth
+     * qualifying. Null keeps the chip single-line.
+     */
+    public static function valueChipHtml(string $label, ?string $handle = null, array $config = []): string
+    {
+        if (interface_exists(Chippable::class)) {
+            return Cp::chipHtml(new ValueChip($label, $handle), $config + [
+                'autoReload' => false,
+                'showHandle' => $handle !== null,
+            ]);
+        }
+
+        return Html::tag('span', Html::encode($label), [
+            'class' => ['influx-pill', 'influx-pill--gray'],
+        ]);
     }
 
     /**

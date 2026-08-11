@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- **A run's trigger and partial import are chips now, like the link and site beside them.** The Logs overview drew the link and the site as real CP chips and the trigger as a gray pill, and the run detail chipped the site and the user while the trigger and the preset sat there as bare text — so a row mixed three vocabularies for four facts of equal standing. Neither a trigger nor a preset handle is a component, which is why they weren't chipped; `ValueChip` adapts a label alone into something `Cp::chipHtml()` accepts, and both screens now read as one row of facts. Craft 4, having no chip renderer, keeps the gray pill it always had.
 - **The "Window" labels finish the Partial import rename.** The alpha.11 rename renamed the switch and left two screens calling the same thing by its old name: the log viewer's run facts said **Window**, and the Debug toolbar's control said **Sliding window**. Both read **Partial import** now, so one feature has one name wherever it appears — and the code comments that still called a preset "sliding-window" say partial-import too.
 
 ### Added

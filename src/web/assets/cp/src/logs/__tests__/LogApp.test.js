@@ -102,6 +102,23 @@ describe('LogApp', () => {
         expect(w.find('.influx-log-user').html()).toContain('Ada Lovelace');
     });
 
+    it('prints the server-rendered chips for the trigger and the partial import', () => {
+        // Neither is a component, but both are chipped from their label so a run's
+        // facts read as one vocabulary; the plain value stays as the fallback
+        // (which is what the two tests around this one exercise).
+        const w = mountApp({
+            log: {
+                ...baseConfig().log,
+                offsetHandle: '15min',
+                triggerChipHtml: '<span class="chip">Control panel</span>',
+                offsetChipHtml: '<span class="chip">15min</span>',
+            },
+        });
+
+        expect(w.find('.influx-log-facts').html()).toContain('<span class="chip">Control panel</span>');
+        expect(w.find('.influx-log-offset').html()).toContain('<span class="chip">15min</span>');
+    });
+
     it('drops the user cell for a run nobody triggered', () => {
         const w = mountApp();
 

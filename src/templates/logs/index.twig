@@ -140,9 +140,11 @@
                         </td>
 
                         {# Trigger — the mechanism as its own label, the same one
-                           the filter above offers. #}
+                           the filter above offers, chipped like the link and site
+                           beside it: a run's facts read as one vocabulary even
+                           where the fact isn't a component. #}
                         <td>
-                            {{ ui.pill(triggers[log.trigger] ?? log.trigger, "gray") }}
+                            {{ influxValueChip(triggers[log.trigger] ?? log.trigger) }}
                         </td>
 
                         {# User — the person who asked for the run, as their user
@@ -166,7 +168,7 @@
                            that never asked for the rows. #}
                         <td>
                             {% if log.offsetHandle %}
-                                <code>{{ log.offsetHandle }}</code>
+                                {{ influxValueChip(log.offsetHandle) }}
                             {% else %}
                                 <span class="light">{{ "whole feed"|t("influx") }}</span>
                             {% endif %}

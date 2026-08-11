@@ -31,9 +31,12 @@
 
             <!-- What the run was: the site it covered, the mechanism, who asked
                  for it, and the partial import it applied — each labelled, rather than
-                 folded into the meta sentence, which keeps the timing. The site
-                 and the user are Craft chips, server-rendered because the chip
-                 renderer lives in PHP (an unscoped run chips the primary site). -->
+                 folded into the meta sentence, which keeps the timing. All four
+                 are Craft chips, server-rendered because the chip renderer lives
+                 in PHP (an unscoped run chips the primary site; the trigger and
+                 the preset have no component behind them and are chipped from
+                 their label alone), with the plain value as the fallback for a
+                 payload that carries no chip. -->
             <div class="influx-log-facts" :style="{ '--influx-facts-columns': counters.length }">
                 <div v-if="siteChipHtml" class="influx-log-fact influx-log-site">
                     <span class="influx-log-eyebrow" v-text="$t('Site')"></span>
@@ -41,7 +44,8 @@
                 </div>
                 <div class="influx-log-fact">
                     <span class="influx-log-eyebrow" v-text="$t('Trigger')"></span>
-                    <span class="influx-log-fact-value" v-text="log.triggerLabel || log.trigger"></span>
+                    <span v-if="log.triggerChipHtml" v-html="log.triggerChipHtml"></span>
+                    <span v-else class="influx-log-fact-value" v-text="log.triggerLabel || log.trigger"></span>
                 </div>
                 <div v-if="log.userChipHtml" class="influx-log-fact influx-log-user">
                     <span class="influx-log-eyebrow" v-text="$t('User')"></span>
@@ -49,7 +53,8 @@
                 </div>
                 <div v-if="log.offsetHandle" class="influx-log-fact influx-log-offset">
                     <span class="influx-log-eyebrow" v-text="$t('Partial import')"></span>
-                    <span class="influx-log-fact-value" v-text="log.offsetHandle"></span>
+                    <span v-if="log.offsetChipHtml" v-html="log.offsetChipHtml"></span>
+                    <span v-else class="influx-log-fact-value" v-text="log.offsetHandle"></span>
                 </div>
             </div>
 

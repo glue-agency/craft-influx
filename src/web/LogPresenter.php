@@ -38,18 +38,29 @@ class LogPresenter
     /**
      * The full log header for the initial render: identity + formatted dates +
      * the counter block.
+     *
+     * The trigger and the partial-import preset ship as chips as well as as
+     * values: the facts strip already chips the site and the user, and a run's
+     * facts reading as one vocabulary is worth more than the distinction between
+     * a fact with a component behind it and one without
+     * ({@see \GlueAgency\Influx\helpers\Compat::valueChipHtml()} draws both).
+     * The raw values stay — the viewer's own copy and the tests read them.
      */
     public function presentLog(LogRecord $log): array
     {
+        $triggerLabel = SyncTrigger::tryFrom((string) $log->trigger)?->label() ?? (string) $log->trigger;
+
         return [
-            'id'           => (int) $log->id,
-            'linkHandle'   => (string) $log->linkHandle,
-            'trigger'      => (string) $log->trigger,
-            'triggerLabel' => SyncTrigger::tryFrom((string) $log->trigger)?->label() ?? (string) $log->trigger,
-            'userChipHtml' => $this->userChipHtml($log),
-            'siteHandle'   => $log->siteHandle,
-            'offsetHandle' => $log->offsetHandle,
-            'startedAt'    => $this->datetime($log->startedAt),
+            'id'              => (int) $log->id,
+            'linkHandle'      => (string) $log->linkHandle,
+            'trigger'         => (string) $log->trigger,
+            'triggerLabel'    => $triggerLabel,
+            'triggerChipHtml' => Compat::valueChipHtml($triggerLabel),
+            'userChipHtml'    => $this->userChipHtml($log),
+            'siteHandle'      => $log->siteHandle,
+            'offsetHandle'    => $log->offsetHandle,
+            'offsetChipHtml'  => $log->offsetHandle ? Compat::valueChipHtml((string) $log->offsetHandle) : null,
+            'startedAt'       => $this->datetime($log->startedAt),
         ] + $this->presentCounters($log);
     }
 

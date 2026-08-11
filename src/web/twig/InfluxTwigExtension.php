@@ -18,7 +18,8 @@ use Twig\TwigFunction;
  * unconditionally and {@see Compat::elementChipHtml()} picks the right
  * renderer at runtime. `influxSiteChip()` is the same deal for a site, which
  * Craft 5 can chip as a component but Craft 4 cannot chip at all
- * ({@see Compat::siteChipHtml()}).
+ * ({@see Compat::siteChipHtml()}), and `influxValueChip()` for a fact that is
+ * only ever a label ({@see Compat::valueChipHtml()}).
  */
 class InfluxTwigExtension extends AbstractExtension
 {
@@ -28,6 +29,7 @@ class InfluxTwigExtension extends AbstractExtension
             new TwigFunction('influxElementChip', [Compat::class, 'elementChipHtml'], ['is_safe' => ['html']]),
             new TwigFunction('influxSiteChip', [Compat::class, 'siteChipHtml'], ['is_safe' => ['html']]),
             new TwigFunction('influxSiteChips', [Compat::class, 'siteChipsHtml'], ['is_safe' => ['html']]),
+            new TwigFunction('influxValueChip', [Compat::class, 'valueChipHtml'], ['is_safe' => ['html']]),
             new TwigFunction('influxProcessingValues', [$this, 'processingValues']),
             new TwigFunction('influxProcessingColor', [$this, 'processingColor']),
         ];
