@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { useListHighlight } from './useListHighlight.js';
+import { useListHighlight } from '../../components/composables/useListHighlight.js';
 
 /**
  * The picker state machine for the tokenized input — everything about

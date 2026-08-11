@@ -44,7 +44,7 @@
 <script>
 import MappingGroup from './MappingGroup.vue';
 import FieldErrors from '../FieldErrors.vue';
-import SearchableSelect from '../SearchableSelect.vue';
+import SearchableSelect from '../../components/SearchableSelect.vue';
 import { store } from '../store.js';
 import { mergeNodeOptions } from '../lib/mappings.js';
 

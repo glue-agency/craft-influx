@@ -15,7 +15,7 @@ vi.mock('../../api.js', () => ({
 import * as api from '../../api.js';
 import { store } from '../../store.js';
 import MappingTab from '../MappingTab.vue';
-import SearchableSelect from '../../SearchableSelect.vue';
+import SearchableSelect from '../../../components/SearchableSelect.vue';
 
 /**
  * The Match key control is only offered to a link that HAS a match key.

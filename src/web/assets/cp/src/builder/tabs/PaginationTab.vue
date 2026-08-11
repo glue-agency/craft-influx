@@ -87,7 +87,7 @@
 </template>
 
 <script>
-import SearchableSelect from '../SearchableSelect.vue';
+import SearchableSelect from '../../components/SearchableSelect.vue';
 import { store } from '../store.js';
 import { mergeNodeOptions } from '../lib/mappings.js';
 

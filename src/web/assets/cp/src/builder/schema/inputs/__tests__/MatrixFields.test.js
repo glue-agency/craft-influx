@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MatrixFields from '../MatrixFields.vue';
-import SearchableSelect from '../../../SearchableSelect.vue';
+import SearchableSelect from '../../../../components/SearchableSelect.vue';
 
 /**
  * Locks in the blocks-channel writer contract: the card owns ONE block

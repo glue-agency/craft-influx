@@ -200,17 +200,12 @@ class LinkBuilderTranslations
                 '— select a site —',
                 'Add a site endpoint',
             ],
-            'SearchableSelect.vue' => [
-                'Search…',
-                'Clear search',
-                'not in the sample',
-                'No matches for',
-                'No options available.',
-                'Custom node',
-                '{n} selected',
-            ],
             'components/TokenPickerMenu.vue' => [
                 'Filter tokens…',
+                // Also SearchableSelect's empty-search copy, and listed in
+                // {@see SharedComponentTranslations} for it — each catalogue is
+                // pinned to its own tree, so a string two trees use is in both.
+                'No matches for',
             ],
             'components/TokenChip.vue' => [
                 'Remove {name}',

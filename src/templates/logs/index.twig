@@ -5,8 +5,58 @@
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
 
-{# Active filters, carried through the pager links so paging keeps the view. #}
-{% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger, result: selectedResult }|filter(v => v is not null and v != "") %}
+{# Active filters, carried through the pager links so paging keeps the view.
+   Every filter is a set, so each param travels as a list. #}
+{% set filterParams = { link: selectedLinks, status: selectedStatuses, trigger: selectedTriggers, result: selectedResults }|filter(v => v is not empty) %}
+
+{# The result kinds, labelled with the same nouns the Result column's pills use
+   so the filter and the rows can't word a kind differently. #}
+{% set resultLabels = {} %}
+{% for value in results %}
+    {% set resultLabels = resultLabels|merge({ (value): ui.resultNoun(value)|capitalize }) %}
+{% endfor %}
+
+{# Bootstrap for the filter toolbar (LogFilters). The filters are declared here
+   rather than in the component so their copy stays where it's translated, and
+   each option list rides along as its `value: label` map. #}
+{% set filterConfig = {
+    url:        cpUrl("influx/logs"),
+    clearLabel: "Clear filters"|t("influx"),
+    filters:    [
+        {
+            name:        "link",
+            label:       "Filter by link"|t("influx"),
+            placeholder: "All links"|t("influx"),
+            searchable:  true,
+            options:     linkNames,
+            selected:    selectedLinks,
+        },
+        {
+            name:        "trigger",
+            label:       "Filter by trigger"|t("influx"),
+            placeholder: "All triggers"|t("influx"),
+            searchable:  false,
+            options:     triggers,
+            selected:    selectedTriggers,
+        },
+        {
+            name:        "status",
+            label:       "Filter by status"|t("influx"),
+            placeholder: "All statuses"|t("influx"),
+            searchable:  false,
+            options:     statuses,
+            selected:    selectedStatuses,
+        },
+        {
+            name:        "result",
+            label:       "Filter by result"|t("influx"),
+            placeholder: "All results"|t("influx"),
+            searchable:  false,
+            options:     resultLabels,
+            selected:    selectedResults,
+        },
+    ],
+} %}
 
 {% block actionButton %}
     <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
@@ -25,53 +75,13 @@
             }
         });
     });
-
-    // Filter selects submit their GET form on change; dropping the page param
-    // (it isn't in the form) resets to page 1 for the new filter.
-    document.querySelectorAll('[data-influx-filter]').forEach(function (select) {
-        select.addEventListener('change', function () {
-            this.form.submit();
-        });
-    });
     {% endjs %}
 
-    {# Filter by link, trigger, status and/or result kind without leaving the
-       page. A result kind selects the runs whose counter for it moved, so
-       "Updated" answers "which runs changed anything". #}
-    <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap influx-logs-toolbar" style="margin-bottom: 14px;">
-        <div class="select">
-            <select name="link" data-influx-filter aria-label="{{ 'Filter by link'|t('influx') }}">
-                <option value="">{{ "All links"|t("influx") }}</option>
-                {% for handle, name in linkNames %}
-                    <option value="{{ handle }}"{{ handle == selectedLink ? " selected" }}>{{ name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="select">
-            <select name="trigger" data-influx-filter aria-label="{{ 'Filter by trigger'|t('influx') }}">
-                <option value="">{{ "All triggers"|t("influx") }}</option>
-                {% for value, label in triggers %}
-                    <option value="{{ value }}"{{ value == selectedTrigger ? " selected" }}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="select">
-            <select name="status" data-influx-filter aria-label="{{ 'Filter by status'|t('influx') }}">
-                <option value="">{{ "All statuses"|t("influx") }}</option>
-                {% for value, label in statuses %}
-                    <option value="{{ value }}"{{ value == selectedStatus ? " selected" }}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="select">
-            <select name="result" data-influx-filter aria-label="{{ 'Filter by result'|t('influx') }}">
-                <option value="">{{ "All results"|t("influx") }}</option>
-                {% for value in results %}
-                    <option value="{{ value }}"{{ value == selectedResult ? " selected" }}>{{ ui.resultNoun(value)|capitalize }}</option>
-                {% endfor %}
-            </select>
-        </div>
-    </form>
+    {# Filter by any set of links, triggers, statuses and/or result kinds without
+       leaving the page — values within one filter widen the list, the filters
+       narrow each other. A result kind selects the runs whose counter for it
+       moved, so "Updated" answers "which runs changed anything". #}
+    <div data-influx-log-filters="{{ filterConfig|json_encode }}"></div>
 
     {% if logs is empty %}
         <div class="zilch">

@@ -30,7 +30,7 @@
 </template>
 
 <script>
-import SearchableSelect from '../../SearchableSelect.vue';
+import SearchableSelect from '../../../components/SearchableSelect.vue';
 import * as api from '../../api.js';
 
 /**

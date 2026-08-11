@@ -7,7 +7,8 @@ namespace GlueAgency\Influx\web;
  * `src/web/assets/cp/src/components/**` pass through their `$t` helper — the
  * tree every Influx Vue app mounts from (the link builder takes
  * MappingGroupCard, the log viewer and debug inspector take DebugItemDetail,
- * DrillList, SplitResizer, ActionBadge and ErrorPanel).
+ * DrillList, SplitResizer, ActionBadge and ErrorPanel, and the builder and the
+ * Logs overview's filter toolbar both take SearchableSelect).
  *
  * Its own catalogue rather than a copy inside each app's, for two reasons: a
  * shared component's strings are then maintained in one place, and every
@@ -97,6 +98,15 @@ class SharedComponentTranslations
             'SplitResizer.vue' => [
                 // The drag handle's accessible name — it renders no text.
                 'Resize the item list',
+            ],
+            'SearchableSelect.vue' => [
+                'Search…',
+                'Clear search',
+                'not in the sample',
+                'No matches for',
+                'No options available.',
+                'Custom node',
+                '{n} selected',
             ],
         ];
     }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ElementSubFields from '../ElementSubFields.vue';
-import SearchableSelect from '../../../SearchableSelect.vue';
+import SearchableSelect from '../../../../components/SearchableSelect.vue';
 
 /**
  * The card that renders a related element's sub-fields over BOTH mapping

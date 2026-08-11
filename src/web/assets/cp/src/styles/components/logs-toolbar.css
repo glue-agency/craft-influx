@@ -1,5 +1,27 @@
-/* Logs overview filter toolbar. Give the selects a consistent minimum so
-   they don't collapse to odd widths — mirrors the debug inspector's
-   toolbar. Moved out of the template's inline {% css %}. */
-.influx-logs-toolbar .select { min-width: 160px; }
-.influx-logs-toolbar .select select { width: 100%; }
+/* ---------------------------------------------------------------------
+   Logs overview filter toolbar (LogFilters). Four multi-selects on a row
+   that wraps rather than overflows — each keeps a consistent minimum so
+   they don't collapse to odd widths, and can grow with a long link name.
+
+   The toolbar is a Vue mount, so it renders after the page paints: the
+   min-height reserves the row's space up front, otherwise the table
+   jumps down as the selects appear.
+--------------------------------------------------------------------- */
+.influx-logs-toolbar {
+    flex-wrap: wrap;
+    gap: 7px;
+    min-height: 34px;
+    margin-bottom: 14px;
+}
+
+.influx-logs-toolbar .influx-logs-filter {
+    flex: 0 1 auto;
+    min-width: 170px;
+}
+
+/* Sits with the selects rather than at the row's end — it belongs to the
+   set of filters it clears, and jumping to the far right would move it
+   every time a filter is added. */
+.influx-logs-toolbar .influx-logs-filters-clear {
+    margin-inline-start: 7px;
+}

@@ -163,7 +163,7 @@
 </template>
 
 <script>
-import SearchableSelect from '../../SearchableSelect.vue';
+import SearchableSelect from '../../../components/SearchableSelect.vue';
 import MappingGroupCard from '../../../components/MappingGroupCard.vue';
 import MappingExtras from '../MappingExtras.vue';
 import { controlFor } from '../registry.js';

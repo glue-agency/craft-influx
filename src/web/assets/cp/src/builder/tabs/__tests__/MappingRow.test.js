@@ -18,7 +18,7 @@ import * as api from '../../api.js';
 import { store } from '../../store.js';
 import MappingRow from '../MappingRow.vue';
 import MappingExtras from '../../schema/MappingExtras.vue';
-import SearchableSelect from '../../SearchableSelect.vue';
+import SearchableSelect from '../../../components/SearchableSelect.vue';
 import fixture from '../../../../tests/fixtures/mappable-field.json';
 
 /**

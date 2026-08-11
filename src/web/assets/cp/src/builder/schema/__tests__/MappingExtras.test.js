@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import MappingExtras from '../MappingExtras.vue';
 import MatrixFields from '../inputs/MatrixFields.vue';
 import SubFieldRows from '../inputs/SubFieldRows.vue';
-import SearchableSelect from '../../SearchableSelect.vue';
+import SearchableSelect from '../../../components/SearchableSelect.vue';
 
 /**
  * The `extra` region's renderer, and with it the two binding arities that are the

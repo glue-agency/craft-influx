@@ -9,6 +9,7 @@
             class="influx-searchable-select-trigger"
             :class="{ active: open }"
             :disabled="disabled"
+            :aria-label="ariaLabel || null"
             :aria-expanded="open ? 'true' : 'false'"
             aria-haspopup="listbox"
             @click="toggle"
@@ -170,6 +171,11 @@ import { t } from '../lib/installT.js';
  *   - Click-outside closes the menu.
  *   - Backspace in an empty search box clears the current value.
  *
+ * Every dismissal emits `close` (Escape, click-outside, a second click on the
+ * trigger, and a single-select commit). A `multiple` consumer with something
+ * expensive to do about a selection — a page load, a fetch — hangs it there
+ * rather than on each pick, since the operator is mid-set until the menu goes.
+ *
  * Option shapes:
  *   - flat:    [{value, label}] — the plain list rendering;
  *   - grouped: [{label, kind?, options: [{value, label}]}] — rendered with
@@ -193,12 +199,17 @@ import { t } from '../lib/installT.js';
 export default {
     name: 'SearchableSelect',
 
-    emits: ['update:modelValue', 'open'],
+    emits: ['update:modelValue', 'open', 'close'],
 
     props: {
         modelValue: { type: [String, Number, Array, null], default: '' },
         options: { type: Array, default: () => [] },
         placeholder: { type: String, default: '' },
+        // Accessible name for the trigger. Its text is the value, so without one
+        // a picked select stops saying WHICH choice it holds — the placeholder
+        // ("All links") was the only thing naming it. Callers standing next to a
+        // visible label leave it off.
+        ariaLabel: { type: String, default: '' },
         searchPlaceholder: { type: String, default: '' },
         // Shown inside the dropdown when the option list is empty AND the
         // user hasn't typed a query (different from the "no matches" copy).
@@ -232,7 +243,10 @@ export default {
         // all live in the composable; every close also resets the query.
         const { open, dropUp, openMenu, close, toggle: toggleMenu } = useDropdown({
             root: () => root.value,
-            onClose: () => { query.value = ''; },
+            onClose: () => {
+                query.value = '';
+                emit('close');
+            },
         });
 
         const hasGroupedOptions = computed(() => {
