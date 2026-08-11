@@ -1,24 +1,12 @@
 /* ---------------------------------------------------------------------
-   Logs overview filter toolbar (LogFilters). Four labelled multi-selects
-   on a row that wraps rather than overflows — each keeps a consistent
-   minimum so they don't collapse to odd widths, and can grow with a long
-   link name. The label above each select is the Debug toolbar's field
-   pattern, so the two toolbars read the same.
+   Logs overview filter toolbar. Craft's own selects on a row that wraps
+   rather than overflows, each with the small uppercase label the Debug
+   toolbar's controls carry so the two read the same. Give the selects a
+   consistent minimum so they don't collapse to odd widths.
 
-   The gap to the table sits on the MOUNT wrapper, not on the toolbar:
-   Craft zeroes `.toolbar:last-child`'s bottom margin with `!important`,
-   and the Vue mount makes the toolbar exactly that (its container's only
-   child). The wrapper carries no Craft class, so nothing overrides it.
-
-   The toolbar is a Vue mount, so it renders after the page paints: the
-   min-height reserves the row's space up front, otherwise the table
-   jumps down as the selects appear.
+   Spacing comes from Craft's own `.toolbar` rule; the row is a direct
+   child of the pane, so nothing overrides it.
 --------------------------------------------------------------------- */
-.influx-logs-toolbar-mount {
-    margin-bottom: 14px;
-    min-height: 34px;
-}
-
 .influx-logs-toolbar {
     /* Bottom-aligned so the clear button lines up with the selects rather
        than with the labels above them. */
@@ -29,10 +17,8 @@
 
 .influx-logs-toolbar .influx-logs-filter {
     display: flex;
-    flex: 0 1 auto;
     flex-direction: column;
     gap: 4px;
-    min-width: 170px;
 }
 
 .influx-logs-toolbar .influx-logs-filter-label {
@@ -42,6 +28,9 @@
     text-transform: uppercase;
     color: var(--medium-text-color);
 }
+
+.influx-logs-toolbar .select { min-width: 160px; }
+.influx-logs-toolbar .select select { width: 100%; }
 
 /* Sits with the selects rather than at the row's end — it belongs to the
    set of filters it clears, and jumping to the far right would move it

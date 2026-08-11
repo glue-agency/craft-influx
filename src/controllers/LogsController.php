@@ -20,13 +20,12 @@ use yii\web\Response;
 class LogsController extends AbstractController
 {
     /**
-     * Every toolbar filter takes a SET of values, and each is validated against
-     * what currently exists (or, for status, trigger and result, against its
-     * enum) by {@see someOfQueryParam()}, so a stale query string drops the
-     * values nothing answers to instead of filtering to nothing. The
-     * `handle => name` map behind the filter and the `handle => chip` map the
-     * rows render carry no entry for a link that has since been deleted — the row
-     * then degrades to the handle the run stored.
+     * Every toolbar filter is validated against what currently exists (or, for
+     * status, trigger and result, against its enum) by {@see oneOfQueryParam()},
+     * so a stale query string falls back to "all". The `handle => name` map
+     * behind the filter and the `handle => chip` map the rows render carry no
+     * entry for a link that has since been deleted — the row then degrades to the
+     * handle the run stored.
      *
      * The page's triggering users are chipped from one query up front
      * ({@see LogPresenter::userChips()}) rather than per row — 50 rows, 50
@@ -59,44 +58,39 @@ class LogsController extends AbstractController
         // overview's to translate.
         $results = array_map(static fn(ItemAction $action) => $action->value, ItemAction::countedCases());
 
-        $selectedLinks = $this->someOfQueryParam('link', array_keys($linkNames));
-        $selectedStatuses = $this->someOfQueryParam('status', array_keys($statuses));
-        $selectedTriggers = $this->someOfQueryParam('trigger', array_keys($triggers));
-        $selectedResults = $this->someOfQueryParam('result', $results);
+        $selectedLink = $this->oneOfQueryParam('link', array_keys($linkNames));
+        $selectedStatus = $this->oneOfQueryParam('status', array_keys($statuses));
+        $selectedTrigger = $this->oneOfQueryParam('trigger', array_keys($triggers));
+        $selectedResult = $this->oneOfQueryParam('result', $results);
 
         ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate(
             $page,
             LogsService::LOGS_PER_PAGE,
-            $selectedLinks,
-            $selectedStatuses,
-            $selectedTriggers,
-            $selectedResults,
+            $selectedLink,
+            $selectedStatus,
+            $selectedTrigger,
+            $selectedResult,
         );
 
         $presenter = new LogPresenter();
 
-        // The toolbar is a Vue mount whose only translated copy is the option
-        // labels the template hands it; the strings it does translate are
-        // SearchableSelect's own, which every app screen gets for free.
-        $this->registerAppTranslations([]);
-
         return $this->renderTemplate('influx/logs/index', [
-            'logs'             => $logs,
-            'page'             => $page,
-            'perPage'          => LogsService::LOGS_PER_PAGE,
-            'total'            => $total,
-            'linkNames'        => $linkNames,
-            'linkChips'        => $linkChips,
-            'presenter'        => $presenter,
-            'userChips'        => $presenter->userChips($logs),
-            'selectedLinks'    => $selectedLinks,
-            'selectedStatuses' => $selectedStatuses,
-            'statuses'         => $statuses,
-            'selectedTriggers' => $selectedTriggers,
-            'triggers'         => $triggers,
-            'selectedResults'  => $selectedResults,
-            'results'          => $results,
-            'retentionDays'    => $plugin->getSettings()->logRetentionDays,
+            'logs'            => $logs,
+            'page'            => $page,
+            'perPage'         => LogsService::LOGS_PER_PAGE,
+            'total'           => $total,
+            'linkNames'       => $linkNames,
+            'linkChips'       => $linkChips,
+            'presenter'       => $presenter,
+            'userChips'       => $presenter->userChips($logs),
+            'selectedLink'    => $selectedLink,
+            'selectedStatus'  => $selectedStatus,
+            'statuses'        => $statuses,
+            'selectedTrigger' => $selectedTrigger,
+            'triggers'        => $triggers,
+            'selectedResult'  => $selectedResult,
+            'results'         => $results,
+            'retentionDays'   => $plugin->getSettings()->logRetentionDays,
         ]);
     }
 

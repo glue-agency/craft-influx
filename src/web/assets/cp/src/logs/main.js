@@ -1,6 +1,5 @@
 import { createApp } from 'vue';
 import LogApp from './LogApp.vue';
-import LogFilters from './LogFilters.vue';
 import { installT } from '../lib/installT.js';
 import { installVocabulary } from '../lib/vocabulary.js';
 
@@ -30,30 +29,4 @@ export function initLog() {
     document
         .querySelectorAll('[data-influx-log]')
         .forEach(mountLog);
-}
-
-/**
- * Boot the Logs overview's filter toolbar. Same bootstrap-as-JSON contract as
- * the viewer, on its own root:
- *
- *   <div data-influx-log-filters='{"url":"…","clearLabel":"…","filters":[…]}'></div>
- */
-export function mountLogFilters(el) {
-    let config = {};
-
-    try {
-        config = JSON.parse(el.getAttribute('data-influx-log-filters') || '{}');
-    } catch (e) {
-        config = {};
-    }
-
-    const app = createApp(LogFilters, { config });
-    installT(app);
-    app.mount(el);
-}
-
-export function initLogFilters() {
-    document
-        .querySelectorAll('[data-influx-log-filters]')
-        .forEach(mountLogFilters);
 }

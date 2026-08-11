@@ -5,9 +5,8 @@
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
 
-{# Active filters, carried through the pager links so paging keeps the view.
-   Every filter is a set, so each param travels as a list. #}
-{% set filterParams = { link: selectedLinks, status: selectedStatuses, trigger: selectedTriggers, result: selectedResults }|filter(v => v is not empty) %}
+{# Active filters, carried through the pager links so paging keeps the view. #}
+{% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger, result: selectedResult }|filter(v => v is not null and v != "") %}
 
 {# The result kinds, labelled with the same nouns the Result column's pills use
    so the filter and the rows can't word a kind differently. #}
@@ -16,57 +15,15 @@
     {% set resultLabels = resultLabels|merge({ (value): ui.resultNoun(value)|capitalize }) %}
 {% endfor %}
 
-{# Bootstrap for the filter toolbar (LogFilters). The filters are declared here
-   rather than in the component so their copy stays where it's translated, and
-   each option list rides along as its `value: label` map.
-
-   `label` is the visible one above the select, so it's the plain noun; the
-   trigger's accessible name says what picking it does, which the label can't
-   (a select showing "Units" has stopped saying which filter it is). Every
-   placeholder is the same "All" — with the label naming the filter, repeating
-   the noun in the field was the field saying nothing twice. #}
-{% set filterConfig = {
-    url:        cpUrl("influx/logs"),
-    clearLabel: "Clear filters"|t("influx"),
-    filters:    [
-        {
-            name:        "link",
-            label:       "Link"|t("influx"),
-            ariaLabel:   "Filter by link"|t("influx"),
-            placeholder: "All"|t("influx"),
-            searchable:  true,
-            options:     linkNames,
-            selected:    selectedLinks,
-        },
-        {
-            name:        "trigger",
-            label:       "Trigger"|t("influx"),
-            ariaLabel:   "Filter by trigger"|t("influx"),
-            placeholder: "All"|t("influx"),
-            searchable:  false,
-            options:     triggers,
-            selected:    selectedTriggers,
-        },
-        {
-            name:        "status",
-            label:       "Status"|t("influx"),
-            ariaLabel:   "Filter by status"|t("influx"),
-            placeholder: "All"|t("influx"),
-            searchable:  false,
-            options:     statuses,
-            selected:    selectedStatuses,
-        },
-        {
-            name:        "result",
-            label:       "Result"|t("influx"),
-            ariaLabel:   "Filter by result"|t("influx"),
-            placeholder: "All"|t("influx"),
-            searchable:  false,
-            options:     resultLabels,
-            selected:    selectedResults,
-        },
-    ],
-} %}
+{# The toolbar's filters, declared once and rendered in a loop: each is a select
+   over its own `value: label` map, holding whatever the URL asked for. Adding a
+   fifth filter is an entry here plus its query param. #}
+{% set filterFields = [
+    { name: "link",    label: "Link"|t("influx"),    options: linkNames,    value: selectedLink },
+    { name: "trigger", label: "Trigger"|t("influx"), options: triggers,     value: selectedTrigger },
+    { name: "status",  label: "Status"|t("influx"),  options: statuses,     value: selectedStatus },
+    { name: "result",  label: "Result"|t("influx"),  options: resultLabels, value: selectedResult },
+] %}
 
 {% block actionButton %}
     <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
@@ -85,13 +42,41 @@
             }
         });
     });
+
+    // Filter selects submit their GET form on change; dropping the page param
+    // (it isn't in the form) resets to page 1 for the new filter.
+    document.querySelectorAll('[data-influx-filter]').forEach(function (select) {
+        select.addEventListener('change', function () {
+            this.form.submit();
+        });
+    });
     {% endjs %}
 
-    {# Filter by any set of links, triggers, statuses and/or result kinds without
-       leaving the page — values within one filter widen the list, the filters
-       narrow each other. A result kind selects the runs whose counter for it
-       moved, so "Updated" answers "which runs changed anything". #}
-    <div class="influx-logs-toolbar-mount" data-influx-log-filters="{{ filterConfig|json_encode }}"></div>
+    {# Filter by link, trigger, status and/or result kind without leaving the
+       page. A result kind selects the runs whose counter for it moved, so
+       "Updated" answers "which runs changed anything".
+
+       Craft's own selects, labelled the way the Debug toolbar's controls are —
+       the CP's chrome rather than a look of our own. #}
+    <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex influx-logs-toolbar">
+        {% for field in filterFields %}
+            <div class="influx-logs-filter">
+                <label class="influx-logs-filter-label" for="influx-filter-{{ field.name }}">{{ field.label }}</label>
+                <div class="select">
+                    <select id="influx-filter-{{ field.name }}" name="{{ field.name }}" data-influx-filter>
+                        <option value="">{{ "All"|t("influx") }}</option>
+                        {% for value, label in field.options %}
+                            <option value="{{ value }}"{{ value == field.value ? " selected" }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        {% endfor %}
+
+        {% if filterParams is not empty %}
+            <a class="btn influx-logs-filters-clear" href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a>
+        {% endif %}
+    </form>
 
     {% if logs is empty %}
         <div class="zilch">
@@ -107,9 +92,9 @@
                     <th>{{ "Run"|t("influx") }}</th>
                     <th>{{ "Link"|t("influx") }}</th>
                     <th>{{ "Trigger"|t("influx") }}</th>
+                    <th>{{ "Partial import"|t("influx") }}</th>
                     <th>{{ "User"|t("influx") }}</th>
                     <th>{{ "Site"|t("influx") }}</th>
-                    <th>{{ "Partial import"|t("influx") }}</th>
                     <th>{{ "Result"|t("influx") }}</th>
                     <th class="thin"></th>
                 </tr>
@@ -157,6 +142,17 @@
                             {{ influxValueChip(triggers[log.trigger] ?? log.trigger) }}
                         </td>
 
+                        {# Partial import — the preset handle the run applied, and
+                           nothing at all for a full run: the column answers
+                           "which slice did this fetch", which a full run doesn't
+                           have an answer to. Empty like the User cell rather than
+                           spelling out the absence on every row. #}
+                        <td>
+                            {% if log.offsetHandle %}
+                                {{ influxValueChip(log.offsetHandle) }}
+                            {% endif %}
+                        </td>
+
                         {# User — the person who asked for the run, as their user
                            chip. Empty for a run nobody triggered (console, cron). #}
                         <td>
@@ -170,18 +166,6 @@
                            Links overview. #}
                         <td>
                             {{ influxSiteChip(log.siteHandle) }}
-                        </td>
-
-                        {# Partial import — the preset handle the run applied, or
-                           nothing for a full one: which slice a run fetched is
-                           what tells a green run with no changes apart from one
-                           that never asked for the rows. #}
-                        <td>
-                            {% if log.offsetHandle %}
-                                {{ influxValueChip(log.offsetHandle) }}
-                            {% else %}
-                                <span class="light">{{ "whole feed"|t("influx") }}</span>
-                            {% endif %}
                         </td>
 
                         {# Result — the six numeric columns as the shared pill

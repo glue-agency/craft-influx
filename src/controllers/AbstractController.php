@@ -217,36 +217,6 @@ abstract class AbstractController extends Controller
     }
 
     /**
-     * Read a multi-value query param (`?link[]=a&link[]=b`) as the sublist of
-     * `$allowed` it names — the {@see oneOfQueryParam()} contract for a filter
-     * that takes a set: anything not currently on offer is dropped rather than
-     * filtering to nothing, and an empty result means "all".
-     *
-     * A single scalar is read as a one-value set, so the URLs that predate the
-     * multi-select toolbar — a bookmark, the error badge's `?status=error`, a
-     * link pasted into a ticket — keep working.
-     *
-     * Ordered by `$allowed` rather than by the query string, which is what makes
-     * the canonical order (an enum's declaration, the links' own sort) the order
-     * the UI shows back, whichever order the operator picked in.
-     *
-     * @param string[] $allowed
-     * @return string[]
-     */
-    protected function someOfQueryParam(string $name, array $allowed): array
-    {
-        $value = Craft::$app->getRequest()->getQueryParam($name);
-
-        if ($value === null || $value === '') {
-            return [];
-        }
-
-        $values = array_map(static fn($one) => trim((string) $one), (array) $value);
-
-        return array_values(array_filter($allowed, static fn(string $one) => in_array($one, $values, true)));
-    }
-
-    /**
      * A link by numeric id (route segment) or handle (query param), 404ing when
      * it doesn't exist. An absent / blank key never reaches the DB — a request
      * that named no link is the same "not found" answer.

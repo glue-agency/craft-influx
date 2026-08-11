@@ -550,16 +550,14 @@ class LogsService extends Component
 
     /**
      * One page of logs, newest first, plus the total for the pager. Optionally
-     * restricted to a set of links (by handle), run statuses, triggers and/or
-     * result kinds — the filters the Logs overview toolbar exposes, each of them
-     * multi-select. Values inside one filter widen the answer (OR), the filters
-     * narrow each other (AND), and an empty filter is ignored, so
-     * `paginate($page, $perPage)` still returns everything.
+     * restricted to one link (by handle), one run status, one trigger, and/or
+     * one result kind — the filters the Logs overview toolbar exposes. A null
+     * filter is ignored, so `paginate($page, $perPage)` still returns
+     * everything.
      *
      * `error` is the one status that isn't a plain column match: it selects
      * everything the nav badge counts ({@see erroredCondition()}), so following
-     * the badge to this list actually finds the logs it was counting. Picked
-     * alongside other statuses it ORs in as that whole condition.
+     * the badge to this list actually finds the logs it was counting.
      *
      * A result kind is an {@see ItemAction} and matches the runs whose counter
      * for it moved, straight off the counter column
@@ -571,85 +569,38 @@ class LogsService extends Component
      * broader "needs a look" question and includes a run that failed outright
      * without reaching an item.
      *
-     * @param string[] $linkHandles
-     * @param string[] $statuses
-     * @param string[] $triggers
-     * @param string[] $results
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage, array $linkHandles = [], array $statuses = [], array $triggers = [], array $results = []): array
+    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null, ?string $result = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
 
-        if ($linkHandles !== []) {
-            $query->andWhere(['linkHandle' => $linkHandles]);
+        if ($linkHandle !== null && $linkHandle !== '') {
+            $query->andWhere(['linkHandle' => $linkHandle]);
         }
 
-        if ($statuses !== []) {
-            $query->andWhere(self::statusCondition($statuses));
+        if ($status === RunStatus::ERROR->value) {
+            // Matches the nav badge's definition, not the status column's — see
+            // {@see erroredCondition()}.
+            $query->andWhere(self::erroredCondition());
+        } elseif ($status !== null && $status !== '') {
+            $query->andWhere(['status' => $status]);
         }
 
-        if ($triggers !== []) {
-            $query->andWhere(['trigger' => $triggers]);
+        if ($trigger !== null && $trigger !== '') {
+            $query->andWhere(['trigger' => $trigger]);
         }
 
-        $counters = self::resultCounters($results);
+        $counter = $result !== null ? ItemAction::tryFrom($result)?->counterAttribute() : null;
 
-        if ($counters !== []) {
-            $condition = ['or'];
-
-            foreach ($counters as $counter) {
-                $condition[] = ['>', $counter, 0];
-            }
-
-            $query->andWhere($condition);
+        if ($counter !== null) {
+            $query->andWhere(['>', $counter, 0]);
         }
 
         $total = (int) $query->count();
         $logs = $query->offset(($page - 1) * $perPage)->limit($perPage)->all();
 
         return ['logs' => $logs, 'total' => $total];
-    }
-
-    /**
-     * What a set of picked run statuses matches: the plain column values as one
-     * IN, with `error` joining as the badge's broader condition rather than as a
-     * value of its own (see {@see erroredCondition()}).
-     *
-     * @param string[] $statuses
-     */
-    protected static function statusCondition(array $statuses): array
-    {
-        $plain = array_values(array_diff($statuses, [RunStatus::ERROR->value]));
-
-        if (! in_array(RunStatus::ERROR->value, $statuses, true)) {
-            return ['status' => $plain];
-        }
-
-        if ($plain === []) {
-            return self::erroredCondition();
-        }
-
-        return ['or', ['status' => $plain], self::erroredCondition()];
-    }
-
-    /**
-     * The counter columns a set of picked result kinds asks about, deduplicated:
-     * two kinds sharing one counter (a per-site variant and its base) are one
-     * column, and a kind no counter answers to drops out — so an unrecognised
-     * filter is no filter rather than a condition on nothing.
-     *
-     * @param string[] $results
-     * @return string[]
-     */
-    protected static function resultCounters(array $results): array
-    {
-        $counters = array_map(
-            static fn(string $result) => ItemAction::tryFrom($result)?->counterAttribute(),
-            $results,
-        );
-
-        return array_values(array_unique(array_filter($counters)));
     }
 
     /**

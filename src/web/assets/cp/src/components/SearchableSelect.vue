@@ -9,7 +9,6 @@
             class="influx-searchable-select-trigger"
             :class="{ active: open }"
             :disabled="disabled"
-            :aria-label="ariaLabel || null"
             :aria-expanded="open ? 'true' : 'false'"
             aria-haspopup="listbox"
             @click="toggle"
@@ -200,11 +199,6 @@ export default {
         modelValue: { type: [String, Number, Array, null], default: '' },
         options: { type: Array, default: () => [] },
         placeholder: { type: String, default: '' },
-        // Accessible name for the trigger. Its text is the value, so without one
-        // a picked select stops saying WHICH choice it holds — the placeholder
-        // ("All links") was the only thing naming it. Callers standing next to a
-        // visible label leave it off.
-        ariaLabel: { type: String, default: '' },
         searchPlaceholder: { type: String, default: '' },
         // Shown inside the dropdown when the option list is empty AND the
         // user hasn't typed a query (different from the "no matches" copy).

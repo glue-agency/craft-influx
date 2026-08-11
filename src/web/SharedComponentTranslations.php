@@ -7,8 +7,8 @@ namespace GlueAgency\Influx\web;
  * `src/web/assets/cp/src/components/**` pass through their `$t` helper — the
  * tree every Influx Vue app mounts from (the link builder takes
  * MappingGroupCard, the log viewer and debug inspector take DebugItemDetail,
- * DrillList, SplitResizer, ActionBadge and ErrorPanel, and the builder and the
- * Logs overview's filter toolbar both take SearchableSelect).
+ * DrillList, SplitResizer, ActionBadge and ErrorPanel, and the builder takes
+ * SearchableSelect).
  *
  * Its own catalogue rather than a copy inside each app's, for two reasons: a
  * shared component's strings are then maintained in one place, and every
