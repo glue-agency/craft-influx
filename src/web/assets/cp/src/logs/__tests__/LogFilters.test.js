@@ -15,16 +15,18 @@ const baseConfig = (over = {}) => ({
     filters: [
         {
             name: 'link',
-            label: 'Filter by link',
-            placeholder: 'All links',
+            label: 'Link',
+            ariaLabel: 'Filter by link',
+            placeholder: 'All',
             searchable: true,
             options: { units: 'Units', pages: 'Pages' },
             selected: [],
         },
         {
             name: 'result',
-            label: 'Filter by result',
-            placeholder: 'All results',
+            label: 'Result',
+            ariaLabel: 'Filter by result',
+            placeholder: 'All',
             searchable: false,
             options: { created: 'Created', updated: 'Updated' },
             selected: [],
@@ -60,11 +62,20 @@ describe('LogFilters', () => {
 
         expect(wrapper.findAllComponents(SearchableSelect)).toHaveLength(2);
         expect(links.props('multiple')).toBe(true);
-        expect(links.props('ariaLabel')).toBe('Filter by link');
-        expect(links.props('placeholder')).toBe('All links');
+        expect(links.props('placeholder')).toBe('All');
         expect(links.props('modelValue')).toEqual(['units']);
         expect(links.props('searchable')).toBe(true);
         expect(select(wrapper, 1).props('searchable')).toBe(false);
+    });
+
+    it('labels each filter visibly, and names its trigger for what picking it does', () => {
+        // The visible label is the noun ("Link"); the accessible name has to say
+        // more, because a select showing "Units" no longer says which filter it is.
+        const wrapper = mountFilters();
+
+        expect(wrapper.findAll('.influx-logs-filter-label').map(l => l.text())).toEqual(['Link', 'Result']);
+        expect(select(wrapper, 0).props('ariaLabel')).toBe('Filter by link');
+        expect(select(wrapper, 1).props('ariaLabel')).toBe('Filter by result');
     });
 
     it('hands the select pairs built from the value:label map, in the map order', () => {
@@ -83,39 +94,27 @@ describe('LogFilters', () => {
         expect(hidden(wrapper)).toEqual([['link[]', 'units'], ['link[]', 'pages']]);
     });
 
-    it('applies on close rather than on each pick — the set is built first', async () => {
+    it('applies on each pick, so the list answers the filter as it is built', async () => {
         const wrapper = mountFilters();
         const links = select(wrapper, 0);
 
         links.vm.$emit('update:modelValue', ['units']);
-        links.vm.$emit('update:modelValue', ['units', 'pages']);
-        await wrapper.vm.$nextTick();
-
-        expect(submitted(wrapper)).toBe(0);
-
-        links.vm.$emit('close');
         await wrapper.vm.$nextTick();
 
         expect(submitted(wrapper)).toBe(1);
-    });
 
-    it('does not apply when the menu closes on the selection it opened with', async () => {
-        const wrapper = mountFilters();
-
-        select(wrapper, 0).vm.$emit('close');
+        links.vm.$emit('update:modelValue', ['units', 'pages']);
         await wrapper.vm.$nextTick();
 
-        expect(submitted(wrapper)).toBe(0);
+        expect(submitted(wrapper)).toBe(2);
     });
 
     it('reads a re-ordered pick of the same values as no change', async () => {
         const wrapper = mountFilters({
             filters: baseConfig().filters.map(f => (f.name === 'link' ? { ...f, selected: ['units', 'pages'] } : f)),
         });
-        const links = select(wrapper, 0);
 
-        links.vm.$emit('update:modelValue', ['pages', 'units']);
-        links.vm.$emit('close');
+        select(wrapper, 0).vm.$emit('update:modelValue', ['pages', 'units']);
         await wrapper.vm.$nextTick();
 
         expect(submitted(wrapper)).toBe(0);
@@ -129,7 +128,6 @@ describe('LogFilters', () => {
 
         // Multi-select answers null once its set empties.
         links.vm.$emit('update:modelValue', null);
-        links.vm.$emit('close');
         await wrapper.vm.$nextTick();
 
         expect(hidden(wrapper)).toEqual([]);
@@ -146,6 +144,7 @@ describe('LogFilters', () => {
         await wrapper.vm.$nextTick();
 
         const clear = wrapper.find('.influx-logs-filters-clear');
+        const before = submitted(wrapper);
 
         expect(clear.text()).toBe('Clear filters');
 
@@ -153,7 +152,7 @@ describe('LogFilters', () => {
         await wrapper.vm.$nextTick();
 
         expect(hidden(wrapper)).toEqual([]);
-        expect(submitted(wrapper)).toBe(1);
+        expect(submitted(wrapper)).toBe(before + 1);
     });
 
     it('submits to the overview URL, which carries no page — a filter change lands on page one', () => {

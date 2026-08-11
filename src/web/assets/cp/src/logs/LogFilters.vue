@@ -1,15 +1,16 @@
 <template>
     <form ref="form" method="get" :action="config.url" class="toolbar flex influx-logs-toolbar">
         <div v-for="filter in filters" :key="filter.name" class="influx-logs-filter">
+            <span class="influx-logs-filter-label" v-text="filter.label"></span>
+
             <v-searchable-select
                 :model-value="picked[filter.name]"
                 :options="options(filter)"
                 :placeholder="filter.placeholder"
-                :aria-label="filter.label"
+                :aria-label="filter.ariaLabel"
                 :searchable="filter.searchable"
                 multiple
                 @update:model-value="pick(filter.name, $event)"
-                @close="apply"
             ></v-searchable-select>
 
             <!-- What the GET submit actually sends: one input per picked value,
@@ -44,25 +45,25 @@ import SearchableSelect from '../components/SearchableSelect.vue';
  * and page through.
  *
  * Filters are declared by the host template rather than known here, which is
- * what keeps the labels where they are already translated: option labels, the
- * placeholders and the clear button's copy all arrive pre-translated in the
- * config, and a fifth filter is a template change with no Vue edit. The shape:
+ * what keeps the labels where they are already translated: the visible label,
+ * the accessible name, option labels, the placeholders and the clear button's
+ * copy all arrive pre-translated in the config, and a fifth filter is a template
+ * change with no Vue edit. The shape:
  *
  *   {
  *     url: '<the overview URL>',
  *     clearLabel: 'Clear filters',
  *     filters: [
- *       {name: 'link', label: 'Filter by link', placeholder: 'All links',
- *        searchable: true, options: [{value, label}], selected: ['units']},
+ *       {name: 'link', label: 'Link', ariaLabel: 'Filter by link',
+ *        placeholder: 'All', searchable: true,
+ *        options: {units: 'Units'}, selected: ['units']},
  *       …
  *     ],
  *   }
  *
- * Applied on dropdown CLOSE, not on every pick: a multi-select is a set the
- * operator builds, and reloading the page under them after each option would
- * take the menu away mid-build. Closing it is the signal that the set is what
- * they meant. A close that changed nothing doesn't submit, so opening a menu to
- * look and pressing Escape costs no page load.
+ * Applied on every pick, so the list answers the filter as it is built rather
+ * than once the operator has moved on. A pick that changes nothing doesn't
+ * submit, so opening a menu to look costs no page load.
  */
 export default {
     name: 'LogFilters',
@@ -128,6 +129,7 @@ export default {
          */
         pick(name, value) {
             this.picked[name] = Array.isArray(value) ? value : [];
+            this.apply();
         },
 
         apply() {

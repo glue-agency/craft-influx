@@ -171,11 +171,6 @@ import { t } from '../lib/installT.js';
  *   - Click-outside closes the menu.
  *   - Backspace in an empty search box clears the current value.
  *
- * Every dismissal emits `close` (Escape, click-outside, a second click on the
- * trigger, and a single-select commit). A `multiple` consumer with something
- * expensive to do about a selection — a page load, a fetch — hangs it there
- * rather than on each pick, since the operator is mid-set until the menu goes.
- *
  * Option shapes:
  *   - flat:    [{value, label}] — the plain list rendering;
  *   - grouped: [{label, kind?, options: [{value, label}]}] — rendered with
@@ -199,7 +194,7 @@ import { t } from '../lib/installT.js';
 export default {
     name: 'SearchableSelect',
 
-    emits: ['update:modelValue', 'open', 'close'],
+    emits: ['update:modelValue', 'open'],
 
     props: {
         modelValue: { type: [String, Number, Array, null], default: '' },
@@ -243,10 +238,7 @@ export default {
         // all live in the composable; every close also resets the query.
         const { open, dropUp, openMenu, close, toggle: toggleMenu } = useDropdown({
             root: () => root.value,
-            onClose: () => {
-                query.value = '';
-                emit('close');
-            },
+            onClose: () => { query.value = ''; },
         });
 
         const hasGroupedOptions = computed(() => {

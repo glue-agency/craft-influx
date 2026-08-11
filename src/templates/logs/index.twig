@@ -18,39 +18,49 @@
 
 {# Bootstrap for the filter toolbar (LogFilters). The filters are declared here
    rather than in the component so their copy stays where it's translated, and
-   each option list rides along as its `value: label` map. #}
+   each option list rides along as its `value: label` map.
+
+   `label` is the visible one above the select, so it's the plain noun; the
+   trigger's accessible name says what picking it does, which the label can't
+   (a select showing "Units" has stopped saying which filter it is). Every
+   placeholder is the same "All" — with the label naming the filter, repeating
+   the noun in the field was the field saying nothing twice. #}
 {% set filterConfig = {
     url:        cpUrl("influx/logs"),
     clearLabel: "Clear filters"|t("influx"),
     filters:    [
         {
             name:        "link",
-            label:       "Filter by link"|t("influx"),
-            placeholder: "All links"|t("influx"),
+            label:       "Link"|t("influx"),
+            ariaLabel:   "Filter by link"|t("influx"),
+            placeholder: "All"|t("influx"),
             searchable:  true,
             options:     linkNames,
             selected:    selectedLinks,
         },
         {
             name:        "trigger",
-            label:       "Filter by trigger"|t("influx"),
-            placeholder: "All triggers"|t("influx"),
+            label:       "Trigger"|t("influx"),
+            ariaLabel:   "Filter by trigger"|t("influx"),
+            placeholder: "All"|t("influx"),
             searchable:  false,
             options:     triggers,
             selected:    selectedTriggers,
         },
         {
             name:        "status",
-            label:       "Filter by status"|t("influx"),
-            placeholder: "All statuses"|t("influx"),
+            label:       "Status"|t("influx"),
+            ariaLabel:   "Filter by status"|t("influx"),
+            placeholder: "All"|t("influx"),
             searchable:  false,
             options:     statuses,
             selected:    selectedStatuses,
         },
         {
             name:        "result",
-            label:       "Filter by result"|t("influx"),
-            placeholder: "All results"|t("influx"),
+            label:       "Result"|t("influx"),
+            ariaLabel:   "Filter by result"|t("influx"),
+            placeholder: "All"|t("influx"),
             searchable:  false,
             options:     resultLabels,
             selected:    selectedResults,
@@ -81,7 +91,7 @@
        leaving the page — values within one filter widen the list, the filters
        narrow each other. A result kind selects the runs whose counter for it
        moved, so "Updated" answers "which runs changed anything". #}
-    <div data-influx-log-filters="{{ filterConfig|json_encode }}"></div>
+    <div class="influx-logs-toolbar-mount" data-influx-log-filters="{{ filterConfig|json_encode }}"></div>
 
     {% if logs is empty %}
         <div class="zilch">
