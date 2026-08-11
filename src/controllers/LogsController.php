@@ -21,8 +21,8 @@ class LogsController extends AbstractController
 {
     /**
      * Every toolbar filter is validated against what currently exists (or, for
-     * status and trigger, against its enum) by {@see oneOfQueryParam()}, so a
-     * stale query string falls back to "all". The `handle => name` map behind the
+     * status, trigger and result, against its enum) by {@see oneOfQueryParam()},
+     * so a stale query string falls back to "all". The `handle => name` map behind the
      * filter and the `handle => chip` map the rows render carry no entry for a
      * link that has since been deleted — the row then degrades to the handle the
      * run stored.
@@ -53,9 +53,15 @@ class LogsController extends AbstractController
             $triggers[$trigger->value] = $trigger->label();
         }
 
+        // The result kinds a run can be filtered to are its counters, in the
+        // order the result pills render — the values only, their nouns being the
+        // overview's to translate.
+        $results = array_map(static fn(ItemAction $action) => $action->value, ItemAction::countedCases());
+
         $selectedLink = $this->oneOfQueryParam('link', array_keys($linkNames));
         $selectedStatus = $this->oneOfQueryParam('status', array_keys($statuses));
         $selectedTrigger = $this->oneOfQueryParam('trigger', array_keys($triggers));
+        $selectedResult = $this->oneOfQueryParam('result', $results);
 
         ['logs' => $logs, 'total' => $total] = $plugin->logs->paginate(
             $page,
@@ -63,6 +69,7 @@ class LogsController extends AbstractController
             $selectedLink,
             $selectedStatus,
             $selectedTrigger,
+            $selectedResult,
         );
 
         $presenter = new LogPresenter();
@@ -81,6 +88,8 @@ class LogsController extends AbstractController
             'statuses'        => $statuses,
             'selectedTrigger' => $selectedTrigger,
             'triggers'        => $triggers,
+            'selectedResult'  => $selectedResult,
+            'results'         => $results,
             'retentionDays'   => $plugin->getSettings()->logRetentionDays,
         ]);
     }

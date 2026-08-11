@@ -550,17 +550,28 @@ class LogsService extends Component
 
     /**
      * One page of logs, newest first, plus the total for the pager. Optionally
-     * restricted to one link (by handle), one run status, and/or one trigger —
-     * the filters the Logs overview toolbar exposes. A null filter is ignored,
-     * so `paginate($page, $perPage)` still returns everything.
+     * restricted to one link (by handle), one run status, one trigger, and/or
+     * one result kind — the filters the Logs overview toolbar exposes. A null
+     * filter is ignored, so `paginate($page, $perPage)` still returns
+     * everything.
      *
      * `error` is the one status that isn't a plain column match: it selects
      * everything the nav badge counts ({@see erroredCondition()}), so following
      * the badge to this list actually finds the logs it was counting.
      *
+     * A result kind is an {@see ItemAction} and matches the runs whose counter
+     * for it moved, straight off the counter column
+     * ({@see ItemAction::counterAttribute()}) rather than over the items table —
+     * "which runs updated anything" is one scan that way. It groups the way the
+     * counters do, so `deleted` finds a run whose deletions were all per-site.
+     * `result=error` is deliberately NOT the status filter's `error`: it asks
+     * for runs that errored on ITEMS, where the status one asks the badge's
+     * broader "needs a look" question and includes a run that failed outright
+     * without reaching an item.
+     *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null): array
+    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null, ?string $result = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
 
@@ -578,6 +589,12 @@ class LogsService extends Component
 
         if ($trigger !== null && $trigger !== '') {
             $query->andWhere(['trigger' => $trigger]);
+        }
+
+        $counter = $result !== null ? ItemAction::tryFrom($result)?->counterAttribute() : null;
+
+        if ($counter !== null) {
+            $query->andWhere(['>', $counter, 0]);
         }
 
         $total = (int) $query->count();

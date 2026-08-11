@@ -6,7 +6,7 @@
 {% set selectedSubnavItem = "logs" %}
 
 {# Active filters, carried through the pager links so paging keeps the view. #}
-{% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger }|filter(v => v is not null and v != "") %}
+{% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger, result: selectedResult }|filter(v => v is not null and v != "") %}
 
 {% block actionButton %}
     <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
@@ -35,7 +35,9 @@
     });
     {% endjs %}
 
-    {# Filter by link, trigger and/or status without leaving the page. #}
+    {# Filter by link, trigger, status and/or result kind without leaving the
+       page. A result kind selects the runs whose counter for it moved, so
+       "Updated" answers "which runs changed anything". #}
     <form method="get" action="{{ cpUrl('influx/logs') }}" class="toolbar flex flex-nowrap influx-logs-toolbar" style="margin-bottom: 14px;">
         <div class="select">
             <select name="link" data-influx-filter aria-label="{{ 'Filter by link'|t('influx') }}">
@@ -61,12 +63,20 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="select">
+            <select name="result" data-influx-filter aria-label="{{ 'Filter by result'|t('influx') }}">
+                <option value="">{{ "All results"|t("influx") }}</option>
+                {% for value in results %}
+                    <option value="{{ value }}"{{ value == selectedResult ? " selected" }}>{{ ui.resultNoun(value)|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </form>
 
     {% if logs is empty %}
         <div class="zilch">
             <p>{{ "No runs yet."|t("influx") }}</p>
-            {% if selectedLink or selectedStatus or selectedTrigger %}
+            {% if filterParams is not empty %}
                 <p class="light"><a href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a></p>
             {% endif %}
         </div>

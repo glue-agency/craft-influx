@@ -1,5 +1,10 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Added
+- **The Logs overview filters by result kind.** Link, trigger and status could each narrow the list, but the question an operator actually arrives with — "which runs changed anything?" — had no filter and was answered by reading the Result column down a page of runs that mostly changed nothing. The fourth select takes one result kind and keeps the runs whose counter for it moved, so a link plus **Updated** is the list of runs that wrote. It reads the counter column rather than the items table, which keeps it one scan, and it groups the way the counters do — filtering **Deleted** finds a run whose deletions were all per-site. `result=error` is deliberately not the same question as the status filter's **Failed**: it asks for runs that errored on items, where the status one asks the nav badge's broader "needs a look" and includes a run that failed before reaching an item.
+
 ## 1.0.0-alpha.11 - 2026-08-10
 
 ### Added
