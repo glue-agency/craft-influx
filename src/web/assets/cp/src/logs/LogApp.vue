@@ -37,7 +37,7 @@
                  the preset have no component behind them and are chipped from
                  their label alone), with the plain value as the fallback for a
                  payload that carries no chip. -->
-            <div class="influx-log-facts" :style="{ '--influx-facts-columns': counters.length }">
+            <div class="influx-log-facts" :style="{ '--influx-facts-columns': outcomeCounters.length }">
                 <div v-if="siteChipHtml" class="influx-log-fact influx-log-site">
                     <span class="influx-log-eyebrow" v-text="$t('Site')"></span>
                     <span v-html="siteChipHtml"></span>
@@ -80,13 +80,15 @@
 
             <v-error-panel v-if="log.error" class="influx-log-error" :error="log.error" />
 
-            <div class="influx-log-counters">
+            <!-- The exceptional counters wrap to a second row (see
+                 `exceptionCounters`), so the grid is as wide as the outcome row. -->
+            <div class="influx-log-counters" :style="{ '--influx-counter-columns': outcomeCounters.length }">
                 <button
                     v-for="c in counters"
                     :key="c.label"
                     type="button"
                     class="influx-counter"
-                    :class="{ 'is-active': c.action === activeAction }"
+                    :class="{ 'is-active': c.action === activeAction, 'influx-counter--exception': isException(c) }"
                     :title="c.action ? $t('Show only {label} items', { label: c.label }) : $t('Show all items')"
                     @click="setAction(c.action)"
                 >
@@ -303,10 +305,12 @@
 /* ---- Counters (also the item filter) ------------------------------------ */
 .influx-log-counters {
     display: grid;
-    /* Stretch to a single row (auto-fit + 1fr), sizing down to fit however many
-       counters a run produced. The items column below (.influx-split-list) is a
-       fixed width chosen to read as ~two of these cells at a typical card width. */
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    /* As many columns as the outcome row has counters (the component passes the
+       count), so the exception counters wrap to a second row under it rather
+       than stretching everything into one eight-cell strip. The items column
+       below (.influx-split-list) is a fixed width chosen to read as ~two of
+       these cells at a typical card width. */
+    grid-template-columns: repeat(var(--influx-counter-columns, 5), minmax(110px, 1fr));
 }
 
 .influx-counter {
@@ -322,6 +326,10 @@
 }
 
 .influx-counter:hover { background: var(--gray-050); }
+
+/* The wrapped row reads as a row of its own rather than as cells that ran out
+   of space. */
+.influx-counter--exception { border-top: 1px solid var(--hairline-color); }
 
 .influx-counter.is-active {
     background: hsl(208, 100%, 96%);
@@ -527,6 +535,16 @@ import { requestErrorMessage } from '../lib/requestError.js';
 import { counterDefs } from '../lib/vocabulary.js';
 
 /**
+ * The counters that report an EXCEPTION rather than an outcome: an item that
+ * failed, one taken out of circulation, one removed. They break to a second row
+ * so the row above stays what a healthy run is made of — seen, and what became
+ * of what it saw — instead of eight cells the eye has to sort through. Listed by
+ * action value rather than by colour: `unchanged` and `skipped` share the muted
+ * tone and belong with the outcomes.
+ */
+const EXCEPTION_COUNTERS = ['error', 'disabled', 'deleted'];
+
+/**
  * The run-log viewer — a split master/detail. The summary card's counters
  * filter the paginated item list on the left; selecting an item lazily fetches
  * its drill-down (the same row DebugItemDetail renders on the right). A live
@@ -623,6 +641,13 @@ export default {
 
                 return { label: d.label, value, action: d.action, tone };
             });
+        },
+
+        // The counters on the first row — everything the exception row doesn't
+        // take. Their count is the grid's width, so the row below lines up under
+        // it and the facts strip above lines up with both.
+        outcomeCounters() {
+            return this.counters.filter((c) => ! EXCEPTION_COUNTERS.includes(c.action));
         },
 
         // The active counter's own label, so the filter hints read the same noun
@@ -753,6 +778,10 @@ export default {
     },
 
     methods: {
+        isException(counter) {
+            return EXCEPTION_COUNTERS.includes(counter.action);
+        },
+
         setAction(action) {
             if (action === this.activeAction) {
                 return;
