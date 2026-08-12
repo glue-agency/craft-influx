@@ -150,6 +150,9 @@ export default {
         mergeTypeRows(nextRows) {
             const type = this.node.blockType;
             const entry = { ...this.typeEntry };
+            // 'fields' is also pinned as MappingSlots::CHANNEL_DEFAULT['matrixFields'],
+            // which the save-time prune uses to pick the surviving copy when a
+            // handle ends up in both channels. Change one, change both.
             const channels = splitChannels(nextRows, this.node.subFields, this.typeEntry, 'fields');
 
             Object.entries(channels).forEach(([channel, rows]) => {

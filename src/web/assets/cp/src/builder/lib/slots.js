@@ -34,6 +34,14 @@
  * the two tables are pinned against each other by __tests__/slots.test.js and
  * tests/unit/schema/MappingSlotsTest.php. Change one, change both.
  *
+ * The twin does MORE than this module, deliberately: it also recurses into the
+ * rows inside a channel, which needs two tables that have no counterpart here
+ * (BLOCK_CHANNELS, CHANNEL_DEFAULT). Only the save prunes — nothing in the SPA
+ * removes a row it never renders — so those live there alone. CHANNEL_DEFAULT is
+ * the one that reaches back into this codebase: it restates the `defaultChannel`
+ * argument passed at ./channels.js's two splitChannels() call sites, which name
+ * it in return.
+ *
  * Pure, so it is unit-tested without mounting anything.
  */
 

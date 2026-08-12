@@ -219,6 +219,308 @@ class MappingSlotsTest extends Unit
         $this->assertSame('note', SchemaBuilder::NOTE);
     }
 
+    public function testTheBlockChannelTableMatchesTheSpa(): void
+    {
+        // What ONE block-type entry inside `blocks` holds — the two channels
+        // MatrixFields.vue splits its rows back into.
+        $this->assertSame(['fields', 'nativeFields'], MappingSlots::BLOCK_CHANNELS);
+    }
+
+    public function testTheChannelDefaultTableMatchesTheSpa(): void
+    {
+        // The `defaultChannel` argument at the SPA's two splitChannels() call
+        // sites. The asymmetry is deliberate — see elementSubFields()'s docblock.
+        $this->assertSame([
+            'subFields'        => 'fields',
+            'matrixFields'     => 'fields',
+            'elementSubFields' => 'nativeFields',
+        ], MappingSlots::CHANNEL_DEFAULT);
+    }
+
+    public function testAStaleSubFieldRowIsDroppedFromItsChannel(): void
+    {
+        // The child-level twin of the handle pass: the card renders rows from its
+        // roster, so a row the roster dropped isn't even badged — just resolved.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields([
+                'subFields' => SchemaBuilder::make()
+                    ->text(['handle' => 'lat', 'label' => 'Lat'])
+                    ->text(['handle' => 'lng', 'label' => 'Lng'])
+                    ->toArray(),
+            ]),
+        ]);
+
+        $pruned = MappingSlots::prune([
+            'fields' => [
+                'lat'    => ['node' => 'lat'],
+                'lng'    => ['node' => 'lng'],
+                'legacy' => ['node' => 'gone'],
+            ],
+        ], $regions);
+
+        $this->assertSame(['fields' => ['lat' => ['node' => 'lat'], 'lng' => ['node' => 'lng']]], $pruned);
+    }
+
+    public function testAContainerWithoutARosterJudgesNoRow(): void
+    {
+        // "Didn't report a roster" is not "reported an empty roster" — the same
+        // restraint the region guard applies one level up.
+        $regions = $this->regions(['extra' => fn(MappingSchemaBuilder $b) => $b->subFields()]);
+        $mapping = ['fields' => ['lat' => ['node' => 'lat'], 'legacy' => ['node' => 'gone']]];
+
+        $this->assertSame($mapping, MappingSlots::prune($mapping, $regions));
+    }
+
+    public function testAnEmptyRosterEmptiesTheChannel(): void
+    {
+        // A card that renders and offers no rows: a stored row has no control.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields(['subFields' => []]),
+        ]);
+
+        $this->assertSame([], MappingSlots::prune(['fields' => ['lat' => ['node' => 'lat']]], $regions));
+    }
+
+    public function testAChildLosesTheSlotsItsOwnCellsDontRender(): void
+    {
+        // A sub-field whose strategy renders no source select — its stored node
+        // and useDefault flag have nothing to edit or clear them.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields([
+                'subFields' => MappingSchemaBuilder::make()
+                    ->fieldRow(
+                        ['source' => false, 'default' => ['type' => 'text'], 'extra' => []],
+                        ['handle' => 'computed', 'label' => 'Computed'],
+                    )
+                    ->toArray(),
+            ]),
+        ]);
+
+        $pruned = MappingSlots::prune([
+            'fields' => ['computed' => ['node' => 'x', 'useDefault' => true, 'default' => 'fallback']],
+        ], $regions);
+
+        $this->assertSame(['fields' => ['computed' => ['default' => 'fallback']]], $pruned);
+    }
+
+    public function testAChildKeepsItsUseDefaultFlagUnderARenderedSelect(): void
+    {
+        // The sentinel synthesis: the child select always offers `__default__`, so
+        // the flag lives or dies with the select rather than being named on its own.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields([
+                'subFields' => SchemaBuilder::make()->text(['handle' => 'lat', 'label' => 'Lat'])->toArray(),
+            ]),
+        ]);
+
+        $this->assertSame(
+            ['fields' => ['lat' => ['useDefault' => true, 'default' => '50.8']]],
+            MappingSlots::prune(['fields' => ['lat' => ['useDefault' => true, 'default' => '50.8']]], $regions),
+        );
+    }
+
+    public function testAChildsOptionsArePrunedAgainstItsOwnExtras(): void
+    {
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields([
+                'subFields' => MappingSchemaBuilder::make()
+                    ->fieldRow(
+                        [
+                            'source'  => true,
+                            'default' => ['type' => 'text'],
+                            'extra'   => MappingSchemaBuilder::make()->matchBy(['options' => []])->toArray(),
+                        ],
+                        ['handle' => 'ref', 'label' => 'Ref'],
+                    )
+                    ->toArray(),
+            ]),
+        ]);
+
+        $pruned = MappingSlots::prune([
+            'fields' => ['ref' => ['node' => 'ref', 'options' => ['match' => 'title', 'create' => true]]],
+        ], $regions);
+
+        $this->assertSame(['fields' => ['ref' => ['node' => 'ref', 'options' => ['match' => 'title']]]], $pruned);
+    }
+
+    public function testARowSurvivesInTheChannelItWasSavedIn(): void
+    {
+        // Union match, not same-channel: the card renders both channels as one
+        // handle-keyed table and round-trips a row to where it came from, so this
+        // row is still visible and editable. The next client write migrates it.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->elementSubFields([
+                'subFields' => SchemaBuilder::make()->text(['handle' => 'alt', 'label' => 'Alt'])->toArray(),
+            ]),
+        ]);
+
+        $this->assertSame(
+            ['fields' => ['alt' => ['node' => 'alt']]],
+            MappingSlots::prune(['fields' => ['alt' => ['node' => 'alt']]], $regions),
+        );
+    }
+
+    public function testACollisionKeepsOnlyTheRosterChannel(): void
+    {
+        // Both channels holding one handle means a stale copy: the card draws one
+        // row per handle (nativeFields winning), so the other is unreachable.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->elementSubFields([
+                'subFields' => SchemaBuilder::make()->text(['handle' => 'alt', 'label' => 'Alt'])->toArray(),
+            ]),
+        ]);
+
+        $pruned = MappingSlots::prune([
+            'fields'       => ['alt' => ['node' => 'stale']],
+            'nativeFields' => ['alt' => ['node' => 'alt']],
+        ], $regions);
+
+        $this->assertSame(['nativeFields' => ['alt' => ['node' => 'alt']]], $pruned);
+    }
+
+    public function testAnUnknownBlockTypeIsDroppedWithItsStaleRows(): void
+    {
+        $pruned = MappingSlots::prune([
+            'node'   => 'items',
+            'blocks' => [
+                'hero' => ['fields' => ['heading' => ['node' => 'h'], 'legacy' => ['node' => 'g']]],
+                'gone' => ['fields' => ['x' => ['node' => 'x']]],
+            ],
+        ], $this->matrixRegions('hero', ['heading']));
+
+        $this->assertSame([
+            'node'   => 'items',
+            'blocks' => ['hero' => ['fields' => ['heading' => ['node' => 'h']]]],
+        ], $pruned);
+    }
+
+    public function testABlockCardWithoutATypeLeavesTheTypeLevelAlone(): void
+    {
+        // An incomplete roster can't tell a stale type from one another card names.
+        $regions = $this->regions([
+            'source' => true,
+            'extra'  => fn(MappingSchemaBuilder $b)  => $b->matrixFields([
+                'label'     => 'Hero',
+                'subFields' => SchemaBuilder::make()->text(['handle' => 'heading', 'label' => 'Heading'])->toArray(),
+            ]),
+        ]);
+        $mapping = ['node' => 'items', 'blocks' => ['hero' => ['fields' => ['heading' => ['node' => 'h']]]]];
+
+        $this->assertSame($mapping, MappingSlots::prune($mapping, $regions));
+    }
+
+    public function testAnEmptiedChannelCollapsesUpThroughTheTypeToTheBlocksSlot(): void
+    {
+        $pruned = MappingSlots::prune([
+            'node'   => 'items',
+            'blocks' => ['hero' => ['fields' => ['heading' => ['node' => 'h']]]],
+        ], $this->matrixRegions('hero', []));
+
+        $this->assertSame(['node' => 'items'], $pruned);
+    }
+
+    public function testUnknownKeysOnABlockTypeEntrySurvive(): void
+    {
+        $pruned = MappingSlots::prune([
+            'node'   => 'items',
+            'blocks' => ['hero' => ['fields' => ['legacy' => ['node' => 'g']], 'legacyKey' => 1]],
+        ], $this->matrixRegions('hero', ['heading']));
+
+        $this->assertSame(['node' => 'items', 'blocks' => ['hero' => ['legacyKey' => 1]]], $pruned);
+    }
+
+    public function testADepthThreeRowKeepsItsCellsAndLosesItsOptions(): void
+    {
+        // Pins the accepted depth bound: childRowFor() elides extras one card deep
+        // and fieldRow() omits an empty `extra`, so at depth 3 "declares no extras"
+        // and "extras were cut" are the same shape. Cells stay known at every
+        // depth, so the node survives — only the options the builder can neither
+        // render nor clear are stripped.
+        $regions = $this->regions([
+            'extra' => fn(MappingSchemaBuilder $b) => $b->subFields([
+                'subFields' => MappingSchemaBuilder::make()
+                    ->fieldRow(
+                        [
+                            'source'  => true,
+                            'default' => ['type' => 'text'],
+                            'extra'   => MappingSchemaBuilder::make()
+                                ->elementSubFields([
+                                    'subFields' => MappingSchemaBuilder::make()
+                                        ->fieldRow(
+                                            ['source' => true, 'default' => ['type' => 'text'], 'extra' => []],
+                                            ['handle' => 'street', 'label' => 'Street'],
+                                        )
+                                        ->toArray(),
+                                ])
+                                ->toArray(),
+                        ],
+                        ['handle' => 'address', 'label' => 'Address'],
+                    )
+                    ->toArray(),
+            ]),
+        ]);
+
+        $pruned = MappingSlots::prune([
+            'fields' => [
+                'address' => [
+                    'node'         => 'addr',
+                    'nativeFields' => ['street' => ['node' => 's', 'options' => ['mode' => 'x']]],
+                ],
+            ],
+        ], $regions);
+
+        $this->assertSame([
+            'fields' => [
+                'address' => [
+                    'node'         => 'addr',
+                    'nativeFields' => ['street' => ['node' => 's']],
+                ],
+            ],
+        ], $pruned);
+    }
+
+    public function testNestedPruningIsIdempotent(): void
+    {
+        $regions = $this->matrixRegions('hero', ['heading']);
+        $mapping = [
+            'node'   => 'items',
+            'blocks' => [
+                'hero' => ['fields' => ['heading' => ['node' => 'h'], 'legacy' => ['node' => 'g']]],
+                'gone' => ['fields' => ['x' => ['node' => 'x']]],
+            ],
+        ];
+
+        $once = MappingSlots::prune($mapping, $regions);
+        $twice = MappingSlots::prune($once, $regions);
+
+        $this->assertSame($once, $twice);
+    }
+
+    /**
+     * A Matrix field's regions: a source node plus one block-type card naming
+     * `$blockType` and rostering `$handles`.
+     *
+     * @param list<string> $handles
+     * @return array<string, list<array>>
+     */
+    protected function matrixRegions(string $blockType, array $handles): array
+    {
+        $subFields = SchemaBuilder::make();
+
+        foreach ($handles as $handle) {
+            $subFields->text(['handle' => $handle, 'label' => ucfirst($handle)]);
+        }
+
+        return $this->regions([
+            'source' => true,
+            'extra'  => fn(MappingSchemaBuilder $b)  => $b->matrixFields([
+                'label'     => 'Hero',
+                'blockType' => $blockType,
+                'subFields' => $subFields->toArray(),
+            ]),
+        ]);
+    }
+
     /**
      * A resolved regions array, exactly as {@see \GlueAgency\Influx\schema\MappableField::$mapping}
      * carries it — built through the real builder so the specs can't drift from

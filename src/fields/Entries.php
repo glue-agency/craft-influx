@@ -19,13 +19,10 @@ use GlueAgency\Influx\sync\FieldContext;
  * Extras (under options):
  *   match:  'id' | 'title' | 'slug' | <any unique attr / field handle>
  *   create: bool        (create a new Entry when no match is found)
- *   group:  { section, type }  (where to create — required when create=true)
  *
- * `group.section` / `group.type` are handles: section and entry-type ids
- * differ per environment (they're not part of Project Config), so the
- * stored config must carry the stable identifier and resolve it at sync
- * time. (The Feed Me converter rewrites Feed Me's raw ids to handles at
- * conversion time, so ids never reach this config.)
+ * WHERE a created entry goes is not among them: the field's own `sources`
+ * already name the sections it may relate, so {@see createTarget()} reads that
+ * instead of asking the mapping to repeat it.
  */
 class Entries extends Relation
 {
@@ -201,38 +198,42 @@ class Entries extends Relation
     }
 
     /**
-     * Resolve the create-target section/type ids for this environment from
-     * the `group.section` / `group.type` handles — the environment-stable
-     * form. A resolvable section without a resolvable type defaults to the
-     * section's first entry type, same as a new entry in the CP.
+     * The section and entry type a created entry goes in, resolved for THIS
+     * environment from the FIELD's own allowed sources.
+     *
+     * Not from stored config, which is what this used to read
+     * (`options.group.{section,type}`, written by the Feed Me converter). The
+     * field already says which sections it may relate, so a mapping repeating
+     * that was a second copy of one fact — one that goes stale when the field's
+     * sources change, that no control in the builder could correct, and that the
+     * save-time prune therefore stripped as an option nothing declared.
+     *
+     * Where the field leaves room, the answer follows Craft's: the FIRST allowed
+     * source (Craft takes the same one for the field's search hint,
+     * {@see \craft\fields\Entries::inputTemplateVariables()}) and that section's
+     * FIRST entry type, which is what the CP opens for a new entry.
+     *
+     * An unrestricted field (`sources: '*'`) resolves to nothing. "Any section in
+     * the project" isn't a target, and picking one would file entries somewhere
+     * arbitrary — so nothing is created, the same restraint this kept when the
+     * stored target was missing.
      *
      * @return array{0: ?int, 1: ?int}
      */
     protected function createTarget(FieldContext $context): array
     {
-        $section = null;
-
-        $sectionHandle = $context->mapping->option('group.section');
-
-        if (is_string($sectionHandle) && $sectionHandle !== '') {
-            $section = Compat::getSectionByHandle($sectionHandle);
-        }
+        $field = $context->craftField;
+        $sections = $field ? $this->sourceSections($field->sources ?? '*') : null;
+        $section = $sections[0] ?? null;
 
         if (! $section) {
             return [null, null];
         }
 
-        $types = $section->getEntryTypes();
-        $typeHandle = $context->mapping->option('group.type');
+        // Off the model rather than the stored source key: it came from a uid
+        // lookup, so the id is the one this environment holds.
+        $type = $section->getEntryTypes()[0] ?? null;
 
-        foreach ($types as $type) {
-            if (is_string($typeHandle) && $typeHandle !== '' && $type->handle === $typeHandle) {
-                return [(int) $section->id, (int) $type->id];
-            }
-        }
-
-        $first = $types[0] ?? null;
-
-        return [(int) $section->id, $first ? (int) $first->id : null];
+        return [(int) $section->id, $type ? (int) $type->id : null];
     }
 }

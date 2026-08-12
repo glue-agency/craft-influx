@@ -2,12 +2,14 @@
 
 namespace GlueAgency\Influx\Tests\unit\services;
 
+use ArrayObject;
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use craft\elements\Entry;
 use craft\fields\PlainText;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\schema\MappableField;
+use GlueAgency\Influx\schema\MappingSchema;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
 use GlueAgency\Influx\services\LinksService;
 use GlueAgency\Influx\targets\AbstractElementTarget;
@@ -123,6 +125,66 @@ class LinkMappingSlotPruneTest extends Unit
         $this->prune($link, $surface);
 
         $this->assertSame($once, $link->mappings);
+    }
+
+    public function testOnlyTheHandlesTheLinkMapsResolveTheirSchema(): void
+    {
+        // Why MappableField holds an UNRESOLVED MappingSchema: building one row
+        // walks the layouts a relation's sources allow, every block type a Matrix
+        // declares, every volume an Assets field lists. A save that resolved the
+        // whole reported surface paid for rows the prune never looks at.
+        $resolved = new ArrayObject();
+        $link = FakeLink::make(['mappings' => ['mapped' => ['node' => 'id']]]);
+
+        $this->prune($link, [
+            $this->counting('mapped', $resolved),
+            $this->counting('untouched', $resolved),
+        ]);
+
+        $this->assertSame(['mapped'], $resolved->getArrayCopy());
+    }
+
+    public function testAnUnresolvedDescriptorPrunesExactlyAsAResolvedOneDoes(): void
+    {
+        $mappings = ['importId' => ['node' => 'id', 'options' => ['mode' => 'url']]];
+        $lazy = FakeLink::make(['mappings' => $mappings]);
+        $eager = FakeLink::make(['mappings' => $mappings]);
+
+        $this->prune($lazy, [
+            MappableField::custom('importId', 'importId', 'Content', PlainText::class, $this->matchBySchema()),
+        ]);
+        $this->prune($eager, [$this->custom('importId', $this->matchBySchema()->toArray())]);
+
+        $this->assertSame(['importId' => ['node' => 'id']], $lazy->mappings);
+        $this->assertSame($eager->mappings, $lazy->mappings);
+    }
+
+    /**
+     * A descriptor whose source region records the handle when it resolves — the
+     * probe behind {@see testOnlyTheHandlesTheLinkMapsResolveTheirSchema()}. The
+     * log is an ArrayObject so the closure can append to shared state without an
+     * out-param.
+     */
+    protected function counting(string $handle, ArrayObject $resolved): MappableField
+    {
+        $schema = MappingSchemaBuilder::make()->mapping([
+            'source' => function(MappingSchemaBuilder $b) use ($handle, $resolved) {
+                $resolved->append($handle);
+
+                return $b->sourceNode();
+            },
+        ]);
+
+        return MappableField::custom($handle, $handle, 'Content', PlainText::class, $schema);
+    }
+
+    /** The relation-shaped row, still unresolved. */
+    protected function matchBySchema(): MappingSchema
+    {
+        return MappingSchemaBuilder::make()->mapping([
+            'source' => true,
+            'extra'  => fn(MappingSchemaBuilder $b)  => $b->matchBy(['options' => []]),
+        ]);
     }
 
     /** A row rendering a source node and a text default — what most field types declare. */

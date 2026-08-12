@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoMatchMappings, clearMappings, discoveredNodes, isMapped, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
+import { autoMatchMappings, clearMappings, discoveredNodes, isMapped, isMissingNode, mergeNodeOptions, nodeOption, pruneEmpty, setMappingSlot } from '../mappings.js';
 
 describe('pruneEmpty', () => {
     it('drops empty strings, null, undefined, false, and empty objects', () => {
@@ -227,5 +227,48 @@ describe('isMapped', () => {
      */
     it('does not count block trees without the list node they read', () => {
         expect(isMapped(withSource, { blocks: { text: { fields: { body: { node: 'x' } } } } })).toBe(false);
+    });
+});
+
+/**
+ * The one rule behind the row's badge, its group's pill and the sidebar's total.
+ * They disagreed once — the badge learned to stay quiet on a row with no control
+ * to clear it, the two counts didn't, and the Mapping tab promised four missing
+ * fields while showing two.
+ */
+describe('isMissingNode', () => {
+    const discovered = [{ value: 'live.one' }];
+    const pickable = { handle: 'body', mapping: { source: [{ type: 'select' }] } };
+    const noteOnly = { handle: 'computed', mapping: { source: [{ type: 'note' }] } };
+    const noSource = { handle: 'link', mapping: { source: [] } };
+
+    it('flags a saved node the sample no longer carries', () => {
+        expect(isMissingNode(pickable, { node: 'gone.away' }, discovered)).toBe(true);
+        expect(isMissingNode(pickable, { node: 'live.one' }, discovered)).toBe(false);
+    });
+
+    it('flags nothing without a saved node', () => {
+        expect(isMissingNode(pickable, {}, discovered)).toBe(false);
+        expect(isMissingNode(pickable, null, discovered)).toBe(false);
+    });
+
+    it('flags nothing while the sample is unknown', () => {
+        // No sample yet, or a partial one — "can't know" is not "missing".
+        expect(isMissingNode(pickable, { node: 'gone.away' }, null)).toBe(false);
+    });
+
+    it('stays quiet on a row that renders no control to act on it', () => {
+        // A Preparse field's source region holds a note; a Link or Table field
+        // declares none at all. Neither offers a way to pick a new node or clear
+        // the old one, so pointing at them is pointing at nothing — the
+        // save-time prune is what removes those.
+        expect(isMissingNode(noteOnly, { node: 'gone.away' }, discovered)).toBe(false);
+        expect(isMissingNode(noSource, { node: 'gone.away' }, discovered)).toBe(false);
+    });
+
+    it('still flags a note sitting beside a real control', () => {
+        const mixed = { handle: 'body', mapping: { source: [{ type: 'note' }, { type: 'select' }] } };
+
+        expect(isMissingNode(mixed, { node: 'gone.away' }, discovered)).toBe(true);
     });
 });

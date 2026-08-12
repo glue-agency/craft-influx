@@ -6,6 +6,7 @@ use Craft;
 use craft\helpers\StringHelper;
 use GlueAgency\Influx\enums\MatrixBlockSource;
 use GlueAgency\Influx\enums\ProcessingAction;
+use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -714,6 +715,7 @@ class FeedMeConverter
         }
 
         $options = is_array($info['options'] ?? null) ? $this->cleanOptions($info['options']) : [];
+        $default = $this->translateBooleanNativeDefault($handle, $info, $default);
 
         $this->warnBooleanCoercion($handle, $info);
 
@@ -722,7 +724,7 @@ class FeedMeConverter
         } else {
             $options = $this->translateDateFormat($handle, $options);
             $options = $this->normalizeMatchOption($handle, $options);
-            $options = $this->translateCreateGroup($handle, $options);
+            $options = $this->dropCreateGroup($handle, $options);
         }
 
         return FieldMapping::make(
@@ -733,6 +735,39 @@ class FeedMeConverter
             options: $options,
             fields: is_array($info['fields'] ?? null) ? $this->convertMappings($info['fields'], false) : [],
         );
+    }
+
+    /**
+     * A boolean NATIVE's default, respelled in the vocabulary its control offers.
+     *
+     * Feed Me stores the flag as `'1'` / `'0'`; Influx's `enabled` row is a select
+     * over `'true'` / `'false'`
+     * ({@see \GlueAgency\Influx\targets\EntryTarget::nativeFieldDefinitions()}).
+     * Both spellings coerce identically at sync time, so an import always
+     * BEHAVED — but the builder rendered that row as an empty select, and an
+     * operator who touched it wrote the empty pick, which prunes the default away
+     * and leaves a `useDefault` mapping resolving to null. {@see Lightswitch::coerce()}
+     * reads null as false, so the next run would disable everything the link owns.
+     *
+     * Translated through that same coercion, which is what the sync would have
+     * applied to the raw value — so the converted config means what the Feed Me
+     * one did, it just says it in words the row can show.
+     *
+     * Only natives: a Lightswitch CUSTOM field's default cell is a plain text
+     * control ({@see \GlueAgency\Influx\fields\Field::schema()}), where `'1'` is
+     * already a value the row displays and round-trips.
+     */
+    protected function translateBooleanNativeDefault(string $handle, array $info, mixed $default): mixed
+    {
+        if ($default === null || empty($info['attribute'])) {
+            return $default;
+        }
+
+        if (! in_array($handle, self::BOOLEAN_NATIVE_HANDLES, true)) {
+            return $default;
+        }
+
+        return Lightswitch::coerce($default) ? 'true' : 'false';
     }
 
     /**
@@ -975,53 +1010,31 @@ class FeedMeConverter
 
     /**
      * Feed Me's "create entries if they do not exist" target —
-     * `options.group.{sectionId,typeId}` — carries raw DB ids. Those are
-     * environment-specific (sections and entry types are identified by
-     * UID/handle in Project Config, ids differ per install), so the ids
-     * are swapped for handles (`group.{section,type}`) here, while the
-     * migration still runs in the environment the ids belong to.
-     * {@see \GlueAgency\Influx\fields\Entries::createTarget()} resolves the
-     * handles back to ids at sync time.
+     * `options.group.{sectionId,typeId}` — is DROPPED rather than converted.
+     *
+     * Influx resolves where to create from the field's own allowed sources
+     * ({@see \GlueAgency\Influx\fields\Entries::createTarget()}), so carrying
+     * Feed Me's copy would store a second answer to a question the field already
+     * settles — one that nothing reads, that goes stale when the field's sources
+     * change, and that the save-time prune strips as an option no control
+     * declares.
+     *
+     * Warned rather than dropped in silence, because it can move entries: a feed
+     * creating into a section the field doesn't list first will place them
+     * somewhere else after the import, and nothing in the converted config would
+     * say why.
      */
-    protected function translateCreateGroup(string $handle, array $options): array
+    protected function dropCreateGroup(string $handle, array $options): array
     {
-        $group = $options['group'] ?? null;
-
-        if (! is_array($group)) {
+        if (! isset($options['group'])) {
             return $options;
         }
 
-        $sectionId = (int) ($group['sectionId'] ?? 0);
-
-        if ($sectionId) {
-            unset($group['sectionId']);
-            $sectionHandle = $this->sectionHandleById($sectionId);
-
-            if ($sectionHandle !== null) {
-                $group['section'] = $sectionHandle;
-            } else {
-                $this->warn("Create-target section id {$sectionId} on '{$handle}' no longer exists; pick a section in the builder.");
-            }
-        }
-
-        $typeId = (int) ($group['typeId'] ?? 0);
-
-        if ($typeId) {
-            unset($group['typeId']);
-            $typeHandle = $this->entryTypeHandleById($typeId);
-
-            if ($typeHandle !== null) {
-                $group['type'] = $typeHandle;
-            } else {
-                $this->warn("Create-target entry type id {$typeId} on '{$handle}' no longer exists; the section's first entry type will be used.");
-            }
-        }
-
-        if (empty($group)) {
-            unset($options['group']);
-        } else {
-            $options['group'] = $group;
-        }
+        unset($options['group']);
+        $this->warn(
+            "Create-target on '{$handle}' was dropped: Influx creates into the section the FIELD allows, "
+            . 'not a per-mapping one. Check the field’s sources if the feed created elsewhere.',
+        );
 
         return $options;
     }

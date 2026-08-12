@@ -556,7 +556,11 @@ abstract class AbstractElementTarget implements ElementTargetInterface
                     group: $tabName,
                     fieldClass: $field::class,
                     // The row's whole UI, declared once by the field's own strategy.
-                    mapping: Influx::getInstance()->fields->rowFor($field)->toArray(),
+                    // Handed over UNRESOLVED — building a row walks the layouts a
+                    // relation's sources allow, and a caller that only wants the
+                    // handles (the save-time prune, the log's field labels) must
+                    // not pay for that on every field the layout carries.
+                    mapping: Influx::getInstance()->fields->rowFor($field),
                 );
             }
         }

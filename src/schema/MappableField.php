@@ -53,9 +53,21 @@ class MappableField
      * `subfieldsOnly` and `unmappable` flags — six keys saying by convention what
      * this says by structure.
      *
-     * @var array<string, list<array>>
+     * Held UNRESOLVED wherever the producer can manage it: {@see MappingSchema}
+     * builds each region behind a closure, and forcing all three per field is
+     * what made a link save pay for the entire layout's schema — nested entry
+     * types, a relation's allowed sources, every volume an Assets field lists —
+     * when the prune only needs the handles the link stores mappings for.
+     *
+     * Reach it through {@see getMapping()}, never directly; hence protected while
+     * the identity fields stay public. A straggler reading the raw property would
+     * see a MappingSchema where an array was expected, and
+     * {@see MappingSlots::prune()} reads an unusable shape as "can't judge this
+     * row" — silently disabling the slot prune instead of failing.
+     *
+     * @var array<string, list<array>>|MappingSchema
      */
-    public array $mapping = [];
+    protected array|MappingSchema $mapping = [];
 
     protected function __construct(
         string $handle,
@@ -63,7 +75,7 @@ class MappableField
         bool $native,
         string $group,
         ?string $fieldClass,
-        array $mapping,
+        array|MappingSchema $mapping,
     ) {
         $this->handle = $handle;
         $this->name = $name;
@@ -77,9 +89,9 @@ class MappableField
      * A native element attribute (title, slug, enabled, author, ...). Built by
      * {@see MappingSchemaBuilder::group()} from the group's declared nodes.
      *
-     * @param array<string, list<array>> $mapping
+     * @param array<string, list<array>>|MappingSchema $mapping
      */
-    public static function native(string $handle, string $name, string $group, array $mapping = []): self
+    public static function native(string $handle, string $name, string $group, array|MappingSchema $mapping = []): self
     {
         return new self(
             handle: $handle,
@@ -97,14 +109,14 @@ class MappableField
      * decides whether the row sends its handle to the server-rendered pickers —
      * while everything the row RENDERS is in the regions.
      *
-     * @param array<string, list<array>> $mapping
+     * @param array<string, list<array>>|MappingSchema $mapping
      */
     public static function custom(
         string $handle,
         string $name,
         string $group,
         string $fieldClass,
-        array $mapping = [],
+        array|MappingSchema $mapping = [],
     ): self {
         return new self(
             handle: $handle,
@@ -114,6 +126,23 @@ class MappableField
             fieldClass: $fieldClass,
             mapping: $mapping,
         );
+    }
+
+    /**
+     * The row's regions, resolving a declared {@see MappingSchema} on first ask
+     * and keeping the result — the same in-place memoization
+     * {@see MappingSchema::$resolved} does, and the one thing on an otherwise
+     * read-only descriptor that changes after construction.
+     *
+     * @return array<string, list<array>>
+     */
+    public function getMapping(): array
+    {
+        if ($this->mapping instanceof MappingSchema) {
+            $this->mapping = $this->mapping->toArray();
+        }
+
+        return $this->mapping;
     }
 
     /**
@@ -133,7 +162,7 @@ class MappableField
             $descriptor['fieldClass'] = $this->fieldClass;
         }
 
-        $descriptor['mapping'] = $this->mapping;
+        $descriptor['mapping'] = $this->getMapping();
 
         return $descriptor;
     }

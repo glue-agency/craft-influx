@@ -76,7 +76,7 @@
 
 <script>
 import { store } from './store.js';
-import { discoveredNodes, isMapped } from './lib/mappings.js';
+import { discoveredNodes, isMapped, isMissingNode } from './lib/mappings.js';
 
 /**
  * The builder's details rail: what state the link is in, and the two actions
@@ -173,23 +173,18 @@ export default {
         },
 
         /**
-         * Saved source nodes the latest sample doesn't carry. Null discovered
-         * nodes mean "can't know" (no sample, or a partial one), which flags
-         * nothing — the same contract the rows follow.
+         * Saved source nodes the latest sample doesn't carry — through the same
+         * rule the rows badge on, so this total never promises the operator more
+         * missing fields than the Mapping tab can show them.
          */
         missingCount() {
             const discovered = discoveredNodes(this.ui.sample);
-            if (! discovered) return 0;
-
-            const available = new Set(discovered.map((option) => option.value));
             const mappings = this.link?.mappings || {};
 
-            return (this.ui.mappable?.fields || []).reduce((count, field) => {
-                const saved = mappings[field.handle]?.node;
-                if (! saved) return count;
-
-                return count + (available.has(saved) ? 0 : 1);
-            }, 0);
+            return (this.ui.mappable?.fields || []).reduce(
+                (count, field) => count + (isMissingNode(field, mappings[field.handle], discovered) ? 1 : 0),
+                0,
+            );
         },
 
         missingLabel() {

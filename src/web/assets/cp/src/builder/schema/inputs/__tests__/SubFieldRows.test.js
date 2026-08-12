@@ -282,4 +282,29 @@ describe('SubFieldRows default editors', () => {
         expect(wrapper.findComponent({ name: 'SelectField' }).exists()).toBe(true);
         expect(wrapper.find('input[type="text"]').exists()).toBe(true);
     });
+
+    /**
+     * The badge names two controls — pick a new node, or clear the mapping —
+     * and a row that renders no source select has neither. Badging it points
+     * at a cell that isn't in the table. The save-time prune
+     * (LinksService::pruneMappings()) is what removes the stale node itself.
+     */
+    const staleNode = { rows: { frozen: { node: 'gone.away' } }, discoveredNodes: [{ value: 'live.one', label: 'live.one' }] };
+
+    it('badges a stale node on a row that can act on it', () => {
+        const wrapper = mountTyped([{ type: 'text', handle: 'frozen', label: 'Frozen' }], staleNode);
+
+        expect(wrapper.find('.influx-missing-badge').exists()).toBe(true);
+        expect(wrapper.find('.pill-missing').exists()).toBe(true);
+    });
+
+    it('stays silent on a row that renders no source select', () => {
+        const wrapper = mountTyped(
+            [{ type: 'text', handle: 'frozen', label: 'Frozen', cells: { source: false } }],
+            staleNode,
+        );
+
+        expect(wrapper.find('.influx-missing-badge').exists()).toBe(false);
+        expect(wrapper.find('.pill-missing').exists()).toBe(false);
+    });
 });

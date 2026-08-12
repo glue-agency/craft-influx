@@ -123,7 +123,7 @@
 import MappingCell from '../schema/MappingCell.vue';
 import MappingExtras from '../schema/MappingExtras.vue';
 import { store } from '../store.js';
-import { discoveredNodes as reportNodes, mergeNodeOptions, replaceMapping } from '../lib/mappings.js';
+import { discoveredNodes as reportNodes, isMissingNode, mergeNodeOptions, replaceMapping } from '../lib/mappings.js';
 
 /**
  * One row in the Mapping tab, laid out as the three regions its field's strategy
@@ -223,17 +223,11 @@ export default {
             return store.ui.autoMatched.includes(this.field.handle) && !!this.mapping.node;
         },
 
-        // The saved source node is no longer in the fetched sample. Compares
-        // directly against the discovered flatNodes — the merged nodeOptions
-        // prop deliberately re-adds saved-but-missing values for dropdown
-        // legibility, so we can't use it as the "is the node still live"
-        // signal.
+        // Through the shared rule, so this badge and the counts that summarize it
+        // (the group's pill, the sidebar's total) can't disagree about which rows
+        // they mean.
         isMissing() {
-            const saved = this.mapping.node;
-            if (! saved) return false;
-            const discovered = this.discoveredNodes;
-            if (! discovered) return false;
-            return ! discovered.some(o => o.value === saved);
+            return isMissingNode(this.field, this.mapping, this.discoveredNodes);
         },
 
         /**

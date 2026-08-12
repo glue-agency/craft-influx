@@ -62,7 +62,7 @@
                 class="sub-field-row"
                 v-for="sub in subFieldList"
                 :key="sub.handle"
-                :data-missing="isMissing(sub.handle) ? 'true' : 'false'"
+                :data-missing="isMissing(sub) ? 'true' : 'false'"
             >
                 <!-- The whole label cell toggles this row's extras, the way the
                      parent row's meta cell toggles its own.
@@ -86,7 +86,7 @@
                         <span aria-hidden="true">▼</span>
                     </button>
                     {{ sub.label }}
-                    <span v-if="isMissing(sub.handle)"
+                    <span v-if="isMissing(sub)"
                           class="influx-missing-badge"
                           :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
                           v-text="$t('missing mapping')"></span>
@@ -254,7 +254,7 @@ export default {
         /** Saved sub-field nodes no longer present in the latest sample. */
         missingCount() {
             return this.subFieldList.reduce((count, sub) => {
-                return count + (this.isMissing(sub.handle) ? 1 : 0);
+                return count + (this.isMissing(sub) ? 1 : 0);
             }, 0);
         },
 
@@ -338,8 +338,13 @@ export default {
             };
         },
 
-        isMissing(handle) {
-            const saved = this.rows[handle]?.node;
+        // Same gate as the parent row's: a sub-field that renders no source
+        // select has nothing to pick a new node with and nothing to clear the
+        // stale one with, so badging it only points at a control that isn't
+        // there. The save-time prune is what clears those.
+        isMissing(sub) {
+            if (sub.cells?.source === false) return false;
+            const saved = this.rows[sub.handle]?.node;
             if (! saved) return false;
             if (! this.discoveredNodes) return false;
             return ! this.discoveredNodes.some(o => o.value === saved);

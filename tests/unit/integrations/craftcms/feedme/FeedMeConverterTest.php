@@ -87,6 +87,66 @@ class FeedMeConverterTest extends Unit
         $this->assertSame(['match' => 'id'], $link->mappings['author']['options']);
     }
 
+    public function testABooleanNativeDefaultIsRespeltForItsSelect(): void
+    {
+        // Reported: an imported `enabled` row showed an empty select. Feed Me
+        // stores the flag as '1' / '0'; the row is a select over 'true' / 'false'
+        // (EntryTarget::nativeFieldDefinitions()), so the stored value matched no
+        // option — and the empty pick an operator would then write prunes the
+        // default away, leaving a useDefault mapping that disables everything.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'enabled' => ['attribute' => 1, 'node' => 'usedefault', 'default' => '1'],
+            ],
+        ])->link;
+
+        $this->assertSame(['useDefault' => true, 'default' => 'true'], $link->mappings['enabled']);
+
+        $off = $this->convert([
+            'fieldMapping' => [
+                'enabled' => ['attribute' => 1, 'node' => 'usedefault', 'default' => '0'],
+            ],
+        ])->link;
+
+        $this->assertSame(['useDefault' => true, 'default' => 'false'], $off->mappings['enabled']);
+    }
+
+    public function testABooleanNativeKeepsItsMeaningUnderInfluxsOwnCoercion(): void
+    {
+        // A spelling Feed Me counted as true but Influx doesn't converts to what
+        // INFLUX would have made of it, so the config means at rest exactly what
+        // it would have meant at sync time. The parity warning still fires; this
+        // is not a silent reinterpretation.
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'enabled' => ['attribute' => 1, 'node' => 'usedefault', 'default' => 'active'],
+            ],
+        ]);
+
+        $this->assertSame('false', $conversion->link->mappings['enabled']['default']);
+        $this->assertNotEmpty(array_filter(
+            $conversion->warnings,
+            static fn(string $warning): bool => str_contains($warning, "'enabled' is read as a boolean"),
+        ));
+    }
+
+    public function testANonNativeBooleanDefaultIsLeftAlone(): void
+    {
+        // A Lightswitch CUSTOM field's default cell is a plain text control, where
+        // '1' already displays and round-trips — respelling it would be churn.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'is_featured' => [
+                    'field'   => 'craft\fields\Lightswitch',
+                    'node'    => 'usedefault',
+                    'default' => '1',
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(['useDefault' => true, 'default' => '1'], $link->mappings['is_featured']);
+    }
+
     public function testV6AuthorIdsHandleAlsoMapsToAuthor(): void
     {
         // Feed Me 6 (Craft 5) renamed the entry author native from
@@ -186,13 +246,14 @@ class FeedMeConverterTest extends Unit
         $this->assertWarningMatching('/goneField.*verify the Match by/i', $conversion);
     }
 
-    public function testCreateGroupIdsTranslateToHandles(): void
+    public function testTheCreateTargetIsDroppedBecauseTheFieldAnswersIt(): void
     {
-        // Feed Me's create-target (`group.sectionId` / `group.typeId`)
-        // carries raw DB ids — environment-specific, so the YAML-stable
-        // form is handles. The stub resolves section 2 → 'news' and entry
-        // type 4 → 'article'.
-        $link = $this->convert([
+        // Feed Me stores a per-mapping create target (`group.sectionId` /
+        // `group.typeId`). Influx reads the FIELD's allowed sources instead
+        // (Entries::createTarget()), so keeping Feed Me's copy would store a
+        // second answer to a settled question — and one the save-time prune
+        // strips anyway, since no control declares it.
+        $conversion = $this->convert([
             'fieldMapping' => [
                 'relatedEntries' => [
                     'node'    => 'related/slug',
@@ -203,28 +264,37 @@ class FeedMeConverterTest extends Unit
                     ],
                 ],
             ],
-        ])->link;
+        ]);
 
         $this->assertSame(
-            ['match' => 'slug', 'create' => '1', 'group' => ['section' => 'news', 'type' => 'article']],
-            $link->mappings['relatedEntries']['options'],
+            ['match' => 'slug', 'create' => '1'],
+            $conversion->link->mappings['relatedEntries']['options'],
         );
+
+        // Not silent: it can move entries, if the feed created somewhere the
+        // field doesn't list first.
+        $this->assertWarningMatching('/Create-target on .relatedEntries. was dropped/', $conversion);
     }
 
-    public function testUnresolvableCreateGroupIdsAreDroppedWithWarning(): void
+    public function testAMappingWithoutACreateTargetIsNotWarnedAbout(): void
     {
         $conversion = $this->convert([
             'fieldMapping' => [
                 'relatedEntries' => [
                     'node'    => 'related/slug',
-                    'options' => ['create' => '1', 'group' => ['sectionId' => '99', 'typeId' => '77']],
+                    'options' => ['match' => 'slug', 'create' => '1'],
                 ],
             ],
         ]);
 
-        $this->assertArrayNotHasKey('group', $conversion->link->mappings['relatedEntries']['options']);
-        $this->assertWarningMatching('/section id 99/', $conversion);
-        $this->assertWarningMatching('/entry type id 77/', $conversion);
+        $this->assertSame(
+            ['match' => 'slug', 'create' => '1'],
+            $conversion->link->mappings['relatedEntries']['options'],
+        );
+        $this->assertEmpty(array_filter(
+            $conversion->warnings,
+            static fn(string $warning): bool => str_contains($warning, 'Create-target'),
+        ));
     }
 
     public function testAssetOptionsTranslateToInfluxVocabulary(): void

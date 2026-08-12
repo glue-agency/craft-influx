@@ -281,6 +281,13 @@ class LinksService extends Component
      * that looks correctly filled in. {@see MappingSlots} is the rule for what a
      * row's regions can still write.
      *
+     * The slot pass goes all the way DOWN: a surviving `fields` / `nativeFields` /
+     * `blocks` channel still holds rows keyed by sub-field handle, and those go
+     * stale for the same reasons. A stale child is worse off than a stale parent —
+     * its card draws rows from the roster, so it isn't even badged, just silently
+     * resolved at sync time. One depth bound is knowingly accepted there; see
+     * {@see MappingSlots::childRegions()}.
+     *
      * Pruning at save time keeps the stored config (Project Config YAML + DB row)
      * in lockstep with that surface; re-adding a field, or unhooking the
      * integration, simply makes its handle or its slot writable again — but the
@@ -346,8 +353,10 @@ class LinksService extends Component
 
     /**
      * Second pass of {@see pruneMappings()}: strip each surviving mapping's
-     * unwritable slots. Runs after the handle pass, so every handle here is
-     * guaranteed to have a descriptor to prune against.
+     * unwritable slots — and, below them, the rows inside whichever channels
+     * survive, which {@see MappingSlots::prune()} recurses into. Runs after the
+     * handle pass, so every handle here is guaranteed to have a descriptor to
+     * prune against.
      *
      * A mapping emptied of every slot is dropped outright rather than left as an
      * empty entry — the same contract the builder's own writers keep
@@ -368,18 +377,8 @@ class LinksService extends Component
                 continue;
             }
 
-            $pruned = MappingSlots::prune($mapping, $known[$handle]->mapping);
-
-            foreach (array_keys(array_diff_key($mapping, $pruned)) as $slot) {
-                $stripped[] = "{$handle}.{$slot}";
-            }
-
-            // An options slot can lose keys without losing the slot itself.
-            if (isset($pruned['options'], $mapping['options']) && $pruned['options'] !== $mapping['options']) {
-                foreach (array_keys(array_diff_key($mapping['options'], $pruned['options'])) as $option) {
-                    $stripped[] = "{$handle}.options.{$option}";
-                }
-            }
+            $pruned = MappingSlots::prune($mapping, $known[$handle]->getMapping());
+            $stripped = array_merge($stripped, $this->removedPaths($mapping, $pruned, $handle));
 
             if ($pruned !== []) {
                 $mappings[$handle] = $pruned;
@@ -395,6 +394,37 @@ class LinksService extends Component
             "Stripped unwritable mapping slot(s) on link '{$link->handle}': " . implode(', ', $stripped),
             __METHOD__,
         );
+    }
+
+    /**
+     * The dot-paths `$after` dropped, descending wherever both sides still hold an
+     * array — so a nested drop reads `matrix.blocks.hero.fields.heading` instead of
+     * just `matrix`, while an options key keeps the `handle.options.mode` shape the
+     * log already had.
+     *
+     * @return list<string>
+     */
+    protected function removedPaths(array $before, array $after, string $prefix): array
+    {
+        $paths = [];
+
+        foreach ($before as $key => $value) {
+            $path = "{$prefix}.{$key}";
+
+            if (! array_key_exists($key, $after)) {
+                $paths[] = $path;
+
+                continue;
+            }
+
+            if (! is_array($value) || ! is_array($after[$key])) {
+                continue;
+            }
+
+            $paths = array_merge($paths, $this->removedPaths($value, $after[$key], $path));
+        }
+
+        return $paths;
     }
 
     /**

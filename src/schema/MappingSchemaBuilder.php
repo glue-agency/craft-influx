@@ -369,7 +369,7 @@ class MappingSchemaBuilder extends SchemaBuilder
                 handle: $field['handle'],
                 name: $field['name'],
                 group: $label,
-                mapping: static::nativeRegions($field)->toArray(),
+                mapping: static::nativeRegions($field),
             ));
         }
 

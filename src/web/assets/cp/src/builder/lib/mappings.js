@@ -68,6 +68,44 @@ export function setMappingSlot(mappings, handle, key, value) {
 }
 
 /**
+ * Whether a row's saved source node has gone missing from the fetched sample —
+ * the rule behind the row's badge, its group's "N missing" pill and the sidebar's
+ * total, so the three can't drift apart.
+ *
+ * Two conditions, and the second is the one that's easy to leave out. The node
+ * has to be absent from what the sample discovered — compared against the raw
+ * discovered list, never the merged `nodeOptions`, which deliberately re-adds
+ * saved-but-missing values so a dropdown stays legible. AND the row has to render
+ * a control that can do something about it: the badge tells the operator to pick
+ * a new node or clear the mapping, and a row whose source region is empty (a
+ * Matrix, a Link, a Table) or holds only a note (a Preparse field) offers
+ * neither. Counting those produced a sidebar promising four missing fields when
+ * only two could be found on the page.
+ *
+ * Null `discovered` means "can't know" — no sample yet, or a partial one — and
+ * flags nothing.
+ *
+ * The stale node underneath is real; it's removed by the save-time prune
+ * ({@see \GlueAgency\Influx\services\LinksService::pruneMappings()}), not by
+ * anything the operator can reach.
+ *
+ * @param {import('../types.js').MappableField} field
+ * @param {?import('../types.js').Mapping} mapping
+ * @param {?Array<{value: string}>} discovered
+ * @returns {boolean}
+ */
+export function isMissingNode(field, mapping, discovered) {
+    if (! discovered) return false;
+
+    const saved = mapping?.node;
+    if (! saved) return false;
+
+    if (! (field.mapping?.source || []).some((node) => node.type !== 'note')) return false;
+
+    return ! discovered.some((option) => option.value === saved);
+}
+
+/**
  * Whether a field counts as mapped — the rule behind every "N mapped" pill and
  * the sidebar's total, so the two can't drift apart.
  *

@@ -55,7 +55,7 @@
 import MappingRow from './MappingRow.vue';
 import MappingGroupCard from '../../components/MappingGroupCard.vue';
 import { store } from '../store.js';
-import { clearMappings, discoveredNodes, isMapped } from '../lib/mappings.js';
+import { clearMappings, discoveredNodes, isMapped, isMissingNode } from '../lib/mappings.js';
 
 /**
  * One top-level group of the Mapping tab: the shared card chrome with the
@@ -116,18 +116,15 @@ export default {
             }, 0);
         },
 
-        // Saved source nodes that are no longer present in the latest
-        // fetched sample. Only meaningful once a sample with an item in it
-        // has been run.
+        // Saved source nodes no longer in the latest sample — the same rule the
+        // rows badge on, so this pill always counts rows the operator can find.
         missingCount() {
             const discovered = discoveredNodes(this.ui.sample);
-            if (! discovered) return 0;
-            const available = new Set(discovered.map(o => o.value));
-            return this.group.fields.reduce((count, f) => {
-                const saved = this.link.mappings?.[f.handle]?.node;
-                if (! saved) return count;
-                return count + (available.has(saved) ? 0 : 1);
-            }, 0);
+
+            return this.group.fields.reduce(
+                (count, field) => count + (isMissingNode(field, this.link.mappings?.[field.handle], discovered) ? 1 : 0),
+                0,
+            );
         },
     },
 

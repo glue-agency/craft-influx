@@ -282,6 +282,39 @@ describe('MappingRow custom source node', () => {
         expect(store.link.mappings.title).toEqual({ node: 'consultations.name', useDefault: false });
         expect(wrapper.find('.influx-missing-badge').exists()).toBe(true);
     });
+
+    /**
+     * The badge points at controls — "pick a new node or clear the mapping" —
+     * so a row that renders neither must stay silent about a node it can't
+     * help with. Both shapes below carry a stale node the sample doesn't have.
+     * LinksService::pruneMappings() is what actually removes them, on save.
+     */
+    const primeSample = async () => {
+        await loadStore({ specs: { node: 'gone.away' }, title: { node: 'gone.away' } });
+        api.fetchSample.mockResolvedValue({
+            success: true,
+            report: { flatNodes: [{ value: 'specs.label', label: 'specs.label' }] },
+        });
+        await store.fetchSample();
+    };
+
+    it('stays silent on a row whose source region holds only a note', async () => {
+        await primeSample();
+        // The Preparse shape: a source region that renders copy, no control.
+        const preparsed = {
+            ...plainField,
+            mapping: { source: [{ type: 'note', text: 'Computed from a template.' }] },
+        };
+
+        expect(mountRow(preparsed).find('.influx-missing-badge').exists()).toBe(false);
+    });
+
+    it('stays silent on a row that declares no source region at all', async () => {
+        await primeSample();
+
+        // The Matrix shape: the value comes entirely from its sub-mappings.
+        expect(mountRow(descriptor('specs')).find('.influx-missing-badge').exists()).toBe(false);
+    });
 });
 
 /**
