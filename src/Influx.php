@@ -349,9 +349,9 @@ class Influx extends Plugin
                 $event->permissions[] = [
                     'heading'     => Craft::t('influx', 'Influx'),
                     'permissions' => [
-                        ...$this->permissionEntry(Permission::VIEW_LINKS, [Permission::DEBUG_LINKS]),
+                        ...$this->permissionEntry(Permission::VIEW_LINKS, $this->permissionEntry(Permission::DEBUG_LINKS)),
                         ...$this->permissionEntry(Permission::SYNC),
-                        ...$this->permissionEntry(Permission::VIEW_LOGS, [Permission::DELETE_LOGS]),
+                        ...$this->permissionEntry(Permission::VIEW_LOGS, $this->permissionEntry(Permission::DELETE_LOGS)),
                     ],
                 ];
             },
@@ -360,21 +360,23 @@ class Influx extends Plugin
 
     /**
      * One `value => props` row for {@see registerPermissions()}, spread into
-     * the list by its caller — each permission's own label and info come off
-     * the enum, so this is the nesting and nothing else.
+     * the list by its caller. Label and info come off the enum, so this is the
+     * nesting and nothing else — and because it returns a row map, the nested
+     * argument is just another call to it.
      *
-     * @param Permission[] $nested
+     * @param array<string, array> $nested
      * @return array<string, array{label: string, info?: string, nested?: array}>
      */
     protected function permissionEntry(Permission $permission, array $nested = []): array
     {
-        $props = array_filter([
-            'label' => $permission->label(),
-            'info'  => $permission->info(),
-        ], static fn($value) => $value !== null);
+        $props = ['label' => $permission->label()];
 
-        foreach ($nested as $child) {
-            $props['nested'] = ($props['nested'] ?? []) + $this->permissionEntry($child);
+        if (($info = $permission->info()) !== null) {
+            $props['info'] = $info;
+        }
+
+        if ($nested !== []) {
+            $props['nested'] = $nested;
         }
 
         return [$permission->value => $props];

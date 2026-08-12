@@ -11,7 +11,7 @@ use Craft;
  *
  * Registered as a tree by {@see \GlueAgency\Influx\Influx::registerPermissions()}:
  * the screen permissions carry the ones nested under them, and each case knows
- * its own label and the caveat worth spelling out on the permissions screen.
+ * its own label.
  *
  * ACCESS_PLUGIN is Craft's, not ours — Craft generates one per plugin handle —
  * but it's a magic string in our controllers all the same, so it lives here
@@ -42,16 +42,15 @@ enum Permission: string
     }
 
     /**
-     * The line Craft renders under the checkbox, for the permissions whose
-     * reach isn't obvious from the label alone. Null for the rest.
+     * The line Craft renders under a permission's checkbox, for one whose reach
+     * isn't obvious from the label alone. No case needs one today; give a case
+     * a string here and {@see \GlueAgency\Influx\Influx::permissionEntry()}
+     * picks it up.
      */
     public function info(): ?string
     {
         return match ($this) {
-            self::VIEW_LINKS  => Craft::t('influx', 'Link configuration is shown read-only — creating, editing and deleting links stays with admins.'),
-            self::DEBUG_LINKS => Craft::t('influx', 'Fetches the remote feed and dry-runs a link over it. Writes nothing.'),
-            self::DELETE_LOGS => Craft::t('influx', 'Includes clearing every log entry at once.'),
-            default           => null,
+            default => null,
         };
     }
 }
