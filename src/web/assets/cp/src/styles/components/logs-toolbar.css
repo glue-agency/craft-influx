@@ -8,9 +8,10 @@
    child of the pane, so nothing overrides it.
 --------------------------------------------------------------------- */
 .influx-logs-toolbar {
-    /* Bottom-aligned so the clear button lines up with the selects rather
-       than with the labels above them. */
-    align-items: flex-end;
+    /* No `align-items` here: the row also carries Craft's own `.flex`, whose
+       rule has the same specificity and loads later, so anything set here is
+       silently dropped. The one item that needs to align differently says so
+       itself, below. */
     flex-wrap: wrap;
     gap: 7px;
 }
@@ -37,13 +38,19 @@
    every time a filter is added.
 
    A text link, not a button: it undoes the filters beside it rather than
-   being a control in its own right. Carrying the selects' own height on
-   a bottom-aligned row is what centres it against them instead of
-   letting it sit on their baseline. */
+   being a control in its own right.
+
+   Two properties put it level with the selects, and both are load-bearing.
+   `align-self` drops it to the bottom of the row — the filters are a label
+   stacked over a select, so a top-aligned link lands beside the LABELS; it
+   has to align itself rather than lean on the row, whose `align-items`
+   Craft's `.flex` overrides. And carrying the input height centres its text
+   against the select's instead of leaving it on the select's bottom edge. */
 .influx-logs-toolbar .influx-logs-filters-clear {
     display: inline-flex;
     align-items: center;
-    height: 34px;
+    align-self: flex-end;
+    height: var(--input-height, 34px);
     margin-inline-start: 7px;
     font-size: 13px;
 }
