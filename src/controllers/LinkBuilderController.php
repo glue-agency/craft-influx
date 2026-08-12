@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\Influx;
 use yii\base\Action;
 use yii\web\BadRequestHttpException;
@@ -17,20 +18,31 @@ use yii\web\Response;
  * `{success: false, message, type}` failure envelope every route here answers
  * with is {@see AbstractController::runAction()}'s.
  *
- * Read-only environments (`allowAdminChanges = false`) get a 403 on any
- * mutating route, consistent with how {@see LinksController} gates writes.
+ * Anyone the builder renders read-only for — a read-only environment, or a
+ * non-admin viewer — gets a 403 on any mutating route, consistent with how
+ * {@see LinksController} gates writes.
  */
 class LinkBuilderController extends AbstractController
 {
     /**
-     * The LinkBuilder SPA is the editor for Project-Config-backed links —
-     * admin territory, exactly like {@see LinksController}. Only `save` mutates
-     * config (so it also requires `allowAdminChanges`); the read / helper
-     * endpoints require admin but still work in a read-only environment.
+     * Mirrors {@see LinksController}, whose screens these routes serve: `save`
+     * is the one that writes Project Config, so it stays admin-and-
+     * allowAdminChanges; the read / helper endpoints answer to
+     * {@see Permission::VIEW_LINKS}, which is what lets a non-admin
+     * viewer's builder mount at all. None of them write, and the payload they
+     * hydrate is already marked read-only for that user.
      */
     protected function requireAccess(Action $action): void
     {
-        $this->requireAdmin($action->id === 'save');
+        parent::requireAccess($action);
+
+        if ($action->id === 'save') {
+            $this->requireAdmin();
+
+            return;
+        }
+
+        $this->requirePermission(Permission::VIEW_LINKS->value);
     }
 
     /**

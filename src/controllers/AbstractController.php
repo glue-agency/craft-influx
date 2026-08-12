@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\controllers;
 
 use Craft;
 use craft\web\Controller;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
@@ -21,13 +22,13 @@ use yii\web\NotFoundHttpException;
  * Shared base for Influx's CP controllers. Centralises what every one of them
  * needs: anonymous access is always off, an access gate runs in beforeAction (so
  * it can't be forgotten or ordered after a resource lookup), a single read-only /
- * writeable check derived from `allowAdminChanges`, one JSON failure envelope for
+ * writeable check ({@see readOnly()}), one JSON failure envelope for
  * every JSON route, the request-param readers, and the resource
  * lookup-or-404 helpers — so no controller reaches for a record class itself.
  *
- * The default gate is the plugin permission; controllers whose access model
- * differs (e.g. {@see LinksController}, which gates on admin per action)
- * override {@see requireAccess()} rather than re-implementing beforeAction.
+ * The default gate is CP access to the plugin; a controller whose screens carry
+ * their own permission (or, for the config writes, an admin requirement) adds it
+ * by overriding {@see requireAccess()} rather than re-implementing beforeAction.
  */
 abstract class AbstractController extends Controller
 {
@@ -96,7 +97,7 @@ abstract class AbstractController extends Controller
      */
     protected function requireAccess(Action $action): void
     {
-        $this->requirePermission('accessPlugin-influx');
+        $this->requirePermission(Permission::ACCESS_PLUGIN->value);
     }
 
     /**
@@ -134,12 +135,18 @@ abstract class AbstractController extends Controller
     }
 
     /**
-     * Whether this environment forbids administrative (Project Config) changes.
+     * Whether link configuration is look-but-don't-touch for this request. True
+     * when the environment forbids administrative (Project Config) changes, and
+     * true for anyone who isn't an admin: a non-admin can hold
+     * {@see Permission::VIEW_LINKS} and open the builder, but writing
+     * Project Config stays admin territory either way.
+     *
      * The links + settings screens render read-only and reject writes when true.
      */
     protected function readOnly(): bool
     {
-        return ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges;
+        return ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges
+            || ! Craft::$app->getUser()->getIsAdmin();
     }
 
     /**

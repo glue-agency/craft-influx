@@ -3,6 +3,7 @@
 namespace GlueAgency\Influx\controllers;
 
 use Craft;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\sync\run\RunOrigin;
@@ -30,7 +31,7 @@ class SynchronizationController extends AbstractController
      */
     protected function requireAccess(Action $action): void
     {
-        $this->requirePermission(Influx::PERMISSION_SYNC);
+        $this->requirePermission(Permission::SYNC->value);
     }
 
     /**
@@ -93,7 +94,7 @@ class SynchronizationController extends AbstractController
      * The element is loaded in the site the sync was triggered from, so a link
      * with per-site endpoints syncs only that site.
      *
-     * Even with {@see Influx::PERMISSION_SYNC}, remote data is never pushed into
+     * Even with {@see Permission::SYNC}, remote data is never pushed into
      * an element the user couldn't edit by hand. An explicit link handle (always
      * sent) pins the sync to THAT link and still requires it to target the
      * element, so a caller can't sync an unrelated one; without a handle, the

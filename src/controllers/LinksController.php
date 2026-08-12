@@ -5,6 +5,7 @@ namespace GlueAgency\Influx\controllers;
 use Craft;
 use craft\elements\Entry;
 use craft\helpers\UrlHelper;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\Influx;
@@ -29,16 +30,34 @@ use yii\web\Response;
 class LinksController extends AbstractController
 {
     /**
-     * Links live in Project Config, so they're admin territory rather than a
-     * plugin permission. View actions still work in a read-only environment
-     * (requireAdmin(false)); mutating actions also require allowAdminChanges
-     * (requireAdmin()).
+     * Looking is a permission; changing is still admin territory, because a
+     * link lives in Project Config. So the view actions ask for
+     * {@see Permission::VIEW_LINKS} — which an admin holds implicitly —
+     * and everything that writes asks for admin plus `allowAdminChanges`. What
+     * a non-admin viewer sees is the read-only builder
+     * ({@see AbstractController::readOnly()}), the same screen a read-only
+     * environment renders.
+     *
+     * The debug inspector carries its own permission on top: it doesn't just
+     * show configuration, it fetches the remote feed and dry-runs the link.
      */
     protected function requireAccess(Action $action): void
     {
+        parent::requireAccess($action);
+
         $viewActions = ['index', 'edit', 'debug', 'debug-inspect'];
 
-        $this->requireAdmin(! in_array($action->id, $viewActions, true));
+        if (! in_array($action->id, $viewActions, true)) {
+            $this->requireAdmin();
+
+            return;
+        }
+
+        $this->requirePermission(Permission::VIEW_LINKS->value);
+
+        if (in_array($action->id, ['debug', 'debug-inspect'], true)) {
+            $this->requirePermission(Permission::DEBUG_LINKS->value);
+        }
     }
 
     /**

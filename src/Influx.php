@@ -20,6 +20,7 @@ use craft\services\ProjectConfig as ProjectConfigService;
 use craft\services\UserPermissions;
 use craft\web\UrlManager;
 use craft\web\View;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\integrations\craftcms\feedme\services\FeedMeService;
 use GlueAgency\Influx\models\Settings;
 use GlueAgency\Influx\services\AssetUploadService;
@@ -69,29 +70,6 @@ class Influx extends Plugin
     public bool $hasCpSettings = true;
 
     public bool $hasCpSection = true;
-
-    /**
-     * Permission gating sync triggers — the entry "Sync from remote" button
-     * and the SynchronizationController endpoints. Deliberately NOT nested
-     * under the CP-section permission: an entry editor can hold it without
-     * Influx CP access. Admins always pass.
-     */
-    public const PERMISSION_SYNC = 'influx:sync';
-
-    /**
-     * Permission gating the Logs screens — the overview, a run's detail, and
-     * the JSON routes the log viewer polls. Without it the Logs subnav item
-     * and its error badge don't render either.
-     */
-    public const PERMISSION_VIEW_LOGS = 'influx:viewLogs';
-
-    /**
-     * Nested under {@see PERMISSION_VIEW_LOGS}: removing log rows, one at a
-     * time or all at once. Reading a run's history and pruning it are separate
-     * asks — an operator who watches syncs isn't automatically the one who
-     * clears the record of them.
-     */
-    public const PERMISSION_DELETE_LOGS = 'influx:deleteLogs';
 
     /**
      * Mapped field handles collected so far this request, for
@@ -185,19 +163,20 @@ class Influx extends Plugin
     {
         $parent = parent::getCpNavItem();
 
-        $parent['url'] = 'influx';
-        $parent['label'] = Craft::t('influx', 'Influx');
-        $parent['subnav'] = [
-            'links' => [
+        $user = Craft::$app->getUser();
+        $subnav = [];
+
+        if ($user->checkPermission(Permission::VIEW_LINKS->value)) {
+            $subnav['links'] = [
                 'label' => Craft::t('influx', 'Links'),
                 'url'   => 'influx/links',
-            ],
-        ];
+            ];
+        }
 
         // The badge counts logs, so it only rides along for someone allowed to
         // open them — pointing at a screen they'd be 403'd on otherwise.
-        if (Craft::$app->getUser()->checkPermission(self::PERMISSION_VIEW_LOGS)) {
-            $parent['subnav']['logs'] = [
+        if ($user->checkPermission(Permission::VIEW_LOGS->value)) {
+            $subnav['logs'] = [
                 'label' => Craft::t('influx', 'Logs'),
                 'url'   => 'influx/logs',
             ];
@@ -206,16 +185,29 @@ class Influx extends Plugin
 
             if ($errorCount > 0) {
                 $parent['badgeCount'] = $errorCount;
-                $parent['subnav']['logs']['badgeCount'] = $errorCount;
+                $subnav['logs']['badgeCount'] = $errorCount;
             }
         }
 
-        if (Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
-            $parent['subnav']['settings'] = [
+        if ($user->getIsAdmin() && Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+            $subnav['settings'] = [
                 'label' => Craft::t('influx', 'Settings'),
                 'url'   => 'influx/settings',
             ];
         }
+
+        // Every screen is permission-gated, so a user who holds none of them
+        // has no section to show rather than a nav item that only 403s.
+        if ($subnav === []) {
+            return null;
+        }
+
+        // The section's own link goes to whichever screen comes first for THIS
+        // user — `influx` resolves to the Links overview, which not everyone
+        // who can see the section is allowed to open.
+        $parent['url'] = reset($subnav)['url'];
+        $parent['label'] = Craft::t('influx', 'Influx');
+        $parent['subnav'] = $subnav;
 
         return $parent;
     }
@@ -339,13 +331,14 @@ class Influx extends Plugin
     }
 
     /**
-     * Register the plugin's user permissions.
+     * Register the plugin's user permissions, in the shape Craft's permissions
+     * screen renders: a screen permission carrying the ones nested under it.
      *
-     * {@see PERMISSION_SYNC} is deliberately NOT nested under a CP permission:
+     * {@see Permission::SYNC} is deliberately NOT nested under a CP permission:
      * an entry editor can hold it — for the element edit screen's "Sync from
-     * remote" button — without any Influx CP access at all. The screen
-     * permissions are the plugin's own sections, and the ones that remove data
-     * nest under the one that shows it.
+     * remote" button — without any Influx CP access at all. The rest are the
+     * plugin's own screens, and what removes or reaches beyond a screen nests
+     * under the permission that shows it.
      */
     protected function registerPermissions(): void
     {
@@ -356,22 +349,35 @@ class Influx extends Plugin
                 $event->permissions[] = [
                     'heading'     => Craft::t('influx', 'Influx'),
                     'permissions' => [
-                        self::PERMISSION_SYNC => [
-                            'label' => Craft::t('influx', 'Sync elements from a remote link'),
-                        ],
-                        self::PERMISSION_VIEW_LOGS => [
-                            'label'  => Craft::t('influx', 'View logs'),
-                            'nested' => [
-                                self::PERMISSION_DELETE_LOGS => [
-                                    'label' => Craft::t('influx', 'Delete logs'),
-                                    'info'  => Craft::t('influx', 'Includes clearing every log entry at once.'),
-                                ],
-                            ],
-                        ],
+                        ...$this->permissionEntry(Permission::VIEW_LINKS, [Permission::DEBUG_LINKS]),
+                        ...$this->permissionEntry(Permission::SYNC),
+                        ...$this->permissionEntry(Permission::VIEW_LOGS, [Permission::DELETE_LOGS]),
                     ],
                 ];
             },
         );
+    }
+
+    /**
+     * One `value => props` row for {@see registerPermissions()}, spread into
+     * the list by its caller — each permission's own label and info come off
+     * the enum, so this is the nesting and nothing else.
+     *
+     * @param Permission[] $nested
+     * @return array<string, array{label: string, info?: string, nested?: array}>
+     */
+    protected function permissionEntry(Permission $permission, array $nested = []): array
+    {
+        $props = array_filter([
+            'label' => $permission->label(),
+            'info'  => $permission->info(),
+        ], static fn($value) => $value !== null);
+
+        foreach ($nested as $child) {
+            $props['nested'] = ($props['nested'] ?? []) + $this->permissionEntry($child);
+        }
+
+        return [$permission->value => $props];
     }
 
     /**
@@ -464,7 +470,7 @@ class Influx extends Plugin
     protected function registerSyncButton(): void
     {
         Event::on(Element::class, Element::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
-            if (! Craft::$app->getUser()->checkPermission(self::PERMISSION_SYNC)) {
+            if (! Craft::$app->getUser()->checkPermission(Permission::SYNC->value)) {
                 return;
             }
 

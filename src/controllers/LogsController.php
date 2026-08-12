@@ -6,6 +6,7 @@ use Craft;
 use craft\helpers\Template;
 use craft\helpers\UrlHelper;
 use GlueAgency\Influx\enums\ItemAction;
+use GlueAgency\Influx\enums\Permission;
 use GlueAgency\Influx\enums\RunStatus;
 use GlueAgency\Influx\enums\SyncTrigger;
 use GlueAgency\Influx\helpers\Compat;
@@ -29,10 +30,10 @@ class LogsController extends AbstractController
     {
         parent::requireAccess($action);
 
-        $this->requirePermission(Influx::PERMISSION_VIEW_LOGS);
+        $this->requirePermission(Permission::VIEW_LOGS->value);
 
         if (in_array($action->id, ['delete', 'clear'], true)) {
-            $this->requirePermission(Influx::PERMISSION_DELETE_LOGS);
+            $this->requirePermission(Permission::DELETE_LOGS->value);
         }
     }
 

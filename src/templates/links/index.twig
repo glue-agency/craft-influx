@@ -11,6 +11,8 @@
    order they were configured in. Owned by the ProcessingAction enum. #}
 {% set processingOrder = influxProcessingValues() %}
 
+{% set canDebug = currentUser.can("influx:debugLinks") %}
+
 {% block actionButton %}
     {% if not readOnly %}
         <a href="{{ cpUrl('influx/links/new') }}" class="btn submit add icon">
@@ -297,36 +299,43 @@
 
                                 {# Overflow: Debug + Duplicate + Delete, folded into one
                                    three-dots menu the way Craft's element rows do
-                                   (`action-btn` renders the ellipsis, no caret). #}
-                                <button type="button" class="btn menubtn action-btn" title="{{ 'Actions'|t('influx') }}" aria-label="{{ 'Debug, duplicate or delete'|t('influx') }}"></button>
-                                <div class="menu" data-align="right">
-                                    <ul>
-                                        <li>
-                                            <a href="{{ cpUrl('influx/debug', { link: link.handle }) }}" data-icon="search">
-                                                {{ "Debug"|t("influx") }}
-                                            </a>
-                                        </li>
-                                        {% if not readOnly %}
-                                            <li>
-                                                <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/duplicate') }}" data-icon="duplicate">
-                                                    {{ "Duplicate"|t("influx") }}
-                                                </a>
-                                            </li>
-                                        {% endif %}
-                                    </ul>
-                                    {% if not readOnly %}
-                                        <hr>
+                                   (`action-btn` renders the ellipsis, no caret).
+                                   Dropped entirely when the user's permissions
+                                   leave nothing in it — Sync is then the row's
+                                   only action. #}
+                                {% if canDebug or not readOnly %}
+                                    <button type="button" class="btn menubtn action-btn" title="{{ 'Actions'|t('influx') }}" aria-label="{{ 'Debug, duplicate or delete'|t('influx') }}"></button>
+                                    <div class="menu" data-align="right">
                                         <ul>
-                                            <li>
-                                                <a class="error" data-icon="trash"
-                                                   role="button"
-                                                   data-influx-delete-form="influx-delete-{{ link.handle }}">
-                                                    {{ "Delete link"|t("influx") }}
-                                                </a>
-                                            </li>
+                                            {% if canDebug %}
+                                                <li>
+                                                    <a href="{{ cpUrl('influx/debug', { link: link.handle }) }}" data-icon="search">
+                                                        {{ "Debug"|t("influx") }}
+                                                    </a>
+                                                </li>
+                                            {% endif %}
+                                            {% if not readOnly %}
+                                                <li>
+                                                    <a href="{{ cpUrl('influx/links/' ~ link.id ~ '/duplicate') }}" data-icon="duplicate">
+                                                        {{ "Duplicate"|t("influx") }}
+                                                    </a>
+                                                </li>
+                                            {% endif %}
                                         </ul>
-                                    {% endif %}
-                                </div>
+                                        {% if not readOnly %}
+                                            <hr>
+                                            <ul>
+                                                <li>
+                                                    <a class="error" data-icon="trash"
+                                                       role="button"
+                                                       data-influx-delete-form="influx-delete-{{ link.handle }}">
+                                                        {{ "Delete link"|t("influx") }}
+                                                    </a>
+                                                </li>
+                                            </ul>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
