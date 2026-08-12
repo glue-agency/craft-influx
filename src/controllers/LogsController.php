@@ -74,11 +74,17 @@ class LogsController extends AbstractController
 
         $presenter = new LogPresenter();
 
+        // Only the empty state asks this — it tells an operator whose filters
+        // matched nothing how many runs they'd see without them. Null (rather
+        // than a count nobody reads) on any page that has rows.
+        $unfilteredTotal = $logs === [] ? $plugin->logs->totalCount() : null;
+
         return $this->renderTemplate('influx/logs/index', [
             'logs'            => $logs,
             'page'            => $page,
             'perPage'         => LogsService::LOGS_PER_PAGE,
             'total'           => $total,
+            'unfilteredTotal' => $unfilteredTotal,
             'linkNames'       => $linkNames,
             'linkChips'       => $linkChips,
             'presenter'       => $presenter,

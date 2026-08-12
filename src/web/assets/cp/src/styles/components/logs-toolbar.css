@@ -34,7 +34,16 @@
 
 /* Sits with the selects rather than at the row's end — it belongs to the
    set of filters it clears, and jumping to the far right would move it
-   every time a filter is added. */
+   every time a filter is added.
+
+   A text link, not a button: it undoes the filters beside it rather than
+   being a control in its own right. Carrying the selects' own height on
+   a bottom-aligned row is what centres it against them instead of
+   letting it sit on their baseline. */
 .influx-logs-toolbar .influx-logs-filters-clear {
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
     margin-inline-start: 7px;
+    font-size: 13px;
 }

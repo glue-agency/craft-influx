@@ -104,8 +104,15 @@
     {% endif %}
 
     {% if links is empty %}
-        <div class="zilch">
-            <p>{{ "No links yet."|t("influx") }}</p>
+        {# The second line names the way out, which differs by environment: a
+           read-only CP has no New link button to point at. #}
+        <div class="zilch influx-zilch">
+            <h2>{{ "No links yet"|t("influx") }}</h2>
+            {% if readOnly %}
+                <p class="light">{{ "Links are managed in Project Config, and this environment disallows administrative changes."|t("influx") }}</p>
+            {% else %}
+                <p class="light">{{ "A link maps a feed onto an element type, and syncs it on demand or on a schedule. Add one to get started."|t("influx") }}</p>
+            {% endif %}
         </div>
     {% else %}
         <table class="data fullwidth influx-links-table">

@@ -4,6 +4,7 @@
    below into a single influx-app.css (see vite.config.js). */
 
 /* Overview pages — Links + Logs indexes */
+@import './components/empty-state.css';
 @import './components/pills.css';
 @import './components/overview-cells.css';
 @import './components/table-foot.css';

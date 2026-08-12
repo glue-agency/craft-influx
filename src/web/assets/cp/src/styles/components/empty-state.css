@@ -1,0 +1,34 @@
+/* ---------------------------------------------------------------------
+   The overviews' empty state — a heading saying what isn't there, and a
+   light line saying what would fill it (or, on the Logs overview, how
+   many runs the filters are hiding). Every overview words it the same
+   way, so an empty screen never reads as a broken one.
+
+   Craft's own `.zilch` only carries the centred text, the light colour
+   and a single 20px line's scale (its flex rule is `.previewmodal.zilch`,
+   not this one) — so the two-line block brings its own column layout,
+   scale and room.
+--------------------------------------------------------------------- */
+.influx-zilch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-block: 48px;
+    padding-inline: 24px;
+}
+
+.influx-zilch h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.influx-zilch p {
+    margin: 0;
+    max-width: 42ch;
+    font-size: 13px;
+    line-height: 1.4;
+    text-wrap: pretty;
+}

@@ -515,6 +515,17 @@ class LogsService extends Component
     }
 
     /**
+     * How many runs are on record, filters aside. Answers the Logs overview's
+     * empty state when a filter combination matched nothing — "N runs are on
+     * record, widen the filter" only reads right with the unfiltered number, and
+     * {@see paginate()}'s total is the filtered one.
+     */
+    public function totalCount(): int
+    {
+        return (int) LogRecord::find()->count();
+    }
+
+    /**
      * One log record by id, or null. The controllers' only route to a log — they
      * never touch the record class themselves (see
      * {@see \GlueAgency\Influx\controllers\AbstractController::logOr404()}).

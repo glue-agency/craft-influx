@@ -73,16 +73,26 @@
             </div>
         {% endfor %}
 
+        {# A text link rather than a button: it undoes the filters beside it, it
+           isn't a control of its own. #}
         {% if filterParams is not empty %}
-            <a class="btn influx-logs-filters-clear" href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a>
+            <a class="influx-logs-filters-clear" href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a>
         {% endif %}
     </form>
 
     {% if logs is empty %}
-        <div class="zilch">
-            <p>{{ "No runs yet."|t("influx") }}</p>
-            {% if filterParams is not empty %}
-                <p class="light"><a href="{{ cpUrl('influx/logs') }}">{{ "Clear filters"|t("influx") }}</a></p>
+        {# Two empty states, told apart by whether anything is on record at all:
+           filters that matched nothing say how many runs they hid, so the way
+           out is the toolbar right above; an empty log says what fills it. #}
+        <div class="zilch influx-zilch">
+            {% if filterParams is not empty and unfilteredTotal > 0 %}
+                <h2>{{ "No runs match these filters"|t("influx") }}</h2>
+                <p class="light">
+                    {{ "{n, plural, =1{One run is} other{# runs are}} on record. Widen the link, trigger, status or result filter to see them."|t("influx", { n: unfilteredTotal }) }}
+                </p>
+            {% else %}
+                <h2>{{ "No runs yet"|t("influx") }}</h2>
+                <p class="light">{{ "Syncing a link records the run here — what it created, updated and skipped, item by item."|t("influx") }}</p>
             {% endif %}
         </div>
     {% else %}
