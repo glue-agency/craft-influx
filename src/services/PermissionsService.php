@@ -93,13 +93,18 @@ class PermissionsService extends Component
      * The links of `$links` in scope, in the order they came in — what the
      * Links overview lists, rather than every link that exists.
      *
+     * Always a LIST, including when the blanket permission passes everything
+     * through: {@see \GlueAgency\Influx\services\LinksService::getAllLinks()}
+     * keys by handle, and a caller reaching for the first link would find
+     * nothing at index 0.
+     *
      * @param Link[] $links
-     * @return Link[]
+     * @return list<Link>
      */
     public function scopedLinks(array $links): array
     {
         if ($this->can(Permission::ALL_LINKS)) {
-            return $links;
+            return array_values($links);
         }
 
         return array_values(array_filter($links, fn(Link $link) => $this->linkInScope($link)));
@@ -167,21 +172,5 @@ class PermissionsService extends Component
         }
 
         return $handles;
-    }
-
-    /**
-     * Whether any configured link satisfies the test. Only reached once the
-     * blanket permission has already said no, so the link read is the price of
-     * a per-link grant rather than of every check.
-     */
-    protected function anyLink(callable $test): bool
-    {
-        foreach (Influx::getInstance()->links->getAllLinks() as $link) {
-            if ($test($link)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
