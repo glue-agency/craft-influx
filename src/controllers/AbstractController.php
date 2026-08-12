@@ -9,6 +9,7 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
+use GlueAgency\Influx\services\PermissionsService;
 use GlueAgency\Influx\web\assets\cp\InfluxAsset;
 use GlueAgency\Influx\web\SharedComponentTranslations;
 use ReflectionClass;
@@ -145,8 +146,7 @@ abstract class AbstractController extends Controller
      */
     protected function readOnly(): bool
     {
-        return ! Craft::$app->getConfig()->getGeneral()->allowAdminChanges
-            || ! Craft::$app->getUser()->getIsAdmin();
+        return ! Influx::getInstance()->permissions->isAdminAndAllowsAdminChanges();
     }
 
     /**
@@ -161,6 +161,51 @@ abstract class AbstractController extends Controller
         if ($this->readOnly()) {
             throw new ForbiddenHttpException(
                 Craft::t('influx', 'Administrative changes are disallowed in this environment.'),
+            );
+        }
+    }
+
+    /**
+     * The per-link gates. Viewing and running a link are each granted either
+     * for every link or link by link ({@see PermissionsService}), so which link
+     * is being asked about decides the answer — which is why these run inside
+     * an action, once the link has been resolved, rather than in
+     * {@see requireAccess()} like the flat permissions.
+     *
+     * @throws ForbiddenHttpException
+     */
+    protected function requireViewLink(Link $link): void
+    {
+        if (! Influx::getInstance()->permissions->canViewLink($link)) {
+            throw new ForbiddenHttpException(
+                Craft::t('influx', 'You don’t have permission to view {link}.', ['link' => $link->name]),
+            );
+        }
+    }
+
+    /**
+     * @throws ForbiddenHttpException
+     */
+    protected function requireSyncLink(Link $link): void
+    {
+        if (! Influx::getInstance()->permissions->canSyncLink($link)) {
+            throw new ForbiddenHttpException(
+                Craft::t('influx', 'You don’t have permission to sync {link}.', ['link' => $link->name]),
+            );
+        }
+    }
+
+    /**
+     * The screen-level half of {@see requireViewLink()}: no link in hand yet,
+     * so the question is whether there is any link at all this user may see.
+     *
+     * @throws ForbiddenHttpException
+     */
+    protected function requireViewAnyLink(): void
+    {
+        if (! Influx::getInstance()->permissions->canViewAnyLink()) {
+            throw new ForbiddenHttpException(
+                Craft::t('influx', 'You don’t have permission to view links.'),
             );
         }
     }

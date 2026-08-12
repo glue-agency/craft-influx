@@ -21,10 +21,41 @@ enum Permission: string
 {
     case ACCESS_PLUGIN = 'accessPlugin-influx';
     case VIEW_LINKS = 'influx:viewLinks';
+    case VIEW_LINK = 'influx:viewLink';
     case DEBUG_LINKS = 'influx:debugLinks';
-    case SYNC = 'influx:sync';
+    case SYNC_ALL = 'influx:syncAll';
+    case SYNC_LINK = 'influx:syncLink';
     case VIEW_LOGS = 'influx:viewLogs';
     case DELETE_LOGS = 'influx:deleteLogs';
+
+    /**
+     * The permission for seeing ONE link, nested under {@see VIEW_LINK}.
+     */
+    public static function viewLink(string $uid): string
+    {
+        return self::forLink(self::VIEW_LINK, $uid);
+    }
+
+    /**
+     * The permission for syncing ONE link, nested under {@see SYNC_LINK}.
+     */
+    public static function syncLink(string $uid): string
+    {
+        return self::forLink(self::SYNC_LINK, $uid);
+    }
+
+    /**
+     * A per-link permission's value. Dynamic — there is one per link — so it
+     * can't be a case of its own.
+     *
+     * Keyed by the link's UID rather than its handle, the way Craft keys its
+     * own per-section permissions: a handle can be renamed, and every user
+     * group holding the old string would silently lose the link.
+     */
+    protected static function forLink(self $permission, string $uid): string
+    {
+        return $permission->value . ':' . $uid;
+    }
 
     /**
      * Human-readable label for Craft's permissions screen.
@@ -33,9 +64,11 @@ enum Permission: string
     {
         return match ($this) {
             self::ACCESS_PLUGIN => Craft::t('influx', 'Access Influx'),
-            self::VIEW_LINKS    => Craft::t('influx', 'View links'),
+            self::VIEW_LINKS    => Craft::t('influx', 'View all links'),
+            self::VIEW_LINK     => Craft::t('influx', 'View link'),
             self::DEBUG_LINKS   => Craft::t('influx', 'Debug links'),
-            self::SYNC          => Craft::t('influx', 'Sync elements from a remote link'),
+            self::SYNC_ALL      => Craft::t('influx', 'Sync all links'),
+            self::SYNC_LINK     => Craft::t('influx', 'Sync link'),
             self::VIEW_LOGS     => Craft::t('influx', 'View logs'),
             self::DELETE_LOGS   => Craft::t('influx', 'Delete logs'),
         };
@@ -43,13 +76,12 @@ enum Permission: string
 
     /**
      * The line Craft renders under a permission's checkbox, for one whose reach
-     * isn't obvious from the label alone. No case needs one today; give a case
-     * a string here and {@see \GlueAgency\Influx\Influx::permissionEntry()}
-     * picks it up.
+     * isn't obvious from the label alone.
      */
     public function info(): ?string
     {
         return match ($this) {
+            self::VIEW_LINKS, self::SYNC_ALL => Craft::t('influx', 'If enabled, supersedes any individually selected link.'),
             default => null,
         };
     }

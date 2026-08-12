@@ -35,6 +35,7 @@ use GlueAgency\Influx\services\InspectorService;
 use GlueAgency\Influx\services\LinkBuilderService;
 use GlueAgency\Influx\services\LinksService;
 use GlueAgency\Influx\services\LogsService;
+use GlueAgency\Influx\services\PermissionsService;
 use GlueAgency\Influx\services\SynchronizationService;
 use GlueAgency\Influx\services\TargetsService;
 use GlueAgency\Influx\web\assets\editor\FieldIndicatorAsset;
@@ -62,6 +63,7 @@ use yii\base\Event;
  * @property AuthService $auth
  * @property EndpointTokensService $endpointTokens
  * @property FeedMeService $feedMe
+ * @property PermissionsService $permissions
  */
 class Influx extends Plugin
 {
@@ -104,6 +106,7 @@ class Influx extends Plugin
                 'auth'            => AuthService::class,
                 'endpointTokens'  => EndpointTokensService::class,
                 'feedMe'          => FeedMeService::class,
+                'permissions'     => PermissionsService::class,
             ],
         ];
     }
@@ -163,10 +166,9 @@ class Influx extends Plugin
     {
         $parent = parent::getCpNavItem();
 
-        $user = Craft::$app->getUser();
         $subnav = [];
 
-        if ($user->checkPermission(Permission::VIEW_LINKS->value)) {
+        if ($this->permissions->can(Permission::VIEW_LINKS)) {
             $subnav['links'] = [
                 'label' => Craft::t('influx', 'Links'),
                 'url'   => 'influx/links',
@@ -175,7 +177,7 @@ class Influx extends Plugin
 
         // The badge counts logs, so it only rides along for someone allowed to
         // open them — pointing at a screen they'd be 403'd on otherwise.
-        if ($user->checkPermission(Permission::VIEW_LOGS->value)) {
+        if ($this->permissions->can(Permission::VIEW_LOGS)) {
             $subnav['logs'] = [
                 'label' => Craft::t('influx', 'Logs'),
                 'url'   => 'influx/logs',
@@ -189,7 +191,7 @@ class Influx extends Plugin
             }
         }
 
-        if ($user->getIsAdmin() && Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+        if ($this->permissions->isAdminAndAllowsAdminChanges()) {
             $subnav['settings'] = [
                 'label' => Craft::t('influx', 'Settings'),
                 'url'   => 'influx/settings',
@@ -334,11 +336,17 @@ class Influx extends Plugin
      * Register the plugin's user permissions, in the shape Craft's permissions
      * screen renders: a screen permission carrying the ones nested under it.
      *
-     * {@see Permission::SYNC} is deliberately NOT nested under a CP permission:
-     * an entry editor can hold it — for the element edit screen's "Sync from
-     * remote" button — without any Influx CP access at all. The rest are the
-     * plugin's own screens, and what removes or reaches beyond a screen nests
-     * under the permission that shows it.
+     * The two sync permissions are deliberately NOT nested under a CP
+     * permission: an entry editor holds one for the element edit screen's "Sync
+     * from remote" button, without any Influx CP access at all. They are the
+     * same grant at two sizes — {@see Permission::SYNC_ALL} covers every link,
+     * including ones added later, where {@see Permission::SYNC_LINK} carries a
+     * checkbox per link and covers only what's ticked. Holding SYNC_ALL makes
+     * the per-link list redundant rather than hidden; the check that reads
+     * both is {@see PermissionsService::canSyncLink()}.
+     *
+     * The rest are the plugin's own screens, and what removes data or reaches
+     * beyond a screen nests under the permission that shows it.
      */
     protected function registerPermissions(): void
     {
@@ -349,8 +357,11 @@ class Influx extends Plugin
                 $event->permissions[] = [
                     'heading'     => Craft::t('influx', 'Influx'),
                     'permissions' => [
-                        ...$this->permissionEntry(Permission::VIEW_LINKS, $this->permissionEntry(Permission::DEBUG_LINKS)),
-                        ...$this->permissionEntry(Permission::SYNC),
+                        ...$this->permissionEntry(Permission::VIEW_LINKS),
+                        ...$this->permissionEntry(Permission::VIEW_LINK, $this->linkPermissions(Permission::viewLink(...))),
+                        ...$this->permissionEntry(Permission::DEBUG_LINKS),
+                        ...$this->permissionEntry(Permission::SYNC_ALL),
+                        ...$this->permissionEntry(Permission::SYNC_LINK, $this->linkPermissions(Permission::syncLink(...))),
                         ...$this->permissionEntry(Permission::VIEW_LOGS, $this->permissionEntry(Permission::DELETE_LOGS)),
                     ],
                 ];
@@ -380,6 +391,29 @@ class Influx extends Plugin
         }
 
         return [$permission->value => $props];
+    }
+
+    /**
+     * A checkbox per link, for the nested half of a per-link permission —
+     * `$value` turning a link's UID into the permission string
+     * ({@see Permission::viewLink()}, {@see Permission::syncLink()}).
+     *
+     * Read at render time, so a link added since the last page load is on the
+     * list; a link deleted since leaves a permission string behind that no
+     * longer matches anything, which Craft simply never asks about again.
+     *
+     * @param callable(string): string $value
+     * @return array<string, array{label: string}>
+     */
+    protected function linkPermissions(callable $value): array
+    {
+        $permissions = [];
+
+        foreach ($this->links->getAllLinks() as $link) {
+            $permissions[$value($link->uid)] = ['label' => $link->name];
+        }
+
+        return $permissions;
     }
 
     /**
@@ -456,11 +490,12 @@ class Influx extends Plugin
 
     /**
      * Add a "Sync from remote" affordance to the edit page of any element the
-     * plugin targets. Users without {@see PERMISSION_SYNC} get no button at all;
-     * everything about WHAT gets offered and why — the resource-endpoint
-     * requirement, the disabled states, the posted params — belongs to
-     * {@see SyncButtonPresenter}, so this is the event wiring plus the
-     * permission gate.
+     * plugin targets. Everything about WHAT gets offered and why — the
+     * resource-endpoint requirement, the disabled states, the posted params,
+     * and which links the user may sync at all — belongs to
+     * {@see SyncButtonPresenter}, so this is the event wiring and nothing more.
+     * The permission is checked per candidate link there rather than once here,
+     * because it can be held for some links and not others.
      *
      * Bound on the base {@see Element} class, not on a concrete one: Yii fires
      * class-level handlers for subclasses, so one registration covers every
@@ -472,10 +507,6 @@ class Influx extends Plugin
     protected function registerSyncButton(): void
     {
         Event::on(Element::class, Element::EVENT_DEFINE_ADDITIONAL_BUTTONS, function(DefineHtmlEvent $event) {
-            if (! Craft::$app->getUser()->checkPermission(Permission::SYNC->value)) {
-                return;
-            }
-
             /** @var ElementInterface $element */
             $element = $event->sender;
 

@@ -24,14 +24,32 @@ use yii\web\Response;
 class SynchronizationController extends AbstractController
 {
     /**
-     * Gated on the dedicated sync permission rather than the plugin-section
-     * permission: the element "Sync from remote" button lives on the entry
-     * edit page, so an entry editor must be able to trigger a sync without
-     * Influx CP-section access. Admins always pass.
+     * NO up-front gate, deliberately — and the one controller here without one.
+     * Sync is granted per link, and which link is being synced only becomes
+     * known once the request body has been resolved, so the check is
+     * {@see requireSyncPermission()} in each action, immediately after the
+     * link is in hand.
+     *
+     * The plugin-section permission isn't required either: the element "Sync
+     * from remote" button lives on the entry edit page, so an entry editor must
+     * be able to trigger a sync without Influx CP access at all.
      */
     protected function requireAccess(Action $action): void
     {
-        $this->requirePermission(Permission::SYNC->value);
+    }
+
+    /**
+     * The gate every action here runs the moment it knows its link.
+     *
+     * @throws ForbiddenHttpException
+     */
+    protected function requireSyncPermission(Link $link): void
+    {
+        if (! Influx::getInstance()->permissions->canSyncLink($link)) {
+            throw new ForbiddenHttpException(
+                Craft::t('influx', 'You don’t have permission to sync {link}.', ['link' => $link->name]),
+            );
+        }
     }
 
     /**
@@ -73,6 +91,8 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
+        $this->requireSyncPermission($link);
+
         if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
         }
@@ -94,7 +114,7 @@ class SynchronizationController extends AbstractController
      * The element is loaded in the site the sync was triggered from, so a link
      * with per-site endpoints syncs only that site.
      *
-     * Even with {@see Permission::SYNC}, remote data is never pushed into
+     * Even with permission to sync the link, remote data is never pushed into
      * an element the user couldn't edit by hand. An explicit link handle (always
      * sent) pins the sync to THAT link and still requires it to target the
      * element, so a caller can't sync an unrelated one; without a handle, the
@@ -141,6 +161,8 @@ class SynchronizationController extends AbstractController
                 throw new BadRequestHttpException("No link targets element #{$elementId}.");
             }
         }
+
+        $this->requireSyncPermission($link);
 
         $remaining = $plugin->cooldown->remaining($link, $element);
 

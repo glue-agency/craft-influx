@@ -213,6 +213,7 @@
                            menu) plus a three-dots overflow menu for everything
                            else. `.thin` collapses the column so it sits flush right. #}
                         <td class="thin">
+                            {% set canSync = influxCanSync(link) %}
                             {% set siteHandles = link.siteHandles() %}
                             {% set multiSite = siteHandles|length > 1 %}
                             {% set siteScopes = multiSite ? [null]|merge(siteHandles) : [null] %}
@@ -222,18 +223,20 @@
                                buttons below submit. Hoisted out of the btngroup so
                                Craft's .btngroup radius rules (which target
                                .btn:first-child / :last-child) still match. #}
-                            {% for site in siteScopes %}
-                                {% for presetHandle in [null]|merge(presetHandles) %}
-                                    <form id="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle ?? "default" }}"
-                                          method="post" accept-charset="UTF-8" hidden>
-                                        {{ csrfInput() }}
-                                        {{ actionInput("influx/synchronization/link") }}
-                                        {{ hiddenInput("handle", link.handle) }}
-                                        {% if site is not null %}{{ hiddenInput("site", site) }}{% endif %}
-                                        {% if presetHandle is not null %}{{ hiddenInput("offset", presetHandle) }}{% endif %}
-                                    </form>
+                            {% if canSync %}
+                                {% for site in siteScopes %}
+                                    {% for presetHandle in [null]|merge(presetHandles) %}
+                                        <form id="influx-sync-{{ link.handle }}--{{ site ?? "all" }}--{{ presetHandle ?? "default" }}"
+                                              method="post" accept-charset="UTF-8" hidden>
+                                            {{ csrfInput() }}
+                                            {{ actionInput("influx/synchronization/link") }}
+                                            {{ hiddenInput("handle", link.handle) }}
+                                            {% if site is not null %}{{ hiddenInput("site", site) }}{% endif %}
+                                            {% if presetHandle is not null %}{{ hiddenInput("offset", presetHandle) }}{% endif %}
+                                        </form>
+                                    {% endfor %}
                                 {% endfor %}
-                            {% endfor %}
+                            {% endif %}
 
                             {% if not readOnly %}
                                 <form id="influx-delete-{{ link.handle }}" method="post" accept-charset="UTF-8" hidden>
@@ -245,6 +248,9 @@
                             {% endif %}
 
                             <div class="flex flex-nowrap influx-row-actions">
+                                {# Sync is granted per link, so a row can carry
+                                   every other action and no Sync button. #}
+                                {% if canSync %}
                                 <div class="btngroup">
                                     <button type="submit"
                                             form="influx-sync-{{ link.handle }}--all--default"
@@ -296,6 +302,7 @@
                                         </div>
                                     {% endif %}
                                 </div>
+                                {% endif %}
 
                                 {# Overflow: Debug + Duplicate + Delete, folded into one
                                    three-dots menu the way Craft's element rows do

@@ -31,33 +31,35 @@ class LinksController extends AbstractController
 {
     /**
      * Looking is a permission; changing is still admin territory, because a
-     * link lives in Project Config. So the view actions ask for
-     * {@see Permission::VIEW_LINKS} — which an admin holds implicitly —
-     * and everything that writes asks for admin plus `allowAdminChanges`. What
-     * a non-admin viewer sees is the read-only builder
+     * link lives in Project Config. So the view actions ask only that this user
+     * may see SOME link — which link decides the rest, and is checked per link
+     * once one is in hand ({@see AbstractController::requireViewLink()}) —
+     * where everything that writes asks for admin plus `allowAdminChanges`.
+     * What a non-admin viewer sees is the read-only builder
      * ({@see AbstractController::readOnly()}), the same screen a read-only
      * environment renders.
      *
-     * The debug inspector carries its own permission on top: it doesn't just
-     * show configuration, it fetches the remote feed and dry-runs the link.
+     * The debug inspector answers to a permission of its own, granted
+     * independently of the overview: it isn't a view of the configuration but a
+     * live fetch of the remote feed with the link dry-run over it.
      */
     protected function requireAccess(Action $action): void
     {
         parent::requireAccess($action);
 
-        $viewActions = ['index', 'edit', 'debug', 'debug-inspect'];
-
-        if (! in_array($action->id, $viewActions, true)) {
-            $this->requireAdmin();
+        if (in_array($action->id, ['debug', 'debug-inspect'], true)) {
+            $this->requirePermission(Permission::DEBUG_LINKS->value);
 
             return;
         }
 
-        $this->requirePermission(Permission::VIEW_LINKS->value);
+        if (in_array($action->id, ['index', 'edit'], true)) {
+            $this->requireViewAnyLink();
 
-        if (in_array($action->id, ['debug', 'debug-inspect'], true)) {
-            $this->requirePermission(Permission::DEBUG_LINKS->value);
+            return;
         }
+
+        $this->requireAdmin();
     }
 
     /**
@@ -65,11 +67,14 @@ class LinksController extends AbstractController
      * always resolves and the per-link last-run logs — behind each row's status
      * dot and quick link — can be batch-loaded in one query keyed by id. The
      * persistent "when" is `link.lastRunAt`.
+     *
+     * The list is what this user may see, not what exists: a per-link grant
+     * lists those links only.
      */
     public function actionIndex(): Response
     {
         $plugin = Influx::getInstance();
-        $links = $plugin->links->getAllLinks();
+        $links = $plugin->permissions->viewableLinks($plugin->links->getAllLinks());
 
         $logIds = array_values(array_filter(array_map(static fn(Link $link) => $link->lastLogId, $links)));
 
@@ -164,6 +169,9 @@ class LinksController extends AbstractController
 
         if ($id !== null) {
             $link = $link ?? $this->linkOr404($id);
+
+            $this->requireViewLink($link);
+
             $title = trim($link->name) ?: Craft::t('influx', 'Edit link');
         } else {
             $link = $link ?? new Link([

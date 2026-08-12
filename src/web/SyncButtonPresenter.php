@@ -56,7 +56,9 @@ class SyncButtonPresenter
 
     /**
      * One descriptor per link the element can be synced from, in link order.
-     * A link without a resource endpoint is skipped entirely; one that simply
+     * A link without a resource endpoint is skipped entirely, as is one the
+     * user has no permission to sync — the grant is per link, so a user can be
+     * offered one of an element's links and not another. A link that simply
      * can't run right now is still offered, disabled — see {@see candidate()}.
      *
      * @return list<array{name: string, enabled: bool, reason: ?string, params: array<string, mixed>}>
@@ -66,7 +68,7 @@ class SyncButtonPresenter
         $candidates = [];
 
         foreach ($this->linksForElement($element) as $link) {
-            if (! $link->itemEndpoint) {
+            if (! $link->itemEndpoint || ! $this->canSyncLink($link)) {
                 continue;
             }
 
@@ -146,5 +148,15 @@ class SyncButtonPresenter
     protected function cooldownRemaining(Link $link, ElementInterface $element): int
     {
         return Influx::getInstance()?->cooldown?->remaining($link, $element) ?? 0;
+    }
+
+    /**
+     * Whether the current user may sync this link at all, via the plugin
+     * singleton — the third seam, and the reason an element's links can be
+     * offered one by one rather than all or nothing.
+     */
+    protected function canSyncLink(Link $link): bool
+    {
+        return Influx::getInstance()?->permissions?->canSyncLink($link) ?? false;
     }
 }

@@ -42,6 +42,21 @@ class SyncButtonCandidateTest extends Unit
         $this->assertSame([], $this->presenter([])->candidates($this->entry('abc')));
     }
 
+    public function testOnlyLinksTheUserMaySyncAreOffered(): void
+    {
+        $allowed = FakeLink::make(['handle' => 'allowed', 'name' => 'Allowed', 'itemEndpoint' => 'https://api.test/items/{id}']);
+        $denied = FakeLink::make(['handle' => 'denied', 'name' => 'Denied', 'itemEndpoint' => 'https://api.test/items/{id}']);
+
+        $candidates = $this->presenter([$allowed, $denied], 0, ['allowed'])->candidates($this->entry('abc'));
+
+        $this->assertCount(1, $candidates);
+        $this->assertSame('Allowed', $candidates[0]['name']);
+
+        // Permission is all-or-nothing per link: denied for every one of an
+        // element's links leaves no affordance at all, not a disabled button.
+        $this->assertSame([], $this->presenter([$allowed, $denied], 0, [])->candidates($this->entry('abc')));
+    }
+
     public function testAMissingMatchValueDisablesWithAReason(): void
     {
         $link = FakeLink::make(['itemEndpoint' => 'https://api.test/items/{id}']);
@@ -111,9 +126,9 @@ class SyncButtonCandidateTest extends Unit
     /**
      * @param Link[] $links
      */
-    protected function presenter(array $links, int $cooldown = 0): SyncButtonPresenter
+    protected function presenter(array $links, int $cooldown = 0, array $syncableHandles = null): SyncButtonPresenter
     {
-        return new class($links, $cooldown) extends SyncButtonPresenter {
+        return new class($links, $cooldown, $syncableHandles) extends SyncButtonPresenter {
             public int $cooldownCalls = 0;
 
             /** @var Link[] */
@@ -121,10 +136,14 @@ class SyncButtonCandidateTest extends Unit
 
             protected int $stubCooldown;
 
-            public function __construct(array $links, int $cooldown)
+            /** @var string[]|null Handles the stub user may sync; null = all of them. */
+            protected ?array $stubSyncableHandles;
+
+            public function __construct(array $links, int $cooldown, ?array $syncableHandles)
             {
                 $this->stubLinks = $links;
                 $this->stubCooldown = $cooldown;
+                $this->stubSyncableHandles = $syncableHandles;
             }
 
             protected function linksForElement(ElementInterface $element): array
@@ -137,6 +156,12 @@ class SyncButtonCandidateTest extends Unit
                 $this->cooldownCalls++;
 
                 return $this->stubCooldown;
+            }
+
+            protected function canSyncLink(Link $link): bool
+            {
+                return $this->stubSyncableHandles === null
+                    || in_array($link->handle, $this->stubSyncableHandles, true);
             }
         };
     }
