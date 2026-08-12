@@ -25,6 +25,13 @@ class Settings extends Model
     public int $logRetentionDays = 14;
 
     /**
+     * How often (seconds) the log viewer asks for new rows while a run is
+     * still going. Every poll is a request per open viewer, so a busy CP is
+     * the reason to raise it; the trade is how far behind a live run reads.
+     */
+    public int $logPollInterval = 3;
+
+    /**
      * Whether the HTTP client follows 3xx redirects when fetching feeds and
      * downloading assets. Off by default: a redirect can send a credentialed
      * request to an unexpected host. When on, redirects are capped and
@@ -37,6 +44,7 @@ class Settings extends Model
         return [
             [['defaultItemCooldown'], 'integer', 'min' => 0],
             [['logRetentionDays'], 'integer', 'min' => 1],
+            [['logPollInterval'], 'integer', 'min' => 1],
             [['loggingEnabled', 'followRedirects'], 'boolean'],
         ];
     }

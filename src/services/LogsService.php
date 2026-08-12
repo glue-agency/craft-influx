@@ -515,14 +515,24 @@ class LogsService extends Component
     }
 
     /**
-     * How many runs are on record, filters aside. Answers the Logs overview's
-     * empty state when a filter combination matched nothing — "N runs are on
-     * record, widen the filter" only reads right with the unfiltered number, and
+     * How many runs are on record, filters aside — though never past what the
+     * viewer is allowed to see, so the empty state can't report runs their
+     * permissions would hide anyway. Answers the Logs overview's empty state
+     * when a filter combination matched nothing: "N runs are on record, widen
+     * the filter" only reads right with the unfiltered number, and
      * {@see paginate()}'s total is the filtered one.
+     *
+     * @param string[]|null $allowedLinkHandles
      */
-    public function totalCount(): int
+    public function totalCount(?array $allowedLinkHandles = null): int
     {
-        return (int) LogRecord::find()->count();
+        $query = LogRecord::find();
+
+        if ($allowedLinkHandles !== null) {
+            $query->where(['linkHandle' => $allowedLinkHandles]);
+        }
+
+        return (int) $query->count();
     }
 
     /**
@@ -582,9 +592,16 @@ class LogsService extends Component
      *
      * @return array{logs: LogRecord[], total: int}
      */
-    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null, ?string $result = null): array
+    public function paginate(int $page, int $perPage, ?string $linkHandle = null, ?string $status = null, ?string $trigger = null, ?string $result = null, ?array $allowedLinkHandles = null): array
     {
         $query = LogRecord::find()->orderBy(['startedAt' => SORT_DESC]);
+
+        // The permission restriction, applied before the toolbar's own filters
+        // so no combination of them can widen the list past it. An empty list
+        // is "nothing allowed", where null is "no restriction".
+        if ($allowedLinkHandles !== null) {
+            $query->andWhere(['linkHandle' => $allowedLinkHandles]);
+        }
 
         if ($linkHandle !== null && $linkHandle !== '') {
             $query->andWhere(['linkHandle' => $linkHandle]);
@@ -681,11 +698,20 @@ class LogsService extends Component
     }
 
     /**
-     * Every log row goes, so every buffer does too — see {@see delete()}.
+     * Drop log rows — every one of them, or only those of the given links when
+     * the caller is restricted to a subset ({@see paginate()}'s last argument
+     * is the same restriction). Buffers go with them: a buffer's row may be
+     * among the deleted, and there's no cheap way to tell which, so the safe
+     * answer is to forget them all — see {@see delete()}.
+     *
+     * @param string[]|null $linkHandles
      */
-    public function clear(): int
+    public function clear(?array $linkHandles = null): int
     {
-        $deleted = LogRecord::deleteAll();
+        $deleted = $linkHandles === null
+            ? LogRecord::deleteAll()
+            : LogRecord::deleteAll(['linkHandle' => $linkHandles]);
+
         $this->buffers = [];
         Influx::getInstance()->links->forgetDeletedLogs();
         $this->invalidateErrorLogCount();

@@ -11,7 +11,9 @@
    order they were configured in. Owned by the ProcessingAction enum. #}
 {% set processingOrder = influxProcessingValues() %}
 
-{% set canDebug = currentUser.can("influx:debugLinks") %}
+{% set permissions = craft.influx.permissions %}
+{% set canDebug = permissions.can("influx:debugLinks") %}
+{% set canViewLogs = permissions.can("influx:accessLogs") %}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -105,15 +107,21 @@
         {% endjs %}
     {% endif %}
 
+    {# Three nothings, and the second line is what tells them apart: links exist
+       but none are this user's to manage, none exist and they can't add one, or
+       none exist and they can. #}
     {% if links is empty %}
-        {# The second line names the way out, which differs by environment: a
-           read-only CP has no New link button to point at. #}
         <div class="zilch influx-zilch">
-            <h2>{{ "No links yet"|t("influx") }}</h2>
-            {% if readOnly %}
-                <p class="light">{{ "Links are managed in Project Config, and this environment disallows administrative changes."|t("influx") }}</p>
+            {% if linksExist %}
+                <h2>{{ "No links you can manage"|t("influx") }}</h2>
+                <p class="light">{{ "Links are configured here, but none of them are assigned to you. An administrator grants access per link."|t("influx") }}</p>
             {% else %}
-                <p class="light">{{ "A link maps a feed onto an element type, and syncs it on demand or on a schedule. Add one to get started."|t("influx") }}</p>
+                <h2>{{ "No links yet"|t("influx") }}</h2>
+                {% if readOnly %}
+                    <p class="light">{{ "Links are managed in Project Config, and this environment disallows administrative changes."|t("influx") }}</p>
+                {% else %}
+                    <p class="light">{{ "A link maps a feed onto an element type, and syncs it on demand or on a schedule. Add one to get started."|t("influx") }}</p>
+                {% endif %}
             {% endif %}
         </div>
     {% else %}
@@ -181,7 +189,14 @@
                                 {% set when = craft.app.formattingLocale.getFormatter().asDatetime(link.lastRunAt) %}
                                 {% if lastLog %}
                                     <span class="status {{ logPresenter.statusColor(lastLog.status) }}" title="{{ lastLog.status|t('influx') }}"></span>
-                                    <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                                    {# The when links into the run only for someone
+                                       allowed on the Logs screens; otherwise it
+                                       states the fact without the dead end. #}
+                                    {% if canViewLogs %}
+                                        <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                                    {% else %}
+                                        {{ when }}
+                                    {% endif %}
                                     {% if logPresenter.isFailed(lastLog.status) %}
                                         <div class="influx-cell-sub">
                                             {{- "failed"|t("influx") -}}
@@ -213,7 +228,7 @@
                            menu) plus a three-dots overflow menu for everything
                            else. `.thin` collapses the column so it sits flush right. #}
                         <td class="thin">
-                            {% set canSync = influxCanSync(link) %}
+                            {% set canSync = permissions.canManageLink(link) %}
                             {% set siteHandles = link.siteHandles() %}
                             {% set multiSite = siteHandles|length > 1 %}
                             {% set siteScopes = multiSite ? [null]|merge(siteHandles) : [null] %}

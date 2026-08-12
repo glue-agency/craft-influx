@@ -5,7 +5,7 @@
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
 
-{% set canDelete = currentUser.can("influx:deleteLogs") %}
+{% set canDelete = craft.influx.permissions.can("influx:deleteLogs") %}
 
 {# Active filters, carried through the pager links so paging keeps the view. #}
 {% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger, result: selectedResult }|filter(v => v is not null and v != "") %}

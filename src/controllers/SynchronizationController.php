@@ -25,10 +25,10 @@ class SynchronizationController extends AbstractController
 {
     /**
      * NO up-front gate, deliberately — and the one controller here without one.
-     * Sync is granted per link, and which link is being synced only becomes
-     * known once the request body has been resolved, so the check is
-     * {@see requireSyncPermission()} in each action, immediately after the
-     * link is in hand.
+     * A link is synced by whoever manages it, and which link that is only
+     * becomes known once the request body has been resolved, so the check is
+     * {@see AbstractController::requireManageLink()} in each action, immediately
+     * after the link is in hand.
      *
      * The plugin-section permission isn't required either: the element "Sync
      * from remote" button lives on the entry edit page, so an entry editor must
@@ -36,20 +36,6 @@ class SynchronizationController extends AbstractController
      */
     protected function requireAccess(Action $action): void
     {
-    }
-
-    /**
-     * The gate every action here runs the moment it knows its link.
-     *
-     * @throws ForbiddenHttpException
-     */
-    protected function requireSyncPermission(Link $link): void
-    {
-        if (! Influx::getInstance()->permissions->canSyncLink($link)) {
-            throw new ForbiddenHttpException(
-                Craft::t('influx', 'You don’t have permission to sync {link}.', ['link' => $link->name]),
-            );
-        }
     }
 
     /**
@@ -91,7 +77,7 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
-        $this->requireSyncPermission($link);
+        $this->requireManageLink($link);
 
         if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
@@ -162,7 +148,7 @@ class SynchronizationController extends AbstractController
             }
         }
 
-        $this->requireSyncPermission($link);
+        $this->requireManageLink($link);
 
         $remaining = $plugin->cooldown->remaining($link, $element);
 

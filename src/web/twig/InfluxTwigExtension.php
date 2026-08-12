@@ -4,9 +4,6 @@ namespace GlueAgency\Influx\web\twig;
 
 use GlueAgency\Influx\enums\ProcessingAction;
 use GlueAgency\Influx\helpers\Compat;
-use GlueAgency\Influx\Influx;
-use GlueAgency\Influx\models\Link;
-use GlueAgency\Influx\services\PermissionsService;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
@@ -35,19 +32,7 @@ class InfluxTwigExtension extends AbstractExtension
             new TwigFunction('influxValueChip', [Compat::class, 'valueChipHtml'], ['is_safe' => ['html']]),
             new TwigFunction('influxProcessingValues', [$this, 'processingValues']),
             new TwigFunction('influxProcessingColor', [$this, 'processingColor']),
-            new TwigFunction('influxCanSync', [$this, 'canSync']),
         ];
-    }
-
-    /**
-     * Whether the current user may sync this link. A function rather than
-     * `currentUser.can(...)` in the template, because the answer is two
-     * permissions wide ({@see PermissionsService::canSyncLink()}) and the
-     * per-link one is keyed by UID.
-     */
-    public function canSync(Link $link): bool
-    {
-        return Influx::getInstance()->permissions->canSyncLink($link);
     }
 
     /**

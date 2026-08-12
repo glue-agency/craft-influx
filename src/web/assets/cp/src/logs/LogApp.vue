@@ -586,6 +586,9 @@ export default {
             loadingRow: false,
             streamLabel: this.config.isLive ? this.$t('connecting…') : '',
             poller: null,
+            // Seconds between polls, from the plugin's own setting. Falls back
+            // to its default for a payload written before the setting existed.
+            pollInterval: Math.max(1, this.config.pollInterval || 3),
             paused: false,
             streamDone: false,
             actionTarget: '#influx-log-actions',
@@ -900,7 +903,7 @@ export default {
         startPolling() {
             this.streamLabel = this.$t('live updates');
             this.fetchPage(this.currentPage);
-            this.poller = setInterval(() => this.fetchPage(this.currentPage), 1500);
+            this.poller = setInterval(() => this.fetchPage(this.currentPage), this.pollInterval * 1000);
         },
 
         stopPolling() {

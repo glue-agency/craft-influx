@@ -18,6 +18,7 @@ use craft\models\FieldLayout;
 use craft\services\Gc;
 use craft\services\ProjectConfig as ProjectConfigService;
 use craft\services\UserPermissions;
+use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
 use craft\web\View;
 use GlueAgency\Influx\enums\Permission;
@@ -41,6 +42,7 @@ use GlueAgency\Influx\services\TargetsService;
 use GlueAgency\Influx\web\assets\editor\FieldIndicatorAsset;
 use GlueAgency\Influx\web\SyncButtonPresenter;
 use GlueAgency\Influx\web\twig\InfluxTwigExtension;
+use GlueAgency\Influx\web\twig\InfluxVariable;
 use yii\base\Event;
 
 /**
@@ -118,6 +120,7 @@ class Influx extends Plugin
         Craft::setAlias('@influx', __DIR__);
 
         $this->registerProjectConfigEventListeners();
+        $this->registerTwigVariable();
 
         Craft::$app->onInit(function() {
             $this->registerControllers();
@@ -168,22 +171,23 @@ class Influx extends Plugin
 
         $subnav = [];
 
-        if ($this->permissions->can(Permission::VIEW_LINKS)) {
+        if ($this->permissions->can(Permission::ACCESS_LINKS)) {
             $subnav['links'] = [
                 'label' => Craft::t('influx', 'Links'),
                 'url'   => 'influx/links',
             ];
         }
 
-        // The badge counts logs, so it only rides along for someone allowed to
-        // open them — pointing at a screen they'd be 403'd on otherwise.
-        if ($this->permissions->can(Permission::VIEW_LOGS)) {
+        if ($this->permissions->can(Permission::ACCESS_LOGS)) {
             $subnav['logs'] = [
                 'label' => Craft::t('influx', 'Logs'),
                 'url'   => 'influx/logs',
             ];
 
-            $errorCount = $this->logs->errorLogCount();
+            // The badge counts every errored run there is, so it only rides
+            // along for someone allowed to see every run — a per-link viewer
+            // would be handed a number they can't reconcile with their list.
+            $errorCount = $this->permissions->can(Permission::VIEW_LOGS) ? $this->logs->errorLogCount() : 0;
 
             if ($errorCount > 0) {
                 $parent['badgeCount'] = $errorCount;
@@ -285,6 +289,25 @@ class Influx extends Plugin
     }
 
     /**
+     * Expose the plugin's services to CP templates as `craft.influx`, so a
+     * template asks {@see PermissionsService} the same question the controller
+     * does rather than spelling out permission strings of its own.
+     *
+     * Bound straight from {@see init()}, NOT from the `onInit` callback the
+     * other registrations use: Craft builds the `craft` Twig global early
+     * enough that a handler attached later never sees the event, and
+     * `craft.influx` is then simply not a thing.
+     */
+    protected function registerTwigVariable(): void
+    {
+        Event::on(CraftVariable::class, CraftVariable::EVENT_INIT, static function(Event $event) {
+            /** @var CraftVariable $variable */
+            $variable = $event->sender;
+            $variable->set('influx', InfluxVariable::class);
+        });
+    }
+
+    /**
      * Wire LinksService into Craft's Project Config lifecycle so that:
      *   - new/changed links applied from YAML (e.g. via `project-config/apply`)
      *     invalidate the in-memory cache
@@ -336,17 +359,18 @@ class Influx extends Plugin
      * Register the plugin's user permissions, in the shape Craft's permissions
      * screen renders: a screen permission carrying the ones nested under it.
      *
-     * The two sync permissions are deliberately NOT nested under a CP
-     * permission: an entry editor holds one for the element edit screen's "Sync
-     * from remote" button, without any Influx CP access at all. They are the
-     * same grant at two sizes — {@see Permission::SYNC_ALL} covers every link,
-     * including ones added later, where {@see Permission::SYNC_LINK} carries a
-     * checkbox per link and covers only what's ticked. Holding SYNC_ALL makes
-     * the per-link list redundant rather than hidden; the check that reads
-     * both is {@see PermissionsService::canSyncLink()}.
+     * One branch per CP section, headed by the permission that decides whether
+     * that section's nav item exists at all. Under Links: which links the user
+     * manages — {@see Permission::MANAGE_LINKS} for every one, including links
+     * added later, or {@see Permission::MANAGE_LINK} with a checkbox each — and
+     * then Debug over that same set. Under Logs: the same two sizes for whose
+     * runs are visible, plus deleting them.
      *
-     * The rest are the plugin's own screens, and what removes data or reaches
-     * beyond a screen nests under the permission that shows it.
+     * Holding a blanket permission makes its per-link list redundant rather
+     * than hidden: Craft's permissions UI can disable a nested list under an
+     * unchecked parent, but has no "hide when a sibling is checked", and custom
+     * JS on a core screen isn't worth that. The info line says so instead, and
+     * {@see PermissionsService} reads both halves so the redundancy is harmless.
      */
     protected function registerPermissions(): void
     {
@@ -357,12 +381,16 @@ class Influx extends Plugin
                 $event->permissions[] = [
                     'heading'     => Craft::t('influx', 'Influx'),
                     'permissions' => [
-                        ...$this->permissionEntry(Permission::VIEW_LINKS),
-                        ...$this->permissionEntry(Permission::VIEW_LINK, $this->linkPermissions(Permission::viewLink(...))),
-                        ...$this->permissionEntry(Permission::DEBUG_LINKS),
-                        ...$this->permissionEntry(Permission::SYNC_ALL),
-                        ...$this->permissionEntry(Permission::SYNC_LINK, $this->linkPermissions(Permission::syncLink(...))),
-                        ...$this->permissionEntry(Permission::VIEW_LOGS, $this->permissionEntry(Permission::DELETE_LOGS)),
+                        ...$this->permissionEntry(Permission::ACCESS_LINKS, [
+                            ...$this->permissionEntry(Permission::MANAGE_LINKS),
+                            ...$this->permissionEntry(Permission::MANAGE_LINK, $this->linkPermissions(Permission::manageLink(...))),
+                            ...$this->permissionEntry(Permission::DEBUG_LINKS),
+                        ]),
+                        ...$this->permissionEntry(Permission::ACCESS_LOGS, [
+                            ...$this->permissionEntry(Permission::VIEW_LOGS),
+                            ...$this->permissionEntry(Permission::VIEW_LOG, $this->linkPermissions(Permission::viewLog(...))),
+                            ...$this->permissionEntry(Permission::DELETE_LOGS),
+                        ]),
                     ],
                 ];
             },
@@ -396,7 +424,7 @@ class Influx extends Plugin
     /**
      * A checkbox per link, for the nested half of a per-link permission —
      * `$value` turning a link's UID into the permission string
-     * ({@see Permission::viewLink()}, {@see Permission::syncLink()}).
+     * ({@see Permission::manageLink()}, {@see Permission::viewLog()}).
      *
      * Read at render time, so a link added since the last page load is on the
      * list; a link deleted since leaves a permission string behind that no

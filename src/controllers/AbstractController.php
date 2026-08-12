@@ -166,46 +166,19 @@ abstract class AbstractController extends Controller
     }
 
     /**
-     * The per-link gates. Viewing and running a link are each granted either
-     * for every link or link by link ({@see PermissionsService}), so which link
-     * is being asked about decides the answer — which is why these run inside
-     * an action, once the link has been resolved, rather than in
+     * The per-link gate. A link is managed by whoever may sync it — every link
+     * at once or link by link ({@see PermissionsService::canManageLink()}) — so
+     * which link is being asked about decides the answer, which is why this
+     * runs inside an action once the link has been resolved rather than in
      * {@see requireAccess()} like the flat permissions.
      *
      * @throws ForbiddenHttpException
      */
-    protected function requireViewLink(Link $link): void
+    protected function requireManageLink(Link $link): void
     {
-        if (! Influx::getInstance()->permissions->canViewLink($link)) {
+        if (! Influx::getInstance()->permissions->canManageLink($link)) {
             throw new ForbiddenHttpException(
-                Craft::t('influx', 'You don’t have permission to view {link}.', ['link' => $link->name]),
-            );
-        }
-    }
-
-    /**
-     * @throws ForbiddenHttpException
-     */
-    protected function requireSyncLink(Link $link): void
-    {
-        if (! Influx::getInstance()->permissions->canSyncLink($link)) {
-            throw new ForbiddenHttpException(
-                Craft::t('influx', 'You don’t have permission to sync {link}.', ['link' => $link->name]),
-            );
-        }
-    }
-
-    /**
-     * The screen-level half of {@see requireViewLink()}: no link in hand yet,
-     * so the question is whether there is any link at all this user may see.
-     *
-     * @throws ForbiddenHttpException
-     */
-    protected function requireViewAnyLink(): void
-    {
-        if (! Influx::getInstance()->permissions->canViewAnyLink()) {
-            throw new ForbiddenHttpException(
-                Craft::t('influx', 'You don’t have permission to view links.'),
+                Craft::t('influx', 'You don’t have permission to manage {link}.', ['link' => $link->name]),
             );
         }
     }

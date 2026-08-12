@@ -27,11 +27,11 @@ class LinkBuilderController extends AbstractController
     /**
      * Mirrors {@see LinksController}, whose screens these routes serve: `save`
      * is the one that writes Project Config, so it stays admin-and-
-     * allowAdminChanges; the read / helper endpoints ask only that this user
-     * may see some link, which is what lets a non-admin viewer's builder mount
-     * at all. Which link is a question only {@see actionBootstrap()} can ask,
-     * being the one route that names one. None of them write, and the payload
-     * they hydrate is already marked read-only for that user.
+     * allowAdminChanges; the read / helper endpoints ask for access to the
+     * section, which is what lets a non-admin's builder mount at all. WHICH
+     * link is a question only {@see actionBootstrap()} can ask, being the one
+     * route that names one. None of them write, and the payload they hydrate is
+     * already marked read-only for that user.
      */
     protected function requireAccess(Action $action): void
     {
@@ -43,7 +43,7 @@ class LinkBuilderController extends AbstractController
             return;
         }
 
-        $this->requireViewAnyLink();
+        $this->requirePermission(Permission::ACCESS_LINKS->value);
     }
 
     /**
@@ -67,7 +67,7 @@ class LinkBuilderController extends AbstractController
         // it's where the per-link permission is checked. Duplicating and
         // drafting are creation, which the read-only gate already covers.
         if ($id !== null) {
-            $this->requireViewLink($this->linkOr404($id));
+            $this->requireManageLink($this->linkOr404($id));
         }
 
         $payload = Influx::getInstance()->linkBuilder->bootstrap($id, $duplicateOf, $this->readOnly());

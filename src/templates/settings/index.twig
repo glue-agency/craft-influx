@@ -42,4 +42,16 @@
         value: settings.logRetentionDays,
         errors: settings.getErrors("logRetentionDays"),
     }) }}
+
+    {{ forms.textField({
+        label: "Live update interval (seconds)"|t("influx"),
+        instructions: "How often an open log viewer asks for new rows while its run is still going. Raise it to spare a busy control panel the requests; the trade is how far behind a live run reads. Minimum 1."|t("influx"),
+        id: "logPollInterval",
+        name: "logPollInterval",
+        type: "number",
+        min: 1,
+        size: 6,
+        value: settings.logPollInterval,
+        errors: settings.getErrors("logPollInterval"),
+    }) }}
 </div>
