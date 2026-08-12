@@ -79,6 +79,21 @@ class Influx extends Plugin
     public const PERMISSION_SYNC = 'influx:sync';
 
     /**
+     * Permission gating the Logs screens — the overview, a run's detail, and
+     * the JSON routes the log viewer polls. Without it the Logs subnav item
+     * and its error badge don't render either.
+     */
+    public const PERMISSION_VIEW_LOGS = 'influx:viewLogs';
+
+    /**
+     * Nested under {@see PERMISSION_VIEW_LOGS}: removing log rows, one at a
+     * time or all at once. Reading a run's history and pruning it are separate
+     * asks — an operator who watches syncs isn't automatically the one who
+     * clears the record of them.
+     */
+    public const PERMISSION_DELETE_LOGS = 'influx:deleteLogs';
+
+    /**
      * Mapped field handles collected so far this request, for
      * {@see registerFieldIndicators()}.
      *
@@ -177,24 +192,29 @@ class Influx extends Plugin
                 'label' => Craft::t('influx', 'Links'),
                 'url'   => 'influx/links',
             ],
-            'logs' => [
+        ];
+
+        // The badge counts logs, so it only rides along for someone allowed to
+        // open them — pointing at a screen they'd be 403'd on otherwise.
+        if (Craft::$app->getUser()->checkPermission(self::PERMISSION_VIEW_LOGS)) {
+            $parent['subnav']['logs'] = [
                 'label' => Craft::t('influx', 'Logs'),
                 'url'   => 'influx/logs',
-            ],
-        ];
+            ];
+
+            $errorCount = $this->logs->errorLogCount();
+
+            if ($errorCount > 0) {
+                $parent['badgeCount'] = $errorCount;
+                $parent['subnav']['logs']['badgeCount'] = $errorCount;
+            }
+        }
 
         if (Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
             $parent['subnav']['settings'] = [
                 'label' => Craft::t('influx', 'Settings'),
                 'url'   => 'influx/settings',
             ];
-        }
-
-        $errorCount = $this->logs->errorLogCount();
-
-        if ($errorCount > 0) {
-            $parent['badgeCount'] = $errorCount;
-            $parent['subnav']['logs']['badgeCount'] = $errorCount;
         }
 
         return $parent;
@@ -319,9 +339,13 @@ class Influx extends Plugin
     }
 
     /**
-     * Register the plugin's user permissions. Currently just the sync-trigger
-     * permission ({@see PERMISSION_SYNC}); a top-level entry so it can be
-     * granted to entry editors independently of Influx CP-section access.
+     * Register the plugin's user permissions.
+     *
+     * {@see PERMISSION_SYNC} is deliberately NOT nested under a CP permission:
+     * an entry editor can hold it — for the element edit screen's "Sync from
+     * remote" button — without any Influx CP access at all. The screen
+     * permissions are the plugin's own sections, and the ones that remove data
+     * nest under the one that shows it.
      */
     protected function registerPermissions(): void
     {
@@ -334,6 +358,15 @@ class Influx extends Plugin
                     'permissions' => [
                         self::PERMISSION_SYNC => [
                             'label' => Craft::t('influx', 'Sync elements from a remote link'),
+                        ],
+                        self::PERMISSION_VIEW_LOGS => [
+                            'label'  => Craft::t('influx', 'View logs'),
+                            'nested' => [
+                                self::PERMISSION_DELETE_LOGS => [
+                                    'label' => Craft::t('influx', 'Delete logs'),
+                                    'info'  => Craft::t('influx', 'Includes clearing every log entry at once.'),
+                                ],
+                            ],
                         ],
                     ],
                 ];

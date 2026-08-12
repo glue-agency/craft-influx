@@ -15,10 +15,27 @@ use GlueAgency\Influx\web\LinkPresenter;
 use GlueAgency\Influx\web\LogPresenter;
 use GlueAgency\Influx\web\LogViewerTranslations;
 use GlueAgency\Influx\web\Vocabulary;
+use yii\base\Action;
 use yii\web\Response;
 
 class LogsController extends AbstractController
 {
+    /**
+     * Every action here reads the log, so the view permission gates the lot;
+     * the two that remove rows additionally require the delete one nested
+     * under it. Admins pass both.
+     */
+    protected function requireAccess(Action $action): void
+    {
+        parent::requireAccess($action);
+
+        $this->requirePermission(Influx::PERMISSION_VIEW_LOGS);
+
+        if (in_array($action->id, ['delete', 'clear'], true)) {
+            $this->requirePermission(Influx::PERMISSION_DELETE_LOGS);
+        }
+    }
+
     /**
      * Every toolbar filter is validated against what currently exists (or, for
      * status, trigger and result, against its enum) by {@see oneOfQueryParam()},

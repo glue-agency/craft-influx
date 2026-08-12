@@ -5,6 +5,8 @@
 {% set title = "Logs"|t("influx") %}
 {% set selectedSubnavItem = "logs" %}
 
+{% set canDelete = currentUser.can("influx:deleteLogs") %}
+
 {# Active filters, carried through the pager links so paging keeps the view. #}
 {% set filterParams = { link: selectedLink, status: selectedStatus, trigger: selectedTrigger, result: selectedResult }|filter(v => v is not null and v != "") %}
 
@@ -26,11 +28,13 @@
 ] %}
 
 {% block actionButton %}
-    <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
-        {{ csrfInput() }}
-        {{ actionInput("influx/logs/clear") }}
-        <button type="submit" class="btn" data-icon="trash">{{ "Clear all"|t("influx") }}</button>
-    </form>
+    {% if canDelete %}
+        <form method="post" accept-charset="UTF-8" onsubmit="return confirm('{{ "Delete every log entry?"|t("influx") }}');">
+            {{ csrfInput() }}
+            {{ actionInput("influx/logs/clear") }}
+            <button type="submit" class="btn" data-icon="trash">{{ "Clear all"|t("influx") }}</button>
+        </form>
+    {% endif %}
 {% endblock %}
 
 {% block content %}
@@ -105,7 +109,7 @@
                     <th>{{ "User"|t("influx") }}</th>
                     <th>{{ "Site"|t("influx") }}</th>
                     <th>{{ "Result"|t("influx") }}</th>
-                    <th class="thin"></th>
+                    {% if canDelete %}<th class="thin"></th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -187,20 +191,24 @@
                         </td>
 
                         {# Delete — Craft's native row-delete icon; click → confirm
-                           → submits the row's hidden form. #}
-                        <td class="thin action">
-                            <form id="influx-delete-log-{{ log.id }}" method="post" accept-charset="UTF-8" hidden>
-                                {{ csrfInput() }}
-                                {{ actionInput("influx/logs/delete") }}
-                                {{ redirectInput("influx/logs") }}
-                                {{ hiddenInput("id", log.id) }}
-                            </form>
-                            <a class="delete icon"
-                               title="{{ 'Delete'|t('influx') }}"
-                               aria-label="{{ 'Delete'|t('influx') }}"
-                               role="button"
-                               data-influx-delete-form="influx-delete-log-{{ log.id }}"></a>
-                        </td>
+                           → submits the row's hidden form. The whole column is
+                           gone without the delete permission, rather than an icon
+                           that 403s. #}
+                        {% if canDelete %}
+                            <td class="thin action">
+                                <form id="influx-delete-log-{{ log.id }}" method="post" accept-charset="UTF-8" hidden>
+                                    {{ csrfInput() }}
+                                    {{ actionInput("influx/logs/delete") }}
+                                    {{ redirectInput("influx/logs") }}
+                                    {{ hiddenInput("id", log.id) }}
+                                </form>
+                                <a class="delete icon"
+                                   title="{{ 'Delete'|t('influx') }}"
+                                   aria-label="{{ 'Delete'|t('influx') }}"
+                                   role="button"
+                                   data-influx-delete-form="influx-delete-log-{{ log.id }}"></a>
+                            </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
