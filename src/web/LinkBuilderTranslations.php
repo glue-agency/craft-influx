@@ -131,9 +131,11 @@ class LinkBuilderTranslations
                 'The node containing the total number of pages.',
                 'Nodes',
             ],
+            'tabs/MappingSkeleton.vue' => [
+                'Reading mappable fields',
+            ],
             'tabs/MappingTab.vue' => [
                 'Couldn’t load mappable fields:',
-                'Loading mappable fields…',
                 'Pick an element type (and a section, for entries) on the General tab to see destination fields here.',
                 'Match key',
                 'Match attribute',

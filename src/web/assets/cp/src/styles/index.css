@@ -14,6 +14,7 @@
 /* Mapping tree — link builder + debug / log inspectors */
 @import './components/mapping-group.css';
 @import './components/mapping-row.css';
+@import './components/mapping-skeleton.css';
 @import './components/schema-form.css';
 @import './components/missing.css';
 

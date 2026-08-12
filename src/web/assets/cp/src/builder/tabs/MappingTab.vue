@@ -4,7 +4,11 @@
             <strong>{{ $t('Couldn’t load mappable fields:') }}</strong> {{ ui.mappableError }}
         </div>
 
-        <p v-if="ui.loading || ! ui.mappable" class="light" v-text="$t('Loading mappable fields…')"></p>
+        <!-- The list's own shape while it loads, rather than a line of text
+             where the tree will be. Also covers a REFETCH (a changed section or
+             entry type), where the previous element type's tree would otherwise
+             sit there looking settled. -->
+        <v-mapping-skeleton v-if="ui.loading || ui.mappableLoading || ! ui.mappable" />
 
         <p v-else-if="! ui.mappable.fields.length" class="light" v-text="$t('Pick an element type (and a section, for entries) on the General tab to see destination fields here.')"></p>
 
@@ -43,6 +47,7 @@
 
 <script>
 import MappingGroup from './MappingGroup.vue';
+import MappingSkeleton from './MappingSkeleton.vue';
 import FieldErrors from '../FieldErrors.vue';
 import SearchableSelect from '../../components/SearchableSelect.vue';
 import { store } from '../store.js';
@@ -110,6 +115,6 @@ export default {
         },
     },
 
-    components: { 'v-mapping-group': MappingGroup, 'v-field-errors': FieldErrors, 'v-searchable-select': SearchableSelect },
+    components: { 'v-mapping-group': MappingGroup, 'v-mapping-skeleton': MappingSkeleton, 'v-field-errors': FieldErrors, 'v-searchable-select': SearchableSelect },
 };
 </script>

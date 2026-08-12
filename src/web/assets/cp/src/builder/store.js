@@ -34,6 +34,7 @@ const initial = () => ({
     meta: null,            // isNew, readOnly, handle, uid, csrf info, envSuggestions
     mappable: null,        // {fields, groups, matchOptions, requiresMatch}; lazy-loaded
     mappableError: null,
+    mappableLoading: false,// a mappable-fields fetch is in flight
     tokenSuggestions: null,// list of {kind, label, data[]}; lazy-loaded
     sample: null,          // last successful Fetch-sample report
     sampling: false,
@@ -250,10 +251,23 @@ async function save(options = {}) {
     }
 }
 
+/** Bumped per {@link refreshMappableFields} call, so only the newest writes. */
+let mappableRequest = 0;
+
 /**
  * Refetch the mappable-fields / match-attribute options for the current
  * element type / criteria. Called by tab components when the user changes
  * the section or entry-type dropdown.
+ *
+ * `mappableLoading` is what the Mapping tab renders its skeleton off. It
+ * matters because the previous element type's fields stay in `mappable`
+ * until this resolves: without the flag the tab shows the OLD tree, looking
+ * settled, while the new one is still on the wire.
+ *
+ * Only the newest call may write. A user clicking through sections fires
+ * several of these, and responses can land out of order — an earlier one
+ * arriving last would otherwise replace the current tree with a stale one,
+ * or clear the flag while a newer fetch is still running.
  */
 async function refreshMappableFields() {
     if (!root.link) return;
@@ -262,18 +276,36 @@ async function refreshMappableFields() {
         // Brand-new link with no element type yet. Don't hit the server
         // with a request that's guaranteed to 400; just clear the cache
         // so the tab shows the "pick an element type" empty-state.
+        mappableRequest++;
         root.mappable = { fields: [], groups: [], matchOptions: [] };
         root.mappableError = null;
+        root.mappableLoading = false;
         return;
     }
+
+    const request = ++mappableRequest;
+
     root.mappableError = null;
+    root.mappableLoading = true;
+
     try {
-        root.mappable = await api.mappableFields(elementType, root.link.elementCriteria || {});
+        const mappable = await api.mappableFields(elementType, root.link.elementCriteria || {});
+
+        if (request === mappableRequest) {
+            root.mappable = mappable;
+        }
     } catch (e) {
-        root.mappableError = errorText(e, 'Failed to load mappable fields.');
+        if (request === mappableRequest) {
+            root.mappableError = errorText(e, 'Failed to load mappable fields.');
+        }
+
         // Make the failure visible in dev tools even when the tab UI is
         // hidden — easier to diagnose 4xx responses from the server.
         console.error('[influx] mappable-fields fetch failed', e);
+    } finally {
+        if (request === mappableRequest) {
+            root.mappableLoading = false;
+        }
     }
 }
 

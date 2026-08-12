@@ -1,0 +1,110 @@
+/* ---------------------------------------------------------------------
+   Mapping-tab loading state — the shape of the list that's coming, rather
+   than a line of text where the tree will be. Shown while the mappable
+   fields are read, including on a REFETCH (a changed section or entry
+   type), where the previous element type's tree would otherwise sit there
+   looking settled.
+
+   Every value here is taken from the real thing ({@see mapping-group.css},
+   {@see mapping-row.css}) rather than chosen to look similar: same card
+   border and radius, same header fill and weight, same row grid, padding
+   and 22px chevron gutter, same 34px control height. The list then lands
+   into the space its skeleton already occupied instead of resizing the
+   page under the reader.
+
+   Keep the two in step — a change to the row grid or the group header
+   belongs in both files.
+--------------------------------------------------------------------- */
+.influx-mapping-skeleton {
+    margin-bottom: 12px;
+    border: 1px solid rgba(0, 0, 0, .1);
+    border-radius: 5px;
+    background: #fff;
+}
+
+/* The min-height is the group header's own: 41px, set there by its 24px
+   count / mapped pills rather than by its text, which a spinner and a label
+   don't reach on their own. */
+.influx-mapping-skeleton__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 41px;
+    padding: 8px 12px;
+    border-radius: 4px 4px 0 0;
+    background: #f3f5f7;
+    border-bottom: 1px solid rgba(0, 0, 0, .08);
+    font-weight: 600;
+}
+
+/* Craft's spinner is 34px tall at its default size, which would make this
+   header taller than the group header it stands in for. */
+.influx-mapping-skeleton__head .spinner {
+    --size: 12px;
+}
+
+/* One row per field to come, on the mapping row's own grid: name + handle,
+   source node, default value. */
+.influx-mapping-skeleton__row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+
+.influx-mapping-skeleton__row:last-child {
+    border-bottom: none;
+}
+
+/* Mirrors `.influx-mapping-row .meta`: the 22px gutter a row's disclosure
+   chevron sits in, so the name bars share the field names' alignment edge.
+
+   The min-height is that cell's own height with a name and a handle line in
+   it — bars alone come up short, and a row that grows when the real list
+   lands is the jump this whole component exists to avoid. It is also what
+   sets the row's height, the meta being its tallest cell: 39 + 6 + 6 + a
+   border = the 52px of `.influx-mapping-row`. */
+.influx-mapping-skeleton__meta {
+    min-height: 39px;
+    padding: 4px 0 0 22px;
+}
+
+/* A pulse rather than a sweeping shimmer: the CP has no other moving
+   surface, and one gradient travelling across five rows at once reads as a
+   thing sliding behind the page. */
+@keyframes influx-skeleton-pulse {
+    0%, 100% { opacity: .55; }
+    50%      { opacity: 1; }
+}
+
+.influx-skeleton-bar {
+    display: block;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--gray-100);
+    animation: influx-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* The handle line under a field's name — smaller type there, so a shorter,
+   thinner bar here, on the same 3px offset. */
+.influx-skeleton-bar--handle {
+    width: 38%;
+    height: 8px;
+    margin-top: 5px;
+}
+
+/* Stands in for a select rather than a label. */
+.influx-skeleton-bar--control {
+    width: 100%;
+    height: 34px;
+    border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .influx-skeleton-bar {
+        animation: none;
+        opacity: .8;
+    }
+}
