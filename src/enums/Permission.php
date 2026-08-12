@@ -14,12 +14,12 @@ use Craft;
  * section's nav item is there at all, and everything nested under them is what
  * that section then offers.
  *
- * Under Links there is ONE per-link axis: managing a link — seeing it, opening
- * its configuration, and syncing it — granted for all of them
- * ({@see MANAGE_LINKS}) or link by link ({@see MANAGE_LINK}). DEBUG_LINKS is a
- * capability over that same set rather than a list of its own. Logs carry a
- * per-link axis too, because watching what a link did is a different ask from
- * running it.
+ * Links separate SCOPE from CAPABILITY. The scope is which links a user works
+ * with at all — {@see ALL_LINKS}, or {@see INDIVIDUAL_LINKS} with a checkbox
+ * each — and it decides what the overview lists. {@see SYNC_LINKS},
+ * {@see INSPECT_LINKS} and {@see DEBUG_LINKS} are verbs over that scope: what
+ * may be done with those links, never which links. Logs carry a scope of their
+ * own, because watching what a link did is a different ask from running it.
  *
  * ACCESS_PLUGIN is Craft's, not ours — Craft generates one per plugin handle —
  * but it's a magic string in our controllers all the same, so it lives here
@@ -29,8 +29,10 @@ enum Permission: string
 {
     case ACCESS_PLUGIN = 'accessPlugin-influx';
     case ACCESS_LINKS = 'influx:accessLinks';
-    case MANAGE_LINKS = 'influx:manageLinks';
-    case MANAGE_LINK = 'influx:manageLink';
+    case ALL_LINKS = 'influx:allLinks';
+    case INDIVIDUAL_LINKS = 'influx:individualLinks';
+    case SYNC_LINKS = 'influx:syncLinks';
+    case INSPECT_LINKS = 'influx:inspectLinks';
     case DEBUG_LINKS = 'influx:debugLinks';
     case ACCESS_LOGS = 'influx:accessLogs';
     case VIEW_LOGS = 'influx:viewLogs';
@@ -38,11 +40,12 @@ enum Permission: string
     case DELETE_LOGS = 'influx:deleteLogs';
 
     /**
-     * The permission for ONE link, nested under {@see MANAGE_LINK}.
+     * The permission putting ONE link in scope, nested under
+     * {@see INDIVIDUAL_LINKS}.
      */
-    public static function manageLink(string $uid): string
+    public static function link(string $uid): string
     {
-        return self::forLink(self::MANAGE_LINK, $uid);
+        return self::forLink(self::INDIVIDUAL_LINKS, $uid);
     }
 
     /**
@@ -72,15 +75,17 @@ enum Permission: string
     public function label(): string
     {
         return match ($this) {
-            self::ACCESS_PLUGIN => Craft::t('influx', 'Access Influx'),
-            self::ACCESS_LINKS  => Craft::t('influx', 'Access links'),
-            self::MANAGE_LINKS  => Craft::t('influx', 'Manage all links'),
-            self::MANAGE_LINK   => Craft::t('influx', 'Manage individual links'),
-            self::DEBUG_LINKS   => Craft::t('influx', 'Debug links'),
-            self::ACCESS_LOGS   => Craft::t('influx', 'Access logs'),
-            self::VIEW_LOGS     => Craft::t('influx', 'View all logs'),
-            self::VIEW_LOG      => Craft::t('influx', 'View individual logs'),
-            self::DELETE_LOGS   => Craft::t('influx', 'Delete logs'),
+            self::ACCESS_PLUGIN    => Craft::t('influx', 'Access Influx'),
+            self::ACCESS_LINKS     => Craft::t('influx', 'Access links'),
+            self::ALL_LINKS        => Craft::t('influx', 'All links'),
+            self::INDIVIDUAL_LINKS => Craft::t('influx', 'Individual links'),
+            self::SYNC_LINKS       => Craft::t('influx', 'Sync links'),
+            self::INSPECT_LINKS    => Craft::t('influx', 'Inspect links'),
+            self::DEBUG_LINKS      => Craft::t('influx', 'Debug links'),
+            self::ACCESS_LOGS      => Craft::t('influx', 'Access logs'),
+            self::VIEW_LOGS        => Craft::t('influx', 'View all logs'),
+            self::VIEW_LOG         => Craft::t('influx', 'View individual logs'),
+            self::DELETE_LOGS      => Craft::t('influx', 'Delete logs'),
         };
     }
 
@@ -91,10 +96,11 @@ enum Permission: string
     public function info(): ?string
     {
         return match ($this) {
-            self::MANAGE_LINKS => Craft::t('influx', 'Viewing and syncing, for every link. If enabled, supersedes the individual selection.'),
-            self::VIEW_LOGS    => Craft::t('influx', 'If enabled, supersedes the individual selection.'),
-            self::DEBUG_LINKS  => Craft::t('influx', 'Only applies to links the user can manage.'),
-            default            => null,
+            self::ALL_LINKS => Craft::t('influx', 'Covers every link, including ones added later. If enabled, supersedes the individual selection.'),
+            self::VIEW_LOGS => Craft::t('influx', 'If enabled, supersedes the individual selection.'),
+            self::SYNC_LINKS, self::INSPECT_LINKS, self::DEBUG_LINKS => Craft::t('influx', 'Only applies to the selected links.'),
+            self::DELETE_LOGS => Craft::t('influx', 'Only applies to the selected logs.'),
+            default           => null,
         };
     }
 }

@@ -12,12 +12,12 @@ use GlueAgency\Influx\models\Link;
  * The one place that answers "may the current user do this?" for the plugin.
  *
  * Most of the permissions are a single flag and would read fine inline, but the
- * per-link ones aren't: a link is manageable either in the blanket
- * ({@see Permission::MANAGE_LINKS}) or link by link ({@see Permission::MANAGE_LINK}),
- * and its runs are visible on the same two-part terms. Every caller that asks —
- * the controllers, the overview's rows, the element edit screen's Sync button —
- * asks the same question, answered here once, so the rest of the plugin never
- * spells out a permission string.
+ * link ones aren't: every one of them is a verb over a scope — may this user
+ * sync / inspect / debug, AND is this link among the ones they were given
+ * ({@see Permission::ALL_LINKS} or {@see Permission::INDIVIDUAL_LINKS}). Logs
+ * ask the same shape of question of their own scope. Every caller — the
+ * controllers, the overview's rows, the element edit screen's Sync button —
+ * asks it here rather than spelling out a permission string.
  *
  * Every method answers for the CURRENT user, so nothing here belongs in a
  * console context — {@see \GlueAgency\Influx\console\controllers\SyncController}
@@ -78,50 +78,62 @@ class PermissionsService extends Component
     }
 
     /**
-     * Whether this link is one the current user manages — granted for every
-     * link at once, or for this one specifically.
-     *
-     * One grant, one set: it decides what the Links overview lists, which links
-     * the builder will open, what Debug may run against, and what the sync
-     * triggers accept — rather than several per-link axes to keep in step.
+     * Whether this link is in the current user's scope — every link at once
+     * ({@see Permission::ALL_LINKS}), or this one specifically. Scope alone
+     * says nothing about what may be DONE with the link; that's the verbs
+     * below, each of which is this check plus its own permission.
      */
-    public function canManageLink(Link $link): bool
+    public function linkInScope(Link $link): bool
     {
-        return $this->can(Permission::MANAGE_LINKS)
-            || Craft::$app->getUser()->checkPermission(Permission::manageLink($link->uid));
+        return $this->can(Permission::ALL_LINKS)
+            || Craft::$app->getUser()->checkPermission(Permission::link($link->uid));
     }
 
     /**
-     * The links of `$links` this user manages, in the order they came in —
-     * what the Links overview lists, rather than every link that exists.
+     * The links of `$links` in scope, in the order they came in — what the
+     * Links overview lists, rather than every link that exists.
      *
      * @param Link[] $links
      * @return Link[]
      */
-    public function manageableLinks(array $links): array
+    public function scopedLinks(array $links): array
     {
-        if ($this->can(Permission::MANAGE_LINKS)) {
+        if ($this->can(Permission::ALL_LINKS)) {
             return $links;
         }
 
-        return array_values(array_filter($links, fn(Link $link) => $this->canManageLink($link)));
+        return array_values(array_filter($links, fn(Link $link) => $this->linkInScope($link)));
     }
 
     /**
-     * Whether the current user manages any link at all — what decides whether a
-     * link-shaped affordance is worth rendering before a particular link is in
-     * hand. The blanket permission answers it without a query; otherwise it
-     * takes the links themselves, since the grant is per link.
+     * Whether the current user may trigger a sync of this link.
      */
-    public function canManageAnyLink(): bool
+    public function canSyncLink(Link $link): bool
     {
-        return $this->can(Permission::MANAGE_LINKS) || $this->anyLink(fn(Link $link) => $this->canManageLink($link));
+        return $this->can(Permission::SYNC_LINKS) && $this->linkInScope($link);
+    }
+
+    /**
+     * Whether the current user may open this link's configuration — read-only
+     * unless they're also an admin ({@see isAdminAndAllowsAdminChanges()}).
+     */
+    public function canInspectLink(Link $link): bool
+    {
+        return $this->can(Permission::INSPECT_LINKS) && $this->linkInScope($link);
+    }
+
+    /**
+     * Whether the current user may dry-run this link in the debug inspector.
+     */
+    public function canDebugLink(Link $link): bool
+    {
+        return $this->can(Permission::DEBUG_LINKS) && $this->linkInScope($link);
     }
 
     /**
      * Whether the current user may see this link's runs — granted for every
      * link's at once, or for this one's specifically. Its own axis, separate
-     * from {@see canManageLink()}: watching what a link did and being allowed
+     * from the link scope: watching what a link did and being allowed
      * to run it are different asks.
      */
     public function canViewLogsForLink(Link $link): bool

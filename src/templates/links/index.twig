@@ -11,9 +11,16 @@
    order they were configured in. Owned by the ProcessingAction enum. #}
 {% set processingOrder = influxProcessingValues() %}
 
+{# The verbs, asked once for the page rather than per row: every link listed
+   here is in the user's scope by construction, so the verb alone is the whole
+   answer for each of them. `hasRowActions` is what keeps the Actions column
+   from rendering as a header over empty cells. #}
 {% set permissions = craft.influx.permissions %}
+{% set canSync = permissions.can("influx:syncLinks") %}
+{% set canInspect = permissions.can("influx:inspectLinks") %}
 {% set canDebug = permissions.can("influx:debugLinks") %}
 {% set canViewLogs = permissions.can("influx:accessLogs") %}
+{% set hasRowActions = canSync or canDebug or not readOnly %}
 
 {% block actionButton %}
     {% if not readOnly %}
@@ -114,7 +121,7 @@
         <div class="zilch influx-zilch">
             {% if linksExist %}
                 <h2>{{ "No links you can manage"|t("influx") }}</h2>
-                <p class="light">{{ "Links are configured here, but none of them are assigned to you. An administrator grants access per link."|t("influx") }}</p>
+                <p class="light">{{ "Links are configured here, but none of them are assigned to you."|t("influx") }}</p>
             {% else %}
                 <h2>{{ "No links yet"|t("influx") }}</h2>
                 {% if readOnly %}
@@ -133,7 +140,7 @@
                     <th>{{ "Sites"|t("influx") }}</th>
                     <th>{{ "Processing"|t("influx") }}</th>
                     <th>{{ "Last run"|t("influx") }}</th>
-                    <th class="thin">{{ "Actions"|t("influx") }}</th>
+                    {% if hasRowActions %}<th class="thin">{{ "Actions"|t("influx") }}</th>{% endif %}
                 </tr>
             </thead>
             <tbody{% if not readOnly %} data-influx-links-sortable{% endif %}>
@@ -148,7 +155,14 @@
                         {# Identity: name on top, handle + target folded into one
                            muted meta line (was three separate columns). #}
                         <td>
-                            <a href="{{ cpUrl('influx/links/' ~ link.id) }}"><strong>{{ link.name }}</strong></a>
+                            {# The name opens the configuration only for someone
+                               allowed to inspect one; otherwise it just names
+                               the link. #}
+                            {% if canInspect %}
+                                <a href="{{ cpUrl('influx/links/' ~ link.id) }}"><strong>{{ link.name }}</strong></a>
+                            {% else %}
+                                <strong>{{ link.name }}</strong>
+                            {% endif %}
                             <div class="influx-cell-meta">
                                 <code>{{ link.handle }}</code>
                                 <span aria-hidden="true">&middot;</span>
@@ -226,9 +240,11 @@
 
                         {# Actions — one primary Sync (with the site/offset preset
                            menu) plus a three-dots overflow menu for everything
-                           else. `.thin` collapses the column so it sits flush right. #}
+                           else. `.thin` collapses the column so it sits flush right.
+                           Gone entirely when this user's permissions leave nothing
+                           to put in it. #}
+                        {% if hasRowActions %}
                         <td class="thin">
-                            {% set canSync = permissions.canManageLink(link) %}
                             {% set siteHandles = link.siteHandles() %}
                             {% set multiSite = siteHandles|length > 1 %}
                             {% set siteScopes = multiSite ? [null]|merge(siteHandles) : [null] %}
@@ -360,6 +376,7 @@
                                 {% endif %}
                             </div>
                         </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>

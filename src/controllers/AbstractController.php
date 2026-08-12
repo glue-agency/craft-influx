@@ -9,7 +9,6 @@ use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\records\Log as LogRecord;
 use GlueAgency\Influx\records\LogItem as LogItemRecord;
-use GlueAgency\Influx\services\PermissionsService;
 use GlueAgency\Influx\web\assets\cp\InfluxAsset;
 use GlueAgency\Influx\web\SharedComponentTranslations;
 use ReflectionClass;
@@ -139,7 +138,7 @@ abstract class AbstractController extends Controller
      * Whether link configuration is look-but-don't-touch for this request. True
      * when the environment forbids administrative (Project Config) changes, and
      * true for anyone who isn't an admin: a non-admin can hold
-     * {@see Permission::VIEW_LINKS} and open the builder, but writing
+     * {@see Permission::INSPECT_LINKS} and open the builder, but writing
      * Project Config stays admin territory either way.
      *
      * The links + settings screens render read-only and reject writes when true.
@@ -166,19 +165,34 @@ abstract class AbstractController extends Controller
     }
 
     /**
-     * The per-link gate. A link is managed by whoever may sync it — every link
-     * at once or link by link ({@see PermissionsService::canManageLink()}) — so
-     * which link is being asked about decides the answer, which is why this
-     * runs inside an action once the link has been resolved rather than in
-     * {@see requireAccess()} like the flat permissions.
+     * The scope gate: is this link one of the ones this user was given? Every
+     * link permission is a verb over that scope, and the answer depends on
+     * WHICH link — which is why this runs inside an action once the link has
+     * been resolved rather than in {@see requireAccess()} alongside the verb.
      *
      * @throws ForbiddenHttpException
      */
-    protected function requireManageLink(Link $link): void
+    protected function requireLinkInScope(Link $link): void
     {
-        if (! Influx::getInstance()->permissions->canManageLink($link)) {
+        if (! Influx::getInstance()->permissions->linkInScope($link)) {
             throw new ForbiddenHttpException(
-                Craft::t('influx', 'You don’t have permission to manage {link}.', ['link' => $link->name]),
+                Craft::t('influx', 'You don’t have access to {link}.', ['link' => $link->name]),
+            );
+        }
+    }
+
+    /**
+     * The full gate for a sync trigger: the sync verb over a link in scope.
+     * Unlike the screens, nothing here checked the verb up front — the sync
+     * routes have no screen to gate ({@see SynchronizationController}).
+     *
+     * @throws ForbiddenHttpException
+     */
+    protected function requireSyncLink(Link $link): void
+    {
+        if (! Influx::getInstance()->permissions->canSyncLink($link)) {
+            throw new ForbiddenHttpException(
+                Craft::t('influx', 'You don’t have permission to sync {link}.', ['link' => $link->name]),
             );
         }
     }

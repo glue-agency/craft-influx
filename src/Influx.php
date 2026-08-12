@@ -360,11 +360,11 @@ class Influx extends Plugin
      * screen renders: a screen permission carrying the ones nested under it.
      *
      * One branch per CP section, headed by the permission that decides whether
-     * that section's nav item exists at all. Under Links: which links the user
-     * manages — {@see Permission::MANAGE_LINKS} for every one, including links
-     * added later, or {@see Permission::MANAGE_LINK} with a checkbox each — and
-     * then Debug over that same set. Under Logs: the same two sizes for whose
-     * runs are visible, plus deleting them.
+     * that section's nav item exists at all. Under Links: first the scope —
+     * {@see Permission::ALL_LINKS} for every link, including ones added later,
+     * or {@see Permission::INDIVIDUAL_LINKS} with a checkbox each — then the
+     * verbs over it: syncing, inspecting, debugging. Under Logs: the same two
+     * scope sizes for whose runs are visible, plus deleting them.
      *
      * Holding a blanket permission makes its per-link list redundant rather
      * than hidden: Craft's permissions UI can disable a nested list under an
@@ -382,8 +382,10 @@ class Influx extends Plugin
                     'heading'     => Craft::t('influx', 'Influx'),
                     'permissions' => [
                         ...$this->permissionEntry(Permission::ACCESS_LINKS, [
-                            ...$this->permissionEntry(Permission::MANAGE_LINKS),
-                            ...$this->permissionEntry(Permission::MANAGE_LINK, $this->linkPermissions(Permission::manageLink(...))),
+                            ...$this->permissionEntry(Permission::ALL_LINKS),
+                            ...$this->permissionEntry(Permission::INDIVIDUAL_LINKS, $this->linkPermissions(Permission::link(...))),
+                            ...$this->permissionEntry(Permission::SYNC_LINKS),
+                            ...$this->permissionEntry(Permission::INSPECT_LINKS),
                             ...$this->permissionEntry(Permission::DEBUG_LINKS),
                         ]),
                         ...$this->permissionEntry(Permission::ACCESS_LOGS, [
@@ -424,7 +426,7 @@ class Influx extends Plugin
     /**
      * A checkbox per link, for the nested half of a per-link permission —
      * `$value` turning a link's UID into the permission string
-     * ({@see Permission::manageLink()}, {@see Permission::viewLog()}).
+     * ({@see Permission::link()}, {@see Permission::viewLog()}).
      *
      * Read at render time, so a link added since the last page load is on the
      * list; a link deleted since leaves a permission string behind that no

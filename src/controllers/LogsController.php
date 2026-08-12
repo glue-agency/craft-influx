@@ -309,6 +309,8 @@ class LogsController extends AbstractController
         $plugin = Influx::getInstance();
         $deleted = $plugin->logs->clear($plugin->permissions->viewableLogLinkHandles());
 
-        return $this->asSuccess(Craft::t('influx', '{n} log entries cleared.', ['n' => $deleted]));
+        return $this->asSuccess(
+            Craft::t('influx', '{n, plural, =1{One log entry} other{# log entries}} cleared.', ['n' => $deleted]),
+        );
     }
 }

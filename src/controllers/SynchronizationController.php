@@ -25,9 +25,9 @@ class SynchronizationController extends AbstractController
 {
     /**
      * NO up-front gate, deliberately — and the one controller here without one.
-     * A link is synced by whoever manages it, and which link that is only
+     * Syncing is a verb over a scope, and which link is being synced only
      * becomes known once the request body has been resolved, so the check is
-     * {@see AbstractController::requireManageLink()} in each action, immediately
+     * {@see AbstractController::requireSyncLink()} in each action, immediately
      * after the link is in hand.
      *
      * The plugin-section permission isn't required either: the element "Sync
@@ -77,7 +77,7 @@ class SynchronizationController extends AbstractController
             throw new NotFoundHttpException("Link '{$handle}' not found.");
         }
 
-        $this->requireManageLink($link);
+        $this->requireSyncLink($link);
 
         if ($site !== null && ! in_array($site, $link->siteHandles(), true)) {
             throw new BadRequestHttpException("Link '{$handle}' has no endpoint for site '{$site}'.");
@@ -148,7 +148,7 @@ class SynchronizationController extends AbstractController
             }
         }
 
-        $this->requireManageLink($link);
+        $this->requireSyncLink($link);
 
         $remaining = $plugin->cooldown->remaining($link, $element);
 

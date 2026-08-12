@@ -26,7 +26,14 @@
                     {% set when = craft.app.formattingLocale.getFormatter().asDatetime(link.lastRunAt) %}
                     {% if lastLog %}
                         <span class="status {{ logPresenter.statusColor(lastLog.status) }}" title="{{ lastLog.status|t('influx') }}"></span>
-                        <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                        {# Links into the run only for someone allowed on the Logs
+                           screens; otherwise it states the fact without the dead
+                           end — same as the overview's Last run cell. #}
+                        {% if craft.influx.permissions.can("influx:accessLogs") %}
+                            <a href="{{ cpUrl('influx/logs/' ~ lastLog.id) }}">{{ when }}</a>
+                        {% else %}
+                            {{ when }}
+                        {% endif %}
                     {% else %}
                         {# The run's log has been deleted — only the timestamp persists. #}
                         <span class="status" title="{{ 'Log removed'|t('influx') }}"></span>

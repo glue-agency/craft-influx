@@ -30,10 +30,10 @@ use yii\web\Response;
 class LinksController extends AbstractController
 {
     /**
-     * Access to the section is one permission; what may be done inside it is
-     * another; and WHICH links any of it applies to is the manageable set —
-     * checked per link once one is in hand
-     * ({@see AbstractController::requireManageLink()}).
+     * Access to the section is one permission; what may be done inside it —
+     * opening a link's configuration, dry-running it — is another; and WHICH
+     * links any of it applies to is the user's scope, checked per link once
+     * one is in hand ({@see AbstractController::requireLinkInScope()}).
      *
      * Changing a link is still admin territory, because it lives in Project
      * Config, so everything that writes asks for admin plus
@@ -53,6 +53,10 @@ class LinksController extends AbstractController
 
         $this->requirePermission(Permission::ACCESS_LINKS->value);
 
+        if ($action->id === 'edit') {
+            $this->requirePermission(Permission::INSPECT_LINKS->value);
+        }
+
         if (in_array($action->id, ['debug', 'debug-inspect'], true)) {
             $this->requirePermission(Permission::DEBUG_LINKS->value);
         }
@@ -64,8 +68,8 @@ class LinksController extends AbstractController
      * dot and quick link — can be batch-loaded in one query keyed by id. The
      * persistent "when" is `link.lastRunAt`.
      *
-     * The list is what this user manages, not what exists: a per-link grant
-     * lists those links only. `linksExist` tells the empty state which of the
+     * The list is this user's scope, not what exists: a per-link grant lists
+     * those links only. `linksExist` tells the empty state which of the
      * two nothings it is looking at — no links configured at all, or none of
      * them granted to this user.
      */
@@ -73,7 +77,7 @@ class LinksController extends AbstractController
     {
         $plugin = Influx::getInstance();
         $allLinks = $plugin->links->getAllLinks();
-        $links = $plugin->permissions->manageableLinks($allLinks);
+        $links = $plugin->permissions->scopedLinks($allLinks);
 
         $logIds = array_values(array_filter(array_map(static fn(Link $link) => $link->lastLogId, $links)));
 
@@ -101,8 +105,8 @@ class LinksController extends AbstractController
         $plugin = Influx::getInstance();
 
         // Both the switcher's options and the link opened by default come from
-        // the manageable set — Debug applies to those links only.
-        $allLinks = $plugin->permissions->manageableLinks($plugin->links->getAllLinks());
+        // the user's scope — Debug applies to those links only.
+        $allLinks = $plugin->permissions->scopedLinks($plugin->links->getAllLinks());
         $handle = $this->stringQueryParam('link');
         $link = $handle !== null
             ? $plugin->links->getLinkByHandle($handle)
@@ -112,7 +116,7 @@ class LinksController extends AbstractController
             throw new NotFoundHttpException('No links available to debug.');
         }
 
-        $this->requireManageLink($link);
+        $this->requireLinkInScope($link);
 
         $options = (new LinkPresenter())->debugOptions($link, $allLinks);
         $siteHandles = array_column($options['sites'], 'handle');
@@ -149,7 +153,7 @@ class LinksController extends AbstractController
 
         $link = $this->linkOr404($this->stringQueryParam('link'));
 
-        $this->requireManageLink($link);
+        $this->requireLinkInScope($link);
 
         $limit = $this->intQueryParam('limit', DebugService::DEFAULT_LIMIT, 1, 500);
         $siteHandle = $this->oneOfQueryParam('site', $link->siteHandles());
@@ -180,7 +184,7 @@ class LinksController extends AbstractController
         if ($id !== null) {
             $link = $link ?? $this->linkOr404($id);
 
-            $this->requireManageLink($link);
+            $this->requireLinkInScope($link);
 
             $title = trim($link->name) ?: Craft::t('influx', 'Edit link');
         } else {
