@@ -229,17 +229,57 @@ describe('MappingExtras matrix blocks', () => {
     });
 
     /**
-     * A Matrix card's sub-field paths are relative to one item of the list the
-     * row names — which discovery, having only ever produced absolute paths,
-     * would flag as missing on every row.
+     * A Matrix card's sub-field paths are relative to one element of the list
+     * the row names, so the item-level nodes are not merely useless to it —
+     * offering them offers paths that resolve to nothing against an element.
+     * Its own relative nodes take their place, on both props: the options it
+     * picks from, and the list it judges a saved path against.
      */
-    it('withholds the discovered nodes from a matrix card', () => {
+    it('hands a matrix card the relative nodes of its own block type', () => {
         const wrapper = mountMatrix({
-            mapping: { node: 'content' },
-            discoveredNodes: [{ value: 'quotes.text', label: 'quotes.text' }],
+            mapping: { node: 'content', options: { blockSource: 'listByKey' } },
+            discoveredNodes: [{ value: 'content.quote.text', label: 'content.quote.text' }],
+            sampleItem: {
+                content: [
+                    { quote: { text: 'A', cite: 'B' } },
+                    { stat: { number: 4 } },
+                ],
+            },
+        });
+        const cards = wrapper.findAllComponents(MatrixFields);
+
+        expect(cards[0].props('nodeOptions').map((o) => o.value)).toEqual(['text', 'cite']);
+        expect(cards[0].props('discoveredNodes').map((o) => o.value)).toEqual(['text', 'cite']);
+        expect(cards[1].props('nodeOptions').map((o) => o.value)).toEqual(['number']);
+    });
+
+    it('keeps a saved path listed even when the sample no longer holds it', () => {
+        const wrapper = mountMatrix({
+            mapping: {
+                node:   'content',
+                blocks: { quote: { fields: { quote: { node: 'gone' } } } },
+            },
+            sampleItem: { content: [{ quote: { text: 'A' } }] },
         });
 
-        expect(wrapper.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+        expect(wrapper.findAllComponents(MatrixFields)[0].props('nodeOptions').map((o) => o.value))
+            .toEqual(['text', 'gone']);
+    });
+
+    /**
+     * "Can't know" rather than "nothing matches": with no sample, no list node,
+     * or a node landing on something that isn't a list, a saved path must not be
+     * badged as missing on the strength of a list that isn't there.
+     */
+    it('withholds the discovered nodes when the list doesn’t resolve', () => {
+        const unfetched = mountMatrix({ mapping: { node: 'content' } });
+        expect(unfetched.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+
+        const unpicked = mountMatrix({ mapping: {}, sampleItem: { content: [{ quote: {} }] } });
+        expect(unpicked.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
+
+        const notAList = mountMatrix({ mapping: { node: 'title' }, sampleItem: { title: 'x' } });
+        expect(notAList.findAllComponents(MatrixFields)[0].props('discoveredNodes')).toBeNull();
     });
 
     /**
@@ -315,5 +355,51 @@ describe('MappingExtras matrix blocks', () => {
                 quote: { fields: { quote: { node: 'quotes.text' } } },
             },
         });
+    });
+});
+
+/**
+ * A card's settings bind one key of the ROW's options apiece, so the write has
+ * to leave the card as its own emit and land where a leaf beside the select
+ * would have landed — the alias is the row's option wherever its control lives.
+ */
+describe('MappingExtras matrix block settings', () => {
+    const cardWithAlias = [{
+        type: 'matrixFields', handle: 'blocks', label: 'Quote', blockType: 'quote',
+        subFields: [{ type: 'text', handle: 'quote', label: 'Quote' }],
+        settings: [{ type: 'text', handle: 'sourceKey_quote', label: 'Key', placeholder: 'quote' }],
+    }];
+
+    it('hands every card what the feed calls the things in the list', () => {
+        const wrapper = mountExtras({
+            nodes:      cardWithAlias,
+            mapping:    { node: 'content', options: { blockSource: 'listByKey' } },
+            sampleItem: { content: [{ id: 1, quoteBlock: { cite: 'A' } }, { statBlock: { n: 4 } }] },
+        });
+
+        // The list's own keys, minus the scalar sibling — a fact about the list
+        // rather than about a block type, so every card gets the same set.
+        expect(wrapper.findAllComponents(MatrixFields)[0].props('feedKeys').map((o) => o.value))
+            .toEqual(['quoteBlock', 'statBlock']);
+    });
+
+    it('routes a card setting into the mapping’s options', async () => {
+        const wrapper = mountExtras({ nodes: cardWithAlias, mapping: { node: 'content' } });
+        await wrapper.find('.block-settings input[type="text"]').setValue('blockquote');
+
+        expect(written(wrapper)).toEqual({
+            node:    'content',
+            options: { sourceKey_quote: 'blockquote' },
+        });
+    });
+
+    it('prunes the option away when the box is emptied back', async () => {
+        const wrapper = mountExtras({
+            nodes:   cardWithAlias,
+            mapping: { node: 'content', options: { sourceKey_quote: 'blockquote' } },
+        });
+        await wrapper.find('.block-settings input[type="text"]').setValue('');
+
+        expect(written(wrapper)).toEqual({ node: 'content' });
     });
 });

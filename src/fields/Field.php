@@ -230,6 +230,37 @@ abstract class Field
     }
 
     /**
+     * What is wrong with this mapping's CONFIG, as messages for the operator —
+     * empty when nothing is. The save-time half of a strategy's own rules, run
+     * from {@see \GlueAgency\Influx\models\Link::validateMappings()} and surfaced
+     * on the row the mapping belongs to.
+     *
+     * Config only, and that bound is the whole point: this runs with no feed, no
+     * item and no element, so it can only judge what a link stores. "This node
+     * isn't in the response" is a run-time fact and belongs in a log, not in a
+     * save that would then depend on a remote service being up.
+     *
+     * A strategy that implements this MUST drive its run-time throw off the same
+     * predicate rather than a second copy — a save and a run disagreeing about
+     * what is valid is worse than neither checking ({@see Matrix} for the shape
+     * that keeps them one).
+     *
+     * Messages are sentences about "this mapping" and never name the handle: the
+     * error is keyed to the row, which already says which field it is.
+     *
+     * Custom fields only. A native attribute has no strategy filed against it —
+     * its rules belong to the target that declares it — so the dispatch skips
+     * one rather than handing it to the fallback strategy, which knows nothing
+     * about it. That's a deliberate bound, not an oversight.
+     *
+     * @return list<string>
+     */
+    public function validateMapping(FieldMapping $mapping): array
+    {
+        return [];
+    }
+
+    /**
      * Whether the feed addresses this mapping for the given item — the gate
      * {@see \GlueAgency\Influx\sync\item\MappingApplier} consults before running the
      * strategy at all. Default: the mapping's own node/default addressing.

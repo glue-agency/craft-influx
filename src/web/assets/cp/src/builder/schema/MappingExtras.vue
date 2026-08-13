@@ -49,11 +49,13 @@
             :key="cardKey(node, idx)"
             :node="node"
             :channels="channelsFor(node)"
-            :node-options="nodeOptions"
+            :node-options="nodeOptionsFor(node)"
             :discovered-nodes="discoveredNodesFor(node)"
+            :feed-keys="feedKeys"
             :mapping-options="mapping.options || {}"
             :read-only="readOnly"
             @update:channels="writeCard($event)"
+            @update:option="writeLeaf($event.node, $event.value)"
         />
     </div>
 </template>
@@ -62,6 +64,9 @@
 import { controlFor } from './registry.js';
 import { channelsFor as nodeChannels, readChannels, readNode, writeChannels, writeNode } from '../lib/slots.js';
 import { isVisible } from '../lib/conditions.js';
+import { mergeNodeOptions } from '../lib/mappings.js';
+import { feedKeysIn, LIST_BY_KEY, listAt, relativeNodesFor } from '../lib/relativeNodes.js';
+import { flattenChannels } from '../lib/channels.js';
 
 /**
  * A mapping row's extras — the `extra` region its field's strategy declared,
@@ -104,6 +109,10 @@ export default {
         // The sample's discovered flatNodes, for per-sub-field missing detection.
         // Null until a sample has been fetched.
         discoveredNodes: { type: Array, default: null },
+        // The raw sample item, for the one card kind whose paths aren't item-level:
+        // a Matrix's are relative to an element of the list its row names, which
+        // only the item itself can answer ({@see ../lib/relativeNodes.js}).
+        sampleItem: { type: Object, default: null },
         readOnly: { type: Boolean, default: false },
     },
 
@@ -129,6 +138,38 @@ export default {
         cardNodes() {
             return this.nodes.filter((node) => nodeChannels(node));
         },
+
+        /** Every block type the field declares — one card each, so one node each. */
+        blockTypeHandles() {
+            return this.cardNodes
+                .filter((node) => node.type === 'matrixFields')
+                .map((node) => node.blockType)
+                .filter(Boolean);
+        },
+
+        /**
+         * The list this row's source node resolves to in the sample — what every
+         * Matrix card reads its relative nodes out of. Null when there's no
+         * sample, no node picked, or the node doesn't land on a list, which is
+         * also every state in which a card has nothing to suggest.
+         */
+        blockList() {
+            return listAt(this.sampleItem, this.mapping.node);
+        },
+
+        /**
+         * What the feed calls the things in that list — the candidates every
+         * card's key control offers. Computed once here rather than per card,
+         * since it is a fact about the list rather than about a block type, and
+         * a card whose key isn't among them is precisely the case worth seeing.
+         */
+        feedKeys() {
+            return feedKeysIn(
+                this.blockList,
+                this.mapping.options?.blockSource || LIST_BY_KEY,
+                this.mapping.options || {},
+            );
+        },
     },
 
     methods: {
@@ -148,14 +189,55 @@ export default {
         },
 
         /**
-         * The discovered nodes a card checks its saved paths against — none for
-         * a Matrix card. Its sub-field paths are relative to one item of the
-         * list the row names, and discovery only ever produced absolute paths,
-         * so every one of them would read as missing. Null is already this
-         * prop's "nothing to check against".
+         * The relative nodes ONE Matrix card offers, out of the elements of the
+         * row's list that belong to its block type.
+         */
+        relativeNodes(node) {
+            return relativeNodesFor(
+                this.blockList,
+                node.blockType,
+                this.mapping.options?.blockSource || LIST_BY_KEY,
+                this.mapping.options || {},
+                this.blockTypeHandles,
+            );
+        },
+
+        /**
+         * The source-node candidates a card's selects offer. Every card but a
+         * Matrix takes the item-level list; a Matrix takes its own relative
+         * nodes, because an item-level path on a block sub-field addresses the
+         * whole item and resolves to nothing against a list element — offering
+         * them is offering wrong answers, which is what this replaces.
+         *
+         * Merged with the card's own saved paths for the same reason the row's
+         * are: a path that fell out of the latest sample still has to render as
+         * a legible selected option.
+         */
+        nodeOptionsFor(node) {
+            if (node.type !== 'matrixFields') return this.nodeOptions;
+
+            const saved = Object.values(flattenChannels(this.mapping.blocks?.[node.blockType]))
+                .map((row) => row?.node)
+                .filter(Boolean);
+
+            return mergeNodeOptions(this.relativeNodes(node), saved);
+        },
+
+        /**
+         * The discovered nodes a card checks its saved paths against.
+         *
+         * A Matrix card checks against its own relative nodes rather than the
+         * item-level ones — against those, every correctly-relative path reads
+         * as missing, which is why this used to withhold them altogether. An
+         * unresolvable list is null, this prop's "can't know", so a row is never
+         * badged on the strength of a list that isn't there.
          */
         discoveredNodesFor(node) {
-            return node.type === 'matrixFields' ? null : this.discoveredNodes;
+            if (node.type !== 'matrixFields') return this.discoveredNodes;
+
+            const relative = this.relativeNodes(node);
+
+            return relative.length ? relative : null;
         },
 
         /** showIf conditions resolve against the same declared-default fallback. */

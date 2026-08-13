@@ -13,27 +13,36 @@
                     @click.stop="clearGroup"
                     @keydown.stop></button>
 
-            <span v-if="autoCount > 0"
-                  class="pill pill-auto"
-                  :data-auto="autoCount"
-                  :title="$t('Fields filled in by Auto-match')">
+            <!-- Each count's sentence is the content, not a name for an icon,
+                 so it goes through Craft's own tooltip. The total is the
+                 exception: the number IS the fact. -->
+            <v-craft-tooltip v-if="autoCount > 0"
+                             :text="$t('Fields filled in by Auto-match')"
+                             trigger-class="pill pill-auto"
+                             :data-auto="autoCount">
                 <span class="num" v-text="autoCount"></span>&nbsp;{{ $t('auto') }}
-            </span>
+            </v-craft-tooltip>
 
-            <span v-if="missingCount > 0"
-                  class="pill pill-missing"
-                  :data-missing="missingCount"
-                  :title="$t('Fields whose source node isn’t in the fetched sample')">
+            <v-craft-tooltip v-if="missingCount > 0"
+                             :text="$t('Fields whose source node isn’t in the fetched sample')"
+                             trigger-class="pill pill-missing"
+                             :data-missing="missingCount">
                 <span class="num" v-text="missingCount"></span>&nbsp;{{ $t('missing') }}
-            </span>
+            </v-craft-tooltip>
 
-            <span class="pill pill-mapped"
-                  :data-mapped="mappedCount"
-                  :title="$t('Fields with an active source node')">
+            <!-- Nothing mapped and nothing missing is the state the total
+                 already tells you; a gray "0 mapped" beside it only takes room
+                 to say the same thing again. -->
+            <v-craft-tooltip v-if="mappedCount > 0 || missingCount > 0"
+                             :text="$t('Fields with an active source node')"
+                             trigger-class="pill pill-mapped"
+                             :data-mapped="mappedCount">
                 <span class="num" v-text="mappedCount"></span>&nbsp;{{ $t('mapped') }}
-            </span>
+            </v-craft-tooltip>
 
-            <span class="pill pill-count" :title="$t('Total fields in this group')" v-text="group.fields.length"></span>
+            <v-craft-tooltip :text="$t('Total fields in this group')" trigger-class="pill pill-count">
+                {{ group.fields.length }}
+            </v-craft-tooltip>
         </template>
 
         <div class="influx-mapping-headings">
@@ -54,6 +63,7 @@
 <script>
 import MappingRow from './MappingRow.vue';
 import MappingGroupCard from '../../components/MappingGroupCard.vue';
+import InfluxTooltip from '../../components/InfluxTooltip.vue';
 import { store } from '../store.js';
 import { clearMappings, discoveredNodes, isMapped, isMissingNode } from '../lib/mappings.js';
 
@@ -139,6 +149,7 @@ export default {
         },
     },
 
-    components: { 'v-mapping-row': MappingRow, 'v-mapping-group-card': MappingGroupCard },
+    components: {
+        'v-craft-tooltip': InfluxTooltip, 'v-mapping-row': MappingRow, 'v-mapping-group-card': MappingGroupCard },
 };
 </script>

@@ -91,13 +91,22 @@ export default {
                     // site endpoint" error is keyed on it, and without it here
                     // the only clue was the toast.
                     general:        ['name', 'handle', 'elementType', 'endpoint', 'siteEndpoints', 'processing'],
-                    mapping:        ['match'],
+                    mapping:        ['match', 'mappings'],
                     authentication: ['auth'],
                 };
+                // Per-row mapping errors are keyed `mappings.<handle>`, one per
+                // row, so the Mapping tab matches on the prefix rather than on a
+                // list nothing could keep current.
+                const keyed = Object.entries(errors || {})
+                    .filter(([, messages]) => (messages || []).length > 0)
+                    .map(([attr]) => attr);
+
                 for (const [tabId, attrs] of Object.entries(tabMap)) {
                     const anchor = document.querySelector(`a[href="#${tabId}"][role="tab"]`);
                     if (! anchor) continue;
-                    const hasError = attrs.some(a => (errors?.[a] || []).length > 0);
+                    const hasError = keyed.some(
+                        attr => attrs.includes(attr) || attrs.includes(attr.split('.')[0]),
+                    );
                     anchor.classList.toggle('error', hasError);
                 }
             },

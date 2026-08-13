@@ -127,6 +127,13 @@
                             >
                                 <span class="influx-split-item-top">
                                     <span class="influx-split-item-title" v-text="item.title"></span>
+                                    <!-- Native `title`, not the shared tooltip:
+                                         this row IS a button, and that tooltip's
+                                         trigger is one too — nesting them is
+                                         invalid, and a second focusable stop
+                                         inside every row would cost more in
+                                         keyboard navigation than the styled
+                                         tooltip returns. -->
                                     <span
                                         v-if="item.errorCount"
                                         class="influx-log-haserror"

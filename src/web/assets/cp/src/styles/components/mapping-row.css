@@ -19,6 +19,17 @@
    covers padding too), no need for the slot to stretch beyond the row. */
 .influx-mapping-row .influx-mapping-extras-slot { grid-column: 1 / -1; }
 
+/* A row's own validation errors, starting under the source-node cell rather
+   than under the label: every message so far is about what the cells hold, so it
+   reads as a note on the control it follows instead of a second heading for the
+   row. It takes the default column's width too — a sentence needs the room, and
+   nothing sits beside it. Above the extras slot, so it comes before the options
+   it is usually about. */
+.influx-mapping-row .influx-mapping-row-errors {
+    grid-column: 2 / -1;
+    margin: 2px 0 0;
+}
+
 /* A row with a source cell but no default beside it — a field nothing can be
    mapped to, whose notice occupies the cell the node select would have taken.
    It spans the remainder rather than sitting squeezed into the middle column,

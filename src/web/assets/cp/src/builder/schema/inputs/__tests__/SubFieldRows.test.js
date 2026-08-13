@@ -234,6 +234,24 @@ describe('SubFieldRows default editors', () => {
         expect(trigger.classes()).toContain('placeholder');
     });
 
+    it('keeps a `0` default — the one value a truthiness test loses', () => {
+        // slots.js's isEmpty() and PHP's Link::isEmptyConfigValue() both treat
+        // only null / '' / false / [] as nothing, and FieldMapping::resolve()
+        // resolves a 0. A YAML-written `default: 0` is an int, so the row has to
+        // render it AND carry it through a rewrite of the cell beside it.
+        const wrapper = mountTyped(
+            [{ type: 'text', handle: 'weight', label: 'Weight' }],
+            { rows: { weight: { node: 'items.0.weight', default: 0 } } },
+        );
+
+        expect(wrapper.find('input[type="text"]').element.value).toBe('0');
+
+        wrapper.findComponent({ name: 'SearchableSelect' }).vm.$emit('update:modelValue', 'items.0.mass');
+
+        expect(wrapper.emitted('update:rows').at(-1))
+            .toEqual([{ weight: { node: 'items.0.mass', default: 0 } }]);
+    });
+
     it('renders neither control for a row whose value comes from its extras', async () => {
         // A nested Table or Link declares no cells at the top level either.
         // Rendering a node select and a text box for one gave the operator two

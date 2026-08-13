@@ -34,14 +34,16 @@
             <!-- Shown by the row's `data-auto` attribute (mapping-row.css):
                  this node was filled in by Auto-match, not picked. Cleared the
                  moment the user picks one themselves. -->
-            <span class="influx-auto-badge"
-                  :title="$t('Filled in by Auto-match')"
-                  v-text="$t('auto')"></span>
+            <v-craft-tooltip v-if="isAuto"
+                             :text="$t('Filled in by Auto-match')"
+                             trigger-class="influx-auto-badge">{{ $t('auto') }}</v-craft-tooltip>
 
-            <span v-if="isMissing"
-                  class="influx-missing-badge"
-                  :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
-                  v-text="$t('missing mapping')"></span>
+            <!-- The badge names a state; the sentence tells you what to do about
+                 it, which is the content rather than a label for an icon — so it
+                 goes through Craft's own tooltip like every other explanation. -->
+            <v-craft-tooltip v-if="isMissing"
+                             :text="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
+                             trigger-class="influx-missing-badge">{{ $t('missing mapping') }}</v-craft-tooltip>
 
             <code class="handle light" v-text="field.handle"></code>
         </div>
@@ -52,11 +54,11 @@
              to gets a note in the cell its node select would have taken.
 
              A region nobody declared renders nothing — which is how a row whose
-             value derives entirely from its sub-mappings (a Matrix) says it has
-             neither cell, while keeping the shared grid columns. When only the
-             source cell is declared, it spans the default's column too rather than
-             sitting squeezed in the middle. -->
-        <div :class="{ 'influx-cell-span': ! hasDefaultCell }">
+             value derives entirely from its sub-mappings (a Table, a Link) says it
+             has neither cell, while keeping the shared grid columns. A source cell
+             standing alone spans the default's column only when it holds a note
+             ({@see spansDefaultCell}). -->
+        <div :class="{ 'influx-cell-span': spansDefaultCell }">
             <v-mapping-cell
                 :nodes="sourceNodes"
                 region="source"
@@ -78,6 +80,12 @@
             />
         </div>
 
+        <!-- This row's own server-side validation errors, spanning its columns
+             beneath the cells. Keyed per handle by Link::validateMappings(), so
+             the message sits on the mapping it's about rather than in a banner
+             naming a handle the operator would then have to find. -->
+        <v-field-errors v-if="errors.length" class="influx-mapping-row-errors" :messages="errors" />
+
         <!-- Per-field options block: the `extra` region, rendered through the same
              registry the two cells use. No field-kind branches live here — adding a
              mapping kind is a single-PHP-file change. The `data-expanded` attribute
@@ -93,6 +101,7 @@
                     :mapping="mapping"
                     :node-options="extrasNodeOptions"
                     :discovered-nodes="discoveredNodes"
+                    :sample-item="sampleItem"
                     :read-only="readOnly"
                     @update:mapping="write"
                 />
@@ -122,8 +131,11 @@
 <script>
 import MappingCell from '../schema/MappingCell.vue';
 import MappingExtras from '../schema/MappingExtras.vue';
+import FieldErrors from '../FieldErrors.vue';
+import InfluxTooltip from '../../components/InfluxTooltip.vue';
 import { store } from '../store.js';
 import { discoveredNodes as reportNodes, isMissingNode, mergeNodeOptions, replaceMapping } from '../lib/mappings.js';
+import { detectBlockSource, listAt, LIST_SINGLE } from '../lib/relativeNodes.js';
 
 /**
  * One row in the Mapping tab, laid out as the three regions its field's strategy
@@ -189,13 +201,16 @@ export default {
          * Source-node candidates for the extras' sub-field dropdowns: the latest
          * Fetch-sample nodes straight off the store, merged with saved sub-field
          * paths — the flat `fields` (Table columns) and `nativeFields` rows plus
-         * every block type's nested `blocks.*.fields` rows — so the dropdowns render
-         * before a sample exists. Distinct from the `nodeOptions` prop, which feeds
-         * the row's own source-node cell.
+         * BOTH channels of every block type's nested `blocks.*` entry — so the
+         * dropdowns render before a sample exists. Distinct from the `nodeOptions`
+         * prop, which feeds the row's own source-node cell.
          */
         extrasNodeOptions() {
             const blockRows = Object.values(this.mapping.blocks || {})
-                .flatMap((entry) => Object.values(entry?.fields || {}));
+                .flatMap((entry) => [
+                    ...Object.values(entry?.fields || {}),
+                    ...Object.values(entry?.nativeFields || {}),
+                ]);
             const saved = [
                 ...Object.values(this.mapping.fields || {}),
                 ...Object.values(this.mapping.nativeFields || {}),
@@ -215,6 +230,25 @@ export default {
          */
         discoveredNodes() {
             return reportNodes(store.ui.sample);
+        },
+
+        /**
+         * The raw sample item, for the extras that read the feed's SHAPE rather
+         * than its discovered paths — a Matrix's relative sub-field nodes, and
+         * the block-source detection below.
+         */
+        sampleItem() {
+            return store.ui.sample?.sampleItem ?? null;
+        },
+
+        /**
+         * The server's validation messages for THIS mapping. `mappings.<handle>`
+         * is the key Link::validateMappings() writes; the flat errors map is
+         * addressed by attribute, and a dotted attribute is how Yii addresses one
+         * row of a collection.
+         */
+        errors() {
+            return store.ui.errors?.[`mappings.${this.field.handle}`] || [];
         },
 
         // This row's node came from Auto-match and hasn't been touched since.
@@ -246,6 +280,25 @@ export default {
 
         hasDefaultCell() {
             return this.defaultNodes.length > 0;
+        },
+
+        /**
+         * Whether a lone source cell takes the default's column as well.
+         *
+         * A NOTE does: it's a sentence, it reads better across the width, and
+         * there is nothing beside it to line up with. A CONTROL doesn't — a node
+         * select stretched to double width reads as a different control from the
+         * one every other row carries, and stops sharing the Source node column
+         * its own sub-field cards sit under. The Matrix row is where that showed:
+         * a source cell, no default cell, and a card below it whose rows use the
+         * ordinary tracks.
+         *
+         * Same "is there a real control here" test the missing-mapping rule
+         * applies ({@see isMissingNode}), so the two can't disagree about what a
+         * note-only region is.
+         */
+        spansDefaultCell() {
+            return ! this.hasDefaultCell && ! this.sourceNodes.some((node) => node.type !== 'note');
         },
 
         /**
@@ -282,7 +335,65 @@ export default {
          */
         onSourceWrite(mapping) {
             store.clearAutoMatch(this.field.handle);
-            this.write(mapping);
+            this.write(this.withDetectedBlockSource(mapping));
+        },
+
+        /**
+         * Read the block source off the sample when a Matrix row is pointed at a
+         * new list, so the shape is answered by the feed rather than by the
+         * operator classifying their own JSON against three worked examples.
+         *
+         * Only on a CHANGE of node, and only when the sample recognises the
+         * shape: repointing at a differently-shaped list is exactly when the
+         * stored source is stale, while re-picking the same list re-detects the
+         * same answer. A shape it can't read leaves the stored value alone —
+         * a feed that spells its types differently is the case detection can't
+         * answer, and guessing there would cost more than it saves.
+         *
+         * Written rather than displayed as a fallback, deliberately: PHP falls
+         * back to LIST_BY_KEY for an unset option, so a detected-but-unwritten
+         * LIST_BY_NODE would show the operator a shape the sync doesn't use.
+         */
+        withDetectedBlockSource(mapping) {
+            if (! mapping?.node || mapping.node === this.mapping.node) return mapping;
+
+            const handles = this.extraNodes
+                .filter((node) => node.type === 'matrixFields')
+                .map((node) => node.blockType)
+                .filter(Boolean);
+
+            if (! handles.length) return mapping;
+
+            const detected = detectBlockSource(listAt(this.sampleItem, mapping.node), handles);
+
+            if (! detected) return mapping;
+
+            // LIST_SINGLE is detection's weakest branch — the "nothing in the
+            // list names a type" fallback — and a row that already maps more
+            // than one type is the operator saying the list carries more than
+            // one. Their config outranks the fallback: writing it here would
+            // turn a helpful click into a row the save then refuses
+            // (Matrix::validateMapping()), over an inference that only means
+            // "no discriminator configured yet". The stronger branches still
+            // overwrite freely.
+            if (detected.source === LIST_SINGLE && Object.keys(mapping.blocks || {}).length > 1) {
+                return mapping;
+            }
+
+            const options = { ...(mapping.options || {}), blockSource: detected.source };
+
+            // Detection owns the whole pair it writes: a `typeNode` left behind
+            // from a previously-detected noded list is inert (only LIST_BY_NODE
+            // reads it) but the save-time prune keeps it — an extras leaf is
+            // judged by its handle, not by whether its showIf passes — so it
+            // would sit in Project Config describing a shape nothing uses.
+            if (detected.typeNode) {
+                options.typeNode = detected.typeNode;
+            } else {
+                delete options.typeNode;
+            }
+
+            return { ...mapping, options };
         },
 
     },
@@ -290,6 +401,8 @@ export default {
     components: {
         'v-mapping-cell': MappingCell,
         'v-mapping-extras': MappingExtras,
+        'v-field-errors': FieldErrors,
+        'v-craft-tooltip': InfluxTooltip,
     },
 };
 </script>

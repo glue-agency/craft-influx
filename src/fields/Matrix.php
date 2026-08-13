@@ -158,6 +158,7 @@ class Matrix extends Field
                     $builder->matrixFields([
                         'label'     => $blockType['name'],
                         'subFields' => $subFields->toArray(),
+                        'settings'  => $this->blockTypeSettings($blockType),
                         'blockType' => $blockType['handle'],
                     ]);
                 }
@@ -173,10 +174,13 @@ class Matrix extends Field
      * LIST_BY_NODE reads, and one feed-alias box per block type for the two
      * sources that match a key.
      *
-     * The example is one showIf-gated note per source rather than prose on the
-     * select, because the question a developer actually has here is "what does
-     * my JSON have to look like", and three lines of it answer that faster than
-     * a paragraph describing it. Notes bind nothing, so gating them is free.
+     * The example is one showIf-gated note per source, and the select carries no
+     * prose at all: the question a developer actually has here is "what does my
+     * JSON have to look like", which three lines of it answer faster than a
+     * paragraph describing them. Notes bind nothing, so gating them is free.
+     * What the prose used to spell out — that a sub-field path is relative to
+     * one list item — the cards now answer by offering those paths themselves
+     * (`web/assets/cp/src/builder/lib/relativeNodes.js`).
      *
      * The aliases are gated on the two key-matching sources
      * ({@see MatrixBlockSource::matchesKey()}), and they're one flat option per
@@ -193,43 +197,63 @@ class Matrix extends Field
             'options' => [
                 [
                     'value' => MatrixBlockSource::LIST_BY_KEY->value,
-                    'label' => Craft::t('influx', 'A list, each item keyed by its block type'),
+                    'label' => Craft::t('influx', 'Keyed by its block type'),
                 ],
                 [
                     'value' => MatrixBlockSource::LIST_BY_NODE->value,
-                    'label' => Craft::t('influx', 'A list, each item naming its block type in a node'),
+                    'label' => Craft::t('influx', 'Naming its block type in the node'),
                 ],
                 [
                     'value' => MatrixBlockSource::LIST_SINGLE->value,
-                    'label' => Craft::t('influx', 'A list, all of one block type'),
+                    'label' => Craft::t('influx', 'One block type'),
                 ],
             ],
-            'default'      => MatrixBlockSource::fallback()->value,
-            'instructions' => Craft::t(
-                'influx',
-                'Blocks are built from the list in the source cell, one per item, in the feed’s own order. '
-                . 'The sub-field paths below are relative to ONE item (<code>image</code>), not to the whole item.',
-            ),
+            'default' => MatrixBlockSource::fallback()->value,
         ]);
 
         foreach ($this->blockSourceExamples($blockTypes) as $source => $example) {
             $b->note([
-                'text'    => Craft::t('influx', 'The feed shape this expects:'),
+                'text'    => Craft::t('influx', 'Expected shape'),
                 'example' => $example,
                 'showIf'  => [['handle' => 'blockSource', 'equals' => $source]],
             ]);
         }
 
         $b->text([
-            'handle'       => 'typeNode',
-            'label'        => Craft::t('influx', 'Block type node'),
-            'default'      => 'type',
-            'instructions' => Craft::t('influx', 'The path, within one list item, naming its block type.'),
-            'showIf'       => [
+            'handle'  => 'typeNode',
+            'label'   => Craft::t('influx', 'Block type node'),
+            'default' => 'type',
+            'showIf'  => [
                 ['handle' => 'blockSource', 'equals' => MatrixBlockSource::LIST_BY_NODE->value],
             ],
         ]);
+    }
 
+    /**
+     * The leaf settings ONE block type's card carries, above its rows: its feed
+     * alias, and nothing else so far.
+     *
+     * It lives on the card rather than beside the select because it describes
+     * that one block type, and a field with a dozen of them stacked a dozen
+     * boxes above the cards they belonged to. On the card it also collapses with
+     * it, and the two facts an operator reads together — what the feed calls this
+     * type, and which of its sub-fields are mapped — sit together.
+     *
+     * The showIf stays declared here and is evaluated by the card through the
+     * same {@see \GlueAgency\Influx\schema\SchemaBuilder} grammar every other
+     * gated node uses: an alias only means something to the sources that match a
+     * key ({@see MatrixBlockSource::matchesKey()}).
+     *
+     * These are OPTIONS of the Matrix row, not of the card's channel — which is
+     * why {@see \GlueAgency\Influx\schema\MappingSlots::optionKeys()} descends
+     * into a container's settings. An option no region declares is one every
+     * save strips.
+     *
+     * @param array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool} $blockType
+     * @return list<array>
+     */
+    protected function blockTypeSettings(array $blockType): array
+    {
         $keyed = array_map(
             static fn(MatrixBlockSource $source): string => $source->value,
             array_filter(
@@ -238,15 +262,19 @@ class Matrix extends Field
             ),
         );
 
-        foreach ($blockTypes as $blockType) {
-            $b->text([
-                'handle'       => self::sourceKeyOption($blockType['handle']),
-                'label'        => Craft::t('influx', 'Feed key for “{name}”', ['name' => $blockType['name']]),
-                'default'      => $blockType['handle'],
-                'instructions' => Craft::t('influx', 'What the feed calls this block type, if not its handle.'),
+        return MappingSchemaBuilder::make()
+            ->text([
+                'handle' => self::sourceKeyOption($blockType['handle']),
+                'label'  => Craft::t('influx', 'Key'),
+                // A placeholder, never a default: it suggests the likely value
+                // without claiming to BE one. Empty means the type is claimed by
+                // nothing ({@see sourceKeyFor()}), which a save rejects for a
+                // mapped type rather than letting a run skip it in silence.
+                'placeholder'  => $blockType['handle'],
+                'instructions' => Craft::t('influx', 'What the feed calls this block type. Required to map it.'),
                 'showIf'       => [['handle' => 'blockSource', 'in' => array_values($keyed)]],
-            ]);
-        }
+            ])
+            ->toArray();
     }
 
     /**
@@ -362,7 +390,16 @@ class Matrix extends Field
      */
     protected function hasActiveChildren(FieldContext $context): bool
     {
-        foreach ($context->mapping->blockMappings() as $typeMapping) {
+        return $this->hasActiveBlockRows($context->mapping);
+    }
+
+    /**
+     * The same test off the mapping alone, for the save-time half
+     * ({@see validateMapping()}), which has no context to ask.
+     */
+    protected function hasActiveBlockRows(FieldMapping $mapping): bool
+    {
+        foreach ($mapping->blockMappings() as $typeMapping) {
             if ($this->activeChildren($typeMapping) !== []) {
                 return true;
             }
@@ -372,13 +409,80 @@ class Matrix extends Field
     }
 
     /**
+     * THE misconfiguration rules for a Matrix row — the two states no run can
+     * recover from, both readable off the stored config alone.
+     *
+     * This is the one copy: {@see parseList()} throws the first message it
+     * returns rather than repeating the tests, so a link that saves is a link
+     * whose Matrix rows can at least be attempted. The rules parseList keeps to
+     * itself are the ones a save genuinely cannot answer — whether the node
+     * holds a list, whether a block type still builds — because they need the
+     * feed and the field in front of them.
+     *
+     * Both are gated on the row carrying active block rows at all. An untouched
+     * Matrix is not a broken one: {@see addressed()} skips it, and a link is
+     * routinely saved mid-configuration.
+     *
+     * @return list<string>
+     */
+    public function validateMapping(FieldMapping $mapping): array
+    {
+        if (! $this->hasActiveBlockRows($mapping)) {
+            return [];
+        }
+
+        $errors = [];
+
+        if ($mapping->node === null) {
+            $errors[] = Craft::t('influx', 'Blocks are built from a list, so this mapping needs a source node.');
+        }
+
+        $source = $this->blockSourceFor($mapping);
+
+        if ($source === MatrixBlockSource::LIST_SINGLE && count($mapping->blockMappings()) > 1) {
+            $errors[] = Craft::t(
+                'influx',
+                'More than one block type is mapped, so the data type can’t be “One block type”.',
+            );
+        }
+
+        // A keyed source claims a type by name, and {@see sourceKeyFor()} has no
+        // fallback — so a mapped type without a key is one nothing in the feed
+        // can ever name. Silent at run time (its elements are simply skipped by
+        // {@see assignType()}), which is exactly why the save catches it.
+        if ($source->matchesKey()) {
+            foreach ($mapping->blockMappings() as $typeHandle => $typeMapping) {
+                if ($this->activeChildren($typeMapping) === []) {
+                    continue;
+                }
+
+                if ($this->sourceKeyFor($mapping, $typeHandle) === null) {
+                    $errors[] = Craft::t(
+                        'influx',
+                        'Block type “{type}” is mapped but has no key, so nothing in the feed names it.',
+                        ['type' => $typeHandle],
+                    );
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
      * The row's configured block source, falling back to
      * {@see MatrixBlockSource::fallback()} for both an unset option and an
      * unrecognised one.
      */
     protected function blockSource(FieldContext $context): MatrixBlockSource
     {
-        $stored = $context->mapping->option('blockSource');
+        return $this->blockSourceFor($context->mapping);
+    }
+
+    /** The same read off the mapping alone — {@see hasActiveBlockRows()} for why. */
+    protected function blockSourceFor(FieldMapping $mapping): MatrixBlockSource
+    {
+        $stored = $mapping->option('blockSource');
 
         if (! is_string($stored)) {
             return MatrixBlockSource::fallback();
@@ -434,18 +538,22 @@ class Matrix extends Field
      */
     protected function parseList(FieldContext $context, MatrixBlockSource $source, array $configured): array
     {
+        // The config rules are stated once, in validateMapping() — a save that
+        // passed them and a run that throws on them would be two answers to one
+        // question. What stays here is what a save can't know.
+        foreach ($this->validateMapping($context->mapping) as $message) {
+            throw new MappingValueException("Matrix mapping '{$context->handle}': {$message}");
+        }
+
         $node = $context->mapping->node;
 
+        // Backstop, not a second copy of the rule above: validateMapping() only
+        // judges a row carrying active block rows, and parse() is public — so a
+        // caller reaching here without the {@see addressed()} gate still gets a
+        // sentence rather than a read against an empty path.
         if ($node === null) {
             throw new MappingValueException(
                 "Matrix mapping '{$context->handle}' reads its blocks from a list, so it needs a source node.",
-            );
-        }
-
-        if ($source === MatrixBlockSource::LIST_SINGLE && count($configured) > 1) {
-            throw new MappingValueException(
-                "Matrix mapping '{$context->handle}' maps more than one block type, so its list must say which "
-                . 'type each element is.',
             );
         }
 
@@ -559,14 +667,39 @@ class Matrix extends Field
     protected function typeForSourceKey(FieldContext $context, array $configured, string $key): ?string
     {
         foreach (array_keys($configured) as $typeHandle) {
-            $alias = $context->mapping->option(self::sourceKeyOption($typeHandle), $typeHandle);
+            $alias = $this->sourceKeyFor($context->mapping, $typeHandle);
 
-            if (is_scalar($alias) && (string) $alias === $key) {
+            if ($alias !== null && $alias === $key) {
                 return $typeHandle;
             }
         }
 
         return null;
+    }
+
+    /**
+     * The feed key a block type is claimed by, or null when it declares none.
+     *
+     * There is deliberately NO fallback to the type's own handle. A feed key
+     * that happens to spell a Craft handle is a coincidence, not consent: a
+     * fallback meant a link imported a block type purely because the two names
+     * agreed, with nothing in its config saying so and no way to decline. A type
+     * is claimed because the link says which key claims it, or it is not claimed
+     * at all — and {@see validateMapping()} won't let a MAPPED type be saved
+     * without one, so an unkeyed type is a state a save catches rather than a run
+     * silently skips.
+     */
+    protected function sourceKeyFor(FieldMapping $mapping, string $typeHandle): ?string
+    {
+        $alias = $mapping->option(self::sourceKeyOption($typeHandle));
+
+        if (! is_scalar($alias)) {
+            return null;
+        }
+
+        $alias = trim((string) $alias);
+
+        return $alias === '' ? null : $alias;
     }
 
     /**

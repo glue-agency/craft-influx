@@ -68,36 +68,17 @@
                         <div class="influx-detail-field">
                             <span class="influx-detail-field-name">
                                 {{ m.label }}
-                                <!-- Why this row is flagged, in Craft's own
-                                     tooltip: the CP registers <craft-tooltip>
-                                     and positions, flips and themes it, and the
-                                     plugin already leans on it for the element
-                                     editor's field indicators. On Craft 4, which
-                                     ships no such element, the wrapper is an
-                                     inert inline span and the button's `title`
-                                     carries the same sentence natively.
-
-                                     `.stop` keeps the press off the row's drill
-                                     toggle. It stops propagation, not immediate
-                                     propagation, so the tooltip's own listener
-                                     on the same button still fires. -->
-                                <component
-                                    :is="tooltipTag"
+                                <!-- Why this row is flagged, through the shared
+                                     tooltip: it owns the Craft 5 / Craft 4 split,
+                                     the focusable trigger, the accessible name
+                                     and the `.stop` that keeps the press off this
+                                     row's drill toggle. -->
+                                <v-influx-tooltip
                                     v-for="pill in pills(m)"
                                     :key="pill.key"
-                                    placement="top"
-                                    max-width="260px"
                                     :text="pill.info"
-                                >
-                                    <button
-                                        type="button"
-                                        class="influx-detail-pill"
-                                        :class="pill.class"
-                                        :aria-label="pill.info"
-                                        :title="hasCraftTooltip ? null : pill.info"
-                                        @click.stop
-                                    >{{ pill.label }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></button>
-                                </component>
+                                    :trigger-class="['influx-detail-pill', pill.class]"
+                                >{{ pill.label }}<span class="influx-detail-pill-info" data-icon="info" aria-hidden="true" /></v-influx-tooltip>
                             </span>
                             <!-- The feed node this mapping reads from. A
                                  node-less mapping (an explicit default) shows no
@@ -300,14 +281,6 @@
    a focusable trigger, and it keeps the explanation reachable by keyboard — so
    reset the native chrome and share one shape; each variant only differs in
    palette. The trailing info glyph marks them as "there's more". */
-/* The tooltip wrapper takes the pill's place as a flex item of the label row:
-   cp.css styles only `.craft-tooltip` (the span it appends to the body), never
-   the host element, which is inline by default. */
-.influx-detail-field-name > craft-tooltip,
-.influx-detail-field-name > span:has(> .influx-detail-pill) {
-    display: inline-flex;
-}
-
 .influx-detail-pill {
     display: inline-flex;
     align-items: center;
@@ -450,6 +423,7 @@
 
 <script>
 import ActionBadge from './ActionBadge.vue';
+import InfluxTooltip from './InfluxTooltip.vue';
 import { drillCounts, drillState } from '../lib/drill.js';
 
 /**
@@ -522,20 +496,6 @@ export default {
     },
 
     computed: {
-        /**
-         * Craft 5 registers `<craft-tooltip>`; Craft 4 ships nothing of the
-         * kind, so the wrapper degrades to a plain inline span and each pill
-         * falls back to its native `title`. Read once — a custom element can't
-         * be registered mid-render.
-         */
-        hasCraftTooltip() {
-            return !!window.customElements?.get?.('craft-tooltip');
-        },
-
-        tooltipTag() {
-            return this.hasCraftTooltip ? 'craft-tooltip' : 'span';
-        },
-
         // Header label when there's no element chip (a would-create or
         // would-skip item, or a child the sync hasn't created yet): the match
         // value, else the row's own title (children carry no match value), else
@@ -698,6 +658,9 @@ export default {
 
     },
 
-    components: { 'v-action-badge': ActionBadge },
+    components: {
+        'v-action-badge': ActionBadge,
+        'v-influx-tooltip': InfluxTooltip,
+    },
 };
 </script>

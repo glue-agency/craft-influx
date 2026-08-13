@@ -78,9 +78,9 @@ export function setMappingSlot(mappings, handle, key, value) {
  * saved-but-missing values so a dropdown stays legible. AND the row has to render
  * a control that can do something about it: the badge tells the operator to pick
  * a new node or clear the mapping, and a row whose source region is empty (a
- * Matrix, a Link, a Table) or holds only a note (a Preparse field) offers
- * neither. Counting those produced a sidebar promising four missing fields when
- * only two could be found on the page.
+ * Table, a Link, an Addresses, a Content Block) or holds only a note (a Preparse
+ * field) offers neither. Counting those produced a sidebar promising four missing
+ * fields when only two could be found on the page.
  *
  * Null `discovered` means "can't know" — no sample yet, or a partial one — and
  * flags nothing.
@@ -111,9 +111,11 @@ export function isMissingNode(field, mapping, discovered) {
  *
  * Normally that means a source node was picked. A row with no source CELL, though,
  * has nowhere to pick one: its value comes entirely from its sub-mappings (a
- * Matrix, a Table), so anything saved on the row counts. Read off the declared
+ * Table, a Link), so anything saved on the row counts. Read off the declared
  * regions rather than a flag — a row that renders no source cell simply doesn't
- * declare one.
+ * declare one. A Matrix is deliberately NOT one of those: since the list-node
+ * source cell it falls to the node rule, which is right — blocks with no list to
+ * build them from aren't a mapping.
  *
  * A field nothing can be mapped to is not a special case: it DOES declare a source
  * region (holding a note), so it falls to the node rule and is never mapped, which

@@ -1,0 +1,37 @@
+/* The trigger inside CraftTooltip. It's a <button> because Craft's tooltip needs
+   a focusable target — which is also what keeps the explanation reachable by
+   keyboard — so the browser's own button chrome has to come off before the
+   badge or pill class the caller passes can dress it.
+
+   Imported BEFORE pills.css and the badge rules deliberately: every property
+   here is one a caller's class may want to set, and at equal specificity source
+   order decides. Reset first, dressed after. */
+.influx-tooltip-trigger {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    text-align: inherit;
+    /* "There's an explanation here", not "this does something" — the trigger is
+       a button for focus and nothing else, and no press of it changes anything. */
+    cursor: help;
+}
+
+/* Craft's tooltip host, and the inline span it degrades to on Craft 4. cp.css
+   styles only `.craft-tooltip` — the span Craft appends to the body — never the
+   host element, which is inline by default. Making it a flex item lets it stand
+   exactly where the badge it wraps used to. */
+craft-tooltip:has(> .influx-tooltip-trigger),
+span:has(> .influx-tooltip-trigger) {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* A trigger dressed as a pill or badge keeps that shape whole: the flex host
+   must not stretch it, and the caller's own class supplies the padding. */
+.influx-tooltip-trigger { flex: none; }

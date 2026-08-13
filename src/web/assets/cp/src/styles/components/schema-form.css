@@ -212,9 +212,64 @@
 }
 
 .influx-schema-form .influx-subfields-group .sub-fields-hint,
+.influx-schema-form .influx-subfields-group .block-settings,
 .influx-schema-form .influx-subfields-group .influx-mapping-headings,
 .influx-schema-form .influx-subfields-group .sub-field-row {
     grid-column: 1 / -1;
+}
+
+/* A block type's own settings, above the rows they configure and set apart from
+   them by a closing rule rather than by a fill — the card header is already gray
+   and the screen has plenty; one more tinted band would be another thing to tell
+   apart rather than a distinction. What marks it as chrome is the small-caps
+   label over its control (the vocabulary the extras card gives ITS settings) and
+   the rule beneath, at the header's own weight so it reads as a section break.
+
+   It keeps the card's tracks, so the label starts at the Field column's edge and
+   the control sits under Source node: the alignment was never what made this
+   read as a mapping — having nothing say otherwise was. */
+.influx-schema-form .influx-subfields-group .block-settings {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: subgrid;
+    row-gap: 10px;
+    padding: 10px 12px 12px;
+    /* The heading row's own tint and rule (mapping-row.css): both are chrome
+       for the rows beneath them, so they read as one band of it rather than as
+       two different kinds of thing stacked. Deliberately NOT either tint a row
+       can take — those are states (near-white while extras are open, warm cream
+       while a node is missing), and a strip that's always present taking one
+       would read as a state that never clears. */
+    background: #f3f7fc;
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
+}
+
+/* Each setting spans the strip's own tracks and subgrids onto them again, so a
+   second one starts a row instead of flowing into the third column. */
+.influx-schema-form .influx-subfields-group .block-settings .block-setting {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.4fr) minmax(180px, 1fr);
+    grid-template-columns: subgrid;
+    gap: 12px;
+    align-items: start;
+}
+
+/* The column headings' own type, and their 22px gutter — the label sits in the
+   Field column exactly as "FIELD" does two rows down, and says the same kind of
+   thing about what follows it. */
+.influx-schema-form .influx-subfields-group .block-settings .block-setting > label {
+    padding: 6px 0 0 22px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    line-height: 1.2;
+    color: #777;
+}
+
+.influx-schema-form .influx-subfields-group .block-settings .hint {
+    margin: 4px 0 0;
 }
 
 .influx-schema-form .influx-subfields-group .influx-mapping-headings,

@@ -328,6 +328,7 @@ class Link extends Model
             [['endpoint'], 'required', 'when' => fn(self $m) => empty($m->siteEndpoints), 'message' => 'Either an endpoint or at least one site endpoint is required.'],
             [['siteEndpoints'], 'validateSiteEndpoints'],
             [['match'], 'validateMatch'],
+            [['mappings'], 'validateMappings'],
             [['auth'], 'validateAuth'],
             [['processing'], 'each', 'rule' => ['in', 'range' => ProcessingAction::values()]],
         ]);
@@ -545,6 +546,53 @@ class Link extends Model
         }
     }
 
+    /**
+     * Hand each mapped field's own strategy its config to judge
+     * ({@see \GlueAgency\Influx\fields\Field::validateMapping()}), and key what
+     * comes back to the row it came from.
+     *
+     * The dispatch is the reason this lives here rather than in a rule per field
+     * type: which strategy answers for a handle is a fact about the target's
+     * field layout, and a link is the only thing that knows both. Nothing else
+     * about a mapping is judged here — a strategy's rules are the strategy's.
+     *
+     * `mappings.<handle>` as the error key, so the builder can render the message
+     * on that row instead of in a banner naming a handle the operator then has to
+     * find. A target that can't be resolved (an uninstalled plugin's element type,
+     * a link mid-configuration) validates nothing rather than failing: the same
+     * restraint {@see pruneMatchForTarget()} shows, and the sync still throws.
+     *
+     * Only custom fields carry a `fieldClass`, which is what a strategy is filed
+     * under — a native attribute's rules belong to its target.
+     */
+    public function validateMappings(string $attribute): void
+    {
+        $target = $this->target();
+        $fields = $this->fieldsService();
+
+        if ($target === null || $fields === null) {
+            return;
+        }
+
+        $collection = $this->getMappingCollection();
+
+        foreach ($target->getMappableFields($this) as $field) {
+            if ($field->fieldClass === null) {
+                continue;
+            }
+
+            $mapping = $collection->get($field->handle);
+
+            if ($mapping === null) {
+                continue;
+            }
+
+            foreach ($fields->forCraftFieldClass($field->fieldClass)->validateMapping($mapping) as $message) {
+                $this->addError("{$attribute}.{$field->handle}", $message);
+            }
+        }
+    }
+
     public function validateAuth(string $attribute): void
     {
         $value = $this->$attribute;
@@ -650,6 +698,16 @@ class Link extends Model
     protected function targetsService(): ?\GlueAgency\Influx\services\TargetsService
     {
         return Influx::getInstance()?->targets;
+    }
+
+    /**
+     * The same seam for the fields registry, for the same reason —
+     * {@see validateMappings()} validates nothing without it rather than
+     * failing.
+     */
+    protected function fieldsService(): ?\GlueAgency\Influx\services\FieldsService
+    {
+        return Influx::getInstance()?->fields;
     }
 
     /**

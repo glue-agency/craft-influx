@@ -3,6 +3,11 @@
    rest of Craft's CP. main.js imports this file; Vite bundles every import
    below into a single influx-app.css (see vite.config.js). */
 
+/* The tooltip trigger's button reset leads, because every property it clears is
+   one a badge or pill class below may want to set — and at equal specificity
+   source order is what decides. */
+@import './components/tooltip.css';
+
 /* Overview pages — Links + Logs indexes */
 @import './components/empty-state.css';
 @import './components/pills.css';

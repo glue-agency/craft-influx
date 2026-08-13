@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\fields;
 
 use craft\helpers\DateTimeHelper;
 use DateTimeInterface;
+use GlueAgency\Influx\enums\TableCellType;
 
 /**
  * Craft's table-cell type semantics — what a typed cell stores, and what it
@@ -30,12 +31,6 @@ use DateTimeInterface;
  */
 trait TableCells
 {
-    /** Column types whose cell is a flag rather than a value. */
-    protected const BOOLEAN_TYPES = ['checkbox', 'lightswitch'];
-
-    /** Column types whose cell is free text, and so compares trimmed. */
-    protected const TEXT_TYPES = ['singleline', 'multiline'];
-
     /**
      * Coerce one feed value into what its column stores. Craft's
      * `_normalizeCellValue()` covers color, number, date and time but has no
@@ -45,10 +40,12 @@ trait TableCells
      */
     protected function coerceCell(string $type, mixed $value): mixed
     {
+        $cell = TableCellType::tryFrom($type);
+
         return match (true) {
-            in_array($type, self::BOOLEAN_TYPES, true) => Lightswitch::coerce($value),
-            in_array($type, self::TEXT_TYPES, true) => $this->trimmed($value),
-            default => $value,
+            $cell?->isFlag() => Lightswitch::coerce($value),
+            $cell?->isText() => $this->trimmed($value),
+            default          => $value,
         };
     }
 
@@ -61,11 +58,13 @@ trait TableCells
      */
     protected function cellPrint(string $type, mixed $value): mixed
     {
+        $cell = TableCellType::tryFrom($type);
+
         return match (true) {
-            in_array($type, self::BOOLEAN_TYPES, true) => Lightswitch::coerce($value),
-            in_array($type, self::TEXT_TYPES, true) => $this->normalize($this->trimmed($value)),
-            $type === 'date', $type === 'time' => $this->instant($value),
-            default => $this->normalize($value),
+            $cell?->isFlag()    => Lightswitch::coerce($value),
+            $cell?->isText()    => $this->normalize($this->trimmed($value)),
+            $cell?->isInstant() => $this->instant($value),
+            default             => $this->normalize($value),
         };
     }
 

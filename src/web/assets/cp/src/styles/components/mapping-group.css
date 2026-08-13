@@ -50,7 +50,10 @@
 /* Craft's CP takes a bare <button> to link-blue on hover, and that is left
    alone deliberately: gray is the RESTING state, so the control sits quietly
    beside the pills until it's pointed at, and then reads as the link it is. */
-.influx-clear-link:hover { text-decoration: underline; }
+/* Craft's own link colour on hover rather than an underline — the CP marks a
+   text action by colour, and an underline in a header row full of pills reads
+   as a second kind of emphasis. */
+.influx-clear-link:hover { color: var(--link-color, #0b69a3); }
 
 /* Static (non-collapsible) header — informational, no toggle affordance. */
 .influx-mapping-group.is-static .influx-mapping-group-header {

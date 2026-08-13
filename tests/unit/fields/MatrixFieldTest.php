@@ -20,6 +20,7 @@ use GlueAgency\Influx\fields\Field;
 use GlueAgency\Influx\fields\Lightswitch;
 use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\models\FieldMapping;
+use GlueAgency\Influx\schema\MappingSlots;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\ChildResult;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -712,10 +713,12 @@ class MatrixFieldTest extends Unit
     }
 
     /**
-     * One alias box per block type, defaulting to the handle, and shown only for
-     * the two sources that match a feed key against it.
+     * The alias box rides on its own block type's CARD, not beside the source
+     * select — a field with a dozen block types stacked a dozen boxes above the
+     * cards they described. It defaults to the handle, and is gated on the two
+     * sources that match a feed key against it.
      */
-    public function testEachBlockTypeGetsAFeedKeyBoxForTheKeyMatchingSources(): void
+    public function testEachBlockTypeCarriesItsFeedKeyBoxOnItsOwnCard(): void
     {
         $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
         $nodes = $strategy->exposedSchema([
@@ -723,15 +726,154 @@ class MatrixFieldTest extends Unit
             ['handle' => 'quote', 'name' => 'Quote', 'hasTitleField' => false],
         ]);
 
+        // Nothing is left beside the select — the boxes moved, they weren't copied.
         foreach (['season', 'quote'] as $typeHandle) {
-            $alias = $this->nodeByHandle($nodes, 'sourceKey_' . $typeHandle);
+            $this->assertNull($this->findByHandle($nodes, 'sourceKey_' . $typeHandle));
+        }
 
-            $this->assertSame($typeHandle, $alias['default']);
+        foreach ($this->cards($nodes) as $card) {
+            $alias = $this->nodeByHandle($card['settings'], 'sourceKey_' . $card['blockType']);
+
+            $this->assertSame($card['blockType'], $alias['placeholder']);
+            $this->assertArrayNotHasKey('default', $alias);
             $this->assertSame(
                 [['handle' => 'blockSource', 'in' => ['listByKey', 'listByNode']]],
                 $alias['showIf'],
             );
         }
+    }
+
+    /**
+     * An option rendered inside a container is still an option of the ROW, so the
+     * prune has to see it — one declared by nothing is one every save strips,
+     * which is how `options.group` used to end creation silently.
+     */
+    public function testTheAliasIsAWritableOptionOfTheRow(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $nodes = $strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+        ]);
+
+        $this->assertContains('sourceKey_season', MappingSlots::optionKeys(['extra' => $nodes]));
+    }
+
+    /**
+     * The save-time half of the strategy's own rules — the same two states
+     * {@see Matrix::parse()} throws on, judged off the stored config alone so a
+     * save can answer them without a feed.
+     */
+    public function testValidateMappingReportsARowWithNoListNode(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $mapping = FieldMapping::fromConfig('content_blocks', [
+            'options' => ['sourceKey_season' => 'season'],
+            'blocks'  => ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+        ]);
+
+        $this->assertSame(
+            ['Blocks are built from a list, so this mapping needs a source node.'],
+            $strategy->validateMapping($mapping),
+        );
+    }
+
+    public function testValidateMappingReportsTwoTypesUnderASingleTypeList(): void
+    {
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $mapping = FieldMapping::fromConfig('content_blocks', [
+            'node'    => 'content',
+            'options' => ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+            'blocks'  => [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+            ],
+        ]);
+
+        // A single-type list claims nothing by key, so no key is asked for.
+        $this->assertSame(
+            ['More than one block type is mapped, so the data type can’t be “One block type”.'],
+            $strategy->validateMapping($mapping),
+        );
+    }
+
+    public function testValidateMappingReportsAMappedTypeWithNoKey(): void
+    {
+        // A keyed source claims a type by name and nothing falls back to the
+        // handle, so an unkeyed type is one no element can ever name — skipped
+        // in silence at run time, which is why the save is where it's caught.
+        $strategy = $this->strategy(['season' => ['year']]);
+        $mapping = FieldMapping::fromConfig('content_blocks', [
+            'node'   => 'content',
+            'blocks' => ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+        ]);
+
+        $this->assertSame(
+            ['Block type “season” is mapped but has no key, so nothing in the feed names it.'],
+            $strategy->validateMapping($mapping),
+        );
+
+        // A blank one is no key at all.
+        $blank = FieldMapping::fromConfig('content_blocks', [
+            'node'    => 'content',
+            'options' => ['sourceKey_season' => '  '],
+            'blocks'  => ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+        ]);
+
+        $this->assertNotSame([], $strategy->validateMapping($blank));
+    }
+
+    public function testAnUnmappedTypeNeedsNoKey(): void
+    {
+        // "Don't sync this type" is "don't map rows for it" — an entry carrying
+        // no active row is asked for nothing.
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $mapping = FieldMapping::fromConfig('content_blocks', [
+            'node'    => 'content',
+            'options' => ['sourceKey_season' => 'season'],
+            'blocks'  => [
+                'season' => ['fields' => ['year' => ['node' => 'year']]],
+                'quote'  => ['fields' => ['text' => []]],
+            ],
+        ]);
+
+        $this->assertSame([], $strategy->validateMapping($mapping));
+    }
+
+    public function testAnUnfinishedRowIsNotAnInvalidOne(): void
+    {
+        // A link is routinely saved mid-configuration, and addressed() skips a
+        // row with no active block rows — so neither rule applies to one.
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $this->assertSame([], $strategy->validateMapping(FieldMapping::fromConfig('content_blocks', [])));
+        $this->assertSame([], $strategy->validateMapping(FieldMapping::fromConfig('content_blocks', [
+            'blocks' => ['season' => ['fields' => ['year' => []]]],
+        ])));
+    }
+
+    public function testTheRunThrowsOnExactlyWhatTheSaveRejects(): void
+    {
+        // One predicate, two surfaces: whatever validateMapping() reports, parse()
+        // refuses to run on. A save and a run disagreeing is the bug this pins.
+        $strategy = $this->strategy(['season' => ['year'], 'quote' => ['text']]);
+        $config = [
+            'season' => ['fields' => ['year' => ['node' => 'year']]],
+            'quote'  => ['fields' => ['text' => ['node' => 'text']]],
+        ];
+        $options = ['blockSource' => MatrixBlockSource::LIST_SINGLE->value];
+
+        $mapping = FieldMapping::fromConfig('content_blocks', [
+            'node' => 'content', 'options' => $options, 'blocks' => $config,
+        ]);
+        $this->assertNotSame([], $strategy->validateMapping($mapping));
+
+        $this->expectException(MappingValueException::class);
+        $strategy->parse($this->context(
+            new RemoteItem(['content' => [['year' => 2020]]]),
+            $config,
+            node: 'content',
+            options: $options,
+        ));
     }
 
     public function testAFieldWithoutBlockTypesRendersANote(): void
@@ -1803,6 +1945,14 @@ class MatrixFieldTest extends Unit
         int $depth = 0,
         bool $dryRun = false,
     ): FieldContext {
+        // Each mapped type claims its own handle unless the spec says otherwise.
+        // A keyed source has no fallback to the handle — a type is claimed only
+        // by a key the link declares — so without this every spec about ordering
+        // or skipping would first have to configure the claiming it isn't about.
+        foreach (array_keys($blocks) as $typeHandle) {
+            $options += ['sourceKey_' . $typeHandle => $typeHandle];
+        }
+
         return new FieldContext(
             craftField: $this->createMock(CraftFieldInterface::class),
             handle: 'seasons',
@@ -1865,13 +2015,31 @@ class MatrixFieldTest extends Unit
      */
     protected function nodeByHandle(array $nodes, string $handle): array
     {
+        $node = $this->findByHandle($nodes, $handle);
+
+        if ($node === null) {
+            $this->fail("No schema node with handle '{$handle}'.");
+        }
+
+        return $node;
+    }
+
+    /**
+     * One node by handle, or null — for asserting a handle is ABSENT, which
+     * {@see nodeByHandle()} can only fail on.
+     *
+     * @param list<array<string, mixed>> $nodes
+     * @return array<string, mixed>|null
+     */
+    protected function findByHandle(array $nodes, string $handle): ?array
+    {
         foreach ($nodes as $node) {
             if (($node['handle'] ?? null) === $handle) {
                 return $node;
             }
         }
 
-        $this->fail("No schema node with handle '{$handle}'.");
+        return null;
     }
 
     /**

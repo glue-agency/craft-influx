@@ -99,7 +99,7 @@ class FeedMeConverter
      * Feed Me field classes whose values go through `parseBoolean()`, and so carry
      * the {@see FEEDME_ONLY_TRUTHY_VALUES} divergence. Table joins Lightswitch
      * because its lightswitch/checkbox CELLS are coerced the same way
-     * ({@see \GlueAgency\Influx\fields\TableCells::BOOLEAN_TYPES}).
+     * ({@see \GlueAgency\Influx\enums\TableCellType::isFlag()}).
      */
     protected const BOOLEAN_FIELD_CLASSES = ['craft\fields\Lightswitch', 'craft\fields\Table'];
 
@@ -516,6 +516,21 @@ class FeedMeConverter
     }
 
     /**
+     * The mapping-option key holding one block type's feed key, as
+     * {@see \GlueAgency\Influx\fields\Matrix} declares it in its schema.
+     *
+     * Spelled here rather than reached for in the field strategy: this is the
+     * integration needing to speak the core vocabulary, not the core needing to
+     * know about Feed Me, and widening a strategy's API for one importer is how
+     * an integration starts leaking outward. Pinned against the real schema by
+     * the converter's own spec, so the two can't drift in silence.
+     */
+    protected function matrixSourceKeyOption(string $typeHandle): string
+    {
+        return 'sourceKey_' . $typeHandle;
+    }
+
+    /**
      * Every mapped child's node path, split into segments, keyed by block type
      * and child handle. Children with no node (a "use default" row) carry no
      * path and so say nothing about the shape.
@@ -577,10 +592,11 @@ class FeedMeConverter
 
         $options = ['blockSource' => MatrixBlockSource::LIST_BY_KEY->value];
 
+        // Every converted type gets its key written, including one that equals
+        // the handle: a keyed source claims a type only by a key the link
+        // declares, and an omitted one would convert to a type nothing names.
         foreach ($keys as $typeHandle => $key) {
-            if ($key !== $typeHandle) {
-                $options['sourceKey_' . $typeHandle] = $key;
-            }
+            $options[$this->matrixSourceKeyOption($typeHandle)] = $key;
         }
 
         return [

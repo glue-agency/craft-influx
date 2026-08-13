@@ -3,6 +3,21 @@
     "description": "Connects Craft elements to external JSON APIs. Links are stored in Project Config.",
     "type": "craft-plugin",
     "license": "mit",
+    "keywords": [
+        "craft",
+        "craftcms",
+        "craft-plugin",
+        "influx",
+        "sync",
+        "import",
+        "json",
+        "api"
+    ],
+    "support": {
+        "docs": "https://github.com/glue-agency/craft-influx/blob/master/README.md",
+        "issues": "https://github.com/glue-agency/craft-influx/issues",
+        "source": "https://github.com/glue-agency/craft-influx"
+    },
     "require": {
         "php": ">=8.1",
         "craftcms/cms": "^4.0|^5.0",
@@ -27,7 +42,9 @@
         "handle": "influx",
         "name": "Influx",
         "developer": "Glue Agency",
+        "developerUrl": "https://github.com/glue-agency",
         "documentationUrl": "https://github.com/glue-agency/craft-influx/blob/master/README.md",
+        "changelogUrl": "https://raw.githubusercontent.com/glue-agency/craft-influx/master/CHANGELOG.md",
         "class": "GlueAgency\\Influx\\Influx"
     },
     "config": {

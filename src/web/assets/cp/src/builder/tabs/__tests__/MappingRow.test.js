@@ -596,6 +596,27 @@ describe('MappingRow unmappable field', () => {
         expect(wrapper.text()).toContain('Preparse');
         expect(wrapper.find('code.handle').text()).toBe('test_preparse');
     });
+
+    /**
+     * A note spans because it's a sentence; a CONTROL standing alone doesn't.
+     * Stretched to double width a node select reads as a different control from
+     * the one every other row carries, and stops sharing the Source node column
+     * the row's own sub-field cards sit under.
+     */
+    it('leaves a lone source CONTROL on its own column', async () => {
+        await loadStore();
+        const matrixRow = {
+            handle:  'content_blocks',
+            name:    'Content',
+            native:  false,
+            group:   'Content',
+            mapping: { source: SOURCE_REGION },
+        };
+        const wrapper = mountRow(matrixRow);
+
+        expect(wrapper.find('.influx-cell-span').exists()).toBe(false);
+        expect(wrapper.findComponent(SearchableSelect).exists()).toBe(true);
+    });
 });
 
 /**
@@ -663,5 +684,182 @@ describe('MappingRow multi-value default', () => {
 
         expect(defaultSelect(wrapper).props('multiple')).toBe(false);
         expect(defaultSelect(wrapper).props('options')[0]).toEqual({ value: '', label: '—' });
+    });
+});
+
+// A Matrix row: a source cell for the list, and one card per block type.
+const matrixField = {
+    handle: 'content_blocks',
+    name: 'Content',
+    native: false,
+    group: 'Content',
+    mapping: {
+        source: SOURCE_REGION,
+        extra: [
+            { type: 'select', handle: 'blockSource', label: 'Data type', default: 'listByKey', options: [] },
+            { type: 'matrixFields', handle: 'blocks', label: 'Quote', blockType: 'quote',
+                subFields: [{ type: 'text', handle: 'cite', label: 'Cite' }] },
+            { type: 'matrixFields', handle: 'blocks', label: 'Stat', blockType: 'stat',
+                subFields: [{ type: 'text', handle: 'number', label: 'Number' }] },
+        ],
+    },
+};
+
+// Through the real action — `store.ui` is a readonly proxy, so the report has
+// to arrive the way a Fetch sample delivers it.
+const sampled = async (sampleItem) => {
+    api.fetchSample.mockResolvedValue({
+        success: true,
+        report:  { itemCount: 1, flatNodes: [{ value: 'content', label: 'content' }], sampleItem },
+    });
+    await store.fetchSample();
+};
+
+/**
+ * The block source read off the sample when the row is pointed at a list, so the
+ * shape is answered by the feed rather than by the operator classifying their
+ * own JSON. Written rather than displayed, because PHP falls back to LIST_BY_KEY
+ * for an unset option — a detected-but-unwritten source would show a shape the
+ * sync doesn't use.
+ */
+describe('MappingRow matrix block-source detection', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('writes the detected source, and the node carrying the type with it', async () => {
+        await loadStore();
+        await sampled({ content: [{ kind: 'quote', cite: 'A' }, { kind: 'stat', number: 4 }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks).toEqual({
+            node:       'content',
+            useDefault: false,
+            options:    { blockSource: 'listByNode', typeNode: 'kind' },
+        });
+    });
+
+    it('writes no typeNode for a keyed list', async () => {
+        await loadStore();
+        await sampled({ content: [{ quote: { cite: 'A' } }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks.options).toEqual({ blockSource: 'listByKey' });
+    });
+
+    it('clears a typeNode the newly-detected shape doesn’t use', async () => {
+        // The prune judges an extras leaf by its handle, not by whether its
+        // showIf passes, so a stale typeNode would survive into Project Config
+        // describing a shape nothing reads.
+        await loadStore({ content_blocks: { node: 'old', options: { blockSource: 'listByNode', typeNode: 'kind' } } });
+        await sampled({ content: [{ quote: { cite: 'A' } }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks.options).toEqual({ blockSource: 'listByKey' });
+    });
+
+    it('leaves a shape it can’t read alone rather than guessing one', async () => {
+        // A feed spelling its types differently is exactly what detection can't
+        // answer — no alias is typed yet at the moment it runs.
+        await loadStore({ content_blocks: { options: { blockSource: 'listSingle' } } });
+        await sampled({ content: [{ component: 'sb-quote', cite: 'A' }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks.options).toEqual({ blockSource: 'listSingle' });
+    });
+
+    it('never demotes a two-type row to a single-type list', async () => {
+        // The weakest branch of detection against the operator's own config: a
+        // uniform list only means no discriminator is configured YET, and
+        // writing listSingle here would turn a helpful click into a row the save
+        // refuses (Matrix::validateMapping()).
+        await loadStore({
+            content_blocks: {
+                blocks: {
+                    quote: { fields: { cite: { node: 'cite' } } },
+                    stat:  { fields: { number: { node: 'number' } } },
+                },
+            },
+        });
+        await sampled({ content: [{ cite: 'A' }, { cite: 'B' }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks.options).toBeUndefined();
+    });
+
+    it('still demotes a one-type row, where nothing contradicts it', async () => {
+        await loadStore({
+            content_blocks: { blocks: { quote: { fields: { cite: { node: 'cite' } } } } },
+        });
+        await sampled({ content: [{ cite: 'A' }] });
+        const wrapper = mountRow(matrixField);
+
+        wrapper.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.content_blocks.options).toEqual({ blockSource: 'listSingle' });
+    });
+
+    it('detects nothing without a sample, and nothing on a non-matrix row', async () => {
+        await loadStore();
+        const matrix = mountRow(matrixField);
+        matrix.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+        expect(store.link.mappings.content_blocks).toEqual({ node: 'content', useDefault: false });
+
+        await sampled({ content: [{ quote: { cite: 'A' } }] });
+        const plain = mountRow({
+            handle:  'title',
+            name:    'Title',
+            native:  true,
+            group:   'Content',
+            mapping: { source: SOURCE_REGION },
+        });
+        plain.findAllComponents(SearchableSelect).at(0).vm.$emit('update:modelValue', 'content');
+
+        expect(store.link.mappings.title).toEqual({ node: 'content', useDefault: false });
+    });
+});
+
+/**
+ * A strategy's own validation, keyed per row by Link::validateMappings(), lands
+ * on the mapping it's about — the flat errors map is addressed by attribute, and
+ * `mappings.<handle>` is how Yii addresses one row of a collection.
+ */
+describe('MappingRow validation errors', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('renders the server\u2019s messages for its own handle', async () => {
+        await loadStore();
+        api.save.mockRejectedValue(Object.assign(new Error('Invalid'), {
+            errors: { 'mappings.specs': ['Blocks are built from a list, so this mapping needs a source node.'] },
+        }));
+        await store.save();
+
+        const wrapper = mountRow();
+        const messages = wrapper.findComponent({ name: 'FieldErrors' });
+
+        expect(messages.exists()).toBe(true);
+        expect(messages.text()).toContain('needs a source node');
+    });
+
+    it('takes no notice of another row\u2019s errors', async () => {
+        await loadStore();
+        api.save.mockRejectedValue(Object.assign(new Error('Invalid'), {
+            errors: { 'mappings.other': ['Something else entirely.'] },
+        }));
+        await store.save();
+
+        expect(mountRow().findComponent({ name: 'FieldErrors' }).exists()).toBe(false);
     });
 });

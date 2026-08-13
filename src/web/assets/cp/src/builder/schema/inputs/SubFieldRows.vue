@@ -17,20 +17,26 @@
                     @click.stop="clearRows"
                     @keydown.stop></button>
 
-            <span class="pill pill-mapped"
-                  :data-mapped="mappedCount"
-                  :title="$t('Sub-fields with an active source node')">
+            <!-- Explanatory counts through Craft's own tooltip; the total's
+                 number is the fact, so it needs no sentence of its own beyond
+                 what it counts. -->
+            <v-craft-tooltip v-if="mappedCount > 0 || missingCount > 0"
+                             :text="$t('Sub-fields with an active source node')"
+                             trigger-class="pill pill-mapped"
+                             :data-mapped="mappedCount">
                 <span class="num" v-text="mappedCount"></span>&nbsp;{{ $t('mapped') }}
-            </span>
+            </v-craft-tooltip>
 
-            <span v-if="missingCount > 0"
-                  class="pill pill-missing"
-                  :data-missing="missingCount"
-                  :title="$t('Sub-fields whose source node isn’t in the fetched sample')">
+            <v-craft-tooltip v-if="missingCount > 0"
+                             :text="$t('Sub-fields whose source node isn’t in the fetched sample')"
+                             trigger-class="pill pill-missing"
+                             :data-missing="missingCount">
                 <span class="num" v-text="missingCount"></span>&nbsp;{{ $t('missing') }}
-            </span>
+            </v-craft-tooltip>
 
-            <span class="pill pill-count" :title="$t('Total sub-fields in this group')" v-text="subFieldList.length"></span>
+            <v-craft-tooltip :text="$t('Total sub-fields in this group')" trigger-class="pill pill-count">
+                {{ subFieldList.length }}
+            </v-craft-tooltip>
         </template>
 
         <template v-slot:default="{ expanded }">
@@ -41,6 +47,13 @@
                  silently refuses edits is worse than one that says why. Escaped,
                  unlike the instructions — this one interpolates a handle. -->
             <p v-if="notice" class="light sub-fields-hint" v-text="notice"></p>
+
+            <!-- The consumer's own controls for this group, above its rows —
+                 settings that configure the rows rather than being one of them
+                 (MatrixFields: the block type's feed alias). Rendered by the
+                 consumer, because what they bind is its business, not this
+                 table's. -->
+            <slot name="settings" />
 
             <!-- A group without sub-fields still gets its card when the consumer
                  supplies an empty-state hint (MatrixFields: a block type with no
@@ -86,10 +99,9 @@
                         <span aria-hidden="true">▼</span>
                     </button>
                     {{ sub.label }}
-                    <span v-if="isMissing(sub)"
-                          class="influx-missing-badge"
-                          :title="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
-                          v-text="$t('missing mapping')"></span>
+                    <v-craft-tooltip v-if="isMissing(sub)"
+                                     :text="$t('Source node isn’t in the fetched sample. Pick a new node or clear the mapping if no longer in use.')"
+                                     trigger-class="influx-missing-badge">{{ $t('missing mapping') }}</v-craft-tooltip>
                     <code class="handle light" v-text="sub.handle"></code>
                 </label>
                 <!-- Each cell renders only where the sub-field's own field declares
@@ -165,8 +177,10 @@
 <script>
 import SearchableSelect from '../../../components/SearchableSelect.vue';
 import MappingGroupCard from '../../../components/MappingGroupCard.vue';
+import InfluxTooltip from '../../../components/InfluxTooltip.vue';
 import MappingExtras from '../MappingExtras.vue';
 import { controlFor } from '../registry.js';
+import { setSlot } from '../../lib/slots.js';
 
 /** Node types whose control fetches its markup from the server on mount. */
 const SERVER_RENDERED = ['element', 'icon'];
@@ -334,7 +348,10 @@ export default {
             const saved = this.rows[handle] || {};
             return {
                 node: saved.useDefault ? '__default__' : (saved.node || ''),
-                default: saved.default || '',
+                // `??`, not `||`: a `0` default is a value the sync resolves
+                // (FieldMapping::resolve() nullifies only null and '') and a
+                // truthiness test would render it as an empty box.
+                default: saved.default ?? '',
             };
         },
 
@@ -355,17 +372,19 @@ export default {
 
             // Start from the saved row so unknown keys survive the rewrite
             // untouched — the preserving contract in the docblock.
-            const saved = { ...(this.rows[handle] || {}) };
+            let saved = { ...(this.rows[handle] || {}) };
             delete saved.node;
             delete saved.default;
             delete saved.useDefault;
 
             const useDefault = row.node === '__default__';
-            const node = useDefault ? '' : row.node;
 
-            if (node) saved.node = node;
-            if (row.default) saved.default = row.default;
-            if (useDefault) saved.useDefault = true;
+            // Through slots.js's own empty rule rather than a truthiness test,
+            // so a sub-field row prunes exactly what a top-level row does — and
+            // keeps what PHP's Link::isEmptyConfigValue() keeps, `0` included.
+            saved = setSlot(saved, 'node', useDefault ? '' : row.node);
+            saved = setSlot(saved, 'default', row.default);
+            saved = setSlot(saved, 'useDefault', useDefault);
 
             const next = { ...this.rows };
             if (Object.keys(saved).length === 0) {
@@ -381,6 +400,7 @@ export default {
     components: {
         'v-searchable-select': SearchableSelect,
         'v-mapping-group-card': MappingGroupCard,
+        'v-craft-tooltip': InfluxTooltip,
         'v-mapping-extras': MappingExtras,
     },
 };

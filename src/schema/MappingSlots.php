@@ -512,9 +512,16 @@ class MappingSlots
     }
 
     /**
-     * The `options` keys `$regions` can write — the handle of every extras leaf.
-     * A container binds a channel rather than an option and a note binds nothing,
-     * so neither contributes.
+     * The `options` keys `$regions` can write — the handle of every extras leaf,
+     * plus the leaves a container carries as its own `settings`.
+     *
+     * A container binds a CHANNEL rather than an option, so its own handle never
+     * contributes, and a note binds nothing. Its settings are the exception, and
+     * the reason this descends at all: a Matrix card holds the feed alias for its
+     * block type, which is an option of the ROW even though the control renders
+     * inside the card. Miss them here and they are options declared by nothing —
+     * which is to say, options every save strips, silently, the way
+     * `options.group` was stripped before alpha.12 retired it.
      *
      * @param array<string, list<array>> $regions
      * @return list<string>
@@ -529,6 +536,8 @@ class MappingSlots
             }
 
             if (isset(static::CONTAINER_CHANNELS[$node['type'] ?? ''])) {
+                $keys = array_merge($keys, static::optionKeys(['extra' => $node['settings'] ?? []]));
+
                 continue;
             }
 

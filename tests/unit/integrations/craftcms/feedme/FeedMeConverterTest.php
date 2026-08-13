@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\integrations\craftcms\feedme;
 
 use Codeception\Test\Unit;
 use GlueAgency\Influx\enums\ProcessingAction;
+use GlueAgency\Influx\fields\Matrix;
 use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConversion;
 use GlueAgency\Influx\integrations\craftcms\feedme\FeedMeConverter;
 
@@ -469,9 +470,15 @@ class FeedMeConverterTest extends Unit
 
         $this->assertSame(
             [
-                'node'    => 'content_blocks',
-                'options' => ['blockSource' => 'listByKey'],
-                'blocks'  => [
+                'node' => 'content_blocks',
+                // Every type's key is written, including one that equals its
+                // handle: a keyed source claims a type only by a declared key.
+                'options' => [
+                    'blockSource'     => 'listByKey',
+                    'sourceKey_text'  => 'text',
+                    'sourceKey_quote' => 'quote',
+                ],
+                'blocks' => [
                     'text' => ['fields' => [
                         'body'  => ['node' => 'text'],
                         'image' => ['node' => 'image'],
@@ -720,6 +727,34 @@ class FeedMeConverterTest extends Unit
      * Run a feed row (sane defaults, overridable) through a converter with
      * stubbed Craft lookups.
      */
+    /**
+     * The converter spells the Matrix feed-key option itself rather than
+     * reaching into the field strategy — the integration speaking the core
+     * vocabulary, not the core carrying an API for one importer. This is what
+     * keeps the two spellings honest: the handle comes off the schema Matrix
+     * actually emits, so a rename there fails here rather than silently
+     * converting links whose block types nothing claims.
+     */
+    public function testTheConvertersFeedKeyOptionMatchesTheSchemasOwn(): void
+    {
+        $declared = (new class() extends Matrix {
+            /** @return list<array<string, mixed>> */
+            public function exposedSettings(array $blockType): array
+            {
+                return $this->blockTypeSettings($blockType);
+            }
+        })->exposedSettings(['handle' => 'text', 'name' => 'Text', 'layout' => null, 'hasTitleField' => false]);
+
+        $converterKey = (new class() extends FeedMeConverter {
+            public function exposedOption(string $typeHandle): string
+            {
+                return $this->matrixSourceKeyOption($typeHandle);
+            }
+        })->exposedOption('text');
+
+        $this->assertSame($declared[0]['handle'], $converterKey);
+    }
+
     protected function convert(array $overrides = [], bool $multiSite = false, array $knownFields = []): FeedMeConversion
     {
         $feed = array_merge([

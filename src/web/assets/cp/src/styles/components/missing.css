@@ -25,11 +25,45 @@
 
 /* Sub-fields are independent mappings rendered as a nested group card —
    its own white background (from .influx-mapping-group) stops the parent
-   row's missing tint; each row flags only its own missing node. */
-.influx-schema-form .sub-field-row[data-missing="true"] {
+   row's missing tint; each row flags only its own missing node.
+
+   The second selector is the same precedence the parent row spells out above,
+   for the same reason: schema-form.css tints an expanded row through a `:has()`,
+   which carries its argument's weight and so outscores a plain [data-missing].
+   Without it a row that is BOTH missing and open loses its warning to the tint
+   that only says "you're editing this one" — the state you can see beats the
+   state you need to know. */
+.influx-schema-form .sub-field-row[data-missing="true"],
+.influx-schema-form .sub-field-row[data-missing="true"]:has(> .sub-field-extras[data-expanded="true"]) {
     background: #fff9ea;
+    /* The parent row's rail, at the depth the row actually sits — same inset
+       shadow rather than a border-left, so a flagged row keeps its columns on
+       the card's tracks with the healthy rows around it. A nested mapping earns
+       the same mark as a top-level one; it was carrying the tint alone. */
+    box-shadow: inset 3px 0 0 #ed8936;
 }
 .sub-field-row[data-missing="true"] .influx-missing-badge { display: inline-block; }
+
+/* A block type's key, missing where the source claims types by name. Not a node
+   that fell out of a sample — a claim the link never made, or one nothing
+   answers — but the same fact from the reader's side: this mapping doesn't reach
+   the feed. So it wears the same warning rather than inventing a second one.
+
+   The WHOLE strip takes the colour, not the row inside it. Tinting the row meant
+   bleeding it out through the strip's padding, which left that padding showing
+   underneath — a blue bar between the warning and the column headings, reading
+   as one thick band with them. The strip is the block type's settings as a unit;
+   when its key doesn't reach the feed, the unit is what's wrong. */
+.influx-schema-form .influx-subfields-group .block-settings:has(.block-setting[data-missing="true"]) {
+    background: #fff9ea;
+    box-shadow: inset 3px 0 0 #ed8936;
+}
+
+/* The badge is `display: none` until a parent says otherwise — the rule every
+   other missing surface carries, and the one this needs to be seen at all. */
+.influx-schema-form .block-setting[data-missing="true"] .influx-missing-badge {
+    display: inline-block;
+}
 
 /* ---------------------------------------------------------------------
    Cross-component glue that can't live in one component file: the
