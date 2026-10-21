@@ -1,6 +1,8 @@
 # Release Notes for Influx
 
-## Unreleased
+## 1.0.0-rc.2 - 2026-10-21
+
+Second release candidate: an asset's focal point can be imported, and a `null` in the feed now clears the field the way an empty string does.
 
 ### Added
 - **An asset's focal point can be imported.** The Assets field's sub-field card and an asset link's native rows both offer **Focal Point**, written in Craft's own `x;y` form (`0.4521;0.3010`, each 0–1) through `Asset::setFocalPoint()`. It is offered whatever the volume's layout holds, the focal point being set in the image editor rather than through a layout element. Getting there fixed the sub-field writer's change detection, which cast both sides to a string: an attribute that reads back as an array compared as `Array` to `Array`, with a warning Craft turns into an error on the whole image row. It compares through `Comparable::of()` now, the normaliser the top-level path already used. The value is read by `FocalPoint::parse()` rather than left to Craft's setter, which reads `left;top` as the top-left corner and drops an out-of-range point to none: anything that isn't an `x;y` pair inside 0–1 is refused as an error on its row with the stored point kept, and values are rounded to the four decimals Craft stores so a re-run compares equal. A refused value on an Assets sub-field errors that sub-field's row only — `RelationalField::assignNativeSubField()` is where the strategy offering a native sub-field writes it, and the walk catches its `MappingValueException` — so the image is still related.
