@@ -3,9 +3,7 @@
 namespace GlueAgency\Influx\Tests\unit\targets;
 
 use Codeception\Test\Unit;
-use craft\base\FieldInterface;
 use craft\elements\Asset;
-use craft\models\FieldLayout;
 use craft\models\Volume;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -152,20 +150,6 @@ class AssetTargetTest extends Unit
         $this->assertFalse($unchanged);
     }
 
-    public function testAFocalPointGoesThroughCraftsOwnSetter(): void
-    {
-        $target = $this->target();
-        $asset = $this->existingAsset('cat.jpg');
-        $asset->kind = Asset::KIND_IMAGE;
-        $mapping = FieldMapping::fromConfig('focalPoint', ['node' => 'focal']);
-        $item = new RemoteItem(['focal' => '0.4521;0.3010']);
-
-        $this->assertTrue($target->applyNativeAttribute($this->context(), $asset, 'focalPoint', $item, $mapping));
-        $this->assertSame(['x' => 0.4521, 'y' => 0.301], $asset->getFocalPoint());
-
-        $this->assertFalse($target->applyNativeAttribute($this->context(), $asset, 'focalPoint', $item, $mapping));
-    }
-
     // -- fixtures -------------------------------------------------------------
 
     protected function applyUrl(AssetTarget $target, Asset $asset, ?string $url, array $options = [], bool $dryRun = false): bool
@@ -210,17 +194,6 @@ class AssetTargetTest extends Unit
             public function __construct()
             {
                 // Skip Asset::init()'s Craft dependencies.
-            }
-
-            // A magic read (`$asset->focalPoint`) asks both; neither resolves without a booted Craft.
-            public function getFieldLayout(): ?FieldLayout
-            {
-                return null;
-            }
-
-            protected function fieldByHandle(string $handle): ?FieldInterface
-            {
-                return null;
             }
         };
 

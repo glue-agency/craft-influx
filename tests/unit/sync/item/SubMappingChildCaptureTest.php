@@ -273,7 +273,7 @@ class SubMappingChildCaptureTest extends Unit
                 ];
             }
 
-            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
+            public function applySubMappings(FieldContext $parentContext, ElementInterface $element, ?RelationalField $owner = null): SubMappingOutcome
             {
                 $this->walkCalls++;
 

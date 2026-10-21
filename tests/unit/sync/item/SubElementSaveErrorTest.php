@@ -173,7 +173,7 @@ class SubElementSaveErrorTest extends Unit
                 return $this->applyCustomField($context);
             }
 
-            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
+            public function applySubMappings(FieldContext $parentContext, ElementInterface $element, ?RelationalField $owner = null): SubMappingOutcome
             {
                 return new SubMappingOutcome($this->subMappingChanged ? [
                     new MappingResult(

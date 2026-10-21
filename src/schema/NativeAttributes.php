@@ -31,12 +31,12 @@ use GlueAgency\Influx\helpers\Compat;
  * element but must never be written to one, while `fullName` / `firstName` /
  * `lastName` are writable and useless as keys.
  *
- * Writable rows take the feed value as-is. {@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}
- * assigns the resolved value straight onto the attribute, so only an attribute
- * whose setter accepts a feed string belongs here: a typed property like
- * `postDate` would throw, and `enabled` needs the coercion its own target does —
- * which is why this is deliberately narrower than "every native attribute a
- * target offers".
+ * Writable rows take the feed value as-is unless the strategy offering the row
+ * coerces it ({@see \GlueAgency\Influx\fields\RelationalField::assignNativeSubField()},
+ * as an asset's focal point is), so only an attribute whose setter accepts a
+ * feed string belongs here otherwise: a typed property like `postDate` would
+ * throw, and `enabled` needs the coercion its own target does — which is why
+ * this is deliberately narrower than "every native attribute a target offers".
  */
 class NativeAttributes
 {
@@ -238,9 +238,8 @@ class NativeAttributes
     /**
      * An asset's focal point, in Craft's own `x;y` form (`0.4521;0.3010`, each
      * 0–1): what `Asset::setFocalPoint()` accepts and the `assets.focalPoint`
-     * column stores. Craft keeps four decimals, so a finer value reads as changed
-     * on every run; an out-of-range one drops to the centre. Shared with the
-     * Assets field's sub-field card ({@see \GlueAgency\Influx\fields\Assets::nativeSubFields()}).
+     * column stores, read through {@see \GlueAgency\Influx\helpers\FocalPoint::parse()}.
+     * Shared with the Assets field's sub-field card ({@see \GlueAgency\Influx\fields\Assets::nativeSubFields()}).
      *
      * @return array{handle: string, label: string}
      */

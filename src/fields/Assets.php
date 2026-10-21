@@ -10,6 +10,7 @@ use craft\fields\Assets as CraftAssetsField;
 use craft\fields\BaseRelationField;
 use craft\models\FieldLayout;
 use craft\models\Volume;
+use GlueAgency\Influx\helpers\FocalPoint;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\MappingSchema;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
@@ -181,6 +182,17 @@ class Assets extends RelationalField
         $builder->text(NativeAttributes::assetFocalPoint());
 
         return $builder->toArray();
+    }
+
+    public function assignNativeSubField(ElementInterface $element, string $handle, mixed $value): void
+    {
+        if ($handle === 'focalPoint' && $element instanceof Asset) {
+            $element->setFocalPoint(FocalPoint::parse($value));
+
+            return;
+        }
+
+        parent::assignNativeSubField($element, $handle, $value);
     }
 
     /**

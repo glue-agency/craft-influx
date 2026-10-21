@@ -7,6 +7,7 @@ use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\exceptions\MappingDepthException;
 use GlueAgency\Influx\fields\Field;
+use GlueAgency\Influx\fields\RelationalField;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -155,14 +156,16 @@ class FieldContext
      * throwaway one, so the call still behaves like the real walk. Not memoized:
      * a context is read-only and an applier holds no per-call state.
      *
+     * @param RelationalField|null $owner The strategy whose row this is, which
+     * writes its native sub-fields ({@see RelationalField::assignNativeSubField()}).
      * @return SubMappingOutcome The walk's per-sub-field rows;
      * {@see SubMappingOutcome::changed()} is the "any sub-mapping wrote a
      * differing value" verdict this used to return on its own.
      * @throws MappingDepthException on runaway recursion
      */
-    public function applySubMappings(ElementInterface $subElement): SubMappingOutcome
+    public function applySubMappings(ElementInterface $subElement, ?RelationalField $owner = null): SubMappingOutcome
     {
-        return ($this->applier ?? new MappingApplier())->applySubMappings($this, $subElement);
+        return ($this->applier ?? new MappingApplier())->applySubMappings($this, $subElement, $owner);
     }
 
     /**

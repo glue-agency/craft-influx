@@ -4,6 +4,8 @@ namespace GlueAgency\Influx\sync\item;
 
 use Closure;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\exceptions\MappingValueException;
+use GlueAgency\Influx\fields\RelationalField;
 use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
@@ -162,7 +164,9 @@ class MappingApplier
      * A sub-handle that isn't on the related element's layout is skipped
      * silently. Sub-mappings are deliberately not wrapped in a try/catch: a
      * throwing sub-strategy propagates to the parent relation's row, the only
-     * row it has.
+     * row it has. The one exception is a native value the owner refuses
+     * ({@see applyNativeSubField()}): it errors its own row, so a malformed
+     * focal point doesn't cost the asset its relation.
      *
      * @return SubMappingOutcome The walk's per-sub-field rows —
      * {@see SubMappingOutcome::changed()} is the signal the caller uses to decide
@@ -170,7 +174,7 @@ class MappingApplier
      * what a {@see ChildResult} presents in the inspectors' drill-down.
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException on runaway recursion
      */
-    public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
+    public function applySubMappings(FieldContext $parentContext, ElementInterface $element, ?RelationalField $owner = null): SubMappingOutcome
     {
         if (! $parentContext->mapping->hasSubMappings()) {
             return new SubMappingOutcome();
@@ -179,7 +183,7 @@ class MappingApplier
         $results = [];
 
         foreach ($parentContext->mapping->nativeSubMappings() as $sub) {
-            $result = $this->applyNativeSubField($element, $parentContext->item, $sub);
+            $result = $this->applyNativeSubField($element, $parentContext->item, $sub, $owner);
 
             if ($result !== null) {
                 $results[] = $result;
@@ -269,8 +273,10 @@ class MappingApplier
      * Apply one native-attribute sub-mapping (title/slug on a related element).
      * Honours the same empty/active policy and change detection as the top
      * level, but writes the value directly — the related element type's own
-     * value hygiene isn't reachable from here, so the attribute's setter is the
-     * only coercion a value gets. Change detection goes through
+     * value hygiene isn't reachable from here, so the owning strategy's
+     * {@see RelationalField::assignNativeSubField()} is the only coercion a
+     * value gets, and a value it refuses errors this row with the attribute
+     * untouched. Change detection goes through
      * {@see Comparable::of()} rather than a string cast: an asset's focal point
      * reads back as an `{x, y}` array, which casts to `Array` on both sides.
      *
@@ -294,8 +300,12 @@ class MappingApplier
      * (`checkVars: true` is that same test), so the fallback is gone rather than
      * left as a redundant `||`.
      */
-    protected function applyNativeSubField(ElementInterface $element, RemoteItem $item, FieldMapping $sub): ?MappingResult
-    {
+    protected function applyNativeSubField(
+        ElementInterface $element,
+        RemoteItem $item,
+        FieldMapping $sub,
+        ?RelationalField $owner = null,
+    ): ?MappingResult {
         if (! $element->canSetProperty($sub->handle, true, false)) {
             return null;
         }
@@ -317,7 +327,25 @@ class MappingApplier
 
         $before = $this->safeAttribute($element, $sub->handle);
         $value = $sub->resolve($item);
-        $element->{$sub->handle} = $value;
+
+        try {
+            if ($owner !== null) {
+                $owner->assignNativeSubField($element, $sub->handle, $value);
+            } else {
+                $element->{$sub->handle} = $value;
+            }
+        } catch (MappingValueException $e) {
+            return new MappingResult(
+                handle: $sub->handle,
+                node: $sub->node,
+                default: $sub->default,
+                native: true,
+                rawValue: $rawValue,
+                currentValue: $before,
+                error: $e->getMessage(),
+            );
+        }
+
         $after = $this->safeAttribute($element, $sub->handle);
 
         return new MappingResult(

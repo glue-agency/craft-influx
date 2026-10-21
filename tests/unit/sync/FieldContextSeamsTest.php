@@ -7,6 +7,7 @@ use Codeception\Test\Unit;
 use craft\base\ElementInterface;
 use craft\base\FieldInterface as CraftFieldInterface;
 use GlueAgency\Influx\fields\Field;
+use GlueAgency\Influx\fields\RelationalField;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\item\MappingApplier;
@@ -96,7 +97,7 @@ class FieldContextSeamsTest extends Unit
             /** @var list<array{0: FieldContext, 1: ElementInterface}> */
             public array $calls = [];
 
-            public function applySubMappings(FieldContext $parentContext, ElementInterface $element): SubMappingOutcome
+            public function applySubMappings(FieldContext $parentContext, ElementInterface $element, ?RelationalField $owner = null): SubMappingOutcome
             {
                 $this->calls[] = [$parentContext, $element];
 

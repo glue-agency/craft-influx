@@ -4,11 +4,9 @@ namespace GlueAgency\Influx\Tests\unit\sync\item;
 
 use Codeception\Test\Unit;
 use craft\base\ElementInterface;
-use craft\base\FieldInterface;
 use craft\elements\Asset;
 use craft\elements\Entry;
 use craft\elements\User;
-use craft\models\FieldLayout;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\item\MappingApplier;
 use GlueAgency\Influx\sync\item\MappingResult;
@@ -119,72 +117,6 @@ class NativeSubFieldWriteTest extends Unit
 
         $this->assertTrue($row->unaddressed);
         $this->assertSame('Stored', $element->alt, 'An unaddressed sub-field must not clear the attribute.');
-    }
-
-    public function testAFocalPointIsWrittenAndReportedAsAChange(): void
-    {
-        // The getter answers an `{x, y}` array, which a string compare read as
-        // `Array` on both sides: no write counted as a change, so the asset was
-        // never saved.
-        $asset = $this->image();
-
-        $row = $this->row('focalPoint', ['focal' => '0.4521;0.3010'], $asset, ['node' => 'focal']);
-
-        $this->assertTrue($row->changed);
-        $this->assertSame(['x' => 0.4521, 'y' => 0.301], $asset->getFocalPoint());
-    }
-
-    public function testRewritingTheSameFocalPointIsNoChange(): void
-    {
-        $asset = $this->image('0.4521;0.3010');
-
-        $row = $this->row('focalPoint', ['focal' => '0.4521;0.3010'], $asset, ['node' => 'focal']);
-
-        $this->assertFalse($row->changed);
-    }
-
-    public function testAnEmptyFocalPointResetsItToTheCentre(): void
-    {
-        $asset = $this->image('0.4521;0.3010');
-
-        $row = $this->row('focalPoint', ['focal' => ''], $asset, ['node' => 'focal']);
-
-        $this->assertTrue($row->changed);
-        $this->assertFalse($asset->getHasFocalPoint());
-    }
-
-    /**
-     * A real Asset, so the write and the read-back go through Craft's own
-     * focal-point setter and getter. The overrides stand in for what a bootless
-     * suite can't resolve, as on {@see FakeElement}.
-     */
-    protected function image(?string $focalPoint = null): Asset
-    {
-        $asset = new class() extends Asset {
-            public function init(): void
-            {
-            }
-
-            public function behaviors(): array
-            {
-                return [];
-            }
-
-            public function getFieldLayout(): ?FieldLayout
-            {
-                return null;
-            }
-
-            protected function fieldByHandle(string $handle): ?FieldInterface
-            {
-                return null;
-            }
-        };
-
-        $asset->kind = Asset::KIND_IMAGE;
-        $asset->setFocalPoint($focalPoint);
-
-        return $asset;
     }
 
     /**

@@ -258,6 +258,19 @@ abstract class RelationalField extends Field
     }
 
     /**
+     * Write one `nativeFields` value onto the related element. The strategy that
+     * offers the row is the one that knows its shape, so an attribute needing
+     * more than its setter overrides this.
+     *
+     * @throws MappingValueException when the value can't be written as given —
+     * the walk puts that on the sub-field's own row and leaves the attribute alone.
+     */
+    public function assignNativeSubField(ElementInterface $element, string $handle, mixed $value): void
+    {
+        $element->{$handle} = $value;
+    }
+
+    /**
      * Apply this mapping's sub-mappings to a related element and persist it,
      * but only when a sub-mapping actually changed a value. Skipped under dry-
      * run: the related element is a real, saved element the debug inspector
@@ -303,7 +316,7 @@ abstract class RelationalField extends Field
             return;
         }
 
-        $outcome = $context->applySubMappings($element);
+        $outcome = $context->applySubMappings($element, $this);
         $changed = $outcome->changed();
 
         if ($changed && ! $this->saveSubElement($element)) {

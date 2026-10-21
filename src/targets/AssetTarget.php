@@ -11,6 +11,7 @@ use craft\models\FieldLayout;
 use craft\models\Volume;
 use GlueAgency\Influx\exceptions\AssetUploadException;
 use GlueAgency\Influx\exceptions\InfluxException;
+use GlueAgency\Influx\helpers\FocalPoint;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
@@ -368,6 +369,20 @@ class AssetTarget extends AbstractElementTarget
         $element->newFilename = $filename;
 
         return true;
+    }
+
+    /**
+     * Read through {@see FocalPoint::parse()}, whose refusal becomes this row's
+     * error with the stored point untouched.
+     */
+    protected function parseFocalPoint(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    {
+        /** @var Asset $element */
+        $point = FocalPoint::parse($mapping->resolve($item));
+        $before = $element->getFocalPoint();
+        $element->setFocalPoint($point);
+
+        return $this->nativeValueChanged($before, $element->getFocalPoint());
     }
 
     /**
