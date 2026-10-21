@@ -21,7 +21,8 @@ use GlueAgency\Influx\fields\Assets;
  * `fields`, marked row by row with the `channel` key. Alt and Title are
  * optional native layout elements in Craft, so each is offered only where a
  * volume's layout includes it — a row nobody can fill in the asset's own editor
- * doesn't belong in the mapping either.
+ * doesn't belong in the mapping either. The focal point has no layout element
+ * and is always offered.
  *
  * The volume walk itself needs a booted Craft (it decodes `volume:UID` sources
  * against the Volumes service), so the layout seam is stubbed here; the runtime
@@ -42,8 +43,8 @@ class AssetSubFieldSchemaTest extends Unit
         $this->assertSame('Sub-fields', $card['label']);
 
         // Natives lead, then the volume's custom fields.
-        $this->assertSame(['alt', 'title', 'caption', 'photographer'], array_column($card['subFields'], 'handle'));
-        $this->assertSame(['text', 'text', 'text', 'text'], array_column($card['subFields'], 'type'));
+        $this->assertSame(['alt', 'title', 'focalPoint', 'caption', 'photographer'], array_column($card['subFields'], 'handle'));
+        $this->assertSame(['text', 'text', 'text', 'text', 'text'], array_column($card['subFields'], 'type'));
     }
 
     public function testOnlyTheCustomRowsCarryAChannel(): void
@@ -54,21 +55,21 @@ class AssetSubFieldSchemaTest extends Unit
         $card = $this->cards($this->schema([$this->fakeLayout(['caption'], ['alt'])]))[0];
 
         $channels = array_map(static fn(array $row): ?string => $row['channel'] ?? null, $card['subFields']);
-        $this->assertSame([null, 'fields'], $channels);
+        $this->assertSame([null, null, 'fields'], $channels);
     }
 
     public function testAnAttributeIsOfferedOnlyWhereALayoutIncludesIt(): void
     {
         $altOnly = $this->cards($this->schema([$this->fakeLayout([], ['alt'])]))[0];
-        $this->assertSame(['alt'], array_column($altOnly['subFields'], 'handle'));
+        $this->assertSame(['alt', 'focalPoint'], array_column($altOnly['subFields'], 'handle'));
 
         $titleOnly = $this->cards($this->schema([$this->fakeLayout([], ['title'])]))[0];
-        $this->assertSame(['title'], array_column($titleOnly['subFields'], 'handle'));
+        $this->assertSame(['title', 'focalPoint'], array_column($titleOnly['subFields'], 'handle'));
 
         // A layout that includes neither offers neither, however writable the
         // attributes remain on the element itself.
         $customOnly = $this->cards($this->schema([$this->fakeLayout(['caption'], [])]))[0];
-        $this->assertSame(['caption'], array_column($customOnly['subFields'], 'handle'));
+        $this->assertSame(['focalPoint', 'caption'], array_column($customOnly['subFields'], 'handle'));
     }
 
     public function testAnAttributeAnyVolumeIncludesIsOffered(): void
@@ -80,14 +81,14 @@ class AssetSubFieldSchemaTest extends Unit
             $this->fakeLayout([], ['alt']),
         ]))[0];
 
-        $this->assertSame(['alt'], array_column($card['subFields'], 'handle'));
+        $this->assertSame(['alt', 'focalPoint'], array_column($card['subFields'], 'handle'));
     }
 
     public function testTheRowIsLabelledByTheLayoutElement(): void
     {
         $card = $this->cards($this->schema([$this->fakeLayout([], ['alt' => 'Alt tekst', 'title'])]))[0];
 
-        $this->assertSame(['Alt tekst', 'Title'], array_column($card['subFields'], 'label'));
+        $this->assertSame(['Alt tekst', 'Title', 'Focal Point'], array_column($card['subFields'], 'label'));
     }
 
     public function testTheRowsAreEmittedInAFixedOrder(): void
@@ -99,7 +100,7 @@ class AssetSubFieldSchemaTest extends Unit
             $this->fakeLayout([], ['alt']),
         ]))[0];
 
-        $this->assertSame(['alt', 'title'], array_column($card['subFields'], 'handle'));
+        $this->assertSame(['alt', 'title', 'focalPoint'], array_column($card['subFields'], 'handle'));
     }
 
     public function testAHandleSharedByTwoVolumesIsOfferedOnce(): void
@@ -111,8 +112,8 @@ class AssetSubFieldSchemaTest extends Unit
             $this->fakeLayout(['caption', 'credit'], [], 'Byline'),
         ]))[0];
 
-        $this->assertSame(['caption', 'credit'], array_column($card['subFields'], 'handle'));
-        $this->assertSame('Caption', $card['subFields'][0]['label']);
+        $this->assertSame(['focalPoint', 'caption', 'credit'], array_column($card['subFields'], 'handle'));
+        $this->assertSame('Caption', $card['subFields'][1]['label']);
     }
 
     public function testAVolumeFieldNamedLikeAnAttributeYieldsOneRow(): void
@@ -121,18 +122,21 @@ class AssetSubFieldSchemaTest extends Unit
         // handle-keyed table can't hold both rows: the native wins where the
         // layout includes it, and the custom row stands where it doesn't.
         $native = $this->cards($this->schema([$this->fakeLayout(['alt'], ['alt'])]))[0];
-        $this->assertSame(['alt'], array_column($native['subFields'], 'handle'));
+        $this->assertSame(['alt', 'focalPoint'], array_column($native['subFields'], 'handle'));
         $this->assertArrayNotHasKey('channel', $native['subFields'][0]);
 
         $custom = $this->cards($this->schema([$this->fakeLayout(['alt'], [])]))[0];
-        $this->assertSame(['alt'], array_column($custom['subFields'], 'handle'));
-        $this->assertSame('fields', $custom['subFields'][0]['channel']);
+        $this->assertSame(['focalPoint', 'alt'], array_column($custom['subFields'], 'handle'));
+        $this->assertSame('fields', $custom['subFields'][1]['channel']);
     }
 
-    public function testNothingToOfferMeansNoCard(): void
+    public function testTheFocalPointNeedsNoLayoutElement(): void
     {
+        // It is set in the image editor, not the layout, so even a field whose
+        // volumes offer nothing else still gets a card with this one row.
         foreach ([[], [$this->fakeLayout([], [])]] as $layouts) {
-            $this->assertSame([], $this->cards($this->schema($layouts)));
+            $card = $this->cards($this->schema($layouts))[0];
+            $this->assertSame(['focalPoint'], array_column($card['subFields'], 'handle'));
         }
     }
 

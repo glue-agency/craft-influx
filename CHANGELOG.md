@@ -1,5 +1,10 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Added
+- **An asset's focal point can be imported.** The Assets field's sub-field card and an asset link's native rows both offer **Focal Point**, written in Craft's own `x;y` form (`0.4521;0.3010`, each 0–1) through `Asset::setFocalPoint()`. It is offered whatever the volume's layout holds, the focal point being set in the image editor rather than through a layout element. Getting there fixed the sub-field writer's change detection, which cast both sides to a string: an attribute that reads back as an array compared as `Array` to `Array`, with a warning Craft turns into an error on the whole image row. It compares through `Comparable::of()` now, the normaliser the top-level path already used.
+
 ## 1.0.0-rc.1 - 2026-08-13
 
 First release candidate: the alpha's own residue cleared out, the compatibility defect that clearing it turned up, and the Matrix builder's node discovery finished.

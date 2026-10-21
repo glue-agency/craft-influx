@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\Tests\unit\schema;
 
 use Codeception\Test\Unit;
 use craft\models\EntryType;
+use craft\models\FieldLayout;
 use GlueAgency\Influx\schema\NativeAttributes;
 
 /**
@@ -143,6 +144,17 @@ class NativeAttributesTest extends Unit
 
         $this->assertSame(['id', 'title'], array_column(NativeAttributes::tagMatchable(), 'value'));
         $this->assertSame(['title'], array_column(NativeAttributes::tagWritable(), 'handle'));
+    }
+
+    public function testAnAssetOffersItsFocalPointWhateverTheLayoutIncludes(): void
+    {
+        // Set in the image editor, not through a layout element, so there is
+        // nothing to probe.
+        $layout = $this->createMock(FieldLayout::class);
+        $layout->method('isFieldIncluded')->willReturn(false);
+
+        $this->assertSame(['filename', 'focalPoint'], array_column(NativeAttributes::assetWritable($layout), 'handle'));
+        $this->assertSame(['filename', 'title', 'alt', 'focalPoint'], array_column(NativeAttributes::assetWritable(), 'handle'));
     }
 
     public function testMatchLabelsCarryTheHandleTheyMatchOn(): void

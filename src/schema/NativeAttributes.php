@@ -31,11 +31,12 @@ use GlueAgency\Influx\helpers\Compat;
  * element but must never be written to one, while `fullName` / `firstName` /
  * `lastName` are writable and useless as keys.
  *
- * Writable rows are strings only. {@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}
- * assigns the resolved value straight onto the attribute and compares as string,
- * so a typed property like `postDate` would throw there, and `enabled` needs the
- * coercion its own target does — which is why this is deliberately narrower than
- * "every native attribute a target offers".
+ * Writable rows take the feed value as-is. {@see \GlueAgency\Influx\sync\item\MappingApplier::applyNativeSubField()}
+ * assigns the resolved value straight onto the attribute, so only an attribute
+ * whose setter accepts a feed string belongs here: a typed property like
+ * `postDate` would throw, and `enabled` needs the coercion its own target does —
+ * which is why this is deliberately narrower than "every native attribute a
+ * target offers".
  */
 class NativeAttributes
 {
@@ -211,6 +212,9 @@ class NativeAttributes
      * version seam and doubles as the reason a Craft 4.0–4.3 install (no `alt` at
      * all) never sees that row.
      *
+     * The focal point is set in the image editor rather than through the layout,
+     * so it has nothing to probe and is always offered ({@see assetFocalPoint()}).
+     *
      * @param FieldLayout|null $layout
      * @return list<array{handle: string, label: string}>
      */
@@ -226,7 +230,23 @@ class NativeAttributes
             $rows[] = ['handle' => 'alt', 'label' => Craft::t('app', 'Alternative Text')];
         }
 
+        $rows[] = static::assetFocalPoint();
+
         return $rows;
+    }
+
+    /**
+     * An asset's focal point, in Craft's own `x;y` form (`0.4521;0.3010`, each
+     * 0–1): what `Asset::setFocalPoint()` accepts and the `assets.focalPoint`
+     * column stores. Craft keeps four decimals, so a finer value reads as changed
+     * on every run; an out-of-range one drops to the centre. Shared with the
+     * Assets field's sub-field card ({@see \GlueAgency\Influx\fields\Assets::nativeSubFields()}).
+     *
+     * @return array{handle: string, label: string}
+     */
+    public static function assetFocalPoint(): array
+    {
+        return ['handle' => 'focalPoint', 'label' => Craft::t('app', 'Focal Point')];
     }
 
     /**

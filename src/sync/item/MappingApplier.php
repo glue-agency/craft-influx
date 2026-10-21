@@ -4,6 +4,7 @@ namespace GlueAgency\Influx\sync\item;
 
 use Closure;
 use craft\base\ElementInterface;
+use GlueAgency\Influx\helpers\Comparable;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\sync\FieldContext;
 use GlueAgency\Influx\sync\SyncContext;
@@ -268,9 +269,10 @@ class MappingApplier
      * Apply one native-attribute sub-mapping (title/slug on a related element).
      * Honours the same empty/active policy and change detection as the top
      * level, but writes the value directly — the related element type's own
-     * value hygiene isn't reachable from here. Native sub-fields are always
-     * title/slug strings, so a null-aware string compare suffices for change
-     * detection.
+     * value hygiene isn't reachable from here, so the attribute's setter is the
+     * only coercion a value gets. Change detection goes through
+     * {@see Comparable::of()} rather than a string cast: an asset's focal point
+     * reads back as an `{x, y}` array, which casts to `Array` on both sides.
      *
      * @return MappingResult|null The sub-field's row for the drill-down, or null
      * when the related element has no such attribute to write.
@@ -326,7 +328,7 @@ class MappingApplier
             rawValue: $rawValue,
             parsedValue: $value,
             currentValue: $before,
-            changed: (string) ($before ?? '') !== (string) ($after ?? ''),
+            changed: Comparable::of($before) !== Comparable::of($after),
             usedDefault: $sub->usesDefault($item),
         );
     }

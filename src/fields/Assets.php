@@ -13,6 +13,7 @@ use craft\models\Volume;
 use GlueAgency\Influx\Influx;
 use GlueAgency\Influx\schema\MappingSchema;
 use GlueAgency\Influx\schema\MappingSchemaBuilder;
+use GlueAgency\Influx\schema\NativeAttributes;
 use GlueAgency\Influx\sync\FieldContext;
 use Throwable;
 
@@ -30,8 +31,8 @@ use Throwable;
  * (matches FeedMe's `options.upload` path). Uploads land in the field's own
  * configured upload location — never a separate mapping option.
  *
- * Sub-field values (alt/title) are written back to the matched asset itself,
- * mirroring how FeedMe handles asset sub-fields.
+ * Sub-field values (alt/title/focal point) are written back to the matched
+ * asset itself, mirroring how FeedMe handles asset sub-fields.
  */
 class Assets extends RelationalField
 {
@@ -63,12 +64,12 @@ class Assets extends RelationalField
      * relation "Match by"; its handle stays `mode` so saved configs round-trip.
      *
      * The matched asset's sub-fields are ONE card over two write channels: the
-     * asset's own attributes (alt / title) ride `nativeFields`, the custom
-     * fields of the volumes this field can relate ride `fields` and are marked
-     * with the row-level `channel` key {@see MappingSchemaBuilder::elementSubFields()}
-     * documents. Two cards were an implementation detail of that split showing
-     * through — to an editor filling them in they are one list of the asset's
-     * fields.
+     * asset's own attributes (alt / title / focal point) ride `nativeFields`,
+     * the custom fields of the volumes this field can relate ride `fields` and
+     * are marked with the row-level `channel` key
+     * {@see MappingSchemaBuilder::elementSubFields()} documents. Two cards were
+     * an implementation detail of that split showing through — to an editor
+     * filling them in they are one list of the asset's fields.
      *
      * Alt and Title are offered only where a volume's layout includes them.
      * Craft treats both as optional native layout elements, so a volume can drop
@@ -146,6 +147,9 @@ class Assets extends RelationalField
      * reshuffle depending on which volume happens to contribute which
      * attribute; the label comes from the first layout that includes it.
      *
+     * The focal point is always offered: it lives in the image editor, not the
+     * layout, so there is nothing to probe.
+     *
      * @return list<array>
      */
     protected function nativeSubFields(BaseRelationField $field): array
@@ -173,6 +177,8 @@ class Assets extends RelationalField
                 $builder->text(['handle' => $attribute, 'label' => $labels[$attribute]]);
             }
         }
+
+        $builder->text(NativeAttributes::assetFocalPoint());
 
         return $builder->toArray();
     }

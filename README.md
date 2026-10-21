@@ -98,7 +98,7 @@ A `target` is an adapter for one element type. The plugin ships one per native C
 | Target | Element type | Scopes on | Notes |
 | --- | --- | --- | --- |
 | `EntryTarget` | `craft\elements\Entry` | section + entry type | `title` / `slug` / `enabled` / `postDate` / `expiryDate` / `author` |
-| `AssetTarget` | `craft\elements\Asset` | volume | the file arrives through a native **File URL** row; `filename` / `title` / `alt` follow the volume's layout |
+| `AssetTarget` | `craft\elements\Asset` | volume | the file arrives through a native **File URL** row; `filename` / `title` / `alt` follow the volume's layout; `focalPoint` |
 | `CategoryTarget` | `craft\elements\Category` | category group | `title` / `slug` / `enabled` / `parent`, so a feed can build the tree |
 | `TagTarget` | `craft\elements\Tag` | tag group | `title` / `enabled` — Craft derives a tag's slug, so no row for it |
 | `UserTarget` | `craft\elements\User` | — | names / `email` / `enabled` / `newPassword`, plus groups, photo, suspension and activation |
@@ -150,7 +150,9 @@ The source-node dropdowns list what the fetched sample discovered — and the sa
 
 The builder's details sidebar reports where the sample stands and how much of the tree is mapped, and its **Auto-match** maps every field whose handle matches a node in the sample. It only ever fills a field that has no source node and no "use default" — a mapping you made is never overwritten — and the rows it filled carry an "auto" badge until you touch them. Nothing about that badge is stored: an auto-matched mapping is an ordinary one.
 
-A relation or asset mapping gets one sub-field card holding both what the related element writes natively (an entry's title and slug, an asset's alt and title where the volume's layout includes them) and the custom fields of the layouts its sources allow. The two halves reach the element differently — an attribute is assigned, a custom field goes through the layout — so a row declares which channel it lands in; to the editor it's one list. Each row's default-value editor is the one its own field's strategy declares, so a relation sub-field offers an element picker rather than a text box.
+A relation or asset mapping gets one sub-field card holding both what the related element writes natively (an entry's title and slug, an asset's alt and title where the volume's layout includes them, and its focal point) and the custom fields of the layouts its sources allow. The two halves reach the element differently — an attribute is assigned, a custom field goes through the layout — so a row declares which channel it lands in; to the editor it's one list. Each row's default-value editor is the one its own field's strategy declares, so a relation sub-field offers an element picker rather than a text box.
+
+An asset's **focal point** takes Craft's own `x;y` form, each value from 0 to 1 (`0.4521;0.3010`, left edge to right, top to bottom), which is what `Asset::setFocalPoint()` accepts and what the `assets.focalPoint` column holds. Keep to four decimals: that's what Craft stores, so a finer value reads as changed on every run. An empty value resets the point to the centre; an out-of-range one is dropped by Craft, which also means the centre.
 
 A strategy's whole mapping row is declarative, and one declaration covers all of it. `schema()` returns a `MappingSchema` of three regions — the source-node cell, the default-value cell and the extras — and the CP renders every one of them through the same `type => component` map, so no Vue change is needed to add a control:
 
