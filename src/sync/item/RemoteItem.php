@@ -83,6 +83,42 @@ class RemoteItem
     }
 
     /**
+     * Whether the item carries the key a path names, even one holding null —
+     * which {@see get()} can't tell from a key that isn't there. Walks lists the
+     * way {@see get()} does: a collapsed hop answers for any element. A null
+     * along the way isn't the key, so `image: null` doesn't carry `image.alt`.
+     */
+    public function has(string $path): bool
+    {
+        return $path !== '' && $this->carries($this->data, explode('.', $path));
+    }
+
+    protected function carries(mixed $data, array $segments): bool
+    {
+        if ($segments === []) {
+            return true;
+        }
+
+        if (! is_array($data)) {
+            return false;
+        }
+
+        if (array_is_list($data) && ! ctype_digit($segments[0])) {
+            foreach ($data as $element) {
+                if ($this->carries($element, $segments)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        $key = array_shift($segments);
+
+        return array_key_exists($key, $data) && $this->carries($data[$key], $segments);
+    }
+
+    /**
      * Recursive dot-path walk implementing the collapsed-list semantics
      * documented on {@see get()}. A collapsed hop fans the remaining path over
      * every element and drops nulls, so the result is dense — it is NOT

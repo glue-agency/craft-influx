@@ -54,6 +54,23 @@ class FieldMappingTest extends Unit
         $this->assertTrue($mapping->addressedBy(new RemoteItem(['body' => ''])));
     }
 
+    public function testAddressedByAnExplicitNull(): void
+    {
+        // `null` is the feed saying "no value", like an empty string — not the
+        // feed leaving the field out.
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body']);
+        $this->assertTrue($mapping->addressedBy(new RemoteItem(['body' => null])));
+    }
+
+    public function testAnExplicitNullFallsBackToTheDefault(): void
+    {
+        $mapping = FieldMapping::fromConfig('summary', ['node' => 'body', 'default' => 'x']);
+        $item = new RemoteItem(['body' => null]);
+
+        $this->assertTrue($mapping->usesDefault($item));
+        $this->assertSame('x', $mapping->resolve($item));
+    }
+
     public function testNotAddressedWhenNodeAbsentFromItem(): void
     {
         $mapping = FieldMapping::fromConfig('summary', ['node' => 'body']);

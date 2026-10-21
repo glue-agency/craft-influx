@@ -107,6 +107,19 @@ class NativeSubFieldWriteTest extends Unit
         $this->assertSame('Een röntgenfoto', $element->alt);
     }
 
+    public function testAnExplicitNullClearsTheAttribute(): void
+    {
+        $element = new class() extends FakeElement {
+            public ?string $alt = 'Stored';
+        };
+
+        $row = $this->row('alt', ['caption' => null], $element, ['node' => 'caption']);
+
+        $this->assertFalse($row->unaddressed);
+        $this->assertTrue($row->changed);
+        $this->assertNull($element->alt);
+    }
+
     public function testAnUnaddressedSubFieldLeavesTheAttributeAlone(): void
     {
         $element = new class() extends FakeElement {

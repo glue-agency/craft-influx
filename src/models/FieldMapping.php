@@ -225,15 +225,15 @@ class FieldMapping
      * addressed: the feed isn't saying "make this empty", it just doesn't
      * mention the field, so the sync leaves it untouched.
      *
-     * Distinct from {@see isActive()} (which is item-independent): an
-     * empty-STRING node value IS addressed — {@see rawValue()} returns '' for a
-     * present-but-empty node, so the feed is explicitly providing empty and the
-     * field gets cleared; only an absent node ({@see rawValue()} null) is
-     * left alone.
+     * Distinct from {@see isActive()} (which is item-independent): a node the
+     * item carries as an empty string or `null` IS addressed — the feed is
+     * explicitly providing empty, so the field gets cleared (or takes the
+     * default). Only a node the item doesn't carry is left alone, which is why
+     * this asks {@see RemoteItem::has()}: {@see rawValue()} is null both ways.
      */
     public function addressedBy(RemoteItem $item): bool
     {
-        return $this->rawValue($item) !== null || $this->useDefault;
+        return $this->useDefault || ($this->node !== null && $item->has($this->node));
     }
 
     /**

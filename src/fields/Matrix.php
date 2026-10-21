@@ -373,9 +373,9 @@ class Matrix extends Field
      * It still needs one active child somewhere — a row that names a list but
      * maps nothing out of it is half-built, and clearing the field over that
      * would be the destructive reading of an operator's unfinished work. Note
-     * that a PRESENT but EMPTY list IS addressed: the feed is explicitly
-     * carrying no blocks, so {@see parse()} returns the empty value that clears
-     * the field.
+     * that a PRESENT but EMPTY (or null) list IS addressed: the feed is
+     * explicitly carrying no blocks, so {@see parse()} returns the empty value
+     * that clears the field.
      */
     public function addressed(FieldContext $context): bool
     {
@@ -557,7 +557,8 @@ class Matrix extends Field
             );
         }
 
-        $elements = $context->item->each($node);
+        // A null list is the feed carrying no blocks, the same as an empty one.
+        $elements = $context->item->get($node) === null ? [] : $context->item->each($node);
 
         if ($elements === null) {
             throw new MappingValueException(

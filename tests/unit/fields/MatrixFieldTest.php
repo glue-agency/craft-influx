@@ -413,6 +413,21 @@ class MatrixFieldTest extends Unit
         $this->assertSame([], $strategy->parse($context));
     }
 
+    public function testANullListClearsTheFieldLikeAnEmptyOne(): void
+    {
+        $context = $this->context(
+            new RemoteItem(['content' => null]),
+            ['season' => ['fields' => ['year' => ['node' => 'year']]]],
+            node: 'content',
+            options: ['blockSource' => MatrixBlockSource::LIST_SINGLE->value],
+        );
+
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $this->assertTrue($strategy->addressed($context));
+        $this->assertSame([], $strategy->parse($context));
+    }
+
     public function testAListSourceIsAddressedByItsOwnNode(): void
     {
         $strategy = $this->strategy(['season' => ['year']]);

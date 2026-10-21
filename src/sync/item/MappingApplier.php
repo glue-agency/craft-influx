@@ -29,10 +29,11 @@ use Throwable;
  * of its own), matching how the debug view has always behaved.
  *
  * Empty policy (the feed is authoritative): an actively-mapped field whose
- * value is now empty, or whose value no longer resolves to anything, is
- * written through as empty — clearing the field. This holds uniformly across
- * native attributes, custom fields, and sub-element fields, at every depth.
- * Only a handle with no mapping at all ({@see FieldMapping::isActive()} false)
+ * value is now empty — an empty string or `null` — or no longer resolves to
+ * anything, is written through as empty, clearing the field. This holds
+ * uniformly across native attributes, custom fields, and sub-element fields, at
+ * every depth. Only a handle with no mapping at all ({@see FieldMapping::isActive()}
+ * false), or a node the item doesn't carry ({@see FieldMapping::addressedBy()}),
  * is left untouched.
  *
  * The clearing policy covers empty and unresolved values — NOT failed writes. A

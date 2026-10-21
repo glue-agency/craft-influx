@@ -129,6 +129,8 @@ Some element state can't be written by an element save at all. A target claims t
 
 A `mapping` reads one field worth of data off a remote item and applies it to an element field. Each mapping declares whether its incoming value would change the element (`hasChanged()`) — that's how Influx decides to skip the save when nothing's different.
 
+The feed is authoritative about what it mentions, and only that. A node the item doesn't carry leaves the field untouched; a node it carries as an empty string or `null` clears the field — or writes the row's default, when it has one.
+
 Built-in strategies, keyed by Craft field class and registered via `FieldsService::EVENT_REGISTER_FIELDS`:
 
 - **`Lightswitch`**, **`Date`**, **`Dropdown`** (covers option fields generally, e.g. Radio Buttons, Checkboxes) — truthy/falsy coercion, configurable date-format parsing, match-by-label-or-value.
@@ -152,7 +154,7 @@ The builder's details sidebar reports where the sample stands and how much of th
 
 A relation or asset mapping gets one sub-field card holding both what the related element writes natively (an entry's title and slug, an asset's alt and title where the volume's layout includes them, and its focal point) and the custom fields of the layouts its sources allow. The two halves reach the element differently — an attribute is assigned, a custom field goes through the layout — so a row declares which channel it lands in; to the editor it's one list. Each row's default-value editor is the one its own field's strategy declares, so a relation sub-field offers an element picker rather than a text box.
 
-An asset's **focal point** takes Craft's own `x;y` form, each value from 0 to 1 (`0.4521;0.3010`, left edge to right, top to bottom), which is what `Asset::setFocalPoint()` accepts and what the `assets.focalPoint` column holds. It follows the same value rules as every other row: an absent node leaves the stored point alone, and an empty string clears it — to the row's default when it has one, otherwise back to no focal point (the centre). Anything else — one coordinate, words, percentages, a value outside 0–1 — is refused as an error on that row and the stored point is kept, even on an Assets sub-field, where the image is still related. Values are rounded to the four decimals Craft stores, so a finer one doesn't read as a change on every run.
+An asset's **focal point** takes Craft's own `x;y` form, each value from 0 to 1 (`0.4521;0.3010`, left edge to right, top to bottom), which is what `Asset::setFocalPoint()` accepts and what the `assets.focalPoint` column holds. It follows the same value rules as every other row: an absent node leaves the stored point alone, and an empty string or `null` clears it — to the row's default when it has one, otherwise back to no focal point (the centre). Anything else — one coordinate, words, percentages, a value outside 0–1 — is refused as an error on that row and the stored point is kept, even on an Assets sub-field, where the image is still related. Values are rounded to the four decimals Craft stores, so a finer one doesn't read as a change on every run.
 
 A strategy's whole mapping row is declarative, and one declaration covers all of it. `schema()` returns a `MappingSchema` of three regions — the source-node cell, the default-value cell and the extras — and the CP renders every one of them through the same `type => component` map, so no Vue change is needed to add a control:
 

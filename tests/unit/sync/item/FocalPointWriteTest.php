@@ -114,13 +114,26 @@ class FocalPointWriteTest extends Unit
     }
 
     /** @dataProvider paths */
-    public function testAnEmptyValueFallsBackToTheRowsDefault(string $path): void
+    public function testANullClearsThePoint(string $path): void
     {
         $asset = $this->image(self::STORED);
 
-        $this->write($path, $asset, ['focal' => ''], ['node' => 'focal', 'default' => '0.2500;0.7500']);
+        $row = $this->write($path, $asset, ['focal' => null]);
 
-        $this->assertSame('0.2500;0.7500', $this->stored($asset));
+        $this->assertTrue($row->changed);
+        $this->assertFalse($asset->getHasFocalPoint());
+    }
+
+    /** @dataProvider paths */
+    public function testAnEmptyValueFallsBackToTheRowsDefault(string $path): void
+    {
+        foreach (['', null] as $empty) {
+            $asset = $this->image(self::STORED);
+
+            $this->write($path, $asset, ['focal' => $empty], ['node' => 'focal', 'default' => '0.2500;0.7500']);
+
+            $this->assertSame('0.2500;0.7500', $this->stored($asset), 'Empty value: ' . var_export($empty, true));
+        }
     }
 
     /** @dataProvider invalidValues */
