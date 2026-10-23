@@ -1255,9 +1255,9 @@ class Matrix extends Field
     /**
      * Every block a query holds, disabled ones included. Craft's element queries
      * default to enabled-only, and a disabled block the comparison can't see
-     * reads as a difference on every sync. Set in place: a clone drops the owner
-     * behavior Craft 5 scopes the query with. A query already holding a result
-     * keeps it, since changing its criteria would throw that result away.
+     * reads as a difference on every sync. Read off a clone, as Craft's own
+     * Matrix does, so the element's field value keeps its criteria; a query
+     * already holding a result is read as is, since new criteria would discard it.
      *
      * @return list<object>
      */
@@ -1266,7 +1266,7 @@ class Matrix extends Field
         $cached = method_exists($query, 'getCachedResult') ? $query->getCachedResult() : null;
 
         if ($cached === null && method_exists($query, 'status')) {
-            $query->status(null);
+            $query = (clone $query)->status(null);
         }
 
         return array_values($query->all());

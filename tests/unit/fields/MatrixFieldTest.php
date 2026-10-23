@@ -1077,7 +1077,7 @@ class MatrixFieldTest extends Unit
 
         $query = $this->fakeStatusQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false])]);
         $this->assertFalse($strategy->exposedValueDiffers($context, $query, $incoming));
-        $this->assertNull($query->status);
+        $this->assertSame('enabled', $query->status, "The element's own field value keeps its criteria.");
 
         $children = $strategy->collectChildren(
             $context,
@@ -1093,9 +1093,9 @@ class MatrixFieldTest extends Unit
         $strategy = $this->strategy(['season' => ['year']]);
         $block = $this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false]);
 
-        $query = $this->fakeStatusQuery([$block], cachedResult: [$block]);
+        // Nothing behind the query, so re-querying would read no blocks at all.
+        $query = $this->fakeStatusQuery([], cachedResult: [$block]);
         $this->assertFalse($strategy->exposedValueDiffers($context, $query, $strategy->parse($context)));
-        $this->assertSame('enabled', $query->status);
     }
 
     public function testBoolLeafFingerprintsSymmetrically(): void
@@ -2083,7 +2083,7 @@ class MatrixFieldTest extends Unit
 
     /**
      * A fake element query that, like Craft's, returns enabled blocks only until
-     * asked for every status — and a held result whatever its criteria.
+     * asked for every status, and drops a held result once its criteria change.
      *
      * @param list<ElementInterface> $blocks
      * @param list<ElementInterface>|null $cachedResult
@@ -2108,6 +2108,7 @@ class MatrixFieldTest extends Unit
             public function status(?string $status): static
             {
                 $this->status = $status;
+                $this->cachedResult = null;
 
                 return $this;
             }
