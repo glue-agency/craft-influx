@@ -417,6 +417,28 @@ class FeedMeConverterTest extends Unit
         $this->assertNoWarningMatching('/Matrix/', $conversion);
     }
 
+    public function testAMatrixBlockTypeFeedMeDisablesImportsItsBlocksDisabled(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'contentBlocks' => [
+                    'blocks' => [
+                        'text'  => ['disabled' => '1', 'fields' => ['body' => ['node' => 'body']]],
+                        'quote' => ['disabled' => '', 'fields' => ['text' => ['node' => 'text']]],
+                    ],
+                ],
+            ],
+        ]);
+
+        $blocks = $conversion->link->mappings['contentBlocks']['blocks'];
+
+        $this->assertSame(
+            ['enabled' => ['useDefault' => true, 'default' => 'false']],
+            $blocks['text']['nativeFields'],
+        );
+        $this->assertArrayNotHasKey('nativeFields', $blocks['quote']);
+    }
+
     /**
      * One block type reading a flat list: the list node moves onto the Matrix
      * row and the child path is rebased onto a list item, so the blocks keep

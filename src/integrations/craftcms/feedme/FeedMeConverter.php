@@ -427,8 +427,9 @@ class FeedMeConverter
     /**
      * Convert a Feed Me Matrix `blocks` map into Influx's per-block-type
      * sub-mapping trees. Feed Me nests block-type mappings as
-     * `blocks.<typeHandle>.fields.<childHandle>` — custom fields only; there
-     * are no per-type native-attribute rows to carry. Each type's `fields`
+     * `blocks.<typeHandle>.fields.<childHandle>`, plus a per-type `disabled`
+     * checkbox that imports every block of the type disabled — carried over as
+     * the type's Enabled row defaulting to `'false'`. Each type's `fields`
      * recurse through {@see convertMappings()} (topLevel false), so node
      * separators, sentinels (no-import / use-default), defaults and warnings
      * all apply per child. A block type whose fields all resolve to no-ops is
@@ -436,7 +437,7 @@ class FeedMeConverter
      * mappings is warned and dropped.
      *
      * @param array $blocks decoded Feed Me `blocks` map
-     * @return array<string, array{fields: array}>
+     * @return array<string, array{fields: array, nativeFields?: array}>
      */
     protected function convertMatrixBlocks(string $handle, array $blocks): array
     {
@@ -453,9 +454,19 @@ class FeedMeConverter
 
             $this->warnUnsupportedBlockKeys($handle, $typeHandle, $typeInfo);
 
-            if ($fields !== []) {
-                $converted[$typeHandle] = FieldMapping::make($typeHandle, fields: $fields)->toConfig();
+            if ($fields === []) {
+                continue;
             }
+
+            $nativeFields = Lightswitch::coerce($typeInfo['disabled'] ?? null)
+                ? ['enabled' => FieldMapping::make('enabled', default: 'false', useDefault: true)->toConfig()]
+                : [];
+
+            $converted[$typeHandle] = FieldMapping::make(
+                $typeHandle,
+                fields: $fields,
+                nativeFields: $nativeFields,
+            )->toConfig();
         }
 
         return $converted;

@@ -107,7 +107,11 @@ class Compat
      * older entry type that always had a title. Same feature detection, opposite
      * default, because the two describe different elements.
      *
-     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}>
+     * `showStatusField` says whether an editor can disable a block of the type.
+     * Absence reads TRUE: every Craft 4 block has the toggle, and a Craft 5
+     * nested entry type only loses it to its own "Show the Status field" setting.
+     *
+     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool}>
      */
     public static function matrixBlockTypes(CraftFieldInterface $field): array
     {
@@ -119,10 +123,11 @@ class Compat
 
         foreach ($blockTypes as $blockType) {
             $normalized[] = [
-                'handle'        => $blockType->handle,
-                'name'          => $blockType->name,
-                'layout'        => $blockType->getFieldLayout(),
-                'hasTitleField' => property_exists($blockType, 'hasTitleField') && $blockType->hasTitleField,
+                'handle'          => $blockType->handle,
+                'name'            => $blockType->name,
+                'layout'          => $blockType->getFieldLayout(),
+                'hasTitleField'   => property_exists($blockType, 'hasTitleField') && $blockType->hasTitleField,
+                'showStatusField' => ! property_exists($blockType, 'showStatusField') || $blockType->showStatusField,
             ];
         }
 

@@ -110,9 +110,9 @@ class Matrix extends Field
      * `blocks.<handle>` slice; a block type with no mappable sub-fields at all
      * still gets a card.
      *
-     * A block type that exposes a native Title leads with a title row, ahead of
-     * the custom fields, in the same order {@see buildBlock()} fills a
-     * block in. Rows carry an optional `channel` key that routes where the SPA
+     * A block type that exposes a native Title leads with a title row, then an
+     * Enabled row unless the type hides its status field, ahead of the custom
+     * fields, in the same order {@see buildBlock()} fills a block in. Rows carry an optional `channel` key that routes where the SPA
      * writes them: `nativeFields` for the title, ABSENT for a custom field —
      * absent means the `fields` channel, which is the stored shape that predates
      * the key.
@@ -145,6 +145,18 @@ class Matrix extends Field
                             'handle'  => 'title',
                             'label'   => $this->titleLabel($layout),
                             'channel' => 'nativeFields',
+                        ]);
+                    }
+
+                    if ($blockType['showStatusField']) {
+                        $subFields->defaultSelect([
+                            'handle'  => 'enabled',
+                            'label'   => Craft::t('app', 'Enabled'),
+                            'channel' => 'nativeFields',
+                            'options' => [
+                                ['value' => 'true', 'label' => Craft::t('app', 'Enabled')],
+                                ['value' => 'false', 'label' => Craft::t('app', 'Disabled')],
+                            ],
                         ]);
                     }
 
@@ -187,7 +199,7 @@ class Matrix extends Field
      * type ({@see sourceKeyOption()}) rather than one nested map, since an
      * extras leaf binds exactly one option key.
      *
-     * @param list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}> $blockTypes
+     * @param list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool}> $blockTypes
      */
     protected function blockSourceNodes(MappingSchemaBuilder $b, array $blockTypes): void
     {
@@ -249,7 +261,7 @@ class Matrix extends Field
      * into a container's settings. An option no region declares is one every
      * save strips.
      *
-     * @param array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool} $blockType
+     * @param array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool} $blockType
      * @return list<array>
      */
     protected function blockTypeSettings(array $blockType): array
@@ -285,7 +297,7 @@ class Matrix extends Field
      * Two types and two sub-fields is the most that stays scannable in a hint,
      * so longer layouts are elided with `…` rather than printed whole.
      *
-     * @param list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}> $blockTypes
+     * @param list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool}> $blockTypes
      * @return array<string, string>
      */
     protected function blockSourceExamples(array $blockTypes): array
@@ -329,7 +341,7 @@ class Matrix extends Field
      * mappable fields at all still needs something between the braces, so it
      * borrows the generic name.
      *
-     * @param array{handle: string, layout: ?FieldLayout, hasTitleField: bool} $blockType
+     * @param array{handle: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool} $blockType
      * @return list<string>
      */
     protected function exampleFieldHandles(array $blockType): array
@@ -569,6 +581,7 @@ class Matrix extends Field
         $blocks = [];
         $carriers = [];
         $index = 0;
+        $statusHidden = $this->statusHiddenTypes($context);
 
         foreach ($elements as $element) {
             $assigned = $this->assignType($context, $source, $configured, $element);
@@ -596,10 +609,31 @@ class Matrix extends Field
                 $configured[$typeHandle],
                 $carriers[$typeHandle],
                 $assigned['item'],
+                ! isset($statusHidden[$typeHandle]),
             );
         }
 
         return $blocks;
+    }
+
+    /**
+     * The block types an editor can't disable a block of, keyed by handle. A
+     * stored Enabled row for one is skipped rather than written, so no block
+     * ends up disabled with nothing in the CP to switch it back on.
+     *
+     * @return array<string, true>
+     */
+    protected function statusHiddenTypes(FieldContext $context): array
+    {
+        $hidden = [];
+
+        foreach ($this->blockTypeDescriptors($context->craftField) as $blockType) {
+            if (! $blockType['showStatusField']) {
+                $hidden[$blockType['handle']] = true;
+            }
+        }
+
+        return $hidden;
     }
 
     /**
@@ -720,6 +754,9 @@ class Matrix extends Field
      * leaves its key off THIS block and nothing shifts, and a child handle the
      * block type's layout doesn't expose is skipped silently.
      *
+     * `enabled` must land as a real bool: Craft casts the key with `(bool)`, which
+     * reads the string `'false'` as true. Absent or empty, the block stays enabled.
+     *
      * @return array<string, mixed>
      * @throws \GlueAgency\Influx\exceptions\MappingDepthException past MAX_DEPTH
      */
@@ -729,6 +766,7 @@ class Matrix extends Field
         FieldMapping $typeMapping,
         ElementInterface $carrier,
         RemoteItem $element,
+        bool $showStatusField = true,
     ): array {
         $layout = $carrier->getFieldLayout();
 
@@ -738,11 +776,17 @@ class Matrix extends Field
         ];
 
         foreach ($this->activeNativeSubMappings($typeMapping) as $sub) {
+            if ($sub->handle === 'enabled' && ! $showStatusField) {
+                continue;
+            }
+
             $value = $sub->resolve($element);
 
-            if ($value !== null) {
-                $row[$sub->handle] = (string) $value;
+            if ($value === null) {
+                continue;
             }
+
+            $row[$sub->handle] = $sub->handle === 'enabled' ? Lightswitch::coerce($value) : (string) $value;
         }
 
         foreach ($this->activeSubMappings($typeMapping) as $sub) {
@@ -825,7 +869,7 @@ class Matrix extends Field
 
         $currentPrint = [];
 
-        foreach ($current->all() as $block) {
+        foreach ($this->allBlocks($current) as $block) {
             $type = $block->getType()->handle;
 
             $currentPrint[] = $this->currentFingerprint(
@@ -839,9 +883,12 @@ class Matrix extends Field
     }
 
     /**
-     * Fingerprint one parsed incoming block row: type, native values, then the
-     * ksort'd mapped custom values — every leaf normalised through its own child
-     * strategy so it lines up with the current-block fingerprint.
+     * Fingerprint one parsed incoming block row: type, status, native values, then
+     * the ksort'd mapped custom values — every leaf normalised through its own
+     * child strategy so it lines up with the current-block fingerprint.
+     *
+     * Status is printed whether or not the feed maps it, so a block an editor
+     * disabled by hand still reads as a difference and the replace re-enables it.
      *
      * Every mapped leaf is printed, missing ones as null. A child resolving to
      * null contributes no per-block value, so {@see buildBlock()} leaves it
@@ -860,7 +907,10 @@ class Matrix extends Field
      */
     protected function incomingFingerprint(array $row, array $customLeaves, array $nativeHandles): array
     {
-        $print = ['type' => $row['type'] ?? null];
+        $print = [
+            'type'    => $row['type'] ?? null,
+            'enabled' => (bool) ($row['enabled'] ?? true),
+        ];
 
         foreach ($nativeHandles as $handle) {
             $print['native'][$handle] = $this->normalize($row[$handle] ?? null);
@@ -894,7 +944,10 @@ class Matrix extends Field
      */
     protected function currentFingerprint(object $block, array $customLeaves, array $nativeHandles): array
     {
-        $print = ['type' => $block->getType()->handle];
+        $print = [
+            'type'    => $block->getType()->handle,
+            'enabled' => (bool) ($block->enabled ?? true),
+        ];
 
         foreach ($nativeHandles as $handle) {
             $print['native'][$handle] = $this->normalize($block->{$handle} ?? null);
@@ -1193,10 +1246,30 @@ class Matrix extends Field
         }
 
         try {
-            return array_values($current->all());
+            return $this->allBlocks($current);
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Every block a query holds, disabled ones included. Craft's element queries
+     * default to enabled-only, and a disabled block the comparison can't see
+     * reads as a difference on every sync. Set in place: a clone drops the owner
+     * behavior Craft 5 scopes the query with. A query already holding a result
+     * keeps it, since changing its criteria would throw that result away.
+     *
+     * @return list<object>
+     */
+    protected function allBlocks(object $query): array
+    {
+        $cached = method_exists($query, 'getCachedResult') ? $query->getCachedResult() : null;
+
+        if ($cached === null && method_exists($query, 'status')) {
+            $query->status(null);
+        }
+
+        return array_values($query->all());
     }
 
     /**
@@ -1641,7 +1714,7 @@ class Matrix extends Field
      * {@see blockElement()} — so tests can stub block-type discovery without
      * booting Craft.
      *
-     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool}>
+     * @return list<array{handle: string, name: string, layout: ?FieldLayout, hasTitleField: bool, showStatusField: bool}>
      */
     protected function blockTypeDescriptors(CraftFieldInterface $field): array
     {
@@ -1698,7 +1771,7 @@ class Matrix extends Field
     }
 
     /**
-     * Active native sub-mappings (title/slug) for one block type's tree.
+     * Active native sub-mappings (title, enabled) for one block type's tree.
      *
      * @return list<FieldMapping>
      */

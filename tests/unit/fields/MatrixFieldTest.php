@@ -183,6 +183,64 @@ class MatrixFieldTest extends Unit
         $this->assertArrayNotHasKey('title', $blocks['new1']['fields']);
     }
 
+    public function testAMappedEnabledRowLandsAsABoolPerBlock(): void
+    {
+        // Craft casts the key with (bool), so a string 'false' would enable it.
+        $item = new RemoteItem([
+            'seasons' => [
+                ['year' => 2020, 'visible' => 'yes'],
+                ['year' => 2021, 'visible' => 'false'],
+                ['year' => 2022, 'visible' => 0],
+                ['year' => 2023],
+            ],
+        ]);
+
+        $blocks = $this->strategy(['season' => ['year']])->parse($this->singleContext($item, [
+            'season' => [
+                'fields'       => ['year' => ['node' => 'year']],
+                'nativeFields' => ['enabled' => ['node' => 'visible']],
+            ],
+        ]));
+
+        $this->assertSame([true, false, false, true], array_column($blocks, 'enabled'));
+    }
+
+    public function testAFixedDisabledDefaultDisablesEveryBlock(): void
+    {
+        $item = new RemoteItem(['seasons' => [['year' => 2020], ['year' => 2021]]]);
+
+        $blocks = $this->strategy(['season' => ['year']])->parse($this->singleContext($item, [
+            'season' => [
+                'fields'       => ['year' => ['node' => 'year']],
+                'nativeFields' => ['enabled' => ['useDefault' => true, 'default' => 'false']],
+            ],
+        ]));
+
+        $this->assertSame([false, false], array_column($blocks, 'enabled'));
+    }
+
+    public function testAStoredEnabledRowIsSkippedForATypeHidingItsStatusField(): void
+    {
+        $item = new RemoteItem(['seasons' => [['year' => 2020, 'visible' => 'no']]]);
+        $strategy = $this->strategy(['season' => ['year']]);
+        $strategy->descriptors = [[
+            'handle'          => 'season',
+            'name'            => 'Season',
+            'layout'          => null,
+            'hasTitleField'   => false,
+            'showStatusField' => false,
+        ]];
+
+        $blocks = $strategy->parse($this->singleContext($item, [
+            'season' => [
+                'fields'       => ['year' => ['node' => 'year']],
+                'nativeFields' => ['enabled' => ['node' => 'visible']],
+            ],
+        ]));
+
+        $this->assertTrue($blocks['new1']['enabled']);
+    }
+
     // -- multi-type behaviour -------------------------------------------------
 
     public function testPerTypeMappedHandleIsolation(): void
@@ -609,7 +667,7 @@ class MatrixFieldTest extends Unit
         $this->assertSame('season', $cards[0]['blockType']);
 
         $subFields = $cards[0]['subFields'];
-        $this->assertSame(['title', 'year', 'notes'], array_column($subFields, 'handle'));
+        $this->assertSame(['title', 'enabled', 'year', 'notes'], array_column($subFields, 'handle'));
         $this->assertSame('nativeFields', $subFields[0]['channel']);
         $this->assertSame('Title', $subFields[0]['label']);
     }
@@ -638,6 +696,30 @@ class MatrixFieldTest extends Unit
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
         ]));
 
+        $this->assertSame(['enabled', 'year'], array_column($cards[0]['subFields'], 'handle'));
+    }
+
+    public function testTheEnabledRowIsANativeSelectOverTheTwoStates(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $cards = $this->cards($strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false],
+        ]));
+
+        $row = $this->nodeByHandle($cards[0]['subFields'], 'enabled');
+
+        $this->assertSame('select', $row['type']);
+        $this->assertSame('nativeFields', $row['channel']);
+        $this->assertSame(['true', 'false'], array_column($row['options'], 'value'));
+    }
+
+    public function testABlockTypeHidingItsStatusFieldGetsNoEnabledRow(): void
+    {
+        $strategy = $this->strategy(['season' => ['year']]);
+        $cards = $this->cards($strategy->exposedSchema([
+            ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => false, 'showStatusField' => false],
+        ]));
+
         $this->assertSame(['year'], array_column($cards[0]['subFields'], 'handle'));
     }
 
@@ -650,7 +732,7 @@ class MatrixFieldTest extends Unit
             ['handle' => 'season', 'name' => 'Season', 'hasTitleField' => true],
         ]));
 
-        $this->assertArrayNotHasKey('channel', $cards[0]['subFields'][1]);
+        $this->assertArrayNotHasKey('channel', $this->nodeByHandle($cards[0]['subFields'], 'year'));
     }
 
     public function testEachBlockTypeGetsItsOwnCard(): void
@@ -662,8 +744,8 @@ class MatrixFieldTest extends Unit
         ]));
 
         $this->assertSame(['season', 'quote'], array_column($cards, 'blockType'));
-        $this->assertSame(['year'], array_column($cards[0]['subFields'], 'handle'));
-        $this->assertSame(['title', 'text'], array_column($cards[1]['subFields'], 'handle'));
+        $this->assertSame(['enabled', 'year'], array_column($cards[0]['subFields'], 'handle'));
+        $this->assertSame(['title', 'enabled', 'text'], array_column($cards[1]['subFields'], 'handle'));
     }
 
     public function testTheBlockSourceSelectLeadsTheExtrasAndDefaultsToTheKeyedList(): void
@@ -959,6 +1041,61 @@ class MatrixFieldTest extends Unit
         ]);
 
         $this->assertTrue($strategy->exposedValueDiffers($context, $current, $incoming));
+    }
+
+    public function testABlockTheFeedDisabledReadsAsUnchangedOnceStored(): void
+    {
+        $context = $this->disablingContext();
+        $strategy = $this->strategy(['season' => ['year']]);
+        $incoming = $strategy->parse($context);
+
+        $stored = $this->fakeQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false])]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $stored, $incoming));
+
+        $enabled = $this->fakeQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'])]);
+        $this->assertTrue($strategy->exposedValueDiffers($context, $enabled, $incoming));
+    }
+
+    public function testABlockDisabledByHandStillReadsAsAChange(): void
+    {
+        // A feed that maps no Enabled row builds every block enabled, so the
+        // replace switches a hand-disabled block back on.
+        $item = new RemoteItem(['seasons' => [['year' => 2020]]]);
+        $context = $this->singleContext($item, ['season' => ['fields' => ['year' => ['node' => 'year']]]]);
+        $strategy = $this->strategy(['season' => ['year']]);
+
+        $current = $this->fakeQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false])]);
+
+        $this->assertTrue($strategy->exposedValueDiffers($context, $current, $strategy->parse($context)));
+    }
+
+    public function testTheBlockReadIncludesDisabledBlocks(): void
+    {
+        $context = $this->disablingContext();
+        $strategy = $this->strategy(['season' => ['year']]);
+        $incoming = $strategy->parse($context);
+
+        $query = $this->fakeStatusQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false])]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $query, $incoming));
+        $this->assertNull($query->status);
+
+        $children = $strategy->collectChildren(
+            $context,
+            $incoming,
+            $this->fakeStatusQuery([$this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false])]),
+        );
+        $this->assertSame(['unchanged'], array_column($children, 'action'));
+    }
+
+    public function testAQueryHoldingAResultKeepsIt(): void
+    {
+        $context = $this->disablingContext();
+        $strategy = $this->strategy(['season' => ['year']]);
+        $block = $this->fakeBlock('season', ['year' => 'coerced:2020'], ['enabled' => false]);
+
+        $query = $this->fakeStatusQuery([$block], cachedResult: [$block]);
+        $this->assertFalse($strategy->exposedValueDiffers($context, $query, $strategy->parse($context)));
+        $this->assertSame('enabled', $query->status);
     }
 
     public function testBoolLeafFingerprintsSymmetrically(): void
@@ -1710,6 +1847,7 @@ class MatrixFieldTest extends Unit
                         $this->typeLayouts[$descriptor['handle']] ?? [],
                         $descriptor['titleLabel'] ?? null,
                     ),
+                    'showStatusField' => true,
                 ], $descriptors);
 
                 return $this->schema($this->test->fakeCraftField())->toArray()['extra'] ?? [];
@@ -1941,6 +2079,73 @@ class MatrixFieldTest extends Unit
                 return $this->blocks;
             }
         };
+    }
+
+    /**
+     * A fake element query that, like Craft's, returns enabled blocks only until
+     * asked for every status — and a held result whatever its criteria.
+     *
+     * @param list<ElementInterface> $blocks
+     * @param list<ElementInterface>|null $cachedResult
+     */
+    public function fakeStatusQuery(array $blocks, ?array $cachedResult = null): object
+    {
+        return new class($blocks, $cachedResult) {
+            /** @var list<ElementInterface> */
+            public array $blocks;
+
+            /** @var list<ElementInterface>|null */
+            public ?array $cachedResult;
+
+            public ?string $status = 'enabled';
+
+            public function __construct(array $blocks, ?array $cachedResult)
+            {
+                $this->blocks = $blocks;
+                $this->cachedResult = $cachedResult;
+            }
+
+            public function status(?string $status): static
+            {
+                $this->status = $status;
+
+                return $this;
+            }
+
+            public function getCachedResult(): ?array
+            {
+                return $this->cachedResult;
+            }
+
+            public function all(): array
+            {
+                if ($this->cachedResult !== null) {
+                    return $this->cachedResult;
+                }
+
+                if ($this->status === null) {
+                    return $this->blocks;
+                }
+
+                return array_values(array_filter(
+                    $this->blocks,
+                    static fn(ElementInterface $block): bool => $block->enabled,
+                ));
+            }
+        };
+    }
+
+    /**
+     * One `season` block whose feed value disables it.
+     */
+    protected function disablingContext(): FieldContext
+    {
+        return $this->singleContext(new RemoteItem(['seasons' => [['year' => 2020, 'visible' => 'no']]]), [
+            'season' => [
+                'fields'       => ['year' => ['node' => 'year']],
+                'nativeFields' => ['enabled' => ['node' => 'visible']],
+            ],
+        ]);
     }
 
     /**
