@@ -101,11 +101,20 @@ class UserTargetTest extends Unit
         $this->assertSame(0, $target->downloads);
     }
 
-    public function testActivationOnlyAppliesToANewPendingUser(): void
+    public function testActivationAppliesToTheInactiveUserASyncCreates(): void
     {
-        $context = $this->context(mappings: [
-            'activation' => ['options' => ['activation' => 'activate']],
-        ]);
+        // A bare new User() is saved neither pending nor active: Craft's INACTIVE.
+        $target = $this->target();
+        $user = $this->user();
+        $target->reconcile($this->activationContext('activate'), $user, new RemoteItem([]), isNew: true);
+
+        $this->assertSame(User::STATUS_INACTIVE, $user->getStatus());
+        $this->assertSame(1, $target->activations);
+    }
+
+    public function testActivationOnlyAppliesToANewInactiveOrPendingUser(): void
+    {
+        $context = $this->activationContext('activate');
 
         $target = $this->target();
         $target->reconcile($context, $this->user(pending: true), new RemoteItem([]), isNew: true);
@@ -113,12 +122,17 @@ class UserTargetTest extends Unit
 
         // An existing user isn't re-activated on every sync.
         $target = $this->target();
-        $target->reconcile($context, $this->user(pending: true), new RemoteItem([]), isNew: false);
+        $target->reconcile($context, $this->user(), new RemoteItem([]), isNew: false);
         $this->assertSame(0, $target->activations);
 
-        // Nor is one Craft doesn't consider pending.
+        // Nor is one already active.
         $target = $this->target();
-        $target->reconcile($context, $this->user(pending: false), new RemoteItem([]), isNew: true);
+        $target->reconcile($context, $this->user(active: true), new RemoteItem([]), isNew: true);
+        $this->assertSame(0, $target->activations);
+
+        // Nor one the feed suspended.
+        $target = $this->target();
+        $target->reconcile($context, $this->user(suspended: true), new RemoteItem([]), isNew: true);
         $this->assertSame(0, $target->activations);
     }
 
@@ -126,8 +140,8 @@ class UserTargetTest extends Unit
     {
         $target = $this->target();
         $target->reconcile(
-            $this->context(mappings: ['activation' => ['options' => ['activation' => 'email']]]),
-            $this->user(pending: true),
+            $this->activationContext('email'),
+            $this->user(),
             new RemoteItem([]),
             isNew: true,
         );
@@ -136,13 +150,13 @@ class UserTargetTest extends Unit
         $this->assertSame(1, $target->activationEmails);
     }
 
-    public function testTheDefaultLeavesANewUserPending(): void
+    public function testTheDefaultLeavesANewUserInactive(): void
     {
         // Explicitly a choice, not an oversight: the operator has to pick a way in.
         $target = $this->target();
         $target->reconcile(
             $this->context(mappings: ['activation' => ['options' => []]]),
-            $this->user(pending: true),
+            $this->user(),
             new RemoteItem([]),
             isNew: true,
         );
@@ -193,8 +207,17 @@ class UserTargetTest extends Unit
         );
     }
 
-    protected function user(?string $photoFilename = null, bool $pending = false, bool $suspended = false): User
+    protected function activationContext(string $policy): SyncContext
     {
+        return $this->context(mappings: ['activation' => ['options' => ['activation' => $policy]]]);
+    }
+
+    protected function user(
+        ?string $photoFilename = null,
+        bool $pending = false,
+        bool $suspended = false,
+        bool $active = false,
+    ): User {
         $user = new class() extends User {
             public ?string $photoFilenameStub = null;
 
@@ -225,6 +248,7 @@ class UserTargetTest extends Unit
         $user->photoId = $photoFilename === null ? null : 99;
         $user->pending = $pending;
         $user->suspended = $suspended;
+        $user->active = $active;
 
         return $user;
     }

@@ -60,7 +60,7 @@ use Throwable;
  *     save doesn't touch; it moves through `suspendUser()` / `unsuspendUser()`.
  *   - `activation` — config-only: whether a newly created user gets Craft's
  *     activation email, or is activated outright. Without one of the two a synced
- *     user is left pending with no way in.
+ *     user is left inactive with no way in.
  *
  * `newPassword` is deliberately NOT in that list: it's an ordinary attribute the
  * element save hashes and persists ({@see User::beforeSave()}), so it rides the
@@ -360,20 +360,22 @@ class UserTarget extends AbstractElementTarget
 
     /**
      * Let a freshly created user in. A user the sync creates has no password and no
-     * verification code, so Craft leaves it PENDING — visible in the CP, unable to
-     * log in, and with nothing to send it a way in. The config-only `activation` row
-     * says which way out an operator wants: `email` sends Craft's own verification
-     * link so the person sets their own password, `activate` activates outright (for
-     * a feed that carries the password through `newPassword`, or a user who signs in
-     * through another provider), and the unset default leaves it pending.
+     * verification code, so Craft saves it INACTIVE (neither pending nor active) —
+     * visible in the CP, unable to log in, and with nothing to send it a way in. The
+     * config-only `activation` row says which way out an operator wants: `email`
+     * sends Craft's own verification link so the person sets their own password,
+     * `activate` activates outright (for a feed that carries the password through
+     * `newPassword`, or a user who signs in through another provider), and the unset
+     * default leaves it inactive.
      *
      * Only for a new user: re-activating or re-mailing an existing one on every sync
-     * would be both noise and a security annoyance. A user Craft doesn't consider
-     * pending is skipped too — a create that raced another sync.
+     * would be both noise and a security annoyance. Only for an inactive or pending
+     * one, too, read off Craft's own status: a user the feed disabled or suspended
+     * gets no way in, and one already active needs none.
      */
     protected function reconcileActivation(User $user, ?FieldMapping $mapping, bool $isNew): void
     {
-        if (! $mapping || ! $isNew || ! $user->pending) {
+        if (! $mapping || ! $isNew || ! in_array($user->getStatus(), [User::STATUS_INACTIVE, User::STATUS_PENDING], true)) {
             return;
         }
 
@@ -540,9 +542,9 @@ class UserTarget extends AbstractElementTarget
                         'extras' => fn(MappingSchemaBuilder $builder) => $builder->select([
                             'handle'       => 'activation',
                             'label'        => Craft::t('influx', 'New users'),
-                            'instructions' => Craft::t('influx', 'A user the sync creates has no password, so Craft leaves it pending — visible in the control panel, unable to sign in. This is how it gets a way in.'),
+                            'instructions' => Craft::t('influx', 'A user the sync creates has no password, so Craft leaves it inactive — visible in the control panel, unable to sign in. This is how it gets a way in.'),
                             'options'      => [
-                                ['value' => '',         'label' => Craft::t('influx', 'Leave pending')],
+                                ['value' => '',         'label' => Craft::t('influx', 'Leave inactive')],
                                 ['value' => 'email',    'label' => Craft::t('influx', 'Send an activation email')],
                                 ['value' => 'activate', 'label' => Craft::t('influx', 'Activate immediately')],
                             ],

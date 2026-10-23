@@ -5,6 +5,9 @@
 ### Added
 - **A Matrix block can be imported disabled.** Each block type's card offers an **Enabled** row after its title, the same Enabled/Disabled select an entry link's own row has: map it to a node to set each block's status from the feed, or pick **Disabled** as the default to import every block of that type disabled. The value goes through `Lightswitch::coerce()` and reaches Craft as a real bool, since Craft casts the key with `(bool)` and would read a string `'false'` as enabled. A block whose node is absent or empty stays enabled. The row isn't offered for a Craft 5 block type whose entry type hides its status field, and a stored row for one is skipped, so no block lands disabled where an editor can't switch it back on. Change detection now reads disabled blocks too: Craft's element queries return enabled blocks only by default, so a block the feed disabled would have read as missing and rebuilt the field on every sync. A block an editor disabled by hand still reads as a difference, and the next sync switches it back on as before. The Feed Me converter carries a block type's **Disabled** checkbox over as that default; it used to drop it without a warning.
 
+### Fixed
+- **A user link's "Send an activation email" and "Activate immediately" now act on the users a sync creates.** Both did nothing. The policy only ran for a new user Craft considered pending, but a bare `new User()` is saved neither pending nor active, which Craft 4 and later call **inactive**, so the guard returned early on every user a sync ever made. It reads Craft's own status now and acts on an inactive or pending new user. A user the feed disabled or suspended still gets no way in, and an existing one is still never re-mailed. The row's copy says "inactive" where it said "pending".
+
 ## 1.0.0-rc.2 - 2026-10-21
 
 Second release candidate: an asset's focal point can be imported, and a `null` in the feed now clears the field the way an empty string does.
