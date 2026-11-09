@@ -1,6 +1,8 @@
 # Release Notes for Influx
 
-## Unreleased
+## 1.0.0-rc.3 - 2026-11-09
+
+Third release candidate: a Matrix block can be imported disabled, and a user link's activation policy now acts on the users a sync creates.
 
 ### Added
 - **A Matrix block can be imported disabled.** Each block type's card offers an **Enabled** row after its title, the same Enabled/Disabled select an entry link's own row has: map it to a node to set each block's status from the feed, or pick **Disabled** as the default to import every block of that type disabled. The value goes through `Lightswitch::coerce()` and reaches Craft as a real bool, since Craft casts the key with `(bool)` and would read a string `'false'` as enabled. A block whose node is absent or empty stays enabled. The row isn't offered for a Craft 5 block type whose entry type hides its status field, and a stored row for one is skipped, so no block lands disabled where an editor can't switch it back on. Change detection now reads disabled blocks too: Craft's element queries return enabled blocks only by default, so a block the feed disabled would have read as missing and rebuilt the field on every sync. A block an editor disabled by hand still reads as a difference, and the next sync switches it back on as before. The Feed Me converter carries a block type's **Disabled** checkbox over as that default; it used to drop it without a warning.
