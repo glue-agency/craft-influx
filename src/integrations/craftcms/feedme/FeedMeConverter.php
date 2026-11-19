@@ -11,7 +11,11 @@ use GlueAgency\Influx\helpers\Compat;
 use GlueAgency\Influx\models\FieldMapping;
 use GlueAgency\Influx\models\Link;
 use GlueAgency\Influx\models\MappingCollection;
+use GlueAgency\Influx\targets\AssetTarget;
+use GlueAgency\Influx\targets\CategoryTarget;
 use GlueAgency\Influx\targets\EntryTarget;
+use GlueAgency\Influx\targets\GlobalSetTarget;
+use GlueAgency\Influx\targets\TagTarget;
 
 /**
  * Converts a craftcms/feed-me feed (a row from the `feedme_feeds` table) into
@@ -154,6 +158,28 @@ class FeedMeConverter
     ];
 
     /**
+     * Element types scoped by one id in Feed Me's elementGroup: the criteria key
+     * their target declares, the key the id sits under (null when the id IS the
+     * value) and what to call it in a warning.
+     *
+     * @var array<string, array{string, string|null, string}>
+     */
+    protected const SCOPED_ELEMENT_TYPES = [
+        'craft\elements\Category'  => [CategoryTarget::CRITERIA_GROUP, null, 'Category group'],
+        'craft\elements\Tag'       => [TagTarget::CRITERIA_GROUP, null, 'Tag group'],
+        'craft\elements\Asset'     => [AssetTarget::CRITERIA_VOLUME, null, 'Volume'],
+        'craft\elements\GlobalSet' => [GlobalSetTarget::CRITERIA_SET, 'globalSet', 'Global set'],
+    ];
+
+    /**
+     * Feed Me's field classes for Craft's Link field: the URL field it aliases on
+     * Craft 5 included, since rows saved on Craft 4 still name it.
+     */
+    protected const LINK_FIELD_CLASSES = ['craft\fields\Link', 'craft\fields\Url'];
+
+    protected const LINKIT_FIELD_CLASS = 'presseddigital\linkit\fields\LinkitField';
+
+    /**
      * Warnings collected while converting the current feed.
      *
      * @var string[]
@@ -264,28 +290,57 @@ class FeedMeConverter
 
     /**
      * Feed Me's elementGroup stores ids per element type, e.g.
-     * `{craft\elements\Entry: {section: 2, entryType: 4}}` — Influx criteria
-     * use handles, under the keys {@see EntryTarget} declares. Only entries are
-     * converted (the only built-in Influx target); other element types keep an
-     * empty criteria with a warning.
+     * `{craft\elements\Entry: {section: 2, entryType: 4}}` or
+     * `{craft\elements\Category: "2"}` — Influx criteria use handles, under the
+     * keys each target declares. An element type no target scopes this way
+     * keeps an empty criteria with a warning.
      */
     protected function convertElementCriteria(array $feed, string $elementType): array
     {
         $group = $this->decode($feed['elementGroup'] ?? null);
         $settings = $group[$elementType] ?? $group['\\' . $elementType] ?? null;
 
-        if ($elementType !== 'craft\elements\Entry') {
-            if ($elementType !== '') {
-                $this->warn("Element type '{$elementType}' has no built-in Influx target; element criteria were not converted.");
-            }
+        if ($elementType === 'craft\elements\Entry') {
+            return is_array($settings) ? $this->convertEntryCriteria($settings) : [];
+        }
+
+        if (isset(self::SCOPED_ELEMENT_TYPES[$elementType])) {
+            return $this->convertScopeCriteria($elementType, $settings);
+        }
+
+        if ($elementType !== '' && ! empty($settings)) {
+            $this->warn("Element type '{$elementType}' has no element criteria Influx can convert; set them on the link manually.");
+        }
+
+        return [];
+    }
+
+    /**
+     * The one id a group-scoped element type's feed names — a category or tag
+     * group, a volume, a global set — as the handle its target scopes on.
+     */
+    protected function convertScopeCriteria(string $elementType, mixed $settings): array
+    {
+        [$key, $settingsKey, $noun] = self::SCOPED_ELEMENT_TYPES[$elementType];
+        $id = (int) ($settingsKey !== null && is_array($settings) ? ($settings[$settingsKey] ?? 0) : (is_scalar($settings) ? $settings : 0));
+
+        if (! $id) {
+            return [];
+        }
+
+        $handle = $this->scopeHandleById($elementType, $id);
+
+        if ($handle === null) {
+            $this->warn("{$noun} id {$id} no longer exists; set it on the link manually.");
 
             return [];
         }
 
-        if (! is_array($settings)) {
-            return [];
-        }
+        return [$key => $handle];
+    }
 
+    protected function convertEntryCriteria(array $settings): array
+    {
         $criteria = [];
 
         $sectionId = (int) ($settings['section'] ?? 0);
@@ -731,6 +786,20 @@ class FeedMeConverter
         $node = is_string($node) && $node !== '' ? $node : null;
         $default = $this->normalizeDefault($info['default'] ?? null);
 
+        $fieldClass = ltrim((string) ($info['field'] ?? ''), '\\');
+
+        if ($fieldClass === self::LINKIT_FIELD_CLASS || (in_array($fieldClass, self::LINK_FIELD_CLASSES, true) && $this->hasLinkField())) {
+            return $this->convertLinkMapping($handle, $info);
+        }
+
+        // A row with no node of its own takes its value from its sub-fields, the
+        // shape Feed Me stores a Link, Linkit or Table field in.
+        if ($node === null && is_array($info['fields'] ?? null)) {
+            $fields = $this->convertMappings($info['fields'], false);
+
+            return $fields === [] ? null : FieldMapping::make($handle, fields: $fields);
+        }
+
         if ($node === self::NODE_NO_IMPORT || $node === null) {
             return null;
         }
@@ -762,6 +831,33 @@ class FeedMeConverter
             options: $options,
             fields: is_array($info['fields'] ?? null) ? $this->convertMappings($info['fields'], false) : [],
         );
+    }
+
+    /**
+     * A Link or Linkit field's row onto the slots Influx's strategies for them
+     * read, which take their value from sub-fields only.
+     *
+     * Feed Me 6 stores the slots as sub-fields already. A Link row saved before
+     * that (a Craft 4 URL field) maps the field itself, and Feed Me hands its
+     * value to Craft as the link's URL: that node becomes the `value` slot. An
+     * unmapped type is `url`, the type Feed Me writes for both fields.
+     */
+    protected function convertLinkMapping(string $handle, array $info): ?FieldMapping
+    {
+        if (is_array($info['fields'] ?? null)) {
+            $fields = $this->convertMappings($info['fields'], false);
+        } else {
+            $value = $this->convertMapping('value', array_diff_key($info, ['field' => true]));
+            $fields = $value === null ? [] : ['value' => $value->toConfig()];
+        }
+
+        if ($fields === []) {
+            return null;
+        }
+
+        $fields['type'] ??= FieldMapping::make('type', default: 'url', useDefault: true)->toConfig();
+
+        return FieldMapping::make($handle, fields: $fields);
     }
 
     /**
@@ -1142,6 +1238,26 @@ class FeedMeConverter
     protected function entryTypeHandleById(int $id): ?string
     {
         return Compat::getEntryTypeById($id)?->handle;
+    }
+
+    /**
+     * Whether Craft has the Link field (5.3+), which the URL field became. On
+     * Craft 4 a URL field holds a plain string and its row converts as one.
+     */
+    protected function hasLinkField(): bool
+    {
+        return class_exists('craft\fields\Link');
+    }
+
+    protected function scopeHandleById(string $elementType, int $id): ?string
+    {
+        return match ($elementType) {
+            'craft\elements\Category'  => Craft::$app->getCategories()->getGroupById($id)?->handle,
+            'craft\elements\Tag'       => Craft::$app->getTags()->getTagGroupById($id)?->handle,
+            'craft\elements\Asset'     => Craft::$app->getVolumes()->getVolumeById($id)?->handle,
+            'craft\elements\GlobalSet' => Craft::$app->getGlobals()->getSetById($id)?->handle,
+            default                    => null,
+        };
     }
 
     protected function fieldExistsByHandle(string $handle): bool

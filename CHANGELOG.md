@@ -4,6 +4,11 @@
 
 ### Added
 - **Linkit fields map like Craft's own Link field.** A Linkit row has no source node of its own and one sub-row per slot: the link type (a select over the types the field enables), the value, and custom text and a new-window flag when the field allows them. A feed may name a type by Linkit's model class or by its short name (`email`, `url`), as Feed Me's Linkit importer does, and an HTML target reads as what it means (`_blank` on, `_self` off). A type the field doesn't enable fails the row rather than the item: Linkit instantiates whatever class it is handed. Change detection compares type, value, custom text and target, so an unchanged link doesn't re-save the element. On the fallback a Linkit row could only take a raw string, which Linkit drops. See `src/integrations/presseddigital/linkit/README.md`.
+- **The Feed Me converter scopes category, tag, asset and global set links.** Feed Me's element group for those types is one id (a category or tag group, a volume, a global set), which now converts to the handle its target scopes on. They used to import with no criteria and a warning that the element type had no Influx target, which every one of them has. An id that no longer exists still warns.
+
+### Fixed
+- **Feed Me's Link, Linkit and Table rows survive the conversion.** Feed Me stores those fields with no node of their own and their slots or columns as sub-fields, and the converter dropped every row without a node, silently. They keep their sub-fields now, and a Link or Linkit row whose type isn't mapped gets `url` as its default type, the type Feed Me writes when the feed names none.
+- **A Feed Me row on a Craft 4 URL field still imports into the Link field it became.** Feed Me hands such a row's value to Craft as the link's URL, but Influx's Link strategy reads its slots only, so the converted row, a node on the field itself, was never written. On Craft 5.3 and later the node becomes the row's Value slot, with `url` as its type. On Craft 4 the row stays the plain mapping a URL field takes there.
 
 ## 1.0.0-rc.3 - 2026-11-09
 

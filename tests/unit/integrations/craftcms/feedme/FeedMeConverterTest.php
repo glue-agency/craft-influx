@@ -614,6 +614,186 @@ class FeedMeConverterTest extends Unit
         $this->assertSame(['summary' => ['node' => 'related.summary']], $mapping['fields']);
     }
 
+    public function testACategoryFeedScopesOnItsGroup(): void
+    {
+        $conversion = $this->convert([
+            'elementType'  => 'craft\elements\Category',
+            'elementGroup' => ['craft\elements\Category' => '7', 'craft\elements\Entry' => ['section' => '', 'entryType' => '']],
+        ]);
+
+        $this->assertSame(['group' => 'colours'], $conversion->link->elementCriteria);
+        $this->assertNoWarningMatching('/criteria/', $conversion);
+    }
+
+    public function testAGlobalSetFeedScopesOnItsSet(): void
+    {
+        $link = $this->convert([
+            'elementType'  => 'craft\elements\GlobalSet',
+            'elementGroup' => ['craft\elements\GlobalSet' => ['globalSet' => '9']],
+        ])->link;
+
+        $this->assertSame(['set' => 'footer'], $link->elementCriteria);
+    }
+
+    public function testAGroupThatNoLongerExistsWarns(): void
+    {
+        $conversion = $this->convert([
+            'elementType'  => 'craft\elements\Tag',
+            'elementGroup' => ['craft\elements\Tag' => '99'],
+        ]);
+
+        $this->assertSame([], $conversion->link->elementCriteria);
+        $this->assertWarningMatching('/Tag group id 99 no longer exists/', $conversion);
+    }
+
+    public function testAnElementTypeWithoutConvertibleCriteriaWarnsOnlyWhenTheFeedSetSome(): void
+    {
+        $set = $this->convert([
+            'elementType'  => 'some\plugin\Event',
+            'elementGroup' => ['some\plugin\Event' => ['calendar' => '3']],
+        ]);
+        $unset = $this->convert([
+            'elementType'  => 'some\plugin\Event',
+            'elementGroup' => ['some\plugin\Event' => ''],
+        ]);
+
+        $this->assertWarningMatching('/no element criteria Influx can convert/', $set);
+        $this->assertNoWarningMatching('/criteria/', $unset);
+    }
+
+    public function testAFlatMappingOnALinkFieldBecomesItsValueSlot(): void
+    {
+        // A Craft 4 URL field's row maps the field itself; on Craft 5 the field
+        // is a Link, whose strategy reads its slots and never a node of its own.
+        $link = $this->convert([
+            'fieldMapping' => [
+                'website' => ['field' => 'craft\fields\Url', 'node' => 'company/website', 'default' => ''],
+            ],
+        ])->link;
+
+        $this->assertSame([
+            'fields' => [
+                'value' => ['node' => 'company.website'],
+                'type'  => ['useDefault' => true, 'default' => 'url'],
+            ],
+        ], $link->mappings['website']);
+    }
+
+    public function testAFeedMe6LinkKeepsItsSlotsAndDefaultsTheTypeToUrl(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'cta' => [
+                    'field'  => 'craft\fields\Link',
+                    'fields' => [
+                        'type'  => ['node' => 'noimport', 'default' => ''],
+                        'value' => ['node' => 'cta/url', 'default' => ''],
+                        'label' => ['node' => 'cta/text', 'default' => ''],
+                    ],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame([
+            'fields' => [
+                'value' => ['node' => 'cta.url'],
+                'label' => ['node' => 'cta.text'],
+                'type'  => ['useDefault' => true, 'default' => 'url'],
+            ],
+        ], $link->mappings['cta']);
+    }
+
+    public function testAMappedLinkTypeIsKept(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'cta' => [
+                    'field'  => 'craft\fields\Link',
+                    'fields' => [
+                        'type'  => ['node' => 'cta/kind', 'default' => ''],
+                        'value' => ['node' => 'cta/value', 'default' => ''],
+                    ],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(['node' => 'cta.kind'], $link->mappings['cta']['fields']['type']);
+    }
+
+    public function testALinkMappingNothingIsDropped(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'website' => ['field' => 'craft\fields\Url', 'node' => 'noimport', 'default' => ''],
+                'cta'     => [
+                    'field'  => 'craft\fields\Link',
+                    'fields' => ['value' => ['node' => 'noimport', 'default' => '']],
+                ],
+            ],
+        ])->link;
+
+        $this->assertArrayNotHasKey('website', $link->mappings);
+        $this->assertArrayNotHasKey('cta', $link->mappings);
+    }
+
+    public function testALinkitRowKeepsItsSlotsOnAnyCraft(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'cta' => [
+                    'field'  => 'presseddigital\linkit\fields\LinkitField',
+                    'fields' => [
+                        'type'       => ['node' => 'noimport', 'default' => ''],
+                        'value'      => ['node' => 'cta/url', 'default' => ''],
+                        'customText' => ['node' => 'cta/text', 'default' => ''],
+                        'target'     => ['node' => 'noimport', 'default' => ''],
+                    ],
+                ],
+            ],
+        ], linkField: false)->link;
+
+        $this->assertSame([
+            'fields' => [
+                'value'      => ['node' => 'cta.url'],
+                'customText' => ['node' => 'cta.text'],
+                'type'       => ['useDefault' => true, 'default' => 'url'],
+            ],
+        ], $link->mappings['cta']);
+    }
+
+    public function testOnCraft4AUrlFieldRowStaysAPlainMapping(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'website' => ['field' => 'craft\fields\Url', 'node' => 'company/website', 'default' => ''],
+            ],
+        ], linkField: false)->link;
+
+        $this->assertSame(['node' => 'company.website'], $link->mappings['website']);
+    }
+
+    public function testARowWithoutANodeOfItsOwnKeepsItsSubFields(): void
+    {
+        $link = $this->convert([
+            'fieldMapping' => [
+                'specs' => [
+                    'field'  => 'craft\fields\Table',
+                    'fields' => [
+                        'col1' => ['handle' => 'size', 'type' => 'singleline', 'node' => 'specs/size', 'default' => ''],
+                        'col2' => ['handle' => 'note', 'type' => 'singleline', 'node' => 'noimport', 'default' => ''],
+                    ],
+                ],
+                'unmapped' => [
+                    'field'  => 'craft\fields\Table',
+                    'fields' => ['col1' => ['node' => 'noimport', 'default' => '']],
+                ],
+            ],
+        ])->link;
+
+        $this->assertSame(['fields' => ['col1' => ['node' => 'specs.size']]], $link->mappings['specs']);
+        $this->assertArrayNotHasKey('unmapped', $link->mappings);
+    }
+
     public function testProcessingFlagsTranslate(): void
     {
         // Feed Me's whole vocabulary, each with a direct counterpart — including
@@ -777,7 +957,7 @@ class FeedMeConverterTest extends Unit
         $this->assertSame($declared[0]['handle'], $converterKey);
     }
 
-    protected function convert(array $overrides = [], bool $multiSite = false, array $knownFields = []): FeedMeConversion
+    protected function convert(array $overrides = [], bool $multiSite = false, array $knownFields = [], bool $linkField = true): FeedMeConversion
     {
         $feed = array_merge([
             'id'              => 1,
@@ -800,21 +980,38 @@ class FeedMeConverterTest extends Unit
             'setEmptyValues' => 0,
         ], $overrides);
 
-        return $this->converter($multiSite, $knownFields)->convert($feed);
+        return $this->converter($multiSite, $knownFields, $linkField)->convert($feed);
     }
 
-    protected function converter(bool $multiSite, array $knownFields = []): FeedMeConverter
+    protected function converter(bool $multiSite, array $knownFields = [], bool $linkField = true): FeedMeConverter
     {
-        return new class($multiSite, $knownFields) extends FeedMeConverter {
+        return new class($multiSite, $knownFields, $linkField) extends FeedMeConverter {
             protected bool $multiSite = false;
 
             /** @var string[] field handles that "exist" in the stub install */
             protected array $knownFields = [];
 
-            public function __construct(bool $multiSite, array $knownFields)
+            protected bool $linkField = true;
+
+            public function __construct(bool $multiSite, array $knownFields, bool $linkField)
             {
                 $this->multiSite = $multiSite;
                 $this->knownFields = $knownFields;
+                $this->linkField = $linkField;
+            }
+
+            protected function hasLinkField(): bool
+            {
+                return $this->linkField;
+            }
+
+            protected function scopeHandleById(string $elementType, int $id): ?string
+            {
+                return [
+                    'craft\elements\Category'  => [7 => 'colours'],
+                    'craft\elements\Tag'       => [],
+                    'craft\elements\GlobalSet' => [9 => 'footer'],
+                ][$elementType][$id] ?? null;
             }
 
             protected function fieldExistsByHandle(string $handle): bool
