@@ -179,6 +179,8 @@ class FeedMeConverter
 
     protected const LINKIT_FIELD_CLASS = 'presseddigital\linkit\fields\LinkitField';
 
+    protected const SEO_SETTINGS_FIELD_CLASS = 'nystudio107\seomatic\fields\SeoSettings';
+
     /**
      * Warnings collected while converting the current feed.
      *
@@ -792,6 +794,10 @@ class FeedMeConverter
             return $this->convertLinkMapping($handle, $info);
         }
 
+        if ($fieldClass === self::SEO_SETTINGS_FIELD_CLASS) {
+            return $this->convertSeoSettingsMapping($handle, $info);
+        }
+
         // A row with no node of its own takes its value from its sub-fields, the
         // shape Feed Me stores a Link, Linkit or Table field in.
         if ($node === null && is_array($info['fields'] ?? null)) {
@@ -1238,6 +1244,36 @@ class FeedMeConverter
     protected function entryTypeHandleById(int $id): ?string
     {
         return Compat::getEntryTypeById($id)?->handle;
+    }
+
+    /**
+     * SEOmatic's Feed Me rows nest the settings one level deeper, per part of the
+     * bundle (`fields.metaGlobalVars.seoTitle`). Influx's strategy takes the
+     * settings flat and sets their sources itself, so the source selects and the
+     * asset pickers in `metaBundleSettings` have nothing to land on.
+     */
+    protected function convertSeoSettingsMapping(string $handle, array $info): ?FieldMapping
+    {
+        $parts = is_array($info['fields'] ?? null) ? $info['fields'] : [];
+        $fields = [];
+
+        foreach ($parts as $part => $settings) {
+            if (! is_array($settings)) {
+                continue;
+            }
+
+            foreach ($this->convertMappings($settings, false) as $setting => $config) {
+                if ($part !== 'metaGlobalVars' || str_ends_with((string) $setting, 'Ids')) {
+                    $this->warn("SEO Settings mapping '{$handle}.{$part}.{$setting}' has no Influx counterpart and was dropped: a mapped value sets its own source, and image assets aren't mapped.");
+
+                    continue;
+                }
+
+                $fields[$setting] = $config;
+            }
+        }
+
+        return $fields === [] ? null : FieldMapping::make($handle, fields: $fields);
     }
 
     /**

@@ -761,6 +761,39 @@ class FeedMeConverterTest extends Unit
         ], $link->mappings['cta']);
     }
 
+    public function testSeoSettingsFlattenOntoTheStrategysSettings(): void
+    {
+        $conversion = $this->convert([
+            'fieldMapping' => [
+                'seo' => [
+                    'field'  => 'nystudio107\seomatic\fields\SeoSettings',
+                    'fields' => [
+                        'metaGlobalVars' => [
+                            'seoTitle'       => ['node' => 'meta/title', 'default' => ''],
+                            'seoDescription' => ['node' => 'noimport', 'default' => ''],
+                            'robots'         => ['node' => 'usedefault', 'default' => 'noindex'],
+                            'seoImageIds'    => ['node' => 'meta/image', 'default' => ''],
+                        ],
+                        'metaBundleSettings' => [
+                            'seoImageSource' => ['node' => 'usedefault', 'default' => 'fromUrl'],
+                            'ogImageSource'  => ['node' => 'noimport', 'default' => ''],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame([
+            'fields' => [
+                'seoTitle' => ['node' => 'meta.title'],
+                'robots'   => ['useDefault' => true, 'default' => 'noindex'],
+            ],
+        ], $conversion->link->mappings['seo']);
+        $this->assertWarningMatching('/seo\.metaGlobalVars\.seoImageIds/', $conversion);
+        $this->assertWarningMatching('/seo\.metaBundleSettings\.seoImageSource/', $conversion);
+        $this->assertNoWarningMatching('/ogImageSource/', $conversion);
+    }
+
     public function testOnCraft4AUrlFieldRowStaysAPlainMapping(): void
     {
         $link = $this->convert([

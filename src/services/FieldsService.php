@@ -30,6 +30,7 @@ use GlueAgency\Influx\fields\Tags;
 use GlueAgency\Influx\fields\Time;
 use GlueAgency\Influx\fields\Users;
 use GlueAgency\Influx\integrations\jalendport\preparse\PreparseField;
+use GlueAgency\Influx\integrations\nystudio107\seomatic\SeoSettingsField;
 use GlueAgency\Influx\integrations\presseddigital\linkit\LinkitField;
 use GlueAgency\Influx\integrations\verbb\tablemaker\TableMakerField;
 use GlueAgency\Influx\schema\MappingSchema;
@@ -217,6 +218,7 @@ class FieldsService extends AbstractRegistry
             PreparseField::class,
             TableMakerField::class,
             LinkitField::class,
+            SeoSettingsField::class,
 
             // Craft 5 only. The registry files a strategy under the class STRING
             // its craftFieldClass() names and matches by walking a real field's
