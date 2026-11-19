@@ -1,6 +1,8 @@
 # Release Notes for Influx
 
-## Unreleased
+## 1.0.0-rc.4 - 2026-11-19
+
+Fourth release candidate: Linkit and SEOmatic fields map through their own strategies, the Feed Me converter keeps the rows and group scopes it used to drop, and a title with surrounding whitespace no longer re-saves its element.
 
 ### Added
 - **Linkit fields map like Craft's own Link field.** A Linkit row has no source node of its own and one sub-row per slot: the link type (a select over the types the field enables), the value, and custom text and a new-window flag when the field allows them. A feed may name a type by Linkit's model class or by its short name (`email`, `url`), as Feed Me's Linkit importer does, and an HTML target reads as what it means (`_blank` on, `_self` off). A type the field doesn't enable fails the row rather than the item: Linkit instantiates whatever class it is handed. Change detection compares type, value, custom text and target, so an unchanged link doesn't re-save the element. On the fallback a Linkit row could only take a raw string, which Linkit drops. See `src/integrations/presseddigital/linkit/README.md`.
