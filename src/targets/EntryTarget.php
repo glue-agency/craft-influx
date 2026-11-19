@@ -432,7 +432,7 @@ class EntryTarget extends AbstractElementTarget
     {
         $value = $mapping->resolve($item);
 
-        $new = $value === null ? null : StringHelper::safeTruncate((string) $value, 255);
+        $new = $value === null ? null : StringHelper::safeTruncate(trim((string) $value), 255);
         $changed = (string) ($element->title ?? '') !== (string) ($new ?? '');
         $element->title = $new;
 

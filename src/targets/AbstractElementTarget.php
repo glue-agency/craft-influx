@@ -274,6 +274,21 @@ abstract class AbstractElementTarget implements ElementTargetInterface
     }
 
     /**
+     * The title as Craft stores it: an element's rules trim it on validation, so
+     * a feed value with surrounding whitespace would otherwise compare unequal to
+     * what was saved and re-save the element on every run.
+     */
+    protected function parseTitle(SyncContext $context, ElementInterface $element, RemoteItem $item, FieldMapping $mapping): bool
+    {
+        $value = $mapping->resolve($item);
+        $new = $value === null ? null : trim((string) $value);
+        $changed = (string) ($element->title ?? '') !== (string) ($new ?? '');
+        $element->title = $new;
+
+        return $changed;
+    }
+
+    /**
      * Coerce the mapped value into the `enabled` flag — shared by every target,
      * since `enabled` is the one status flag every element type carries. (Craft
      * derives an entry's `status` from enabled + postDate + expiryDate and a
