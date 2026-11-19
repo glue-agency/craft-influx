@@ -20,7 +20,7 @@ use Throwable;
  * canonical URL — the list SEOmatic's own Feed Me integration offers, minus
  * the asset pickers.
  *
- * Only the mapped settings change. The rest of the bundle — sitemap settings,
+ * Only the mapped settings the item carries change. The rest of the bundle — sitemap settings,
  * an editor's other overrides — is read off the element and handed back as it
  * was, through the same `toArray()` round trip SEOmatic's `normalizeValue()`
  * uses for a bundle. Feed Me's integration replaces the whole bundle instead,
@@ -136,7 +136,7 @@ class SeoSettingsField extends Field
         $config['metaGlobalVars'] = (array) ($config['metaGlobalVars'] ?? []);
         $config['metaBundleSettings'] = (array) ($config['metaBundleSettings'] ?? []);
 
-        foreach ($this->mappedSettings($context->mapping) as $handle => $sub) {
+        foreach ($this->addressedSettings($context) as $handle => $sub) {
             $value = $sub->resolve($context->item);
             $config['metaGlobalVars'][$handle] = is_scalar($value) ? trim((string) $value) : '';
 
@@ -179,7 +179,7 @@ class SeoSettingsField extends Field
 
         $incoming = $this->bundleArray($incoming);
 
-        foreach (array_keys($this->mappedSettings($context->mapping)) as $handle) {
+        foreach (array_keys($this->addressedSettings($context)) as $handle) {
             if ((string) ($current['metaGlobalVars'][$handle] ?? '') !== (string) ($incoming['metaGlobalVars'][$handle] ?? '')) {
                 return true;
             }
@@ -235,6 +235,20 @@ class SeoSettingsField extends Field
         }
 
         return $settings;
+    }
+
+    /**
+     * The mapped settings this item addresses. A setting whose key the item
+     * doesn't carry is left as it is, as Influx leaves any unaddressed field.
+     *
+     * @return array<string, FieldMapping>
+     */
+    protected function addressedSettings(FieldContext $context): array
+    {
+        return array_filter(
+            $this->mappedSettings($context->mapping),
+            static fn(FieldMapping $sub): bool => $sub->addressedBy($context->item),
+        );
     }
 
     protected function currentValue(FieldContext $context): mixed

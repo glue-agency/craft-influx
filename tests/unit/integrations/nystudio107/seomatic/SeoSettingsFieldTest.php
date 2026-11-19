@@ -76,6 +76,21 @@ class SeoSettingsFieldTest extends Unit
         $this->assertSame('', $parsed['metaGlobalVars']['seoTitle']);
     }
 
+    public function testASettingTheItemDoesNotCarryIsLeftAlone(): void
+    {
+        $parsed = (new SeoSettingsField())->parse($this->context(
+            feed: ['meta' => ['title' => 'New title']],
+            fields: [
+                'seoTitle'       => ['node' => 'meta.title'],
+                'seoDescription' => ['node' => 'meta.description'],
+            ],
+            current: new StoredBundle(['seoTitle' => 'Old', 'seoDescription' => 'Kept'], ['seoDescriptionSource' => 'fromField']),
+        ));
+
+        $this->assertSame(['seoTitle' => 'New title', 'seoDescription' => 'Kept'], $parsed['metaGlobalVars']);
+        $this->assertSame('fromField', $parsed['metaBundleSettings']['seoDescriptionSource']);
+    }
+
     public function testAnUnknownSettingIsNotWritten(): void
     {
         $parsed = (new SeoSettingsField())->parse($this->context(
@@ -99,7 +114,7 @@ class SeoSettingsFieldTest extends Unit
         ];
 
         $this->assertFalse((new SeoSettingsField())->hasChanged(
-            $this->context(feed: [], fields: ['seoTitle' => ['node' => 't']], current: $current),
+            $this->context(feed: ['t' => 'Title'], fields: ['seoTitle' => ['node' => 't']], current: $current),
             $incoming,
         ));
     }
@@ -113,7 +128,7 @@ class SeoSettingsFieldTest extends Unit
         ];
 
         $this->assertTrue((new SeoSettingsField())->hasChanged(
-            $this->context(feed: [], fields: ['seoTitle' => ['node' => 't']], current: $current),
+            $this->context(feed: ['t' => 'Title'], fields: ['seoTitle' => ['node' => 't']], current: $current),
             $incoming,
         ));
     }

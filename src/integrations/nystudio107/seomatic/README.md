@@ -18,7 +18,8 @@ Robots is a select over SEOmatic's own values (`all`, `none`, `noindex`,
 
 ## Sync semantics
 
-- **Only the mapped settings change.** The rest of the bundle (sitemap settings,
+- **Only the mapped settings the item carries change.** A setting whose key the item doesn't have is left as it
+  is. The rest of the bundle (sitemap settings,
   an editor's other overrides) is read off the element and written back as it
   was. Feed Me's integration replaces the whole bundle instead, resetting
   everything it doesn't map to the field's defaults.
