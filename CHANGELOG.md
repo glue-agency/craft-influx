@@ -1,5 +1,10 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Fixed
+- **Saving one site of an entry no longer makes the next sync of its other sites save it again.** Saving turns a link to an element (an asset, an entry) into a reference tag, `{asset:12:url||https://…/file.png}`, with the URL kept as the fallback Craft shows when the element is gone. Craft re-saves an element's other sites from their current values when one site is saved, and serializing that stored HTML again rewrites the fallback with the element's current URL (a `?v=` cache-buster when `revAssetUrls` is on). So syncing an entry's English site changed its stored Dutch HTML, and the next Dutch sync read the rich-text field as changed and saved, and revised, the entry for nothing. Rich text now compares reference tags without their fallback (`RichText::comparableHtml()`): which element a tag points at still counts, the fallback text, which never renders while the element exists, doesn't.
+
 ## 1.0.0-rc.5 - 2026-11-25
 
 Fifth release candidate: a long sync keeps its lock and no longer fails when it releases it.

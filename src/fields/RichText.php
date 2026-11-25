@@ -56,6 +56,27 @@ class RichText extends Field
             return parent::valueDiffers($context, $current, $incoming);
         }
 
-        return trim($currentRaw) !== trim($serialized);
+        return static::comparableHtml($currentRaw) !== static::comparableHtml($serialized);
+    }
+
+    /**
+     * HTML as it compares: trimmed, and every reference tag without its
+     * `||fallback`.
+     *
+     * Saving turns a URL that points at an element (an asset, an entry) into a
+     * reference tag, `{asset:12:url||https://…/file.png}`, keeping the URL as the
+     * fallback Craft shows when the element is gone. Serializing a stored value
+     * again rewrites that fallback with the element's current URL, which can
+     * differ from the feed's (a `?v=` cache-buster when `revAssetUrls` is on). And
+     * Craft does serialize it again: saving an element in one site re-saves its
+     * other sites from their current values. So saving the English site of an
+     * entry changed the stored Dutch HTML, and the next Dutch sync read it as
+     * changed and saved, and revised, the entry for nothing. Which element a tag
+     * points at still counts; only its fallback text doesn't, and that never
+     * renders while the element exists.
+     */
+    public static function comparableHtml(string $html): string
+    {
+        return trim((string) preg_replace('/\{([\w\\\\]+:[^{}|]+)\|\|[^{}]*\}/', '{$1}', $html));
     }
 }
