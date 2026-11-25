@@ -1,5 +1,10 @@
 # Release Notes for Influx
 
+## Unreleased
+
+### Fixed
+- **A long sync keeps its lock, and no longer fails at the end.** Craft's mutex is a database lock on a connection of its own, which a sync touched only to take and release the lock, so it sat idle for the whole run. Once a run outlasted the database's idle timeout (MySQL's `wait_timeout`, 300 seconds on some hosts) the server closed that connection and the lock went with it: a second run of the same link could start next to the first, and releasing the lock at the end threw "MySQL server has gone away", so the console command exited 1 although every item was saved. Whether it happened depended on the run, since element saves take short locks of their own on the same connection: a run of mostly unchanged items lost its lock, a busy one didn't. The run now pings the lock's connection at most once a minute as it works through the items (`SyncLock`), on the synchronous and the queued path. A release never fails the run any more, and if the connection was lost anyway, a warning says so and the connection is reopened, so Yii's release at shutdown doesn't throw either.
+
 ## 1.0.0-rc.4 - 2026-11-19
 
 Fourth release candidate: Linkit and SEOmatic fields map through their own strategies, the Feed Me converter keeps the rows and group scopes it used to drop, and a title with surrounding whitespace no longer re-saves its element.

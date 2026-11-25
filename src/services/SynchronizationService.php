@@ -25,6 +25,7 @@ use GlueAgency\Influx\sync\run\PageWalk;
 use GlueAgency\Influx\sync\run\PageWalker;
 use GlueAgency\Influx\sync\run\RunLifecycle;
 use GlueAgency\Influx\sync\run\RunOrigin;
+use GlueAgency\Influx\sync\run\SyncLock;
 use GlueAgency\Influx\sync\SyncContext;
 use GlueAgency\Influx\targets\ElementTargetInterface;
 use Throwable;
@@ -153,13 +154,14 @@ class SynchronizationService extends Component
         $this->requireSiteEndpoint($link, $siteHandle);
         $siteHandles = $this->syncScopes($link, $siteHandle);
 
-        $mutex = Craft::$app->getMutex();
-        $lockKey = $this->syncLockKey($link);
+        $lock = SyncLock::forKey($this->syncLockKey($link));
 
-        if (! $mutex->acquire($lockKey, 15)) {
+        if (! $lock->acquire(15)) {
             throw new InfluxException("Could not acquire the sync lock for link '{$link->handle}' — another run is already in progress.");
         }
 
+        // The run holds the lock throughout: keep its connection alive per item.
+        $onProgress = $this->beatingProgress($lock, $onProgress);
         $logs = [];
 
         try {
@@ -183,7 +185,7 @@ class SynchronizationService extends Component
                 $this->lifecycle->fireAfterSyncLink($link, $log);
             }
         } finally {
-            $mutex->release($lockKey);
+            $lock->release();
         }
 
         return $logs;
@@ -213,6 +215,25 @@ class SynchronizationService extends Component
     protected function syncLockKey(Link $link): string
     {
         return "influx:sync:{$link->handle}";
+    }
+
+    /**
+     * Wraps a run's progress callback so every item also keeps the sync lock's
+     * database connection alive ({@see SyncLock::beat()}): a run longer than the
+     * server's idle timeout would otherwise lose the lock with its idle connection.
+     *
+     * @param callable|null $onProgress fn(int $seen, ?int $total)
+     * @return callable fn(int $seen, ?int $total)
+     */
+    protected function beatingProgress(SyncLock $lock, ?callable $onProgress): callable
+    {
+        return static function(int $seen, ?int $total) use ($lock, $onProgress): void {
+            $lock->beat();
+
+            if ($onProgress !== null) {
+                $onProgress($seen, $total);
+            }
+        };
     }
 
     /**
@@ -381,17 +402,16 @@ class SynchronizationService extends Component
             return $batch->toArray();
         }
 
-        $mutex = Craft::$app->getMutex();
-        $lockKey = $this->syncLockKey($link);
+        $lock = SyncLock::forKey($this->syncLockKey($link));
 
-        if (! $mutex->acquire($lockKey, 15)) {
+        if (! $lock->acquire(15)) {
             return $batch->toArray();
         }
 
         try {
-            $this->pageWalker->walk($context, $page, $log, $batch->walk, $onProgress);
+            $this->pageWalker->walk($context, $page, $log, $batch->walk, $this->beatingProgress($lock, $onProgress));
         } finally {
-            $mutex->release($lockKey);
+            $lock->release();
         }
 
         if ($page->nextUrl !== null) {
